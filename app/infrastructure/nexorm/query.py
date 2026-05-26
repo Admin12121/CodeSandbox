@@ -1,7 +1,9 @@
 from nexorm.database import default_db
 from nexorm.exceptions import DoesNotExist, MultipleObjectsReturned
+from nexorm.raw import RawQuery
 from nexorm.sql.compiler import SQLCompiler
 from nexorm.sql.expressions import Where
+from nexorm.sql.crud import CRUDEngine
 
 
 class QuerySet:
@@ -23,7 +25,7 @@ class QuerySet:
 
     def all(self):
         sql, params = SQLCompiler(self).select()
-        return [self.model.from_row(row) for row in self.db.fetchall(sql, params)]
+        return [self.model.from_row(row, db=self.db) for row in self.db.fetchall(sql, params)]
 
     def first(self):
         rows = self.limit(1).all()
@@ -72,6 +74,14 @@ class QuerySet:
 
     def exists(self):
         return self.limit(1).count() > 0
+
+    def create(self, **kwargs):
+        instance = self.model(**kwargs)
+        instance.validate(self.db)
+        return CRUDEngine(self.db, self.dialect).insert(instance)
+
+    def raw(self, sql, params=None):
+        return RawQuery(self.model, sql, params, self.db)
 
     def update(self, **values):
         sql, params = SQLCompiler(self).update(values)

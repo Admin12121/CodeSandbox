@@ -1,9 +1,10 @@
 from nexorm.exceptions import ConfigurationError
-from nexorm.fields import Field, IntegerField
+from nexorm.fields import Field, UUIDField
 from nexorm.manager import Manager
 from nexorm.options import Options
 from nexorm.registry import register_model
 from nexorm.sql.crud import CRUDEngine
+from nexorm.uuid import uuid7
 from nexorm.validators import validate_instance, wrap_integrity_error
 
 
@@ -28,7 +29,7 @@ class ModelBase(type):
         for key, field in fields.items():
             cls._meta.add_field(key, field)
         if cls._meta.primary_key is None:
-            cls._meta.add_field("id", IntegerField(primary_key=True, auto_increment=True))
+            cls._meta.add_field("id", UUIDField(primary_key=True, default=uuid7))
         cls.objects = Manager()
         register_model(cls)
         return cls
@@ -36,6 +37,7 @@ class ModelBase(type):
 
 class Model(metaclass=ModelBase):
     def __init__(self, **kwargs):
+        provided_fields = set(kwargs)
         unknown = set(kwargs) - set(self._meta.fields)
         if unknown:
             fields = ", ".join(sorted(unknown))
@@ -43,32 +45,44 @@ class Model(metaclass=ModelBase):
         for name, field in self._meta.fields.items():
             value = kwargs.get(name, field.get_default())
             setattr(self, name, value)
+        self._nexorm_pk_provided = self._meta.primary_key.name in provided_fields
+        self._nexorm_persisted = False
 
-    def validate(self):
-        return validate_instance(self)
+    def validate(self, db=None):
+        db = db or getattr(self, "_nexorm_db", None)
+        return validate_instance(self, db)
 
-    def save(self):
-        self.validate()
-        engine = CRUDEngine()
-        pk = self._meta.primary_key
-        if getattr(self, pk.name, None) is None:
+    def save(self, db=None):
+        db = db or getattr(self, "_nexorm_db", None)
+        adding = not getattr(self, "_nexorm_persisted", False)
+        self.validate(db)
+        engine = CRUDEngine(db)
+        if adding and self._nexorm_pk_provided and engine.exists(self):
+            return wrap_integrity_error(lambda: engine.update(self))
+        if adding:
             return wrap_integrity_error(lambda: engine.insert(self))
         return wrap_integrity_error(lambda: engine.update(self))
 
-    def delete(self):
-        return wrap_integrity_error(lambda: CRUDEngine().delete(self))
+    def delete(self, db=None):
+        db = db or getattr(self, "_nexorm_db", None)
+        return wrap_integrity_error(lambda: CRUDEngine(db).delete(self))
 
-    def update(self, **kwargs):
+    def update(self, db=None, **kwargs):
+        db = db or getattr(self, "_nexorm_db", None)
         for key, value in kwargs.items():
             setattr(self, key, value)
-        return self.save()
+        return self.save(db)
 
     def to_dict(self):
         return {name: getattr(self, name, None) for name in self._meta.fields}
 
     @classmethod
-    def from_row(cls, row):
+    def from_row(cls, row, db=None):
         data = {}
         for name, field in cls._meta.fields.items():
             data[name] = field.from_db(row[name]) if name in row.keys() else None
-        return cls(**data)
+        instance = cls(**data)
+        if db is not None:
+            instance._nexorm_db = db
+        instance._nexorm_persisted = True
+        return instance

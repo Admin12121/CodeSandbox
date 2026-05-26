@@ -21,10 +21,18 @@ class CreateTable(Operation):
 
     def to_sql(self, dialect=None):
         dialect = dialect or SQLiteDialect()
-        parts = [column["sql"] for column in self.columns] + self.foreign_keys
-        sql = [f"CREATE TABLE IF NOT EXISTS {dialect.quote_identifier(self.name)} ({', '.join(parts)})"]
+        parts = [_column_sql(column, dialect) for column in self.columns]
+        parts.extend(_foreign_key_sql(foreign_key, dialect) for foreign_key in self.foreign_keys)
+        sql = [
+            f"CREATE TABLE IF NOT EXISTS {dialect.quote_identifier(self.name)} "
+            f"({', '.join(parts)})"
+        ]
         for index in self.indexes:
-            sql.append(dialect.create_index_sql(self.name, index["name"], index["columns"], index.get("unique", False)))
+            sql.append(
+                dialect.create_index_sql(
+                    self.name, index["name"], index["columns"], index.get("unique", False)
+                )
+            )
         return sql
 
     def reverse_sql(self, dialect=None):
@@ -62,12 +70,20 @@ class AddColumn(Operation):
 
     def to_sql(self, dialect=None):
         dialect = dialect or SQLiteDialect()
-        return [f"ALTER TABLE {dialect.quote_identifier(self.table)} ADD COLUMN {self.column['sql']}"]
+        return [
+            f"ALTER TABLE {dialect.quote_identifier(self.table)} "
+            f"ADD COLUMN {_column_sql(self.column, dialect)}"
+        ]
 
     def reverse_sql(self, dialect=None):
+        dialect = dialect or SQLiteDialect()
+        if not dialect.requires_table_rebuild:
+            return dialect.drop_column_sql(self.table, self.column)
         if not self.old_table or not self.new_table:
-            raise ValueError(f"Cannot reverse AddColumn({self.table!r}) without old/new table state")
-        return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect or SQLiteDialect())
+            raise ValueError(
+                f"Cannot reverse AddColumn({self.table!r}) without old/new table state"
+            )
+        return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect)
 
     def describe(self):
         return f"Add column {self.column['name']} to {self.table}"
@@ -83,14 +99,27 @@ class RemoveColumn(Operation):
         self.new_table = new_table
 
     def to_sql(self, dialect=None):
+        dialect = dialect or SQLiteDialect()
+        if not dialect.requires_table_rebuild:
+            return dialect.drop_column_sql(self.table, self.column)
         if not self.old_table or not self.new_table:
-            raise ValueError(f"Cannot apply RemoveColumn({self.table!r}) without old/new table state")
-        return _rebuild_table_sql(self.table, self.old_table, self.new_table, dialect or SQLiteDialect())
+            raise ValueError(
+                f"Cannot apply RemoveColumn({self.table!r}) without old/new table state"
+            )
+        return _rebuild_table_sql(self.table, self.old_table, self.new_table, dialect)
 
     def reverse_sql(self, dialect=None):
+        dialect = dialect or SQLiteDialect()
+        if not dialect.requires_table_rebuild:
+            return [
+                f"ALTER TABLE {dialect.quote_identifier(self.table)} "
+                f"ADD COLUMN {_column_sql(self.column, dialect)}"
+            ]
         if not self.old_table or not self.new_table:
-            raise ValueError(f"Cannot reverse RemoveColumn({self.table!r}) without old/new table state")
-        return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect or SQLiteDialect())
+            raise ValueError(
+                f"Cannot reverse RemoveColumn({self.table!r}) without old/new table state"
+            )
+        return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect)
 
     def describe(self):
         column = self.column["name"] if isinstance(self.column, dict) else self.column
@@ -108,14 +137,24 @@ class AlterColumn(Operation):
         self.new_table = new_table
 
     def to_sql(self, dialect=None):
+        dialect = dialect or SQLiteDialect()
+        if not dialect.requires_table_rebuild:
+            return dialect.alter_column_sql(self.table, self.old_column, self.new_column)
         if not self.old_table or not self.new_table:
-            raise ValueError(f"Cannot apply AlterColumn({self.table!r}) without old/new table state")
-        return _rebuild_table_sql(self.table, self.old_table, self.new_table, dialect or SQLiteDialect())
+            raise ValueError(
+                f"Cannot apply AlterColumn({self.table!r}) without old/new table state"
+            )
+        return _rebuild_table_sql(self.table, self.old_table, self.new_table, dialect)
 
     def reverse_sql(self, dialect=None):
+        dialect = dialect or SQLiteDialect()
+        if not dialect.requires_table_rebuild:
+            return dialect.alter_column_sql(self.table, self.new_column, self.old_column)
         if not self.old_table or not self.new_table:
-            raise ValueError(f"Cannot reverse AlterColumn({self.table!r}) without old/new table state")
-        return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect or SQLiteDialect())
+            raise ValueError(
+                f"Cannot reverse AlterColumn({self.table!r}) without old/new table state"
+            )
+        return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect)
 
     def describe(self):
         return f"Alter column {self.new_column['name']} on {self.table}"
@@ -128,11 +167,17 @@ class RenameTable(Operation):
 
     def to_sql(self, dialect=None):
         dialect = dialect or SQLiteDialect()
-        return [f"ALTER TABLE {dialect.quote_identifier(self.old_name)} RENAME TO {dialect.quote_identifier(self.new_name)}"]
+        return [
+            f"ALTER TABLE {dialect.quote_identifier(self.old_name)} "
+            f"RENAME TO {dialect.quote_identifier(self.new_name)}"
+        ]
 
     def reverse_sql(self, dialect=None):
         dialect = dialect or SQLiteDialect()
-        return [f"ALTER TABLE {dialect.quote_identifier(self.new_name)} RENAME TO {dialect.quote_identifier(self.old_name)}"]
+        return [
+            f"ALTER TABLE {dialect.quote_identifier(self.new_name)} "
+            f"RENAME TO {dialect.quote_identifier(self.old_name)}"
+        ]
 
 
 class RenameColumn(Operation):
@@ -145,14 +190,16 @@ class RenameColumn(Operation):
         dialect = dialect or SQLiteDialect()
         return [
             f"ALTER TABLE {dialect.quote_identifier(self.table)} "
-            f"RENAME COLUMN {dialect.quote_identifier(self.old_name)} TO {dialect.quote_identifier(self.new_name)}"
+            f"RENAME COLUMN {dialect.quote_identifier(self.old_name)} "
+            f"TO {dialect.quote_identifier(self.new_name)}"
         ]
 
     def reverse_sql(self, dialect=None):
         dialect = dialect or SQLiteDialect()
         return [
             f"ALTER TABLE {dialect.quote_identifier(self.table)} "
-            f"RENAME COLUMN {dialect.quote_identifier(self.new_name)} TO {dialect.quote_identifier(self.old_name)}"
+            f"RENAME COLUMN {dialect.quote_identifier(self.new_name)} "
+            f"TO {dialect.quote_identifier(self.old_name)}"
         ]
 
 
@@ -169,7 +216,7 @@ class CreateIndex(Operation):
 
     def reverse_sql(self, dialect=None):
         dialect = dialect or SQLiteDialect()
-        return [f"DROP INDEX IF EXISTS {dialect.quote_identifier(self.name)}"]
+        return [dialect.drop_index_sql(self.name, self.table)]
 
 
 class DropIndex(Operation):
@@ -181,7 +228,7 @@ class DropIndex(Operation):
 
     def to_sql(self, dialect=None):
         dialect = dialect or SQLiteDialect()
-        return [f"DROP INDEX IF EXISTS {dialect.quote_identifier(self.name)}"]
+        return [dialect.drop_index_sql(self.name, self.table)]
 
     def reverse_sql(self, dialect=None):
         if not self.table or not self.columns:
@@ -199,25 +246,62 @@ class AddForeignKey(Operation):
         self.new_table = new_table
 
     def to_sql(self, dialect=None):
-        return _rebuild_table_sql(self.table, self.old_table, self.new_table, dialect or SQLiteDialect())
+        dialect = dialect or SQLiteDialect()
+        if dialect.requires_table_rebuild:
+            return _rebuild_table_sql(self.table, self.old_table, self.new_table, dialect)
+        return [
+            sql
+            for foreign_key in _foreign_key_added(self.old_table, self.new_table)
+            for sql in dialect.add_foreign_key_sql(self.table, foreign_key)
+        ]
 
     def reverse_sql(self, dialect=None):
-        return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect or SQLiteDialect())
+        dialect = dialect or SQLiteDialect()
+        if dialect.requires_table_rebuild:
+            return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect)
+        return [
+            sql
+            for foreign_key in _foreign_key_added(self.old_table, self.new_table)
+            for sql in dialect.drop_foreign_key_sql(self.table, foreign_key)
+        ]
 
 
 class RemoveForeignKey(AddForeignKey):
-    pass
+    def to_sql(self, dialect=None):
+        dialect = dialect or SQLiteDialect()
+        if dialect.requires_table_rebuild:
+            return _rebuild_table_sql(self.table, self.old_table, self.new_table, dialect)
+        return [
+            sql
+            for foreign_key in _foreign_key_added(self.new_table, self.old_table)
+            for sql in dialect.drop_foreign_key_sql(self.table, foreign_key)
+        ]
+
+    def reverse_sql(self, dialect=None):
+        dialect = dialect or SQLiteDialect()
+        if dialect.requires_table_rebuild:
+            return _rebuild_table_sql(self.table, self.new_table, self.old_table, dialect)
+        return [
+            sql
+            for foreign_key in _foreign_key_added(self.new_table, self.old_table)
+            for sql in dialect.add_foreign_key_sql(self.table, foreign_key)
+        ]
 
 
 def _create_table_sql(name, table_state, dialect):
     columns = list(table_state["columns"].values())
-    return CreateTable(name, columns, table_state.get("foreign_keys", []), table_state.get("indexes", [])).to_sql(dialect)
+    return CreateTable(
+        name, columns, table_state.get("foreign_keys", []), table_state.get("indexes", [])
+    ).to_sql(dialect)
 
 
 def _rebuild_table_sql(table, from_state, to_state, dialect):
     temp_table = f"__nexorm_tmp_{table}"
     common_columns = [name for name in to_state["columns"] if name in from_state["columns"]]
-    parts = [column["sql"] for column in to_state["columns"].values()] + to_state.get("foreign_keys", [])
+    parts = [_column_sql(column, dialect) for column in to_state["columns"].values()]
+    parts.extend(
+        _foreign_key_sql(foreign_key, dialect) for foreign_key in to_state.get("foreign_keys", [])
+    )
     quoted_temp = dialect.quote_identifier(temp_table)
     quoted_table = dialect.quote_identifier(table)
     sql = [
@@ -234,5 +318,48 @@ def _rebuild_table_sql(table, from_state, to_state, dialect):
         ]
     )
     for index in to_state.get("indexes", []):
-        sql.append(dialect.create_index_sql(table, index["name"], index["columns"], index.get("unique", False)))
+        sql.append(
+            dialect.create_index_sql(
+                table, index["name"], index["columns"], index.get("unique", False)
+            )
+        )
     return sql
+
+
+def _column_sql(column, dialect):
+    if "field" not in column and "sql" in column and dialect.name == "sqlite":
+        return column["sql"]
+    if "field" in column or "type" in column:
+        try:
+            return dialect.column_sql_from_state(column)
+        except Exception:
+            if "sql" in column:
+                return column["sql"]
+            raise
+    return column["sql"]
+
+
+def _foreign_key_sql(foreign_key, dialect):
+    if isinstance(foreign_key, str):
+        return foreign_key
+    return dialect.foreign_key_sql_from_state(foreign_key)
+
+
+def _foreign_key_key(foreign_key):
+    if isinstance(foreign_key, str):
+        return foreign_key
+    return (
+        foreign_key.get("column"),
+        foreign_key.get("to_table"),
+        foreign_key.get("to_column"),
+        foreign_key.get("on_delete"),
+    )
+
+
+def _foreign_key_added(old_table, new_table):
+    old_keys = {_foreign_key_key(foreign_key) for foreign_key in old_table.get("foreign_keys", [])}
+    return [
+        foreign_key
+        for foreign_key in new_table.get("foreign_keys", [])
+        if _foreign_key_key(foreign_key) not in old_keys
+    ]

@@ -15,7 +15,11 @@ class ForeignKeyDescriptor:
             return None
         if self.cache_name not in instance.__dict__:
             target = self.field.target_model()
-            instance.__dict__[self.cache_name] = target.objects.get(**{target._meta.primary_key.name: value})
+            db = instance.__dict__.get("_nexorm_db")
+            manager = target.objects.using(db) if db is not None else target.objects
+            instance.__dict__[self.cache_name] = manager.get(
+                **{target._meta.primary_key.name: value}
+            )
         return instance.__dict__[self.cache_name]
 
     def __set__(self, instance, value):
@@ -36,7 +40,9 @@ class ReverseRelation:
     def __get__(self, instance, owner):
         if instance is None:
             return self
-        return self.from_model.objects.filter(**{self.field.name: getattr(instance, owner._meta.primary_key.name)})
+        db = instance.__dict__.get("_nexorm_db")
+        manager = self.from_model.objects.using(db) if db is not None else self.from_model.objects
+        return manager.filter(**{self.field.name: getattr(instance, owner._meta.primary_key.name)})
 
 
 def install_relations(model):

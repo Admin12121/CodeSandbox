@@ -1,7 +1,6 @@
 import importlib.util
 from pathlib import Path
 from nexorm.database import default_db
-from nexorm.dialects.sqlite import SQLiteDialect
 from nexorm.migrations.state import read_state, write_state
 
 
@@ -9,15 +8,10 @@ class MigrationEngine:
     def __init__(self, migrations_dir="migrations", db=None, dialect=None):
         self.migrations_dir = Path(migrations_dir)
         self.db = db or default_db
-        self.dialect = dialect or SQLiteDialect()
+        self.dialect = dialect or self.db.dialect
 
     def ensure_history(self):
-        self.db.execute(
-            "CREATE TABLE IF NOT EXISTS nexorm_migrations ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "name TEXT NOT NULL UNIQUE, "
-            "applied_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
-        )
+        self.db.execute(self.dialect.migration_history_table_sql())
         self.db.commit()
 
     def migration_files(self):
@@ -26,7 +20,7 @@ class MigrationEngine:
 
     def applied(self):
         self.ensure_history()
-        return {row["name"] for row in self.db.fetchall("SELECT name FROM nexorm_migrations")}
+        return {row["name"] for row in self.db.fetchall(self._history_select_sql())}
 
     def load(self, path):
         spec = importlib.util.spec_from_file_location(path.stem, path)
@@ -56,19 +50,23 @@ class MigrationEngine:
                 continue
             module = self.load_module(path)
             operations = getattr(module, "operations", [])
-            disable_fks = any(getattr(op, "requires_foreign_key_disable", False) for op in operations)
+            disable_fks = any(
+                getattr(op, "requires_foreign_key_disable", False) for op in operations
+            )
             try:
                 if disable_fks:
-                    self.db.execute("PRAGMA foreign_keys = OFF")
+                    for sql in self.dialect.disable_foreign_key_checks_sql():
+                        self.db.execute(sql)
                     self.db.commit()
                 with self.db.transaction():
                     for op in operations:
                         for sql in op.to_sql(self.dialect):
                             self.db.execute(sql)
-                    self.db.execute("INSERT INTO nexorm_migrations (name) VALUES (?)", [path.name])
+                    self.db.execute(self._history_insert_sql(), [path.name])
             finally:
                 if disable_fks:
-                    self.db.execute("PRAGMA foreign_keys = ON")
+                    for sql in self.dialect.enable_foreign_key_checks_sql():
+                        self.db.execute(sql)
                     self.db.commit()
             state = getattr(module, "schema_state", None)
             if state is not None:
@@ -78,30 +76,36 @@ class MigrationEngine:
 
     def rollback_latest(self):
         self.ensure_history()
-        row = self.db.fetchone("SELECT name FROM nexorm_migrations ORDER BY id DESC LIMIT 1")
+        row = self.db.fetchone(self._history_latest_sql())
         if not row:
             return None
         name = row["name"]
         path = self.migrations_dir / name
         operations = list(reversed(getattr(self.load_module(path), "operations", [])))
-        disable_fks = any(getattr(op, "requires_foreign_key_disable", False) for op in operations)
+        disable_fks = any(
+            getattr(op, "requires_foreign_key_disable", False) for op in operations
+        )
         try:
             if disable_fks:
-                self.db.execute("PRAGMA foreign_keys = OFF")
+                for sql in self.dialect.disable_foreign_key_checks_sql():
+                    self.db.execute(sql)
                 self.db.commit()
             with self.db.transaction():
                 for op in operations:
                     for sql in op.reverse_sql(self.dialect):
                         self.db.execute(sql)
-                self.db.execute("DELETE FROM nexorm_migrations WHERE name = ?", [name])
+                self.db.execute(self._history_delete_sql(), [name])
         finally:
             if disable_fks:
-                self.db.execute("PRAGMA foreign_keys = ON")
+                for sql in self.dialect.enable_foreign_key_checks_sql():
+                    self.db.execute(sql)
                 self.db.commit()
         previous = None
         for migration_path, applied in self.status():
             if applied:
-                state = getattr(self.load_module(self.migrations_dir / migration_path), "schema_state", None)
+                state = getattr(
+                    self.load_module(self.migrations_dir / migration_path), "schema_state", None
+                )
                 if state is not None:
                     previous = state
         write_state(previous or {"tables": {}})
@@ -113,4 +117,29 @@ class MigrationEngine:
 
     def sqlmigrate(self, name):
         path = self.migrations_dir / name
-        return [sql for op in getattr(self.load_module(path), "operations", []) for sql in op.to_sql(self.dialect)]
+        return [
+            sql
+            for op in getattr(self.load_module(path), "operations", [])
+            for sql in op.to_sql(self.dialect)
+        ]
+
+    def _history_select_sql(self):
+        table = self.dialect.quote_identifier("nexorm_migrations")
+        column = self.dialect.quote_identifier("name")
+        return f"SELECT {column} FROM {table}"
+
+    def _history_latest_sql(self):
+        table = self.dialect.quote_identifier("nexorm_migrations")
+        name = self.dialect.quote_identifier("name")
+        pk = self.dialect.quote_identifier("id")
+        return f"SELECT {name} FROM {table} ORDER BY {pk} DESC LIMIT 1"
+
+    def _history_insert_sql(self):
+        table = self.dialect.quote_identifier("nexorm_migrations")
+        column = self.dialect.quote_identifier("name")
+        return f"INSERT INTO {table} ({column}) VALUES ({self.dialect.placeholder})"
+
+    def _history_delete_sql(self):
+        table = self.dialect.quote_identifier("nexorm_migrations")
+        column = self.dialect.quote_identifier("name")
+        return f"DELETE FROM {table} WHERE {column} = {self.dialect.placeholder}"

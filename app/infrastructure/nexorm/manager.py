@@ -1,4 +1,4 @@
-from nexorm.database import default_db
+from nexorm.database import default_db, get_connection
 from nexorm.query import QuerySet
 from nexorm.raw import RawQuery
 
@@ -13,6 +13,10 @@ class Manager:
 
     def get_queryset(self):
         return QuerySet(self.model)
+
+    def using(self, alias_or_db):
+        db = get_connection(alias_or_db) if isinstance(alias_or_db, str) else alias_or_db
+        return QuerySet(self.model, db=db)
 
     def create(self, **kwargs):
         instance = self.model(**kwargs)

@@ -26,12 +26,25 @@ def init_project(force=False):
         print("Created manage.py")
 
     migrations_path.mkdir(exist_ok=True)
-    print("Created migrations/" if not any(migrations_path.iterdir()) else "migrations/ already exists")
+    print(
+        "Created migrations/"
+        if not any(migrations_path.iterdir())
+        else "migrations/ already exists"
+    )
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="nexorm")
+    parser.add_argument(
+        "--backend", choices=["sqlite", "postgresql", "postgres", "mysql"], default="sqlite"
+    )
     parser.add_argument("--database", default="db.sqlite3")
+    parser.add_argument("--url")
+    parser.add_argument("--dsn")
+    parser.add_argument("--host")
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--user")
+    parser.add_argument("--password")
     parser.add_argument("--models", default="app.models")
     sub = parser.add_subparsers(dest="command", required=True)
     init = sub.add_parser("init")
@@ -39,7 +52,7 @@ def main(argv=None):
     sub.add_parser("makemigrations")
     sub.add_parser("migrate")
     sub.add_parser("showmigrations")
-    rollback = sub.add_parser("rollback")
+    sub.add_parser("rollback")
     sqlmigrate = sub.add_parser("sqlmigrate")
     sqlmigrate.add_argument("name")
     sub.add_parser("dbshell")
@@ -49,7 +62,15 @@ def main(argv=None):
         init_project(args.force)
         return
 
-    configure(args.database)
+    db_options = {
+        "dsn": args.dsn,
+        "host": args.host,
+        "port": args.port,
+        "user": args.user,
+        "password": args.password,
+    }
+    db_options = {key: value for key, value in db_options.items() if value is not None}
+    configure(args.url or args.database, backend=args.backend, **db_options)
     if args.command != "dbshell":
         load_models(args.models)
 

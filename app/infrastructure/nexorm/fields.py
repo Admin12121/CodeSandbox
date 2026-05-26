@@ -1,6 +1,20 @@
 import datetime as _dt
+import uuid as _uuid
 from decimal import Decimal
 from nexorm.exceptions import ConfigurationError
+
+
+VALID_ON_DELETE_ACTIONS = {"CASCADE", "RESTRICT", "SET NULL", "NO ACTION", "SET DEFAULT"}
+
+
+def normalize_on_delete(value):
+    action = str(value).replace("_", " ").upper()
+    if action not in VALID_ON_DELETE_ACTIONS:
+        valid = ", ".join(sorted(VALID_ON_DELETE_ACTIONS))
+        raise ConfigurationError(
+            f"Unsupported on_delete action: {value!r}. Expected one of: {valid}"
+        )
+    return action
 
 
 class Field:
@@ -77,6 +91,32 @@ class TextField(Field):
     python_type = str
 
 
+class UUIDField(Field):
+    type_name = "uuid"
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("max_length", 36)
+        super().__init__(**kwargs)
+
+    def get_default(self):
+        return self.from_db(super().get_default())
+
+    def to_db(self, value):
+        return None if value is None else str(value)
+
+    def from_db(self, value):
+        return None if value is None else str(value)
+
+    def validate(self, value):
+        if value is None:
+            return super().validate(value)
+        try:
+            _uuid.UUID(str(value))
+        except (TypeError, ValueError, AttributeError):
+            return False
+        return True
+
+
 class BooleanField(Field):
     type_name = "boolean"
     python_type = bool
@@ -142,7 +182,7 @@ class ForeignKey(IntegerField):
         kwargs.setdefault("index", True)
         super().__init__(**kwargs)
         self.to = to
-        self.on_delete = on_delete
+        self.on_delete = normalize_on_delete(on_delete)
         self.related_name = related_name
 
     def target_model(self):
@@ -159,8 +199,39 @@ class ForeignKey(IntegerField):
         model = self.target_model()
         return model._meta.table_name, model._meta.primary_key.name
 
+    def target_field(self):
+        return self.target_model()._meta.primary_key
+
+    def validate(self, value):
+        if value is None:
+            return Field.validate(self, value)
+        try:
+            return self.target_field().validate(value)
+        except ConfigurationError:
+            return super().validate(value)
+
+    def to_db(self, value):
+        if value is None:
+            return None
+        try:
+            return self.target_field().to_db(value)
+        except ConfigurationError:
+            return super().to_db(value)
+
+    def from_db(self, value):
+        if value is None:
+            return None
+        try:
+            return self.target_field().from_db(value)
+        except ConfigurationError:
+            return super().from_db(value)
+
     def deconstruct(self):
         data = super().deconstruct()
         target = self.to if isinstance(self.to, str) else self.target_model().__name__
         data.update({"to": target, "on_delete": self.on_delete, "related_name": self.related_name})
+        try:
+            data["target_field"] = self.target_field().deconstruct()
+        except ConfigurationError:
+            pass
         return data

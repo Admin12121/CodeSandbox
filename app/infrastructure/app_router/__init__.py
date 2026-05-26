@@ -1,4 +1,4 @@
-"""Flask App Router public API."""
+"""app-router public API."""
 
 from .csrf import csrf_input, csrf_token, validate_csrf
 from .exceptions import AppRouterError, AssetSecurityError, CSRFError

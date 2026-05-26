@@ -1,4 +1,4 @@
-"""Core Flask App Router implementation."""
+"""Core app-router implementation."""
 
 from __future__ import annotations
 
@@ -58,8 +58,8 @@ DEFAULT_ASSET_MAX_AGE = 31_536_000
 PARTIAL_HEADER = "X-Flask-Router"
 CURRENT_PATH_HEADER = "X-Flask-Current-Path"
 CURRENT_TREE_HEADER = "X-Flask-Current-Tree"
-CLIENT_STATE_PATH_META = "flask-app-router-path"
-CLIENT_STATE_TREE_META = "flask-app-router-tree"
+CLIENT_STATE_PATH_META = "app-router-path"
+CLIENT_STATE_TREE_META = "app-router-tree"
 
 PageLoader = Callable[..., object]
 ApiLoader = Callable[..., object]
@@ -128,7 +128,7 @@ class AppRouter:
         security_headers: bool = True,
         csp: str | None = DEFAULT_CSP,
         csrf: bool = True,
-        build_dir: str | Path = ".flask-app-router",
+        build_dir: str | Path = ".app-router",
     ) -> None:
         self.asset_url_path = asset_url_path.rstrip("/")
         self.client_url_path = client_url_path
@@ -165,7 +165,7 @@ class AppRouter:
         """Install package templates, globals, assets, client JS, and headers."""
 
         state = app.extensions.setdefault(
-            "flask_app_router",
+            "app_router",
             {
                 "routers": [],
                 "routes_installed": False,
@@ -396,7 +396,7 @@ class AppRouter:
     def _handle_page(self, route: PageRoute, **kwargs: Any) -> ResponseReturnValue:
         if not self._template_exists(route.template):
             current_app.logger.info(
-                "Flask App Router page template not found for route %s: %s",
+                "app-router page template not found for route %s: %s",
                 route.rule,
                 route.template,
             )
@@ -740,7 +740,7 @@ class AppRouter:
     def _install_template_loader(self, app: Flask, state: dict[str, Any]) -> None:
         if state["loader_installed"]:
             return
-        package_loader = PackageLoader("flask_app_router", "templates")
+        package_loader = PackageLoader(_package_name(), "templates")
         app.jinja_env.loader = ChoiceLoader([app.create_global_jinja_loader(), package_loader])
         state["loader_installed"] = True
 
@@ -761,7 +761,7 @@ class AppRouter:
 
     def _build_manifest_path(self, app: Flask) -> Path:
         candidates: list[Path] = []
-        configured = app.config.get("FLASK_APP_ROUTER_BUILD_DIR")
+        configured = app.config.get("APP_ROUTER_BUILD_DIR")
         if configured:
             candidates.append(Path(str(configured)) / "manifest.json")
         candidates.append(self.build_dir / "manifest.json")
@@ -778,7 +778,7 @@ class AppRouter:
             return
 
         def serve_client() -> Response:
-            resource = files("flask_app_router").joinpath("static/router.js")
+            resource = files(_package_name()).joinpath("static/router.js")
             with as_file(resource) as path:
                 response = send_file(path, mimetype="text/javascript; charset=utf-8")
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -793,12 +793,12 @@ class AppRouter:
 
         app.add_url_rule(
             self.client_url_path,
-            endpoint="flask_app_router.client",
+            endpoint="app_router.client",
             view_func=serve_client,
         )
         app.add_url_rule(
             f"{self.asset_url_path}/<path:asset_id>",
-            endpoint="flask_app_router.asset",
+            endpoint="app_router.asset",
             view_func=serve_asset,
         )
         state["routes_installed"] = True
@@ -969,12 +969,18 @@ def _inject_head(html: str, fragment: str) -> str:
 
 
 def _inject_client_script(html: str, client_url_path: str) -> str:
-    if "data-flask-app-router-client" in html:
+    if "data-app-router-client" in html:
         return html
     script = (
         f'<script type="module" src="{quote_attr(client_url_path)}" '
-        "data-flask-app-router-client></script>"
+        "data-app-router-client></script>"
     )
     if re.search(r"</body>", html, flags=re.IGNORECASE):
         return re.sub(r"</body>", f"{script}\n</body>", html, count=1, flags=re.IGNORECASE)
     return f"{html}\n{script}"
+
+
+def _package_name() -> str:
+    if __package__:
+        return __package__
+    return "app_router"

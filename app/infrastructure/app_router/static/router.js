@@ -1,8 +1,8 @@
 const PARTIAL_HEADER = "X-Flask-Router";
 const CURRENT_PATH_HEADER = "X-Flask-Current-Path";
 const CURRENT_TREE_HEADER = "X-Flask-Current-Tree";
-const STATE_PATH_META = 'meta[name="flask-app-router-path"]';
-const STATE_TREE_META = 'meta[name="flask-app-router-tree"]';
+const STATE_PATH_META = 'meta[name="app-router-path"]';
+const STATE_TREE_META = 'meta[name="app-router-tree"]';
 
 function state() {
   const path = document.querySelector(STATE_PATH_META)?.getAttribute("content");
@@ -14,8 +14,8 @@ function state() {
 }
 
 function setState(path, tree) {
-  upsertMeta("flask-app-router-path", path);
-  upsertMeta("flask-app-router-tree", tree.join(","));
+  upsertMeta("app-router-path", path);
+  upsertMeta("app-router-tree", tree.join(","));
 }
 
 function upsertMeta(name, content) {

@@ -22,6 +22,7 @@ class Where:
             field, lookup = parse_lookup(key)
             if field not in model._meta.fields:
                 raise ConfigurationError(f"Unknown field for {model.__name__}: {field}")
+            model_field = model._meta.fields[field]
             column = dialect.quote_identifier(field)
             ph = dialect.placeholder
             prefix = "NOT " if negate else ""
@@ -31,12 +32,12 @@ class Where:
                     continue
                 placeholders = ", ".join([ph] * len(value))
                 clauses.append(f"{prefix}{column} IN ({placeholders})")
-                params.extend(value)
+                params.extend(model_field.to_db(item) for item in value)
             elif lookup == "isnull":
                 clauses.append(f"{column} IS {'NOT ' if bool(value) ^ negate else ''}NULL")
             else:
                 clauses.append(f"{prefix}{column} {operator_for(lookup)} {ph}")
-                params.append(prepare_value(lookup, value))
+                params.append(model_field.to_db(prepare_value(lookup, value)))
         if not clauses:
             return "", []
         return " WHERE " + f" {self.connector} ".join(clauses), params

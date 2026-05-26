@@ -12,7 +12,7 @@ from markupsafe import Markup, escape
 
 from .exceptions import CSRFError
 
-SESSION_KEY = "_flask_app_router_csrf_seed"
+SESSION_KEY = "_app_router_csrf_seed"
 FIELD_NAME = "_csrf_token"
 HEADER_NAMES = ("X-CSRF-Token", "X-CSRFToken")
 DEFAULT_MAX_AGE_SECONDS = 60 * 60 * 8
@@ -21,8 +21,8 @@ DEFAULT_MAX_AGE_SECONDS = 60 * 60 * 8
 def _serializer() -> URLSafeTimedSerializer:
     secret = current_app.secret_key or current_app.config.get("SECRET_KEY")
     if not secret:
-        raise RuntimeError("Flask App Router CSRF requires Flask SECRET_KEY to be set.")
-    return URLSafeTimedSerializer(secret_key=secret, salt="flask-app-router.csrf")
+        raise RuntimeError("app-router CSRF requires Flask SECRET_KEY to be set.")
+    return URLSafeTimedSerializer(secret_key=secret, salt="app-router.csrf")
 
 
 def _session_seed() -> str:
@@ -76,7 +76,7 @@ def validate_csrf(
     if max_age is None:
         max_age = int(
             current_app.config.get(
-                "FLASK_APP_ROUTER_CSRF_MAX_AGE",
+                "APP_ROUTER_CSRF_MAX_AGE",
                 DEFAULT_MAX_AGE_SECONDS,
             )
         )
