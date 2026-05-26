@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.app-router/
+dist/
+build/
+*.egg-info/

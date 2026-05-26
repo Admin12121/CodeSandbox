@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexorm"
+version = "0.2.0"
+description = "A minimal Django-style ORM for SQLite, PostgreSQL, and MySQL applications."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "Admin12121" }
+]
+keywords = ["orm", "sqlite", "postgresql", "mysql", "uuid", "database", "migrations", "model"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+postgres = [
+    "psycopg[binary]>=3.1",
+]
+mysql = [
+    "PyMySQL>=1.1",
+]
+all = [
+    "psycopg[binary]>=3.1",
+    "PyMySQL>=1.1",
+]
+dev = [
+    "build>=1.2",
+    "pytest>=8",
+    "ruff>=0.5",
+    "twine>=5",
+]
+
+[project.urls]
+Homepage = "https://github.com/Admin12121/nexorm"
+Repository = "https://github.com/Admin12121/nexorm"
+Issues = "https://github.com/Admin12121/nexorm/issues"
+
+[project.scripts]
+nexorm = "nexorm.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

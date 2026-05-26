@@ -4,4 +4,17 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "app-router",
+    "nexorm",
+]
+
+[tool.uv.workspace]
+members = [
+    "packages/app_router",
+    "packages/nexorm",
+]
+
+[tool.uv.sources]
+app-router = { workspace = true, editable = true }
+nexorm = { workspace = true, editable = true }
