@@ -1,0 +1,3 @@
+{% macro otp_field(name="", length=6, class="", attrs={}) -%}
+  <div class="{{ cn('flex gap-2', class) }}" data-slot="otp-field" {{ html_attrs(**attrs) }}>{% for i in range(length) %}<input class="size-10 rounded-lg border border-neutral-200 text-center text-sm shadow-sm outline-none focus:ring-2 focus:ring-neutral-400" maxlength="1" inputmode="numeric" name="{{ name }}_{{ i }}">{% endfor %}</div>
+{%- endmacro %}

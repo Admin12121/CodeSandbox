@@ -1,0 +1,3 @@
+{% macro toggle(pressed=false, class="", attrs={}) -%}
+  <button class="{{ cn('inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm font-medium transition hover:bg-neutral-100 aria-pressed:bg-neutral-200', class) }}" data-slot="toggle" type="button" aria-pressed="{{ 'true' if pressed else 'false' }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</button>
+{%- endmacro %}

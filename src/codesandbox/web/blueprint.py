@@ -4,6 +4,18 @@ from app_router import AppRouter
 web_bp = Blueprint(
     "web",
     __name__,
+    template_folder="../templates",
 )
 
-router = AppRouter(web_bp)
+TAILWIND_CDN_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "font-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'"
+)
+
+router = AppRouter(web_bp, csp=TAILWIND_CDN_CSP)

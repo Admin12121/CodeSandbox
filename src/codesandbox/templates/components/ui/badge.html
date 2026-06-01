@@ -1,0 +1,19 @@
+{% macro badge(text="", variant="default", size="default", class="", attrs={}) -%}
+  {% set base = "inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border font-medium" %}
+  {% set variants = {
+    "default": "border-transparent bg-primary text-primary-foreground",
+    "destructive": "border-transparent bg-destructive text-white",
+    "error": "border-transparent bg-destructive/8 text-destructive-foreground",
+    "info": "border-transparent bg-info/8 text-info-foreground",
+    "outline": "border-input bg-background text-foreground",
+    "secondary": "border-transparent bg-secondary text-secondary-foreground",
+    "success": "border-transparent bg-success/8 text-success-foreground",
+    "warning": "border-transparent bg-warning/8 text-warning-foreground"
+  } %}
+  {% set sizes = {
+    "default": "h-5.5 min-w-5.5 px-2 text-xs",
+    "sm": "h-5 min-w-5 px-1.5 text-[0.6875rem]",
+    "lg": "h-6.5 min-w-6.5 px-2.5 text-sm"
+  } %}
+  <span class="{{ cn(base, variants.get(variant, variants['default']), sizes.get(size, sizes['default']), class) }}" data-slot="badge" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>
+{%- endmacro %}

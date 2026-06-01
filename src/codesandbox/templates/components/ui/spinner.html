@@ -1,0 +1,3 @@
+{% macro spinner(class="", attrs={}) -%}
+  <span class="{{ cn('inline-block size-4 animate-spin rounded-full border-2 border-current border-t-transparent', class) }}" data-slot="spinner" aria-hidden="true" {{ html_attrs(**attrs) }}></span>
+{%- endmacro %}

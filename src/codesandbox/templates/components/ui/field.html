@@ -1,0 +1,3 @@
+{% macro field(label="", description="", error="", class="", attrs={}) -%}
+  <label class="{{ cn('grid gap-2 text-sm', class) }}" data-slot="field" {{ html_attrs(**attrs) }}>{% if label %}<span class="font-medium text-neutral-900">{{ label }}</span>{% endif %}{% if caller is defined %}{{ caller() }}{% endif %}{% if description %}<span class="text-neutral-500">{{ description }}</span>{% endif %}{% if error %}<span class="text-red-600">{{ error }}</span>{% endif %}</label>
+{%- endmacro %}

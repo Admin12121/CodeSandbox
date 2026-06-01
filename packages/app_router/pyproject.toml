@@ -46,6 +46,7 @@ app-router = "app_router.cli:main"
 include-package-data = true
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["app_router*"]
 
 [tool.setuptools.package-data]

@@ -1,0 +1,3 @@
+{% macro number_field(name="", value="", min="", max="", step="1", class="", attrs={}) -%}
+  <input class="{{ cn('h-9 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-neutral-400', class) }}" data-slot="number-field" type="number" {% if name %}name="{{ name }}"{% endif %} {% if value != "" %}value="{{ value }}"{% endif %} {% if min != "" %}min="{{ min }}"{% endif %} {% if max != "" %}max="{{ max }}"{% endif %} step="{{ step }}" {{ html_attrs(**attrs) }}>
+{%- endmacro %}

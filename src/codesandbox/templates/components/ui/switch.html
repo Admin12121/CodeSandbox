@@ -1,0 +1,3 @@
+{% macro switch(name="", checked=false, disabled=false, class="", attrs={}) -%}
+  <label class="{{ cn('relative inline-flex h-6 w-10 items-center rounded-full bg-neutral-200 has-[:checked]:bg-neutral-900', class) }}" data-slot="switch" {{ html_attrs(**attrs) }}><input class="peer sr-only" type="checkbox" {% if name %}name="{{ name }}"{% endif %} {% if checked %}checked{% endif %} {% if disabled %}disabled{% endif %}><span class="size-5 translate-x-0.5 rounded-full bg-white shadow transition peer-checked:translate-x-4.5"></span></label>
+{%- endmacro %}

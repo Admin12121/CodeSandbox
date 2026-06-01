@@ -1,0 +1,7 @@
+{% macro command(placeholder="Type a command...", class="", attrs={}) -%}
+  <div class="{{ cn('overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm', class) }}" data-slot="command" {{ html_attrs(**attrs) }}><input class="h-11 w-full border-b border-neutral-200 px-3 text-sm outline-none" placeholder="{{ placeholder }}">{% if caller is defined %}<div class="p-2">{{ caller() }}</div>{% endif %}</div>
+{%- endmacro %}
+
+{% macro command_item(class="", attrs={}) -%}
+  <div class="{{ cn('rounded-md px-2 py-1.5 text-sm hover:bg-neutral-100', class) }}" data-slot="command-item" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

@@ -1,0 +1,70 @@
+{% import "components/ui/alert.html" as alert %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/card.html" as card %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/table.html" as table %}
+
+<main class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-10">
+  <section class="flex flex-col gap-4">
+    <div class="flex flex-wrap items-center gap-3">
+      {{ badge.badge("Flask", variant="secondary") }}
+      {{ badge.badge("Jinja macros", variant="success") }}
+      {{ badge.badge("app-router", variant="info") }}
+    </div>
+    <div class="max-w-3xl space-y-3">
+      <h1 class="text-4xl font-semibold tracking-tight">Shadcn-style UI macros for Flask</h1>
+      <p class="text-muted-foreground">
+        The demo TSX component names are mirrored under <code>templates/components/ui</code>
+        as normal Jinja macro files.
+      </p>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      {% call button.button(variant="default") %}Primary action{% endcall %}
+      {% call button.button(variant="outline") %}Secondary{% endcall %}
+      {% call button.button(variant="ghost") %}Ghost{% endcall %}
+    </div>
+  </section>
+
+  {% call alert.alert(variant="info") %}
+    {{ alert.alert_title("Components are server rendered") }}
+    {{ alert.alert_description("Import macro files from components/ui and compose them inside any app-router page.html or layout.html.") }}
+  {% endcall %}
+
+  <section class="grid gap-4 md:grid-cols-3">
+    {% for item in stats %}
+      {% call card.card() %}
+        {% call card.card_header() %}
+          {{ card.card_title(item.value) }}
+          {{ card.card_description(item.label) }}
+        {% endcall %}
+        {% call card.card_content() %}
+          <p class="text-sm text-muted-foreground">Ready for Flask templates.</p>
+        {% endcall %}
+      {% endcall %}
+    {% endfor %}
+  </section>
+
+  {% call card.card() %}
+    {% call card.card_header() %}
+      {{ card.card_title("Form controls") }}
+      {{ card.card_description("Button, input, table, badge, alert, and the rest of the UI set live in components/ui.") }}
+    {% endcall %}
+    {% call card.card_content() %}
+      <form class="grid gap-4 md:grid-cols-[1fr_auto]">
+        {{ input.input(name="project", placeholder="Project name") }}
+        {% call button.button(variant="default") %}Save{% endcall %}
+      </form>
+    {% endcall %}
+    {% call card.card_footer() %}
+      {% call table.table() %}
+        {{ table.table_header(["Component", "Template", "Status"]) }}
+        <tbody>
+          {{ table.table_row(["Button", "components/ui/button.html", "Ready"]) }}
+          {{ table.table_row(["Card", "components/ui/card.html", "Ready"]) }}
+          {{ table.table_row(["Input", "components/ui/input.html", "Ready"]) }}
+        </tbody>
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+</main>

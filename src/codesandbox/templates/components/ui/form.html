@@ -1,0 +1,3 @@
+{% macro form(method="post", action="", class="", attrs={}) -%}
+  <form class="{{ cn('grid gap-4', class) }}" data-slot="form" method="{{ method }}" {% if action %}action="{{ action }}"{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</form>
+{%- endmacro %}

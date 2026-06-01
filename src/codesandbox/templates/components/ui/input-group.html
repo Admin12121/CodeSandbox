@@ -1,0 +1,3 @@
+{% macro input_group(class="", attrs={}) -%}
+  <div class="{{ cn('flex w-full items-center rounded-lg border border-neutral-200 bg-white shadow-sm focus-within:ring-2 focus-within:ring-neutral-400', class) }}" data-slot="input-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

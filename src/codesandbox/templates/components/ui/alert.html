@@ -1,0 +1,19 @@
+{% macro alert(variant="default", class="", attrs={}) -%}
+  {% set variants = {
+    "default": "border-border bg-background text-foreground",
+    "destructive": "border-destructive/30 bg-destructive/8 text-destructive-foreground",
+    "error": "border-destructive/30 bg-destructive/8 text-destructive-foreground",
+    "info": "border-info/30 bg-info/8 text-info-foreground",
+    "success": "border-success/30 bg-success/8 text-success-foreground",
+    "warning": "border-warning/30 bg-warning/8 text-warning-foreground"
+  } %}
+  <div role="status" class="{{ cn('relative w-full rounded-lg border p-4 text-sm', variants.get(variant, variants['default']), class) }}" data-slot="alert" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{% macro alert_title(text="", class="", attrs={}) -%}
+  <h3 class="{{ cn('mb-1 font-medium leading-none tracking-tight', class) }}" data-slot="alert-title" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</h3>
+{%- endmacro %}
+
+{% macro alert_description(text="", class="", attrs={}) -%}
+  <p class="{{ cn('text-sm opacity-80', class) }}" data-slot="alert-description" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</p>
+{%- endmacro %}

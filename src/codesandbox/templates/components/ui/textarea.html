@@ -1,0 +1,3 @@
+{% macro textarea(name="", value="", placeholder="", rows=4, class="", attrs={}) -%}
+  <textarea class="{{ cn('min-h-24 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm shadow-sm outline-none placeholder:text-neutral-400 focus:ring-2 focus:ring-neutral-400', class) }}" data-slot="textarea" rows="{{ rows }}" {% if name %}name="{{ name }}"{% endif %} {% if placeholder %}placeholder="{{ placeholder }}"{% endif %} {{ html_attrs(**attrs) }}>{{ value }}</textarea>
+{%- endmacro %}

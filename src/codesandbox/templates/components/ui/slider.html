@@ -1,0 +1,3 @@
+{% macro slider(name="", value=50, min=0, max=100, class="", attrs={}) -%}
+  <input class="{{ cn('w-full accent-neutral-900', class) }}" data-slot="slider" type="range" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" min="{{ min }}" max="{{ max }}" {{ html_attrs(**attrs) }}>
+{%- endmacro %}

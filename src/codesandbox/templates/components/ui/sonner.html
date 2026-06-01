@@ -1,0 +1,3 @@
+{% macro sonner(class="", attrs={}) -%}
+  <div class="{{ cn('fixed bottom-4 right-4 z-50 grid gap-2', class) }}" data-slot="sonner" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

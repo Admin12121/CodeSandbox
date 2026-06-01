@@ -1,0 +1,3 @@
+{% macro toggle_group(class="", attrs={}) -%}
+  <div class="{{ cn('inline-flex items-center rounded-lg border border-neutral-200 bg-white p-1', class) }}" data-slot="toggle-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

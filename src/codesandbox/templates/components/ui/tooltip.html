@@ -1,0 +1,3 @@
+{% macro tooltip(text="", class="", attrs={}) -%}
+  <span class="{{ cn('relative inline-flex cursor-help underline decoration-dotted underline-offset-4', class) }}" data-slot="tooltip" title="{{ text }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>
+{%- endmacro %}

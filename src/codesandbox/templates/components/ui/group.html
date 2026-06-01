@@ -1,0 +1,3 @@
+{% macro group(class="", attrs={}) -%}
+  <div class="{{ cn('inline-flex items-center gap-2', class) }}" data-slot="group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

@@ -1,0 +1,4 @@
+{% macro toast(title="", description="", variant="default", class="", attrs={}) -%}
+  {% set variants = {"default": "border-neutral-200 bg-white", "success": "border-emerald-200 bg-emerald-50", "error": "border-red-200 bg-red-50", "warning": "border-amber-200 bg-amber-50"} %}
+  <div class="{{ cn('rounded-xl border p-4 text-sm shadow-lg', variants.get(variant, variants['default']), class) }}" data-slot="toast" {{ html_attrs(**attrs) }}><div class="font-medium">{{ title }}</div>{% if description %}<div class="mt-1 text-neutral-500">{{ description }}</div>{% endif %}{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

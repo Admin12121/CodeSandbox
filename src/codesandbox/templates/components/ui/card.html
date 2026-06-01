@@ -1,0 +1,23 @@
+{% macro card(class="", attrs={}) -%}
+  <section class="{{ cn('relative flex flex-col rounded-2xl border border-border bg-card text-card-foreground shadow-sm', class) }}" data-slot="card" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</section>
+{%- endmacro %}
+
+{% macro card_header(class="", attrs={}) -%}
+  <div class="{{ cn('grid auto-rows-min gap-1.5 p-6', class) }}" data-slot="card-header" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{% macro card_title(text="", class="", attrs={}) -%}
+  <h2 class="{{ cn('text-lg font-semibold leading-none tracking-tight', class) }}" data-slot="card-title" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</h2>
+{%- endmacro %}
+
+{% macro card_description(text="", class="", attrs={}) -%}
+  <p class="{{ cn('text-sm text-muted-foreground', class) }}" data-slot="card-description" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</p>
+{%- endmacro %}
+
+{% macro card_content(class="", attrs={}) -%}
+  <div class="{{ cn('flex-1 px-6 pb-6', class) }}" data-slot="card-content" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+{% macro card_footer(class="", attrs={}) -%}
+  <div class="{{ cn('flex items-center border-t border-border px-6 py-4', class) }}" data-slot="card-footer" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

@@ -1,0 +1,3 @@
+{% macro toolbar(class="", attrs={}) -%}
+  <div class="{{ cn('flex items-center gap-1 rounded-lg border border-neutral-200 bg-white p-1 shadow-sm', class) }}" data-slot="toolbar" role="toolbar" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

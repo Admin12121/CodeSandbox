@@ -1,0 +1,3 @@
+{% macro separator(orientation="horizontal", class="", attrs={}) -%}
+  <div class="{{ cn('shrink-0 bg-neutral-200', 'h-px w-full' if orientation == 'horizontal' else 'h-full w-px', class) }}" data-slot="separator" role="separator" {{ html_attrs(**attrs) }}></div>
+{%- endmacro %}

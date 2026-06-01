@@ -1,0 +1,3 @@
+{% macro breadcrumb(items=[], class="", attrs={}) -%}
+  <nav class="{{ cn('flex items-center gap-1 text-sm text-neutral-500', class) }}" data-slot="breadcrumb" {{ html_attrs(**attrs) }}>{% for item in items %}{% if item.href %}<a class="hover:text-neutral-900" href="{{ item.href }}">{{ item.label }}</a>{% else %}<span class="text-neutral-900">{{ item.label }}</span>{% endif %}{% if not loop.last %}<span>/</span>{% endif %}{% endfor %}</nav>
+{%- endmacro %}

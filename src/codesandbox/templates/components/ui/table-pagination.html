@@ -1,0 +1,3 @@
+{% macro table_pagination(page=1, pages=1, class="", attrs={}) -%}
+  <div class="{{ cn('flex items-center justify-between gap-4 py-3 text-sm', class) }}" data-slot="table-pagination" {{ html_attrs(**attrs) }}><span class="text-neutral-500">Page {{ page }} of {{ pages }}</span><div class="flex gap-2">{% if caller is defined %}{{ caller() }}{% endif %}</div></div>
+{%- endmacro %}

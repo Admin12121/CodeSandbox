@@ -1,0 +1,6 @@
+{% macro input(type="text", name="", value="", placeholder="", size="default", disabled=false, required=false, class="", attrs={}) -%}
+  {% set sizes = {"default": "h-9 px-3 text-sm", "sm": "h-8 px-2.5 text-sm", "lg": "h-10 px-3.5 text-base"} %}
+  <span class="{{ cn('relative inline-flex w-full rounded-lg border border-input bg-background text-foreground shadow-sm focus-within:ring-2 focus-within:ring-ring', class) }}" data-slot="input-control">
+    <input class="{{ cn('w-full min-w-0 rounded-lg bg-transparent outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60', sizes.get(size, sizes['default'])) }}" data-slot="input" type="{{ type }}" {% if name %}name="{{ name }}"{% endif %} {% if value %}value="{{ value }}"{% endif %} {% if placeholder %}placeholder="{{ placeholder }}"{% endif %} {% if disabled %}disabled{% endif %} {% if required %}required{% endif %} {{ html_attrs(**attrs) }}>
+  </span>
+{%- endmacro %}

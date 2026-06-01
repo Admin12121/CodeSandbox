@@ -1,0 +1,3 @@
+{% macro sheet(side="right", class="", attrs={}) -%}
+  <aside class="{{ cn('fixed inset-y-0 z-50 w-80 border-neutral-200 bg-white p-6 shadow-2xl', 'right-0 border-l' if side == 'right' else 'left-0 border-r', class) }}" data-slot="sheet" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</aside>
+{%- endmacro %}

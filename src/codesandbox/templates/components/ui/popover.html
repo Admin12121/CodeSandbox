@@ -1,0 +1,3 @@
+{% macro popover(class="", attrs={}) -%}
+  <div class="{{ cn('rounded-xl border border-neutral-200 bg-white p-4 shadow-xl', class) }}" data-slot="popover" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

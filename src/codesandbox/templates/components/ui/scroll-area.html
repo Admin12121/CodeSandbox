@@ -1,0 +1,3 @@
+{% macro scroll_area(class="", attrs={}) -%}
+  <div class="{{ cn('overflow-auto rounded-lg', class) }}" data-slot="scroll-area" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}

@@ -1,0 +1,3 @@
+{% macro glowing_effect(class="", attrs={}) -%}
+  <div class="{{ cn('relative rounded-2xl bg-gradient-to-br from-neutral-200 via-white to-neutral-100 p-px shadow-sm', class) }}" data-slot="glowing-effect" {{ html_attrs(**attrs) }}><div class="rounded-[inherit] bg-white">{% if caller is defined %}{{ caller() }}{% endif %}</div></div>
+{%- endmacro %}
