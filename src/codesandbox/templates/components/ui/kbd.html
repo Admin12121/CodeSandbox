@@ -1,3 +1,2 @@
-{% macro kbd(text="", class="", attrs={}) -%}
-  <kbd class="{{ cn('inline-flex h-5 min-w-5 items-center justify-center rounded border border-neutral-200 bg-neutral-50 px-1 font-mono text-xs text-neutral-700 shadow-sm', class) }}" data-slot="kbd" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</kbd>
-{%- endmacro %}
+{% macro kbd(text="", class="", attrs={}) -%}<kbd class="{{ cn('pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100', class) }}" data-slot="kbd" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</kbd>{%- endmacro %}
+{% macro kbd_group(class="", attrs={}) -%}<span class="{{ cn('inline-flex items-center gap-1', class) }}" data-slot="kbd-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</span>{%- endmacro %}

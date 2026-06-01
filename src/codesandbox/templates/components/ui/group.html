@@ -1,3 +1,3 @@
-{% macro group(class="", attrs={}) -%}
-  <div class="{{ cn('inline-flex items-center gap-2', class) }}" data-slot="group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
-{%- endmacro %}
+{% macro group(orientation="horizontal", class="", attrs={}) -%}<div class="{{ cn('group flex items-center data-[orientation=vertical]:flex-col [&>*:not(:first-child)]:-ms-px data-[orientation=vertical]:[&>*:not(:first-child)]:-mt-px data-[orientation=vertical]:[&>*:not(:first-child)]:ms-0', class) }}" data-slot="group" data-orientation="{{ orientation }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro group_text(text="", class="", attrs={}) -%}<span class="{{ cn('inline-flex h-9 items-center border border-input bg-muted px-3 text-sm text-muted-foreground', class) }}" data-slot="group-text" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>{%- endmacro %}
+{% macro group_separator(class="", attrs={}) -%}<span class="{{ cn('h-5 w-px bg-border', class) }}" data-slot="group-separator" {{ html_attrs(**attrs) }}></span>{%- endmacro %}

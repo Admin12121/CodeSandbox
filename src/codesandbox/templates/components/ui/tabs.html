@@ -1,11 +1,4 @@
-{% macro tabs(class="", attrs={}) -%}
-  <div class="{{ cn('grid gap-3', class) }}" data-slot="tabs" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
-{%- endmacro %}
-
-{% macro tab_list(class="", attrs={}) -%}
-  <div class="{{ cn('inline-flex rounded-lg bg-neutral-100 p-1', class) }}" data-slot="tab-list" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
-{%- endmacro %}
-
-{% macro tab(text="", active=false, class="", attrs={}) -%}
-  <button class="{{ cn('rounded-md px-3 py-1.5 text-sm font-medium', 'bg-white shadow-sm' if active else 'text-neutral-500 hover:text-neutral-900', class) }}" data-slot="tab" type="button" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</button>
-{%- endmacro %}
+{% macro tabs(variant="default", class="", attrs={}) -%}<div class="{{ cn('grid gap-2', class) }}" data-slot="tabs" data-variant="{{ variant }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro tabs_list(variant="default", class="", attrs={}) -%}<div class="{{ cn('inline-flex items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground data-[variant=underline]:rounded-none data-[variant=underline]:bg-transparent data-[variant=underline]:p-0', class) }}" data-slot="tabs-list" data-variant="{{ variant }}" role="tablist" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+{% macro tabs_tab(text="", active=false, class="", attrs={}) -%}<button class="{{ cn('inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm', class) }}" data-slot="tabs-tab" data-state="{{ 'active' if active else 'inactive' }}" role="tab" type="button" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</button>{%- endmacro %}
+{% macro tabs_panel(class="", attrs={}) -%}<div class="{{ cn('mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', class) }}" data-slot="tabs-panel" role="tabpanel" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}

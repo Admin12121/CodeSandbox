@@ -1,3 +1,21 @@
-{% macro avatar(src="", alt="", fallback="", class="", attrs={}) -%}
-  <span class="{{ cn('inline-flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-neutral-100 text-sm font-medium text-neutral-700', class) }}" data-slot="avatar" {{ html_attrs(**attrs) }}>{% if src %}<img class="size-full object-cover" src="{{ src }}" alt="{{ alt }}">{% else %}{{ fallback or alt[:2] }}{% endif %}</span>
+{% macro avatar(class="", attrs={}) -%}
+<span class="{{ cn('relative flex size-10 shrink-0 overflow-hidden rounded-full bg-muted', class) }}" data-slot="avatar" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</span>
+{%- endmacro %}
+
+{% macro avatar_image(src="", alt="", class="", attrs={}) -%}
+<img class="{{ cn('aspect-square size-full object-cover', class) }}" data-slot="avatar-image" src="{{ src }}" alt="{{ alt }}" {{ html_attrs(**attrs) }}>
+{%- endmacro %}
+
+{% macro avatar_fallback(text="", class="", attrs={}) -%}
+<span class="{{ cn('flex size-full items-center justify-center rounded-full bg-muted text-muted-foreground text-sm font-medium', class) }}" data-slot="avatar-fallback" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</span>
 {%- endmacro %}

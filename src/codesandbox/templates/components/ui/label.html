@@ -1,3 +1,1 @@
-{% macro label(text="", for_id="", class="", attrs={}) -%}
-  <label class="{{ cn('text-sm font-medium leading-none text-neutral-900', class) }}" data-slot="label" {% if for_id %}for="{{ for_id }}"{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</label>
-{%- endmacro %}
+{% macro label(text="", for_id="", class="", attrs={}) -%}<label class="{{ cn('text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70', class) }}" data-slot="label" {% if for_id %}for="{{ for_id }}"{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</label>{%- endmacro %}

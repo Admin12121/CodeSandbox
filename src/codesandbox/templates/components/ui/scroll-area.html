@@ -1,3 +1,2 @@
-{% macro scroll_area(class="", attrs={}) -%}
-  <div class="{{ cn('overflow-auto rounded-lg', class) }}" data-slot="scroll-area" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
-{%- endmacro %}
+{% macro scroll_area(class="", attrs={}) -%}<div class="{{ cn('relative overflow-hidden', class) }}" data-slot="scroll-area" {{ html_attrs(**attrs) }}><div class="h-full w-full overflow-auto">{% if caller is defined %}{{ caller() }}{% endif %}</div></div>{%- endmacro %}
+{% macro scroll_bar(orientation="vertical", class="", attrs={}) -%}<div class="{{ cn('flex touch-none select-none transition-colors', 'h-full w-2.5 border-l border-l-transparent p-px' if orientation == 'vertical' else 'h-2.5 flex-col border-t border-t-transparent p-px', class) }}" data-slot="scroll-bar" data-orientation="{{ orientation }}" {{ html_attrs(**attrs) }}><div class="relative flex-1 rounded-full bg-border"></div></div>{%- endmacro %}

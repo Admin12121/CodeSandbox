@@ -1,3 +1,79 @@
-{% macro table_pagination(page=1, pages=1, class="", attrs={}) -%}
-  <div class="{{ cn('flex items-center justify-between gap-4 py-3 text-sm', class) }}" data-slot="table-pagination" {{ html_attrs(**attrs) }}><span class="text-neutral-500">Page {{ page }} of {{ pages }}</span><div class="flex gap-2">{% if caller is defined %}{{ caller() }}{% endif %}</div></div>
+{% macro table_pagination_button(label, page, current_page=1, total_pages=1, href="#", active=false, disabled=false, class="", attrs={}) -%}
+  {% set button_class = cn('inline-flex size-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1', 'border-primary bg-primary text-primary-foreground shadow-xs hover:bg-primary/90' if active else 'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/90', 'pointer-events-none opacity-50' if disabled else '', class) %}
+  {% if disabled %}
+    <span class="{{ button_class }}" data-slot="table-pagination-button" aria-disabled="true" {{ html_attrs(**attrs) }}>{{ label }}</span>
+  {% else %}
+    <a class="{{ button_class }}" data-slot="table-pagination-button" href="{{ href }}" {% if active %}aria-current="page" data-active{% endif %} data-page="{{ page }}" {{ html_attrs(**attrs) }}>{{ label }}</a>
+  {% endif %}
+{%- endmacro %}
+
+{% macro table_pagination_icon(label, icon, page, href="#", disabled=false, class="", attrs={}) -%}
+  {% set icon_class = cn('inline-flex size-9 items-center justify-center rounded-lg border border-transparent bg-secondary text-sm font-medium text-secondary-foreground transition-colors hover:bg-secondary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1', 'pointer-events-none opacity-50' if disabled else '', class) %}
+  {% if disabled %}
+    <span class="{{ icon_class }}" data-slot="table-pagination-button" aria-label="{{ label }}" aria-disabled="true" {{ html_attrs(**attrs) }}>{{ icon }}</span>
+  {% else %}
+    <a class="{{ icon_class }}" data-slot="table-pagination-button" href="{{ href }}" aria-label="{{ label }}" data-page="{{ page }}" {{ html_attrs(**attrs) }}>{{ icon }}</a>
+  {% endif %}
+{%- endmacro %}
+
+{% macro table_pagination(current_page=1, total_pages=1, total_items=none, page_size=10, base_url="", page_param="page", max_visible_pages=5, class="", attrs={}) -%}
+  {% set current_page = current_page|int %}
+  {% set total_pages = total_pages|int %}
+  {% set page_size = page_size|int %}
+  {% set max_visible_pages = max_visible_pages|int %}
+  {% if current_page < 1 %}{% set current_page = 1 %}{% endif %}
+  {% if total_pages < 1 %}{% set total_pages = 1 %}{% endif %}
+  {% if current_page > total_pages %}{% set current_page = total_pages %}{% endif %}
+  {% set half_window = max_visible_pages // 2 %}
+  {% set start_page = current_page - half_window %}
+  {% if start_page < 1 %}{% set start_page = 1 %}{% endif %}
+  {% set end_page = start_page + max_visible_pages - 1 %}
+  {% if end_page > total_pages %}{% set end_page = total_pages %}{% endif %}
+  {% if (end_page - start_page + 1) < max_visible_pages %}
+    {% set start_page = end_page - max_visible_pages + 1 %}
+    {% if start_page < 1 %}{% set start_page = 1 %}{% endif %}
+  {% endif %}
+  {% set first_jump = current_page - 2 %}
+  {% if first_jump < 1 %}{% set first_jump = 1 %}{% endif %}
+  {% set previous_page = current_page - 1 %}
+  {% if previous_page < 1 %}{% set previous_page = 1 %}{% endif %}
+  {% set next_page = current_page + 1 %}
+  {% if next_page > total_pages %}{% set next_page = total_pages %}{% endif %}
+  {% set last_jump = current_page + 2 %}
+  {% if last_jump > total_pages %}{% set last_jump = total_pages %}{% endif %}
+  {% set joiner = '&' if '?' in base_url else '?' %}
+  {% set url_base = base_url ~ joiner ~ page_param ~ '=' if base_url else '#' %}
+  {% if total_items is not none %}
+    {% set total_items = total_items|int %}
+    {% set range_start = ((current_page - 1) * page_size + 1) if total_items > 0 else 0 %}
+    {% set range_end = current_page * page_size %}
+    {% if range_end > total_items %}{% set range_end = total_items %}{% endif %}
+  {% endif %}
+  <div class="{{ cn('flex flex-col justify-center gap-3 pt-3 sm:flex-row sm:items-center sm:justify-between', class) }}" data-slot="table-pagination" {{ html_attrs(**attrs) }}>
+    <div class="hidden text-sm text-muted-foreground sm:block" data-slot="table-pagination-summary">
+      {% if total_items is not none %}
+        {% if total_items > 0 %}Showing {{ range_start }}-{{ range_end }} of {{ total_items }}{% else %}Showing 0 of 0{% endif %}
+      {% else %}
+        Page {{ current_page }} of {{ total_pages }}
+      {% endif %}
+    </div>
+    <nav class="flex flex-wrap items-center justify-center gap-1 md:justify-end" data-slot="table-pagination-nav" role="navigation" aria-label="Pagination">
+      {{ table_pagination_icon("First page", "«", first_jump, url_base ~ first_jump, current_page == 1, "px-2") }}
+      {{ table_pagination_icon("Previous page", "‹", previous_page, url_base ~ previous_page, current_page == 1, "px-2") }}
+      {% if start_page > 1 %}
+        {{ table_pagination_button("1", 1, current_page, total_pages, url_base ~ 1, current_page == 1) }}
+        {% if start_page > 2 %}<span class="px-1 text-sm text-muted-foreground" aria-hidden="true" data-slot="table-pagination-ellipsis">...</span>{% endif %}
+      {% endif %}
+      {% for page in range(start_page, end_page + 1) %}
+        {{ table_pagination_button(page, page, current_page, total_pages, url_base ~ page, page == current_page) }}
+      {% endfor %}
+      {% if end_page < total_pages %}
+        {% if end_page < total_pages - 1 %}<span class="px-1 text-sm text-muted-foreground" aria-hidden="true" data-slot="table-pagination-ellipsis">...</span>{% endif %}
+        {{ table_pagination_button(total_pages, total_pages, current_page, total_pages, url_base ~ total_pages, current_page == total_pages) }}
+      {% endif %}
+      {{ table_pagination_icon("Next page", "›", next_page, url_base ~ next_page, current_page == total_pages, "px-2") }}
+      {{ table_pagination_icon("Last page", "»", last_jump, url_base ~ last_jump, current_page == total_pages, "px-2") }}
+      {% if caller is defined %}{{ caller() }}{% endif %}
+    </nav>
+  </div>
 {%- endmacro %}

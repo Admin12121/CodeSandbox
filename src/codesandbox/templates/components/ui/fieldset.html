@@ -1,3 +1,2 @@
-{% macro fieldset(legend="", class="", attrs={}) -%}
-  <fieldset class="{{ cn('grid gap-4 rounded-xl border border-neutral-200 p-4', class) }}" data-slot="fieldset" {{ html_attrs(**attrs) }}>{% if legend %}<legend class="px-1 text-sm font-medium">{{ legend }}</legend>{% endif %}{% if caller is defined %}{{ caller() }}{% endif %}</fieldset>
-{%- endmacro %}
+{% macro fieldset(class="", attrs={}) -%}<fieldset class="{{ cn('grid gap-4 rounded-xl border p-4', class) }}" data-slot="fieldset" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</fieldset>{%- endmacro %}
+{% macro fieldset_legend(text="", class="", attrs={}) -%}<legend class="{{ cn('px-1 text-sm font-medium', class) }}" data-slot="fieldset-legend" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</legend>{%- endmacro %}

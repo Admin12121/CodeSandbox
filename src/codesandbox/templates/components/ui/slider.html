@@ -1,3 +1,2 @@
-{% macro slider(name="", value=50, min=0, max=100, class="", attrs={}) -%}
-  <input class="{{ cn('w-full accent-neutral-900', class) }}" data-slot="slider" type="range" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" min="{{ min }}" max="{{ max }}" {{ html_attrs(**attrs) }}>
-{%- endmacro %}
+{% macro slider(name="", value=50, min=0, max=100, class="", attrs={}) -%}<input class="{{ cn('relative flex w-full touch-none select-none items-center accent-primary', class) }}" data-slot="slider" type="range" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" min="{{ min }}" max="{{ max }}" {{ html_attrs(**attrs) }}>{%- endmacro %}
+{% macro slider_value(value=0, class="", attrs={}) -%}<span class="{{ cn('text-sm text-muted-foreground', class) }}" data-slot="slider-value" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ value }}{% endif %}</span>{%- endmacro %}

@@ -1,3 +1,123 @@
-{% macro autocomplete(name="", options=[], placeholder="Search...", class="", attrs={}) -%}
-  <div class="{{ cn('grid gap-2', class) }}" data-slot="autocomplete" {{ html_attrs(**attrs) }}><input class="h-9 rounded-lg border border-neutral-200 bg-white px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-neutral-400" list="{{ name }}-options" name="{{ name }}" placeholder="{{ placeholder }}"><datalist id="{{ name }}-options">{% for option in options %}<option value="{{ option.value or option }}">{{ option.label or option }}</option>{% endfor %}</datalist></div>
+{% macro autocomplete(class="", attrs={}) -%}
+<div class="{{ cn('relative', class) }}" data-slot="autocomplete" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_input(name="", placeholder="Search...", value="", class="", attrs={}) -%}<input class="{{ cn('h-9 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring placeholder:text-muted-foreground', class) }}" data-slot="autocomplete-input" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}>{%- endmacro %}
+
+{% macro autocomplete_trigger(text="", class="", attrs={}) -%}
+<button type="button" class="{{ cn('inline-flex items-center justify-center', class) }}" data-slot="autocomplete-trigger" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text or '⌄' }}
+    {% endif %}
+</button>
+{%- endmacro %}
+
+{% macro autocomplete_popup(class="", attrs={}) -%}
+<div class="{{ cn('z-50 max-h-96 overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md', class) }}" data-slot="autocomplete-popup" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_item(value="", selected=false, class="", attrs={}) -%}
+<div class="{{ cn('relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground', class) }}" data-slot="autocomplete-item" data-value="{{ value }}" {% if selected %}data-selected{% endif %} {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ value }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_separator(class="", attrs={}) -%}
+<div class="{{ cn('-mx-1 my-1 h-px bg-border', class) }}" data-slot="autocomplete-separator" {{ html_attrs(**attrs) }}></div>
+{%- endmacro %}
+
+{% macro autocomplete_group(class="", attrs={}) -%}
+<div class="{{ cn('', class) }}" data-slot="autocomplete-group" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_group_label(text="", class="", attrs={}) -%}
+<div class="{{ cn('px-2 py-1.5 text-xs font-medium text-muted-foreground', class) }}" data-slot="autocomplete-group-label" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_empty(text="No results found.", class="", attrs={}) -%}
+<div class="{{ cn('py-6 text-center text-sm text-muted-foreground', class) }}" data-slot="autocomplete-empty" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_row(class="", attrs={}) -%}
+<div class="{{ cn('flex items-center gap-2', class) }}" data-slot="autocomplete-row" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_value(text="", class="", attrs={}) -%}
+<span class="{{ cn('truncate', class) }}" data-slot="autocomplete-value" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</span>
+{%- endmacro %}
+
+{% macro autocomplete_list(class="", attrs={}) -%}
+<div class="{{ cn('grid gap-1', class) }}" data-slot="autocomplete-list" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_clear(text="", class="", attrs={}) -%}
+<button type="button" class="{{ cn('text-muted-foreground hover:text-foreground', class) }}" data-slot="autocomplete-clear" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text or '×' }}
+    {% endif %}
+</button>
+{%- endmacro %}
+
+{% macro autocomplete_status(text="", class="", attrs={}) -%}
+<div class="{{ cn('sr-only', class) }}" data-slot="autocomplete-status" role="status" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro autocomplete_collection(class="", attrs={}) -%}
+<div class="{{ cn('', class) }}" data-slot="autocomplete-collection" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
 {%- endmacro %}

@@ -278,6 +278,71 @@
   }
 }
 
+@layer components {
+  [data-slot="table-container"][data-variant="card"] [data-slot="table"] {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] {
+    position: relative;
+    border-radius: var(--radius-xl);
+    box-shadow: 0 1px color-mix(in srgb, var(--color-black) 5%, transparent);
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-row"] {
+    border-width: 0;
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-cell"] {
+    border-bottom-width: 1px;
+    background-color: var(--card);
+    transition: background-color 150ms ease;
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-row"]:first-child [data-slot="table-cell"] {
+    border-top-width: 1px;
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-cell"]:first-child {
+    border-left-width: 1px;
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-cell"]:last-child {
+    border-right-width: 1px;
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-row"]:first-child [data-slot="table-cell"]:first-child {
+    border-start-start-radius: var(--radius-xl);
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-row"]:first-child [data-slot="table-cell"]:last-child {
+    border-start-end-radius: var(--radius-xl);
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-row"]:last-child [data-slot="table-cell"]:first-child {
+    border-end-start-radius: var(--radius-xl);
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-row"]:last-child [data-slot="table-cell"]:last-child {
+    border-end-end-radius: var(--radius-xl);
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-row"]:hover [data-slot="table-cell"] {
+    background-color: color-mix(in srgb, var(--card), var(--color-black) 2%);
+  }
+
+  .dark [data-slot="table-container"][data-variant="card"] [data-slot="table-body"] [data-slot="table-row"]:hover [data-slot="table-cell"] {
+    background-color: color-mix(in srgb, var(--card), var(--color-white) 2%);
+  }
+
+  [data-slot="table-container"][data-variant="card"] [data-slot="table-footer"] {
+    border-width: 0;
+    background-color: transparent;
+    font-weight: 500;
+  }
+}
+
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation: none;

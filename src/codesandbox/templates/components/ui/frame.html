@@ -1,3 +1,51 @@
 {% macro frame(class="", attrs={}) -%}
-  <div class="{{ cn('rounded-2xl border border-neutral-200 bg-neutral-50 p-2', class) }}" data-slot="frame" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+    <div class="{{ cn('relative flex flex-col rounded-2xl bg-muted/72 p-1 *:[[data-slot=frame-panel]+[data-slot=frame-panel]]:mt-1', class) }}" data-slot="frame" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}{{ caller() }}{% endif %}
+    </div>
+{%- endmacro %}
+
+{% macro frame_panel(block="", class="", attrs={}) -%}
+    <div class="{{ cn('relative rounded-xl', block) }}">
+        <div class="{{ cn('relative h-full rounded-xl bg-background bg-clip-padding p-5 shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)]', class) }}" data-slot="frame-panel" {{ html_attrs(**attrs) }}>
+            {% if caller is defined %}
+                {{ caller() }}
+            {% endif %}
+        </div>
+    </div>
+{%- endmacro %}
+
+{% macro frame_header(class="", attrs={}) -%}
+    <header class="{{ cn('flex flex-col px-5 py-4', class) }}" data-slot="frame-panel-header" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}
+            {{ caller() }}
+        {% endif %}
+    </header>
+{%- endmacro %}
+
+{% macro frame_title(text="", class="", attrs={}) -%}
+    <div class="{{ cn('font-heading text-xl leading-none', class) }}" data-slot="frame-panel-title" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}
+            {{ caller() }}
+        {% else %}
+            {{ text }}
+        {% endif %}
+    </div>
+{%- endmacro %}
+
+{% macro frame_description(text="", class="", attrs={}) -%}
+    <div class="{{ cn('text-muted-foreground text-sm', class) }}" data-slot="frame-panel-description" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}
+            {{ caller() }}
+        {% else %}
+            {{ text }}
+        {% endif %}
+    </div>
+{%- endmacro %}
+
+{% macro frame_footer(class="", attrs={}) -%}
+    <footer class="{{ cn('px-5 py-4', class) }}" data-slot="frame-panel-footer" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}
+            {{ caller() }}
+        {% endif %}
+    </footer>
 {%- endmacro %}

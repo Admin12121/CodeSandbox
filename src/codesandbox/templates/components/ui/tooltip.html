@@ -1,3 +1,3 @@
-{% macro tooltip(text="", class="", attrs={}) -%}
-  <span class="{{ cn('relative inline-flex cursor-help underline decoration-dotted underline-offset-4', class) }}" data-slot="tooltip" title="{{ text }}" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>
-{%- endmacro %}
+{% macro tooltip(class="", attrs={}) -%}<span class="{{ cn('relative inline-flex', class) }}" data-slot="tooltip" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</span>{%- endmacro %}
+{% macro tooltip_trigger(text="", class="", attrs={}) -%}<span class="{{ cn('cursor-help underline decoration-dotted underline-offset-4', class) }}" data-slot="tooltip-trigger" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>{%- endmacro %}
+{% macro tooltip_popup(text="", class="", attrs={}) -%}<span class="{{ cn('z-50 rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground shadow-md', class) }}" data-slot="tooltip-popup" role="tooltip" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>{%- endmacro %}

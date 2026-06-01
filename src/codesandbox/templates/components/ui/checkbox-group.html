@@ -1,3 +1,1 @@
-{% macro checkbox_group(class="", attrs={}) -%}
-  <div class="{{ cn('grid gap-2', class) }}" data-slot="checkbox-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
-{%- endmacro %}
+{% macro checkbox_group(class="", attrs={}) -%}<div class="{{ cn('grid gap-3', class) }}" data-slot="checkbox-group" role="group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}

@@ -1,3 +1,57 @@
-{% macro breadcrumb(items=[], class="", attrs={}) -%}
-  <nav class="{{ cn('flex items-center gap-1 text-sm text-neutral-500', class) }}" data-slot="breadcrumb" {{ html_attrs(**attrs) }}>{% for item in items %}{% if item.href %}<a class="hover:text-neutral-900" href="{{ item.href }}">{{ item.label }}</a>{% else %}<span class="text-neutral-900">{{ item.label }}</span>{% endif %}{% if not loop.last %}<span>/</span>{% endif %}{% endfor %}</nav>
+{% macro breadcrumb(class="", attrs={}) -%}
+<nav class="{{ cn('', class) }}" data-slot="breadcrumb" aria-label="breadcrumb" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</nav>
+{%- endmacro %}
+
+{% macro breadcrumb_list(class="", attrs={}) -%}
+<ol class="{{ cn('flex flex-wrap items-center gap-1.5 break-words text-muted-foreground text-sm sm:gap-2.5', class) }}" data-slot="breadcrumb-list" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</ol>
+{%- endmacro %}
+
+{% macro breadcrumb_item(class="", attrs={}) -%}
+<li class="{{ cn('inline-flex items-center gap-1.5', class) }}" data-slot="breadcrumb-item" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</li>
+{%- endmacro %}
+
+{% macro breadcrumb_link(text="", href="#", class="", attrs={}) -%}
+<a class="{{ cn('transition-colors hover:text-foreground', class) }}" data-slot="breadcrumb-link" href="{{ href }}" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</a>
+{%- endmacro %}
+
+{% macro breadcrumb_page(text="", class="", attrs={}) -%}
+<span class="{{ cn('font-normal text-foreground', class) }}" data-slot="breadcrumb-page" role="link" aria-disabled="true" aria-current="page" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</span>
+{%- endmacro %}
+
+{% macro breadcrumb_separator(text="/", class="", attrs={}) -%}
+<li class="{{ cn('[&>svg]:size-3.5', class) }}" data-slot="breadcrumb-separator" role="presentation" aria-hidden="true" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</li>
+{%- endmacro %}
+
+{% macro breadcrumb_ellipsis(class="", attrs={}) -%}
+<span class="{{ cn('flex size-9 items-center justify-center', class) }}" data-slot="breadcrumb-ellipsis" role="presentation" aria-hidden="true" {{ html_attrs(**attrs) }}>…</span>
 {%- endmacro %}

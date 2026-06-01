@@ -1,7 +1,33 @@
 {% macro accordion(class="", attrs={}) -%}
-  <div class="{{ cn('divide-y divide-neutral-200 rounded-lg border border-neutral-200 bg-white', class) }}" data-slot="accordion" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+<div class="{{ cn('w-full divide-y divide-border', class) }}" data-slot="accordion" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
 {%- endmacro %}
 
-{% macro accordion_item(title="", open=false, class="", attrs={}) -%}
-  <details class="{{ cn('group p-4', class) }}" data-slot="accordion-item" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}><summary class="cursor-pointer list-none font-medium">{{ title }}</summary><div class="mt-2 text-sm text-neutral-500">{% if caller is defined %}{{ caller() }}{% endif %}</div></details>
+{% macro accordion_item(value="", open=false, class="", attrs={}) -%}
+<details class="{{ cn('group border-b last:border-b-0', class) }}" data-slot="accordion-item" {% if value %}data-value="{{ value }}"{% endif %} {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</details>
+{%- endmacro %}
+
+{% macro accordion_trigger(text="", class="", attrs={}) -%}
+<summary class="{{ cn('flex flex-1 cursor-pointer list-none items-center justify-between py-4 font-medium text-sm transition-all hover:underline [&::-webkit-details-marker]:hidden [&:after]:content-[\'⌄\'] group-open:[&:after]:rotate-180 [&:after]:transition-transform', class) }}" data-slot="accordion-trigger" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% else %}
+        {{ text }}
+    {% endif %}
+</summary>
+{%- endmacro %}
+
+{% macro accordion_panel(class="", attrs={}) -%}
+<div class="{{ cn('overflow-hidden pb-4 pt-0 text-sm text-muted-foreground', class) }}" data-slot="accordion-panel" {{ html_attrs(**attrs) }}>
+    {% if caller is defined %}
+        {{ caller() }}
+    {% endif %}
+</div>
 {%- endmacro %}

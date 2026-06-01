@@ -1,3 +1,1 @@
-{% macro checkbox(name="", checked=false, disabled=false, class="", attrs={}) -%}
-  <input class="{{ cn('size-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-400', class) }}" data-slot="checkbox" type="checkbox" {% if name %}name="{{ name }}"{% endif %} {% if checked %}checked{% endif %} {% if disabled %}disabled{% endif %} {{ html_attrs(**attrs) }}>
-{%- endmacro %}
+{% macro checkbox(name="", checked=false, disabled=false, class="", attrs={}) -%}<input class="{{ cn('peer size-4 shrink-0 rounded border border-input shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 accent-primary', class) }}" data-slot="checkbox" type="checkbox" {% if name %}name="{{ name }}"{% endif %} {% if checked %}checked data-state="checked"{% else %}data-state="unchecked"{% endif %} {% if disabled %}disabled{% endif %} {{ html_attrs(**attrs) }}>{%- endmacro %}
