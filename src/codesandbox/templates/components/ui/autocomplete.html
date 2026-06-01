@@ -1,3 +1,4 @@
+{% include "components/ui/_runtime.html" %}
 {% macro autocomplete(class="", attrs={}) -%}
 <div class="{{ cn('relative', class) }}" data-slot="autocomplete" {{ html_attrs(**attrs) }}>
     {% if caller is defined %}
@@ -8,8 +9,8 @@
 
 {% macro autocomplete_input(name="", placeholder="Search...", value="", class="", attrs={}) -%}<input class="{{ cn('h-9 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring placeholder:text-muted-foreground', class) }}" data-slot="autocomplete-input" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}>{%- endmacro %}
 
-{% macro autocomplete_trigger(text="", class="", attrs={}) -%}
-<button type="button" class="{{ cn('inline-flex items-center justify-center', class) }}" data-slot="autocomplete-trigger" {{ html_attrs(**attrs) }}>
+{% macro autocomplete_trigger(text="", target="", class="", attrs={}) -%}
+<button type="button" class="{{ cn('inline-flex items-center justify-center', class) }}" data-slot="autocomplete-trigger" {% if target %}data-target="{{ target }}" aria-controls="{{ target.lstrip('#') }}"{% endif %} aria-expanded="false" {{ html_attrs(**attrs) }}>
     {% if caller is defined %}
         {{ caller() }}
     {% else %}
@@ -18,8 +19,8 @@
 </button>
 {%- endmacro %}
 
-{% macro autocomplete_popup(class="", attrs={}) -%}
-<div class="{{ cn('z-50 max-h-96 overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md', class) }}" data-slot="autocomplete-popup" {{ html_attrs(**attrs) }}>
+{% macro autocomplete_popup(open=false, class="", attrs={}) -%}
+<div class="{{ cn('z-50 max-h-96 overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md', class) }}" data-slot="autocomplete-popup" data-state="{{ 'open' if open else 'closed' }}" {% if not open %}hidden{% endif %} {{ html_attrs(**attrs) }}>
     {% if caller is defined %}
         {{ caller() }}
     {% endif %}

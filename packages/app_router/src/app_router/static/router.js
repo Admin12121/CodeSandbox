@@ -3,6 +3,7 @@ const CURRENT_PATH_HEADER = "X-Flask-Current-Path";
 const CURRENT_TREE_HEADER = "X-Flask-Current-Tree";
 const STATE_PATH_META = 'meta[name="app-router-path"]';
 const STATE_TREE_META = 'meta[name="app-router-tree"]';
+const SCRIPT_NONCE_META = 'meta[name="app-router-script-nonce"]';
 
 function state() {
   const path = document.querySelector(STATE_PATH_META)?.getAttribute("content");
@@ -92,12 +93,15 @@ async function navigate(url, { push = true } = {}) {
   await loadStyles(payload.styles || []);
   boundary.innerHTML = payload.html || "";
   await loadScripts(payload.scripts || []);
+  await loadInlineScripts(payload.inlineScripts || []);
   updateMetadata(payload.meta || {});
   setState(payload.url || url, payload.tree || ["root"]);
+  dispatchRouterEvent("app-router:patch", payload);
 
   if (push) {
     window.history.pushState({ flaskAppRouter: true }, "", payload.url || url);
   }
+  dispatchRouterEvent("app-router:navigate", payload);
 }
 
 function updateMetadata(meta) {
@@ -149,6 +153,31 @@ async function loadScripts(scripts) {
       document.body.appendChild(script);
     });
   }
+}
+
+async function loadInlineScripts(scripts) {
+  const nonce = document.querySelector(SCRIPT_NONCE_META)?.getAttribute("content") || "";
+  for (const item of scripts) {
+    if (!item?.key || !item?.code) continue;
+    const selector = `script[data-app-router-inline-script="${CSS.escape(item.key)}"]`;
+    if (document.querySelector(selector)) continue;
+
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.type = "module";
+      script.textContent = item.code;
+      script.dataset.appRouterInlineScript = item.key;
+      if (nonce) script.nonce = nonce;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.body.appendChild(script);
+      resolve();
+    });
+  }
+}
+
+function dispatchRouterEvent(name, detail) {
+  window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
 document.addEventListener("click", (event) => {

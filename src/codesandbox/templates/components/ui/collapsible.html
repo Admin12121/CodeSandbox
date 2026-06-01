@@ -1,3 +1,4 @@
+{% include "components/ui/_runtime.html" %}
 {% macro collapsible(open=false, class="", attrs={}) -%}<details class="{{ cn('group', class) }}" data-slot="collapsible" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</details>{%- endmacro %}
 {% macro collapsible_trigger(text="", class="", attrs={}) -%}<summary class="{{ cn('cursor-pointer list-none [&::-webkit-details-marker]:hidden', class) }}" data-slot="collapsible-trigger" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</summary>{%- endmacro %}
 {% macro collapsible_panel(class="", attrs={}) -%}<div class="{{ cn('overflow-hidden', class) }}" data-slot="collapsible-panel" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}

@@ -1,15 +1,16 @@
 {% import "components/ui/dialog.html" as dialog_ui %}
+{% include "components/ui/_runtime.html" %}
 
-{% macro alert_dialog(open=true, class="", attrs={}) -%}
-<dialog class="{{ cn('m-auto max-w-lg rounded-xl border bg-background p-0 text-foreground shadow-lg backdrop:bg-black/50', class) }}" data-slot="alert-dialog" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>
+{% macro alert_dialog(open=false, class="", attrs={}) -%}
+<dialog class="{{ cn('m-auto max-w-lg rounded-xl border bg-background p-0 text-foreground shadow-lg backdrop:bg-black/50', class) }}" data-slot="alert-dialog" data-state="{{ 'open' if open else 'closed' }}" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>
     {% if caller is defined %}
         {{ caller() }}
     {% endif %}
 </dialog>
 {%- endmacro %}
 
-{% macro alert_dialog_trigger(text="", class="", attrs={}) -%}
-<button type="button" class="{{ cn('', class) }}" data-slot="alert-dialog-trigger" {{ html_attrs(**attrs) }}>
+{% macro alert_dialog_trigger(text="", target="", class="", attrs={}) -%}
+<button type="button" class="{{ cn('', class) }}" data-slot="alert-dialog-trigger" {% if target %}data-target="{{ target }}" aria-controls="{{ target.lstrip('#') }}"{% endif %} aria-expanded="false" {{ html_attrs(**attrs) }}>
     {% if caller is defined %}
         {{ caller() }}
     {% else %}

@@ -1,3 +1,4 @@
+{% include "components/ui/_runtime.html" %}
 {% macro accordion(class="", attrs={}) -%}
 <div class="{{ cn('w-full divide-y divide-border', class) }}" data-slot="accordion" {{ html_attrs(**attrs) }}>
     {% if caller is defined %}

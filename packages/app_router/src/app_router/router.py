@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import wraps
@@ -18,7 +19,9 @@ from flask import (
     Response,
     abort,
     current_app,
+    g,
     has_app_context,
+    has_request_context,
     jsonify,
     make_response,
     redirect,
@@ -26,7 +29,8 @@ from flask import (
     send_file,
 )
 from flask.typing import ResponseReturnValue
-from jinja2 import ChoiceLoader, PackageLoader, TemplateNotFound
+from jinja2 import ChoiceLoader, PackageLoader, TemplateNotFound, nodes, pass_context
+from jinja2.ext import Extension
 from markupsafe import Markup, escape
 from werkzeug.exceptions import HTTPException
 from werkzeug.routing import BuildError, RequestRedirect
@@ -60,6 +64,10 @@ CURRENT_PATH_HEADER = "X-Flask-Current-Path"
 CURRENT_TREE_HEADER = "X-Flask-Current-Tree"
 CLIENT_STATE_PATH_META = "app-router-path"
 CLIENT_STATE_TREE_META = "app-router-tree"
+CLIENT_SCRIPT_NONCE_META = "app-router-script-nonce"
+APP_SCRIPT_G_KEY = "_app_router_inline_scripts"
+APP_SCRIPT_SEEN_G_KEY = "_app_router_inline_script_keys"
+APP_SCRIPT_NONCE_G_KEY = "_app_router_script_nonce"
 
 PageLoader = Callable[..., object]
 ApiLoader = Callable[..., object]
@@ -87,6 +95,7 @@ class PageRoute:
     loader: PageLoader
     methods: tuple[str, ...]
     template: str
+    template_explicit: bool
     options: dict[str, Any]
     csrf: bool
     asset_private: bool
@@ -108,6 +117,38 @@ class ApiRoute:
     methods: tuple[str, ...]
     options: dict[str, Any]
     csrf: bool
+
+
+@dataclass(frozen=True)
+class InlineScript:
+    key: str
+    code: str
+
+
+class AppScriptExtension(Extension):
+    """Collect colocated component scripts from Jinja templates."""
+
+    tags = {"app_script"}
+
+    def parse(self, parser: Any) -> nodes.CallBlock:
+        lineno = next(parser.stream).lineno
+        if parser.stream.current.test("block_end"):
+            parser.fail("app_script requires a unique script key.", lineno)
+        key = parser.parse_expression()
+        body = parser.parse_statements(("name:end_app_script",), drop_needle=True)
+        return nodes.CallBlock(
+            self.call_method("_capture", [key]),
+            [],
+            [],
+            body,
+        ).set_lineno(lineno)
+
+    @pass_context
+    def _capture(self, context: Any, key: object, caller: Callable[[], str]) -> str:
+        if not isinstance(key, str) or not key:
+            raise AppRouterError("app_script key must be a non-empty string.")
+        _capture_app_script(key, caller())
+        return ""
 
 
 class AppRouter:
@@ -215,6 +256,7 @@ class AppRouter:
                 loader=func,
                 methods=route_methods,
                 template=template or route_to_template(rule),
+                template_explicit=template is not None,
                 options=dict(options),
                 csrf=self.csrf
                 and (csrf if csrf is not None else _methods_need_csrf(route_methods)),
@@ -286,10 +328,11 @@ class AppRouter:
             asset_routes: list[tuple[AssetRoute, list[str]]] = []
 
             for endpoint, route in sorted(self._page_routes.items()):
-                template_exists = self._template_exists(route.template)
-                layouts = self._layout_chain(route) if template_exists else []
+                resolved_template = self._resolve_page_template(route)
+                template_exists = resolved_template is not None
+                layouts = self._layout_chain(resolved_template) if resolved_template else []
                 template_names = [
-                    route.template,
+                    resolved_template or route.template,
                     *(layout.template for layout in layouts if layout.template is not None),
                 ]
                 if template_exists:
@@ -300,7 +343,7 @@ class AppRouter:
                         "endpoint": endpoint,
                         "rule": route.rule,
                         "methods": list(route.methods),
-                        "template": route.template,
+                        "template": resolved_template or route.template,
                         "template_exists": template_exists,
                         "layouts": [
                             {
@@ -394,7 +437,8 @@ class AppRouter:
         self._registered.add(key)
 
     def _handle_page(self, route: PageRoute, **kwargs: Any) -> ResponseReturnValue:
-        if not self._template_exists(route.template):
+        template_name = self._resolve_page_template(route)
+        if template_name is None:
             current_app.logger.info(
                 "app-router page template not found for route %s: %s",
                 route.rule,
@@ -419,17 +463,19 @@ class AppRouter:
         cache_enabled = bool(data.get("_cache", False))
         ttl = int(data.get("_ttl", 0) or 0)
         context = self._template_context(data)
-        layouts = self._layout_chain(route)
+        layouts = self._layout_chain(template_name)
+        _reset_app_scripts()
 
         if self._is_partial_request():
-            return self._partial_response(route, layouts, context, meta, cache_enabled)
+            return self._partial_response(route, template_name, layouts, context, meta, cache_enabled)
 
-        bundle = self._render_full(route, layouts, context)
+        bundle = self._render_full(route, template_name, layouts, context)
         html = self._apply_document_features(
             bundle.html,
             meta,
             layouts,
             request.full_path.rstrip("?"),
+            _collected_app_scripts(),
         )
         response = make_response(html)
         self._apply_cache_headers(response, cache_enabled, ttl)
@@ -451,6 +497,7 @@ class AppRouter:
     def _partial_response(
         self,
         route: PageRoute,
+        template_name: str,
         layouts: list[LayoutSpec],
         context: dict[str, Any],
         meta: dict[str, str],
@@ -461,7 +508,10 @@ class AppRouter:
             return self._reload_json()
 
         client_tree = parse_tree_header(request.headers.get(CURRENT_TREE_HEADER))
-        current_tree = self._layout_tree(self._layout_chain(current_route))
+        current_template = self._resolve_page_template(current_route)
+        if current_template is None:
+            return self._reload_json()
+        current_tree = self._layout_tree(self._layout_chain(current_template))
         next_tree = self._layout_tree(layouts)
         if client_tree != current_tree:
             return self._reload_json()
@@ -470,7 +520,7 @@ class AppRouter:
         if boundary not in next_tree:
             return self._reload_json()
 
-        bundle = self._render_outlet(route, layouts, context, boundary)
+        bundle = self._render_outlet(route, template_name, layouts, context, boundary)
         body = {
             "mode": "patch",
             "url": request.full_path.rstrip("?"),
@@ -481,6 +531,7 @@ class AppRouter:
             "cache": cache_enabled,
             "scripts": bundle.scripts,
             "styles": bundle.styles,
+            "inlineScripts": [script.__dict__ for script in _collected_app_scripts()],
         }
         response = jsonify(body)
         response.headers["Cache-Control"] = "no-store"
@@ -492,11 +543,12 @@ class AppRouter:
     def _render_full(
         self,
         route: PageRoute,
+        template_name: str,
         layouts: list[LayoutSpec],
         context: dict[str, Any],
     ) -> RenderBundle:
         root = layouts[0]
-        outlet = self._render_outlet(route, layouts, context, "root")
+        outlet = self._render_outlet(route, template_name, layouts, context, "root")
         root_context = {**context, "children": Markup(self._boundary("root", outlet.html))}
         if root.template is None:
             return RenderBundle(
@@ -514,6 +566,7 @@ class AppRouter:
     def _render_outlet(
         self,
         route: PageRoute,
+        template_name: str,
         layouts: list[LayoutSpec],
         context: dict[str, Any],
         boundary: str,
@@ -521,7 +574,7 @@ class AppRouter:
         start_index = next(
             index for index, layout in enumerate(layouts) if layout.boundary == boundary
         )
-        page = self._render_template(route.template, context, route)
+        page = self._render_template(template_name, context, route)
         html = page.html
         scripts = list(page.scripts)
         styles = list(page.styles)
@@ -556,10 +609,10 @@ class AppRouter:
             styles=rewritten.styles,
         )
 
-    def _layout_chain(self, route: PageRoute) -> list[LayoutSpec]:
+    def _layout_chain(self, template_name: str) -> list[LayoutSpec]:
         root_template = "layout.html" if self._template_exists("layout.html") else None
         layouts = [LayoutSpec(boundary="root", template=root_template, root=True)]
-        parts = route.template.split("/")[:-1]
+        parts = template_name.split("/")[:-1]
         for index in range(1, len(parts) + 1):
             directory = "/".join(parts[:index])
             template = f"{directory}/layout.html"
@@ -610,6 +663,33 @@ class AppRouter:
         except TemplateNotFound:
             return False
         return True
+
+    def _resolve_page_template(self, route: PageRoute) -> str | None:
+        if self._template_exists(route.template):
+            return route.template
+        if route.template_explicit:
+            return None
+
+        matches = [
+            template
+            for template in self._page_template_names()
+            if _strip_route_groups(template) == route.template
+        ]
+        if not matches:
+            return None
+        if len(matches) > 1:
+            raise AppRouterError(
+                "Route template is ambiguous after ignoring route groups for "
+                f"{route.rule}: {', '.join(sorted(matches))}. Pass template= explicitly."
+            )
+        return matches[0]
+
+    def _page_template_names(self) -> list[str]:
+        try:
+            names = current_app.jinja_env.list_templates()
+        except TypeError:
+            return []
+        return sorted(name for name in names if name.endswith("/page.html") or name == "page.html")
 
     def _is_partial_request(self) -> bool:
         return request.headers.get(self.partial_header) == "partial"
@@ -731,15 +811,21 @@ class AppRouter:
         meta: Mapping[str, str],
         layouts: Sequence[LayoutSpec],
         path: str,
+        inline_scripts: Sequence[InlineScript],
     ) -> str:
         html = _inject_or_replace_metadata(html, meta)
         html = _inject_or_replace_router_state(html, path, self._layout_tree(layouts))
+        nonce = _ensure_app_script_nonce() if self.csp else None
+        if nonce:
+            html = _replace_or_inject_meta(html, CLIENT_SCRIPT_NONCE_META, nonce)
+        html = _inject_inline_app_scripts(html, inline_scripts, nonce)
         html = _inject_client_script(html, self.client_url_path)
         return html
 
     def _install_template_loader(self, app: Flask, state: dict[str, Any]) -> None:
         if state["loader_installed"]:
             return
+        app.jinja_env.add_extension(AppScriptExtension)
         package_loader = PackageLoader(_package_name(), "templates")
         app.jinja_env.loader = ChoiceLoader([app.create_global_jinja_loader(), package_loader])
         state["loader_installed"] = True
@@ -812,7 +898,10 @@ class AppRouter:
             response.headers.setdefault("X-Content-Type-Options", "nosniff")
             response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
             if self.csp and "Content-Security-Policy" not in response.headers:
-                response.headers["Content-Security-Policy"] = self.csp
+                response.headers["Content-Security-Policy"] = _csp_with_script_nonce(
+                    self.csp,
+                    _current_app_script_nonce(),
+                )
             return response
 
         state["headers_installed"] = True
@@ -861,6 +950,15 @@ def _route_segment_to_template(segment: str) -> str:
     if "<" in segment or ">" in segment:
         raise ValueError(f"Mixed static/dynamic route segments are not supported: {segment}")
     return segment
+
+
+def _strip_route_groups(template_name: str) -> str:
+    parts = [part for part in template_name.split("/") if not _is_route_group(part)]
+    return "/".join(parts)
+
+
+def _is_route_group(segment: str) -> bool:
+    return segment.startswith("(") and segment.endswith(")") and len(segment) > 2
 
 
 def _normalize_methods(methods: Sequence[str] | None) -> tuple[str, ...]:
@@ -978,6 +1076,88 @@ def _inject_client_script(html: str, client_url_path: str) -> str:
     if re.search(r"</body>", html, flags=re.IGNORECASE):
         return re.sub(r"</body>", f"{script}\n</body>", html, count=1, flags=re.IGNORECASE)
     return f"{html}\n{script}"
+
+
+def _reset_app_scripts() -> None:
+    if not has_request_context():
+        return
+    setattr(g, APP_SCRIPT_G_KEY, [])
+    setattr(g, APP_SCRIPT_SEEN_G_KEY, set())
+
+
+def _capture_app_script(key: str, code: str) -> None:
+    if not has_request_context():
+        return
+    scripts: list[InlineScript] = getattr(g, APP_SCRIPT_G_KEY, [])
+    seen: set[str] = getattr(g, APP_SCRIPT_SEEN_G_KEY, set())
+    if key in seen:
+        return
+    seen.add(key)
+    scripts.append(InlineScript(key=key, code=code.strip()))
+    setattr(g, APP_SCRIPT_G_KEY, scripts)
+    setattr(g, APP_SCRIPT_SEEN_G_KEY, seen)
+
+
+def _collected_app_scripts() -> list[InlineScript]:
+    if not has_request_context():
+        return []
+    return list(getattr(g, APP_SCRIPT_G_KEY, []))
+
+
+def _ensure_app_script_nonce() -> str:
+    nonce = _current_app_script_nonce()
+    if nonce is None:
+        nonce = secrets.token_urlsafe(16)
+        setattr(g, APP_SCRIPT_NONCE_G_KEY, nonce)
+    return nonce
+
+
+def _current_app_script_nonce() -> str | None:
+    if not has_request_context():
+        return None
+    nonce = getattr(g, APP_SCRIPT_NONCE_G_KEY, None)
+    return nonce if isinstance(nonce, str) else None
+
+
+def _inject_inline_app_scripts(
+    html: str,
+    scripts: Sequence[InlineScript],
+    nonce: str | None,
+) -> str:
+    if not scripts:
+        return html
+
+    fragments: list[str] = []
+    nonce_attr = f' nonce="{quote_attr(nonce)}"' if nonce else ""
+    for script in scripts:
+        code = script.code.replace("</script", "<\\/script")
+        fragments.append(
+            f'<script type="module"{nonce_attr} '
+            f'data-app-router-inline-script="{quote_attr(script.key)}">\n'
+            f"{code}\n"
+            "</script>"
+        )
+    block = "\n".join(fragments)
+
+    if re.search(r"</body>", html, flags=re.IGNORECASE):
+        return re.sub(r"</body>", f"{block}\n</body>", html, count=1, flags=re.IGNORECASE)
+    return f"{html}\n{block}"
+
+
+def _csp_with_script_nonce(csp: str, nonce: str | None) -> str:
+    if not nonce:
+        return csp
+    nonce_source = f"'nonce-{nonce}'"
+    if nonce_source in csp:
+        return csp
+
+    script_src = re.search(r"(script-src\s+)([^;]+)", csp)
+    if script_src:
+        start, end = script_src.span(2)
+        return f"{csp[:end]} {nonce_source}{csp[end:]}"
+
+    separator = "" if csp.rstrip().endswith(";") else ";"
+    return f"{csp}{separator} script-src 'self' {nonce_source}"
 
 
 def _package_name() -> str:
