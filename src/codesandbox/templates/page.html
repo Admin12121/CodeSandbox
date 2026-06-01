@@ -46,105 +46,112 @@
     {% endfor %}
   </section>
 
+  <section class="grid gap-4">
+    {% call card.card() %}
+      {% call card.card_header() %}
+        {{ card.card_title("Form controls") }}
+        {{ card.card_description("Button, input, table, badge, alert, and the rest of the UI set live in components/ui.") }}
+      {% endcall %}
+      {% call card.card_content() %}
+        <form class="grid gap-4 md:grid-cols-[1fr_auto]">
+          {{ input.input(name="project", placeholder="Project name") }}
+          {% call button.button(variant="default") %}Save{% endcall %}
+        </form>
+      {% endcall %}
+    {% endcall %}
 
+    {% call frame.frame(class="w-full") %}
+      {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Project") }}
+            {{ table.table_head("Status") }}
+            {{ table.table_head("Team") }}
+            {{ table.table_head("Budget", class="text-right") }}
+          {% endcall %}
+        {% endcall %}
 
-      <form class="grid gap-4 md:grid-cols-[1fr_auto]">
-        {{ input.input(name="project", placeholder="Project name") }}
-        {% call button.button(variant="default") %}Save{% endcall %}
-      </form>
-    
-      {% call frame.frame(class="w-full") %}
-        {% call table.table(variant="card") %}
-          {% call table.table_header() %}
-            {% call table.table_row() %}
-              {{ table.table_head("Project") }}
-              {{ table.table_head("Status") }}
-              {{ table.table_head("Team") }}
-              {{ table.table_head("Budget", class="text-right") }}
+        {% call table.table_body() %}
+          {% call table.table_row() %}
+            {{ table.table_cell("Website Redesign", class="font-medium") }}
+            {% call table.table_cell() %}
+              {% call badge.badge(variant="outline") %}
+                <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
+                Paid
+              {% endcall %}
             {% endcall %}
+            {{ table.table_cell("Frontend Team") }}
+            {{ table.table_cell("$12,500", class="text-right") }}
           {% endcall %}
 
-          {% call table.table_body() %}
-            {% call table.table_row() %}
-              {{ table.table_cell("Website Redesign", class="font-medium") }}
-              {% call table.table_cell() %}
-                {% call badge.badge(variant="outline") %}
-                  <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
-                  Paid
-                {% endcall %}
+          {% call table.table_row() %}
+            {{ table.table_cell("Mobile App", class="font-medium") }}
+            {% call table.table_cell() %}
+              {% call badge.badge(variant="outline") %}
+                <span aria-hidden="true" class="size-1.5 rounded-full bg-muted-foreground/64"></span>
+                Unpaid
               {% endcall %}
-              {{ table.table_cell("Frontend Team") }}
-              {{ table.table_cell("$12,500", class="text-right") }}
             {% endcall %}
-
-            {% call table.table_row() %}
-              {{ table.table_cell("Mobile App", class="font-medium") }}
-              {% call table.table_cell() %}
-                {% call badge.badge(variant="outline") %}
-                  <span aria-hidden="true" class="size-1.5 rounded-full bg-muted-foreground/64"></span>
-                  Unpaid
-                {% endcall %}
-              {% endcall %}
-              {{ table.table_cell("Mobile Team") }}
-              {{ table.table_cell("$8,750", class="text-right") }}
-            {% endcall %}
-
-            {% call table.table_row() %}
-              {{ table.table_cell("API Integration", class="font-medium") }}
-              {% call table.table_cell() %}
-                {% call badge.badge(variant="outline") %}
-                  <span aria-hidden="true" class="size-1.5 rounded-full bg-amber-500"></span>
-                  Pending
-                {% endcall %}
-              {% endcall %}
-              {{ table.table_cell("Backend Team") }}
-              {{ table.table_cell("$5,200", class="text-right") }}
-            {% endcall %}
-
-            {% call table.table_row() %}
-              {{ table.table_cell("Database Migration", class="font-medium") }}
-              {% call table.table_cell() %}
-                {% call badge.badge(variant="outline") %}
-                  <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
-                  Paid
-                {% endcall %}
-              {% endcall %}
-              {{ table.table_cell("DevOps Team") }}
-              {{ table.table_cell("$3,800", class="text-right") }}
-            {% endcall %}
-
-            {% call table.table_row() %}
-              {{ table.table_cell("User Dashboard", class="font-medium") }}
-              {% call table.table_cell() %}
-                {% call badge.badge(variant="outline") %}
-                  <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
-                  Paid
-                {% endcall %}
-              {% endcall %}
-              {{ table.table_cell("UX Team") }}
-              {{ table.table_cell("$7,200", class="text-right") }}
-            {% endcall %}
-
-            {% call table.table_row() %}
-              {{ table.table_cell("Security Audit", class="font-medium") }}
-              {% call table.table_cell() %}
-                {% call badge.badge(variant="outline") %}
-                  <span aria-hidden="true" class="size-1.5 rounded-full bg-red-500"></span>
-                  Failed
-                {% endcall %}
-              {% endcall %}
-              {{ table.table_cell("Security Team") }}
-              {{ table.table_cell("$2,100", class="text-right") }}
-            {% endcall %}
+            {{ table.table_cell("Mobile Team") }}
+            {{ table.table_cell("$8,750", class="text-right") }}
           {% endcall %}
 
-          {% call table.table_footer() %}
-            {% call table.table_row() %}
-              {{ table.table_cell("Total Budget", attrs={"colspan": 3}) }}
-              {{ table.table_cell("$39,550", class="text-right") }}
+          {% call table.table_row() %}
+            {{ table.table_cell("API Integration", class="font-medium") }}
+            {% call table.table_cell() %}
+              {% call badge.badge(variant="outline") %}
+                <span aria-hidden="true" class="size-1.5 rounded-full bg-amber-500"></span>
+                Pending
+              {% endcall %}
             {% endcall %}
+            {{ table.table_cell("Backend Team") }}
+            {{ table.table_cell("$5,200", class="text-right") }}
+          {% endcall %}
+
+          {% call table.table_row() %}
+            {{ table.table_cell("Database Migration", class="font-medium") }}
+            {% call table.table_cell() %}
+              {% call badge.badge(variant="outline") %}
+                <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
+                Paid
+              {% endcall %}
+            {% endcall %}
+            {{ table.table_cell("DevOps Team") }}
+            {{ table.table_cell("$3,800", class="text-right") }}
+          {% endcall %}
+
+          {% call table.table_row() %}
+            {{ table.table_cell("User Dashboard", class="font-medium") }}
+            {% call table.table_cell() %}
+              {% call badge.badge(variant="outline") %}
+                <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
+                Paid
+              {% endcall %}
+            {% endcall %}
+            {{ table.table_cell("UX Team") }}
+            {{ table.table_cell("$7,200", class="text-right") }}
+          {% endcall %}
+
+          {% call table.table_row() %}
+            {{ table.table_cell("Security Audit", class="font-medium") }}
+            {% call table.table_cell() %}
+              {% call badge.badge(variant="outline") %}
+                <span aria-hidden="true" class="size-1.5 rounded-full bg-red-500"></span>
+                Failed
+              {% endcall %}
+            {% endcall %}
+            {{ table.table_cell("Security Team") }}
+            {{ table.table_cell("$2,100", class="text-right") }}
+          {% endcall %}
+        {% endcall %}
+
+        {% call table.table_footer() %}
+          {% call table.table_row() %}
+            {{ table.table_cell("Total Budget", attrs={"colspan": 3}) }}
+            {{ table.table_cell("$39,550", class="text-right") }}
           {% endcall %}
         {% endcall %}
       {% endcall %}
-      
+    {% endcall %}
+  </section>
 </main>
