@@ -7,11 +7,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
+
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "migrate":
+        from codesandbox.db import apply_migrations
+
+        applied = apply_migrations()
+        if applied:
+            print("Applied migrations:")
+            for migration in applied:
+                print(f"- {migration}")
+        else:
+            print("No pending migrations.")
+        return
+
     from codesandbox.app import create_app
 
     app = create_app()

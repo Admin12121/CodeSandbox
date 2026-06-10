@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: codesandbox-room24-postgres
+    environment:
+      POSTGRES_USER: room24
+      POSTGRES_PASSWORD: room24
+      POSTGRES_DB: room24_app
+    ports:
+      - "55432:5432"
+    volumes:
+      - room24_postgres_pgdata:/var/lib/postgresql
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U room24 -d room24_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  room24_postgres_pgdata:

@@ -5,8 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "asgiref>=3.8",
     "app-router",
     "nexorm",
+    "psycopg[binary]>=3.2",
+    "uvicorn[standard]>=0.30",
 ]
 
 [tool.uv.workspace]
