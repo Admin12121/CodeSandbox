@@ -205,18 +205,22 @@ source = { virtual = "." }
 dependencies = [
     { name = "app-router" },
     { name = "asgiref" },
+    { name = "flask" },
     { name = "nexorm" },
-    { name = "psycopg", extra = ["binary"] },
+    { name = "pymysql" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "werkzeug" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "app-router", editable = "packages/app_router" },
     { name = "asgiref", specifier = ">=3.8" },
+    { name = "flask", specifier = ">=3.0" },
     { name = "nexorm", editable = "packages/nexorm" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pymysql", specifier = ">=1.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
+    { name = "werkzeug", specifier = ">=3.0" },
 ]
 
 [[package]]

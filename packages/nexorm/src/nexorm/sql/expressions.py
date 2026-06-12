@@ -34,7 +34,7 @@ class Where:
                 clauses.append(f"{prefix}{column} IN ({placeholders})")
                 params.extend(model_field.to_db(item) for item in value)
             elif lookup == "isnull":
-                clauses.append(f"{column} IS {'NOT ' if bool(value) ^ negate else ''}NULL")
+                clauses.append(f"{column} IS {'NOT ' if not (bool(value) ^ negate) else ''}NULL")
             else:
                 clauses.append(f"{prefix}{column} {operator_for(lookup)} {ph}")
                 params.append(model_field.to_db(prepare_value(lookup, value)))

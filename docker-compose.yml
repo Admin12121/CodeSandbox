@@ -1,21 +1,103 @@
 services:
-  postgres:
-    image: postgres:18
-    container_name: codesandbox-room24-postgres
-    environment:
-      POSTGRES_USER: room24
-      POSTGRES_PASSWORD: room24
-      POSTGRES_DB: room24_app
+
+  # ── Reverse proxy ─────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: codesandbox-nginx
     ports:
-      - "55432:5432"
+      - "80:80"
     volumes:
-      - room24_postgres_pgdata:/var/lib/postgresql
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  # ── Flask application ──────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      network: host
+    container_name: codesandbox-app
+    volumes:
+      # Bind-mount the entire project for live reload
+      - .:/app
+      # Named volume keeps the container's .venv intact even when . is mounted
+      - venv:/app/.venv
+    environment:
+      DATABASE_URL: mysql://codesandbox:codesandbox@mysql:3306/codesandbox
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: codesandbox
+      SECRET_KEY: dev-secret-change-in-production
+      SESSION_COOKIE_NAME: cs_session
+      SESSION_TTL_HOURS: "24"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── MySQL ──────────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:9
+    container_name: codesandbox-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: codesandbox
+      MYSQL_USER: codesandbox
+      MYSQL_PASSWORD: codesandbox
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U room24 -d room24_app"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ucodesandbox", "-pcodesandbox"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: codesandbox-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── MinIO object storage ───────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: codesandbox-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console  →  http://localhost:9001
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
-  room24_postgres_pgdata:
+  venv:
+  mysql_data:
+  redis_data:
+  minio_data:
