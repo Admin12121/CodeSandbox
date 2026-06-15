@@ -176,6 +176,29 @@ def platform_staff():
     user = session.user
     nav = build_nav("/platform/staff", user)
     staff = get_platform_staff()
+    rbac = get_platform_rbac()
+
+    member_param = request.args.get("member") or None
+    search = request.args.get("search", "").strip()
+    selected_member = None
+    if member_param == "new":
+        selected_member = {
+            "id": None, "name": "", "email": "", "phone": "",
+            "status": "active", "role_ids": [], "roles": [],
+        }
+    elif member_param:
+        selected_member = next((m for m in staff if str(m["id"]) == member_param), None)
+
+    if search:
+        q = search.lower()
+        visible_staff = [
+            m for m in staff
+            if q in m["name"].lower() or q in m["email"].lower()
+            or any(q in r["name"].lower() for r in m["roles"])
+        ]
+    else:
+        visible_staff = staff
+
     return {
         "_meta": {"title": "Application Staff — CodeSandbox"},
         "user": _user_ctx(user),
@@ -183,6 +206,11 @@ def platform_staff():
         "page_title": "Application Staff",
         "page_description": "Platform admins and staff members",
         "staff": staff,
+        "visible_staff": visible_staff,
+        "roles": rbac["roles"],
+        "selected_member": selected_member,
+        "search": search,
+        "error": request.args.get("error"),
     }
 
 
@@ -197,14 +225,52 @@ def platform_roles():
     user = session.user
     nav = build_nav("/platform/roles", user)
     rbac = get_platform_rbac()
+    staff = get_platform_staff()
+
+    role_param = request.args.get("role") or None
+    tab = request.args.get("tab", "display")
+    if tab not in ("display", "permissions", "sidebar", "members"):
+        tab = "display"
+    search = request.args.get("search", "").strip()
+
+    selected_role = None
+    if role_param == "new":
+        selected_role = {
+            "id": None, "name": "", "display_name": "New role",
+            "color": "#6366f1", "description": "", "is_system": False,
+            "is_mutable": True, "position": 0, "permission_keys": [],
+            "member_count": 0, "members": [],
+        }
+    elif role_param:
+        selected_role = next((r for r in rbac["roles"] if str(r["id"]) == role_param), None)
+
+    if search:
+        q = search.lower()
+        visible_roles = [
+            r for r in rbac["roles"]
+            if q in r["display_name"].lower() or q in r["description"].lower()
+        ]
+    else:
+        visible_roles = rbac["roles"]
+
+    member_ids = {m["id"] for m in (selected_role["members"] if selected_role else [])}
+    available_members = [m for m in staff if m["id"] not in member_ids]
+
     return {
-        "_meta": {"title": "Roles — CodeSandbox"},
+        "_meta": {"title": "Staff Roles — CodeSandbox"},
         "user": _user_ctx(user),
         "nav": nav,
-        "page_title": "Application Roles",
+        "page_title": "Staff Roles",
         "page_description": "Platform-level roles and permission assignments",
         "roles": rbac["roles"],
+        "visible_roles": visible_roles,
         "permission_groups": rbac["permission_groups"],
+        "nav_matrix": rbac["nav_matrix"],
+        "selected_role": selected_role,
+        "editor_tab": tab,
+        "search": search,
+        "available_members": available_members,
+        "error": request.args.get("error"),
     }
 
 

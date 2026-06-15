@@ -1,0 +1,383 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/input-group.html" as ig %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/textarea.html" as textarea %}
+{% import "components/ui/switch.html" as sw %}
+{% import "components/ui/alert.html" as alert %}
+{% import "components/ui/select-native.html" as sn %}
+
+{% macro role_dot(color) -%}
+<span aria-hidden="true" class="size-3 shrink-0 rounded-full" style="background:{{ color }}"></span>
+{%- endmacro %}
+
+{% macro lock_icon() -%}
+<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+{%- endmacro %}
+
+{% macro error_alert(error) -%}
+  {% if error %}
+    <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {{ error }}
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+
+{# ════════════════════════════ LIST VIEW ════════════════════════════ #}
+{% macro roles_list(visible_roles, roles, search, error) %}
+  <div class="grid gap-4">
+
+    <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <form method="get" action="/platform/roles">
+        {% call ig.input_group() %}
+          {{ ig.input_group_input(name="search", placeholder="Search roles", value=search, attrs={"type": "search", "aria-label": "Search roles"}) }}
+          {% call ig.input_group_addon() %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          {% endcall %}
+        {% endcall %}
+      </form>
+      {% call button.button(attrs={"data-cs-href": "/platform/roles?role=new"}, class="cursor-pointer") %}
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        Create role
+      {% endcall %}
+    </div>
+
+    {{ error_alert(error) }}
+
+    {% call frame.frame() %}
+      {% call table.table(variant="card") %}
+        <thead>
+          <tr>
+            <th class="w-9"></th>
+            <th>Staff Roles — {{ roles|length }}</th>
+            <th class="w-32">Members</th>
+            <th class="w-28 text-right">Position</th>
+            <th class="w-36 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not visible_roles %}
+            <tr><td colspan="5" class="h-28 text-center text-muted-foreground">No roles found.</td></tr>
+          {% else %}
+            {% for role in visible_roles %}
+              <tr class="group cursor-pointer" data-cs-href="/platform/roles?role={{ role.id }}">
+                <td>
+                  <svg class="size-4 text-muted-foreground {{ '' if role.is_mutable else 'opacity-35' }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+                </td>
+                <td>
+                  <div class="flex min-w-0 items-center gap-3">
+                    {{ role_dot(role.color) }}
+                    <span class="truncate font-medium">{{ role.display_name }}</span>
+                    {% if not role.is_mutable %}{{ lock_icon() }}{% endif %}
+                  </div>
+                </td>
+                <td>
+                  <div class="flex items-center gap-2">
+                    <span class="tabular-nums">{{ role.member_count }}</span>
+                    <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
+                  </div>
+                </td>
+                <td class="text-right tabular-nums">{{ role.position }}</td>
+                <td>
+                  <div class="flex justify-end">
+                    <button type="button" data-cs-menu="rm-{{ role.id }}"
+                      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
+                      aria-label="More actions for {{ role.display_name }}">
+                      <svg class="pointer-events-none size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+                    </button>
+                    <div id="rm-{{ role.id }}" class="hidden fixed z-[100] w-56 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
+                      <div class="px-2 py-1 text-xs font-semibold text-muted-foreground">Role actions</div>
+                      <a href="/platform/roles?role={{ role.id }}" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent hover:text-accent-foreground">
+                        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                        Edit role
+                      </a>
+                      <form method="post" action="/platform/roles/{{ role.id }}/duplicate">
+                        <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
+                          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                          Duplicate role
+                        </button>
+                      </form>
+                      <div class="my-1 h-px bg-border"></div>
+                      {% if role.is_mutable %}
+                        <form method="post" action="/platform/roles/{{ role.id }}/delete">
+                          <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
+                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                            Delete role
+                          </button>
+                        </form>
+                      {% else %}
+                        <div class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-muted-foreground opacity-50">
+                          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                          Delete role
+                        </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+      {% endcall %}
+    {% endcall %}
+
+  </div>
+{% endmacro %}
+
+
+{# ════════════════════════════ EDITOR VIEW ════════════════════════════ #}
+{% macro role_editor(selected_role, roles, permission_groups, nav_matrix, editor_tab, available_members, error) %}
+  {% set is_create = selected_role.id is none %}
+  {% set rid = selected_role.id %}
+  <div class="flex min-h-[calc(100dvh-var(--header-height)-3rem)] overflow-hidden rounded-xl border bg-background">
+
+    {# Left mini-sidebar: role list #}
+    <div class="flex w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
+      <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+        <a href="/platform/roles" aria-label="Back to roles"
+           class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        </a>
+        <a href="/platform/roles?role=new" aria-label="Create role"
+           class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        </a>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto p-2">
+        <p class="px-2 py-1 text-xs font-medium text-muted-foreground select-none">Roles</p>
+        <ul class="m-0 flex flex-col gap-0.5 p-0 list-none">
+          {% if is_create %}
+            <li>
+              <span class="flex w-full items-center gap-3 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground">
+                {{ role_dot(selected_role.color) }}
+                <span class="truncate">New role</span>
+              </span>
+            </li>
+          {% endif %}
+          {% for role in roles %}
+            <li>
+              <a href="/platform/roles?role={{ role.id }}"
+                 class="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors
+                   {% if rid == role.id %}bg-sidebar-accent font-medium text-sidebar-accent-foreground
+                   {% else %}hover:bg-sidebar-accent hover:text-sidebar-accent-foreground{% endif %}">
+                {{ role_dot(role.color) }}
+                <span class="truncate">{{ role.display_name }}</span>
+                {% if not role.is_mutable %}{{ lock_icon() }}{% endif %}
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    {# Right: editor #}
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+
+      <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+        <div class="flex min-w-0 items-center gap-2">
+          <a href="/platform/roles" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors md:hidden" aria-label="Back to roles">
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          </a>
+          <div class="truncate text-sm font-semibold">
+            {{ "Create role" if is_create else selected_role.display_name }}
+          </div>
+          {% if not selected_role.is_mutable %}{{ lock_icon() }}{% endif %}
+        </div>
+        {% if selected_role.is_mutable %}
+          <button type="submit" form="role-display-form" aria-label="Save role"
+            class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
+          </button>
+        {% endif %}
+      </div>
+
+      {% if error %}
+        <div class="border-b p-3">{{ error_alert(error) }}</div>
+      {% endif %}
+
+      {# Tabs #}
+      {% set tab_base = "/platform/roles?role=" ~ (rid if rid else "new") ~ "&tab=" %}
+      <div class="p-2">
+        <div class="relative z-0 flex w-full items-center justify-center gap-x-0.5 rounded-lg bg-muted p-0.5 text-muted-foreground/72">
+          {% for t, lbl in [("display", "Display"), ("permissions", "Permissions"), ("sidebar", "Sidebar"), ("members", "Members (" ~ selected_role.members|length ~ ")")] %}
+            <a href="{{ tab_base }}{{ t }}"
+               class="relative flex h-9 shrink-0 grow items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-sm font-medium transition-colors sm:h-8
+                 {% if editor_tab == t %}bg-background text-foreground shadow-sm dark:bg-input{% else %}hover:text-foreground{% endif %}">
+              {{ lbl }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto">
+
+        {# ── Display tab ── #}
+        {% if editor_tab == "display" %}
+          <form id="role-display-form" method="post"
+                action="{{ '/platform/roles/create' if is_create else '/platform/roles/' ~ rid ~ '/update' }}"
+                class="grid gap-5 p-4">
+            {% if not selected_role.is_mutable %}
+              <div class="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                {{ lock_icon() }} This system role is read-only.
+              </div>
+            {% endif %}
+            <div class="grid gap-4">
+              <div class="grid gap-2 sm:grid-cols-2 sm:gap-4">
+                {% call field.field() %}
+                  {{ field.field_label("Name", for_id="role-name") }}
+                  {{ input.input(name="name", value=selected_role.display_name if not is_create else "", placeholder="Revenue Manager", required=true, attrs={"id": "role-name"} if selected_role.is_mutable else {"id": "role-name", "disabled": true}) }}
+                {% endcall %}
+                {% call field.field() %}
+                  {{ field.field_label("Color", for_id="role-color") }}
+                  <div class="flex items-center gap-2">
+                    <input type="color" name="color" id="role-color" value="{{ selected_role.color }}"
+                      {% if not selected_role.is_mutable %}disabled{% endif %}
+                      class="h-8.5 w-16 cursor-pointer rounded-lg border border-input bg-background p-1 sm:h-7.5">
+                    <span class="text-sm text-muted-foreground tabular-nums">{{ selected_role.color }}</span>
+                  </div>
+                {% endcall %}
+              </div>
+              {% call field.field() %}
+                {{ field.field_label("Description", for_id="role-desc") }}
+                {{ textarea.textarea(name="description", value=selected_role.description, placeholder="Role purpose", attrs={"id": "role-desc"} if selected_role.is_mutable else {"id": "role-desc", "disabled": true}) }}
+              {% endcall %}
+            </div>
+            {% if selected_role.is_mutable %}
+              <div>
+                {% call button.button(type="submit") %}{{ "Create role" if is_create else "Save changes" }}{% endcall %}
+              </div>
+            {% endif %}
+          </form>
+        {% endif %}
+
+        {# ── Permissions tab ── #}
+        {% if editor_tab == "permissions" %}
+          <div class="grid gap-4 p-4">
+            {% if is_create %}
+              <div class="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                Save the role first, then assign permissions.
+              </div>
+            {% else %}
+              <div class="grid gap-5">
+                {% for group in permission_groups %}
+                  <section class="grid gap-2">
+                    <h3 class="text-base font-semibold">{{ group.group.replace("_", " ").title() }}</h3>
+                    <div class="divide-y border-b">
+                      {% for perm in group.permissions %}
+                        {% set checked = perm.key in selected_role.permission_keys %}
+                        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-4">
+                          <div class="min-w-0">
+                            <div class="truncate text-sm font-semibold">{{ perm.label }}</div>
+                            <p class="mt-1 text-sm text-muted-foreground"><code class="text-xs">{{ perm.key }}</code></p>
+                          </div>
+                          {% if selected_role.is_mutable %}
+                            <form method="post" action="/platform/roles/{{ rid }}/permission" data-cs-autosubmit>
+                              <input type="hidden" name="key" value="{{ perm.key }}">
+                              <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
+                              <input type="hidden" name="tab" value="permissions">
+                              {{ sw.switch(checked=checked, attrs={"aria-label": "Toggle " ~ perm.label}) }}
+                            </form>
+                          {% else %}
+                            {{ sw.switch(checked=checked, disabled=true, attrs={"aria-label": perm.label}) }}
+                          {% endif %}
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </section>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        {# ── Sidebar tab ── #}
+        {% if editor_tab == "sidebar" %}
+          <div class="grid gap-5 p-4">
+            {% for section in nav_matrix %}
+              <section class="grid gap-2">
+                <h3 class="text-base font-semibold">{{ section.label }}</h3>
+                <div class="divide-y border-b">
+                  {% for nav_item in section['items'] %}
+                    {% set pkey = nav_item.permission %}
+                    {% set checked = (pkey is none) or (pkey in selected_role.permission_keys) %}
+                    <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-4">
+                      <div class="min-w-0">
+                        <div class="truncate text-sm font-semibold">{{ nav_item.title }}</div>
+                        <p class="mt-1 truncate text-sm text-muted-foreground">{{ pkey or "Always visible" }} — {{ nav_item.href }}</p>
+                      </div>
+                      {% if pkey and selected_role.is_mutable and not is_create %}
+                        <form method="post" action="/platform/roles/{{ rid }}/permission" data-cs-autosubmit>
+                          <input type="hidden" name="key" value="{{ pkey }}">
+                          <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
+                          <input type="hidden" name="tab" value="sidebar">
+                          {{ sw.switch(checked=checked, attrs={"aria-label": "Toggle sidebar item " ~ nav_item.title}) }}
+                        </form>
+                      {% else %}
+                        {{ sw.switch(checked=checked, disabled=true, attrs={"aria-label": nav_item.title}) }}
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              </section>
+            {% endfor %}
+          </div>
+        {% endif %}
+
+        {# ── Members tab ── #}
+        {% if editor_tab == "members" %}
+          <div class="grid gap-4 p-4">
+            {% if is_create %}
+              <div class="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                Save the role first, then add members.
+              </div>
+            {% else %}
+              {% if available_members %}
+                <form method="post" action="/platform/roles/{{ rid }}/members/add" class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                  {% call field.field() %}
+                    {{ field.field_label("Add staff member", for_id="add-member") }}
+                    <select id="add-member" name="user_id" aria-label="Select staff member"
+                      class="flex h-8.5 w-full appearance-none items-center rounded-lg border border-input bg-background px-3 py-1 pr-8 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-[3px] focus:ring-ring/24 sm:h-7.5"
+                      style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 0.5rem center">
+                      {% for m in available_members %}
+                        <option value="{{ m.id }}">{{ m.name }} — {{ m.email }}</option>
+                      {% endfor %}
+                    </select>
+                  {% endcall %}
+                  {% call button.button(type="submit") %}Add member{% endcall %}
+                </form>
+              {% endif %}
+              <div class="divide-y rounded-lg border">
+                {% if not selected_role.members %}
+                  <div class="px-4 py-8 text-center text-sm text-muted-foreground">No members assigned to this role.</div>
+                {% else %}
+                  {% for member in selected_role.members %}
+                    <div class="flex items-center gap-3 px-3 py-2.5">
+                      <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold uppercase select-none">{{ (member.name or "?")[:2] }}</span>
+                      <div class="min-w-0 flex-1">
+                        <div class="truncate text-sm font-medium">{{ member.name }}</div>
+                        <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
+                      </div>
+                      {{ badge.badge(member.status.title(), variant="outline") }}
+                      <form method="post" action="/platform/roles/{{ rid }}/members/{{ member.id }}/remove">
+                        <button type="submit" aria-label="Remove {{ member.name }}"
+                          class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+                          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                      </form>
+                    </div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+{% endmacro %}

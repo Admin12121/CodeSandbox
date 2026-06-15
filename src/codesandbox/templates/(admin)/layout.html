@@ -1,0 +1,349 @@
+{% import "components/ui/kbd.html" as kbd %}
+
+{# ── Icon macro keyed by href ─────────────────────────────────────────────── #}
+{% macro nav_icon(href) -%}
+<svg class="size-4.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  {%- if href == "/dashboard" -%}<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
+  {%- elif href == "/platform/users" -%}<path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/>
+  {%- elif href == "/platform/organizations" -%}<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/>
+  {%- elif href == "/platform/staff" -%}<circle cx="18" cy="15" r="3"/><circle cx="9" cy="7" r="4"/><path d="M10 15H6a4 4 0 0 0-4 4v2"/><path d="m21.7 16.4-.9-.3"/><path d="m15.2 13.9-.9-.3"/><path d="m16.6 18.7.3-.9"/><path d="m19.1 12.2.3-.9"/><path d="m19.6 18.7-.4-1"/><path d="m16.8 12.3-.4-1"/><path d="m14.3 16.6 1-.4"/><path d="m20.7 13.8 1-.4"/>
+  {%- elif href == "/platform/roles" -%}<path d="M2 18v3c0 .6.4 1 1 1h4v-3h3v-3h2l1.4-1.4a6.5 6.5 0 1 0-4-4Z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/>
+  {%- elif href.startswith("/settings") -%}<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
+  {%- elif href == "#help" -%}<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>
+  {%- elif href == "/my/organizations" -%}<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
+  {%- else -%}<circle cx="12" cy="12" r="10"/>
+  {%- endif -%}
+</svg>
+{%- endmacro %}
+
+{# ── Sidebar trigger icon — panel-left-close / panel-left-open ─────────── #}
+{% macro trigger_icon(open=true) -%}
+<svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  {%- if open -%}<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/>
+  {%- else -%}<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>
+  {%- endif -%}
+</svg>
+{%- endmacro %}
+
+{% macro nav_link(item) -%}
+<a href="{{ item['href'] }}" data-nav-href="{{ item['href'] }}"
+   class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-none transition-colors
+     {% if item['active'] %}bg-sidebar-accent text-sidebar-accent-foreground font-medium
+     {% else %}text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground{% endif %}">
+  {{ nav_icon(item['icon'] if item['icon'] is defined else item['href']) }}
+  <span class="truncate group-data-[state=collapsed]:hidden">{{ item['label'] }}</span>
+</a>
+{%- endmacro %}
+
+{# ── Root wrapper — group lets child selectors react to data-state ──────── #}
+<div
+  id="cs-sw"
+  data-slot="sidebar-wrapper"
+  data-state="expanded"
+  class="group group/sidebar-wrapper flex h-dvh min-h-0 overflow-hidden bg-background"
+  style="--sidebar-width:16rem;--sidebar-width-icon:3rem;--header-height:calc(var(--spacing,0.25rem)*12 + 1px)"
+>
+
+  {# ── Sidebar ─────────────────────────────────────────────────────────── #}
+  <aside class="hidden md:flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-linear w-(--sidebar-width) group-data-[state=collapsed]:w-(--sidebar-width-icon) overflow-hidden">
+
+    {# Logo + collapse trigger #}
+    <div class="flex h-(--header-height) shrink-0 items-center gap-1 border-b border-sidebar-border px-2">
+      <a href="/dashboard" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 hover:bg-sidebar-accent transition-colors">
+        <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background text-xs font-bold select-none">CS</span>
+        <span class="truncate text-base font-semibold group-data-[state=collapsed]:hidden">CodeSandbox</span>
+      </a>
+      {# Collapse button — hidden when already collapsed #}
+      <button type="button" data-cs-sidebar-toggle aria-label="Collapse sidebar"
+        class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[state=collapsed]:hidden">
+        {{ trigger_icon(open=false) }}
+      </button>
+    </div>
+
+    {# Main navigation #}
+    <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden py-1">
+      {% for section in nav['sections'] %}
+        <div class="px-2 py-1">
+          <p class="mb-0.5 px-2 py-1 text-xs font-medium text-sidebar-foreground/70 select-none group-data-[state=collapsed]:hidden">{{ section['label'] }}</p>
+          <ul class="m-0 flex w-full flex-col gap-0.5 p-0 list-none">
+            {% for item in section['items'] %}
+              <li>{{ nav_link(item) }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+
+      {# Secondary nav — pinned to bottom #}
+      <div class="mt-auto px-2 py-1">
+        <ul class="m-0 flex w-full flex-col gap-0.5 p-0 list-none">
+          {% for item in nav['secondary'] %}
+            <li>{{ nav_link(item) }}</li>
+          {% endfor %}
+          <li>
+            <button type="button" data-cs-search-open
+              class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors">
+              <svg class="size-4.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <span class="truncate group-data-[state=collapsed]:hidden">Search</span>
+              <span class="group-data-[state=collapsed]:hidden">{% call kbd.kbd_group(class="ml-auto") %}{{ kbd.kbd("Ctrl") }}{{ kbd.kbd("J") }}{% endcall %}</span>
+            </button>
+          </li>
+          <li>
+            <button type="button" data-cs-toggle-dark
+              class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors">
+              <svg class="size-4.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+              <span class="truncate group-data-[state=collapsed]:hidden">Dark Mode</span>
+              <span class="ml-auto inline-flex h-[18px] w-8 shrink-0 items-center rounded-full bg-input transition-colors dark:bg-primary group-data-[state=collapsed]:hidden">
+                <span class="inline-block size-3.5 rounded-full bg-background shadow transition-transform translate-x-0.5 dark:translate-x-[15px]"></span>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    {# Footer — Nav User #}
+    <div class="border-t border-sidebar-border p-2">
+      <button type="button" id="nav-user-btn" data-cs-menu="nav-user-menu" data-cs-menu-dir="up" data-cs-menu-match
+        class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:px-0">
+        <span class="pointer-events-none flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold uppercase select-none">{{ (user['name'] or "?")[:2] }}</span>
+        <div class="pointer-events-none grid min-w-0 flex-1 text-left leading-tight group-data-[state=collapsed]:hidden">
+          <span class="truncate text-sm font-medium">{{ user['name'] }}</span>
+          <span class="truncate text-xs text-muted-foreground">{{ user['email'] }}</span>
+        </div>
+        <svg class="pointer-events-none ml-auto size-4 shrink-0 opacity-50 group-data-[state=collapsed]:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+      </button>
+    </div>
+
+  </aside>
+
+  {# ── Main content ────────────────────────────────────────────────────── #}
+  <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+
+    <header class="sticky top-0 z-40 flex h-(--header-height) shrink-0 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur lg:px-4">
+      {# Expand trigger — visible only when sidebar is collapsed #}
+      <button type="button" data-cs-sidebar-toggle aria-label="Expand sidebar"
+        class="hidden group-data-[state=collapsed]:flex shrink-0 size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+        {{ trigger_icon(open=true) }}
+      </button>
+      <span class="hidden group-data-[state=collapsed]:block h-5 w-px bg-border shrink-0"></span>
+
+      <div class="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
+        <a href="/dashboard" class="shrink-0 text-muted-foreground hover:text-foreground transition-colors">Dashboard</a>
+        {% if page_title is defined and page_title and page_title != "Dashboard" %}
+          <svg class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          <h1 class="truncate text-sm font-medium text-foreground">{{ page_title }}</h1>
+        {% endif %}
+      </div>
+    </header>
+
+    <main class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">
+      {{ children|safe }}
+    </main>
+
+  </div>
+
+</div>
+
+{# Nav user dropdown — outside sidebar, position:fixed so overflow never clips #}
+<div id="nav-user-menu" role="menu"
+  class="hidden fixed z-[200] min-w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
+  <div class="mb-1 flex items-center gap-2.5 rounded-md bg-muted p-2">
+    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground text-xs font-semibold uppercase select-none">{{ (user['name'] or "?")[:2] }}</span>
+    <div class="grid min-w-0 flex-1">
+      <span class="truncate text-sm font-medium">{{ user['name'] }}</span>
+      <span class="truncate text-xs text-muted-foreground">{{ user['email'] }}</span>
+    </div>
+  </div>
+  <a href="/settings" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent hover:text-accent-foreground transition-colors">
+    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3"/><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"/></svg>
+    Account
+  </a>
+  <a href="#" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent hover:text-accent-foreground transition-colors">
+    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+    Notifications
+  </a>
+  <div class="my-1 h-px bg-border"></div>
+  <form method="post" action="/logout">
+    <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-destructive hover:bg-destructive/10 transition-colors">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Log out
+    </button>
+  </form>
+</div>
+
+{# Command palette (Ctrl+J / Search) #}
+<div id="cs-cmd" class="hidden fixed inset-0 z-[300] bg-black/40 p-4 pt-[12vh]">
+  <div class="mx-auto w-full max-w-lg overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl">
+    <div class="flex items-center gap-2 border-b px-3">
+      <svg class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" placeholder="Type a page name…" autocomplete="off"
+        class="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground">
+      {{ kbd.kbd("Esc") }}
+    </div>
+    <div class="max-h-72 overflow-y-auto p-1.5">
+      {% for section in nav['sections'] %}
+        <div class="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground" data-cmd-group>{{ section['label'] }}</div>
+        {% for item in section['items'] %}
+          <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
+             class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground">
+            {{ nav_icon(item['href']) }}{{ item['label'] }}
+          </a>
+        {% endfor %}
+      {% endfor %}
+      <div class="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground" data-cmd-group>Actions</div>
+      {% for item in nav['secondary'] %}
+        {% if item['href'] != '#help' %}
+          <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
+             class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground">
+            {{ nav_icon(item['href']) }}{{ item['label'] }}
+          </a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{# Include UI runtime (tabs, dialogs, etc.) for all admin pages #}
+{% include "components/ui/_runtime.html" %}
+
+{# Global behavior — CSP nonce requires app_script; inline on* handlers are blocked #}
+{% app_script "admin-layout-globals" %}
+(function(){
+  'use strict';
+  var H=document.documentElement,S='cs-theme';
+
+  /* ── dark mode init ─────────────────────────────────────────────────── */
+  var saved=localStorage.getItem(S);
+  if(saved==='dark'||(!saved&&window.matchMedia('(prefers-color-scheme:dark)').matches))H.classList.add('dark');
+
+  /* ── sidebar collapse init ──────────────────────────────────────────── */
+  var sw=document.getElementById('cs-sw');
+  if(sw){
+    var sbSaved=localStorage.getItem('cs-sidebar');
+    if(sbSaved==='collapsed')sw.dataset.state='collapsed';
+  }
+
+  /* ── fixed-position dropdown manager ─────────────────────────────── */
+  var _el=null,_tr=null;
+  function _close(){if(_el){_el.classList.add('hidden');_el=null;_tr=null;}}
+  function _open(el,tr,up,matchW){
+    if(_el===el){_close();return;}
+    _close();
+    var r=tr.getBoundingClientRect();
+    el.style.position='fixed';
+    el.style.top='';el.style.bottom='';el.style.left='';el.style.right='';el.style.width='';
+    if(up){
+      el.style.bottom=(window.innerHeight-r.top+4)+'px';
+      el.style.left=r.left+'px';
+      if(matchW)el.style.width=Math.max(r.width,224)+'px';
+    }else{
+      el.style.top=(r.bottom+4)+'px';
+      el.style.right=Math.max(window.innerWidth-r.right,8)+'px';
+    }
+    el.classList.remove('hidden');
+    _el=el;_tr=tr;
+  }
+
+  /* ── command palette ─────────────────────────────────────────────── */
+  var cmd=document.getElementById('cs-cmd');
+  var cmdInput=cmd?cmd.querySelector('input'):null;
+  function openCmd(){
+    if(!cmd)return;
+    _close();
+    cmd.classList.remove('hidden');
+    if(cmdInput){cmdInput.value='';filterCmd('');cmdInput.focus();}
+  }
+  function closeCmd(){if(cmd)cmd.classList.add('hidden');}
+  function filterCmd(q){
+    q=q.trim().toLowerCase();
+    cmd.querySelectorAll('[data-cmd-item]').forEach(function(it){
+      var hit=!q||it.getAttribute('data-cmd-item').toLowerCase().indexOf(q)!==-1;
+      it.classList.toggle('hidden',!hit);
+    });
+  }
+  if(cmd){
+    cmd.addEventListener('click',function(e){if(e.target===cmd)closeCmd();});
+    if(cmdInput)cmdInput.addEventListener('input',function(){filterCmd(this.value);});
+  }
+
+  /* ── dark-mode toggle with View Transitions circular reveal ────────── */
+  function toggleDark(btn){
+    var isDark=H.classList.contains('dark');
+    var r=btn.getBoundingClientRect();
+    var cx=r.left+r.width/2, cy=r.top+r.height/2;
+    var endR=Math.hypot(Math.max(cx,window.innerWidth-cx),Math.max(cy,window.innerHeight-cy));
+    var clipStart='circle(0px at '+cx+'px '+cy+'px)';
+    var clipEnd='circle('+endR+'px at '+cx+'px '+cy+'px)';
+    function applyDark(){H.classList.toggle('dark');localStorage.setItem(S,H.classList.contains('dark')?'dark':'light');}
+    if(!document.startViewTransition){applyDark();return;}
+    var vt=document.startViewTransition(applyDark);
+    vt.ready.then(function(){
+      document.documentElement.animate(
+        {clipPath: isDark?[clipEnd,clipStart]:[clipStart,clipEnd]},
+        {duration:400,easing:'ease-in-out',pseudoElement:isDark?'::view-transition-old(root)':'::view-transition-new(root)'}
+      );
+    });
+  }
+
+  /* ── delegated clicks (CSP-safe: no inline handlers) ─────────────── */
+  document.addEventListener('click',function(e){
+    var t;
+
+    /* sidebar toggle */
+    t=e.target.closest('[data-cs-sidebar-toggle]');
+    if(t){
+      if(!sw)return;
+      var isC=sw.dataset.state==='collapsed';
+      sw.dataset.state=isC?'expanded':'collapsed';
+      localStorage.setItem('cs-sidebar',sw.dataset.state);
+      return;
+    }
+
+    /* dropdown menus */
+    t=e.target.closest('[data-cs-menu]');
+    if(t){
+      e.preventDefault();
+      var el=document.getElementById(t.getAttribute('data-cs-menu'));
+      if(el)_open(el,t,t.getAttribute('data-cs-menu-dir')==='up',t.hasAttribute('data-cs-menu-match'));
+      return;
+    }
+
+    /* dark mode with VT animation */
+    t=e.target.closest('[data-cs-toggle-dark]');
+    if(t){toggleDark(t);return;}
+
+    /* command palette */
+    if(e.target.closest('[data-cs-search-open]')){openCmd();return;}
+
+    /* close dropdown on outside click */
+    if(_el&&!_el.contains(e.target))_close();
+
+    /* table row navigation */
+    var row=e.target.closest('[data-cs-href]');
+    if(row&&!e.target.closest('a,button,form,input,label')){
+      window.location.href=row.getAttribute('data-cs-href');
+    }
+  });
+
+  /* ── delegated change: auto-submit forms ────────────────────────── */
+  document.addEventListener('change',function(e){
+    var sw2=e.target.closest('[data-slot=switch]');
+    if(sw2&&e.target.type==='checkbox'){
+      sw2.setAttribute('data-state',e.target.checked?'checked':'unchecked');
+      var th=sw2.querySelector('[data-slot=switch-thumb]');
+      if(th)th.classList.toggle('translate-x-[calc(var(--thumb-size)-4px)]',e.target.checked);
+    }
+    var auto=e.target.closest('[data-cs-autosubmit]');
+    if(auto){
+      var form=auto.tagName==='FORM'?auto:auto.closest('form');
+      if(form)form.submit();
+    }
+  });
+
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){_close();closeCmd();}
+    if((e.ctrlKey||e.metaKey)&&(e.key==='j'||e.key==='J')){e.preventDefault();openCmd();}
+  });
+  window.addEventListener('resize',_close);
+})();
+{% end_app_script %}

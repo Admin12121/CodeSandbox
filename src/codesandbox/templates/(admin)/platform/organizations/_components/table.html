@@ -1,0 +1,159 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/input-group.html" as ig %}
+{% import "components/ui/select-native.html" as sn %}
+{% import "components/ui/field.html" as field %}
+
+{% macro organizations_table(organizations, total, page, total_pages, search, status_filter) %}
+  <div class="grid gap-4">
+
+    {# Toolbar: filter (3-col) + create button on same row #}
+    <div class="flex flex-wrap items-center gap-3">
+      <form method="get" action="/platform/organizations" class="grid flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_13rem]">
+        {% call ig.input_group() %}
+          {{ ig.input_group_input(
+            name="search",
+            placeholder="Search organizations…",
+            value=search,
+            attrs={"type": "search", "aria-label": "Search organizations"}
+          ) }}
+          {% call ig.input_group_addon() %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          {% endcall %}
+        {% endcall %}
+
+        {{ sn.select_native(
+          name="status",
+          options=[
+            {"value": "all", "label": "All status"},
+            {"value": "active", "label": "Active"},
+            {"value": "inactive", "label": "Inactive"},
+            {"value": "suspended", "label": "Suspended"},
+          ],
+          value=status_filter,
+          attrs={"aria-label": "Filter by status", "onchange": "this.form.submit()"}
+        ) }}
+      </form>
+
+      {# Create org button #}
+      <div class="shrink-0">
+        {% call button.button(type="button", attrs={"onclick": "window.__csMenuEnd(this,'new-org-popup')"}) %}
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          New Organization
+        {% endcall %}
+        <div id="new-org-popup" class="hidden fixed z-[100] w-72 rounded-lg border bg-popover p-4 shadow-lg text-sm text-popover-foreground">
+          <h3 class="mb-3 font-semibold">Create Organization</h3>
+          <form method="post" action="/platform/organizations/create" class="grid gap-3">
+            {% call field.field() %}
+              {{ field.field_label("Name", for_id="org-name") }}
+              {{ input.input(name="name", placeholder="Acme Corp", required=true, attrs={"id": "org-name"}) }}
+            {% endcall %}
+            {% call field.field() %}
+              {{ field.field_label("Description", for_id="org-desc") }}
+              {{ input.input(name="description", placeholder="Optional description", attrs={"id": "org-desc"}) }}
+            {% endcall %}
+            {% call button.button(type="submit", class="w-full") %}Create{% endcall %}
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {# Table #}
+    {% call frame.frame() %}
+      {% call table.table(variant="card") %}
+        <thead>
+          <tr>
+            <th>Organizations — {{ total }}</th>
+            <th class="w-28">Status</th>
+            <th class="w-28 text-right">Members</th>
+            <th class="w-36">Created</th>
+            <th class="w-32 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not organizations %}
+            <tr>
+              <td colspan="5" class="h-28 text-center text-muted-foreground">
+                No organizations found.
+              </td>
+            </tr>
+          {% else %}
+            {% for org in organizations %}
+              <tr class="group">
+                <td>
+                  <div class="min-w-0">
+                    <div class="truncate font-medium">{{ org.name }}</div>
+                    <div class="truncate text-xs text-muted-foreground">{{ org.slug }}</div>
+                  </div>
+                </td>
+                <td>
+                  {% if org.status == "active" %}
+                    {{ badge.badge("Active", variant="outline") }}
+                  {% elif org.status == "suspended" %}
+                    {{ badge.badge("Suspended", variant="destructive") }}
+                  {% else %}
+                    {{ badge.badge("Inactive", variant="secondary") }}
+                  {% endif %}
+                </td>
+                <td class="text-right text-sm tabular-nums">{{ org.member_count }}</td>
+                <td class="text-sm text-muted-foreground">
+                  {% if org.created_at %}
+                    {{ org.created_at.strftime("%b %d, %Y") }}
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="flex justify-end">
+                    <button type="button"
+                      onclick="window.__csMenuEnd(this,'om-{{ org.id }}')"
+                      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
+                      aria-label="Organization actions">
+                      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    </button>
+                    <div id="om-{{ org.id }}" class="hidden fixed z-[100] w-48 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
+                      <form method="post" action="/platform/organizations/{{ org.id }}/update-status">
+                        <input type="hidden" name="status" value="{{ 'active' if org.status != 'active' else 'inactive' }}">
+                        <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
+                          {{ "Activate" if org.status != "active" else "Deactivate" }}
+                        </button>
+                      </form>
+                      {% if org.status != "suspended" %}
+                        <form method="post" action="/platform/organizations/{{ org.id }}/update-status">
+                          <input type="hidden" name="status" value="suspended">
+                          <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
+                            Suspend
+                          </button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          {% endif %}
+        </tbody>
+      {% endcall %}
+    {% endcall %}
+
+    {# Pagination #}
+    {% if total_pages > 1 %}
+      <div class="flex items-center justify-between text-sm text-muted-foreground">
+        <span>{{ total }} organizations total</span>
+        <div class="flex items-center gap-1">
+          {% if page > 1 %}
+            <a href="?page={{ page - 1 }}&search={{ search }}&status={{ status_filter }}"
+               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">← Prev</a>
+          {% endif %}
+          <span class="px-2">{{ page }} / {{ total_pages }}</span>
+          {% if page < total_pages %}
+            <a href="?page={{ page + 1 }}&search={{ search }}&status={{ status_filter }}"
+               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">Next →</a>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+  </div>
+{% endmacro %}

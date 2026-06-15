@@ -1,0 +1,4 @@
+{# Shell is now handled by (admin)/layout.html — this file is kept for backwards compat #}
+{% macro admin_shell(user, nav) %}
+  {% if caller is defined %}{{ caller() }}{% endif %}
+{% endmacro %}

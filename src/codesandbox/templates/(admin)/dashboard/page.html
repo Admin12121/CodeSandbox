@@ -1,0 +1,96 @@
+{% import "components/ui/card.html" as card %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+
+<div class="grid gap-6">
+
+  {# Metrics strip #}
+  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for item in metrics %}
+      {% call card.card() %}
+        {% call card.card_header() %}
+          {{ card.card_description(item.label) }}
+          {{ card.card_title(item.value, class="text-2xl font-bold tabular-nums") }}
+        {% endcall %}
+        {% call card.card_content() %}
+          <p class="text-sm text-muted-foreground">{{ item.change }}</p>
+        {% endcall %}
+      {% endcall %}
+    {% endfor %}
+  </section>
+
+  {# MVP progress #}
+  <section>
+    {% call card.card() %}
+      {% call card.card_header() %}
+        {{ card.card_title("Build progress") }}
+        {{ card.card_description("Phase 1 — User management system") }}
+      {% endcall %}
+      {% call card.card_content(class="p-0") %}
+        {% call table.table(variant="card") %}
+          <thead>
+            <tr>
+              <th>Module</th>
+              <th>Status</th>
+              <th>Next</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="font-medium">Identity</td>
+              <td>{{ badge.badge("Done", variant="default") }}</td>
+              <td class="text-muted-foreground">Email verification, 2FA, social auth</td>
+            </tr>
+            <tr>
+              <td class="font-medium">Platform RBAC</td>
+              <td>{{ badge.badge("Done", variant="default") }}</td>
+              <td class="text-muted-foreground">Role editor, permission grants UI</td>
+            </tr>
+            <tr>
+              <td class="font-medium">Organizations</td>
+              <td>{{ badge.badge("Done", variant="default") }}</td>
+              <td class="text-muted-foreground">Invitations, org-level RBAC</td>
+            </tr>
+            <tr>
+              <td class="font-medium">Labs</td>
+              <td>{{ badge.badge("Pending", variant="outline") }}</td>
+              <td class="text-muted-foreground">Lab templates, machines, steps</td>
+            </tr>
+            <tr>
+              <td class="font-medium">Runtime</td>
+              <td>{{ badge.badge("Pending", variant="outline") }}</td>
+              <td class="text-muted-foreground">Sandbox lifecycle, worker queue</td>
+            </tr>
+            <tr>
+              <td class="font-medium">Telemetry</td>
+              <td>{{ badge.badge("Pending", variant="outline") }}</td>
+              <td class="text-muted-foreground">Event ingestion pipeline</td>
+            </tr>
+            <tr>
+              <td class="font-medium">Cases</td>
+              <td>{{ badge.badge("Pending", variant="outline") }}</td>
+              <td class="text-muted-foreground">Investigation workspace</td>
+            </tr>
+          </tbody>
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  </section>
+
+  {# Quick links #}
+  <section class="grid gap-4 sm:grid-cols-3">
+    {% set quick = [
+      {"label": "Manage Users", "href": "/platform/users", "description": "View and update all platform accounts"},
+      {"label": "Organizations", "href": "/platform/organizations", "description": "All tenant organizations"},
+      {"label": "Roles & Permissions", "href": "/platform/roles", "description": "Platform RBAC editor"},
+    ] %}
+    {% for link in quick %}
+      <a href="{{ link.href }}" class="block rounded-lg border bg-card p-4 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+        <div class="font-medium text-sm">{{ link.label }}</div>
+        <div class="mt-1 text-xs text-muted-foreground">{{ link.description }}</div>
+      </a>
+    {% endfor %}
+  </section>
+
+</div>

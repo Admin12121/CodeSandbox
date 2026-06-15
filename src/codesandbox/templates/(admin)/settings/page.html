@@ -1,0 +1,123 @@
+{% import "components/ui/tabs.html" as tabs_ui %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/badge.html" as badge %}
+
+{% set active_tab = request.args.get('tab', 'profile') %}
+
+<div class="grid gap-4">
+  <div class="flex min-w-0 items-center justify-between gap-3">
+    <div class="min-w-0">
+      <p class="truncate text-sm text-muted-foreground">
+        Profile, sign-in, and account controls.
+      </p>
+    </div>
+    {{ badge.badge(user.role_label, variant="outline") }}
+  </div>
+
+  {% call tabs_ui.tabs(class="grid gap-4") %}
+    {% call tabs_ui.tabs_list(class="w-fit") %}
+      {{ tabs_ui.tabs_tab("Profile", value="profile", active=(active_tab == "profile")) }}
+      {{ tabs_ui.tabs_tab("Security", value="security", active=(active_tab == "security")) }}
+    {% endcall %}
+
+    {# ── Profile tab ── #}
+    {% call tabs_ui.tabs_panel(value="profile", active=(active_tab == "profile")) %}
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
+        <form method="post" action="/settings/profile">
+          {% call frame.frame(class="grid gap-4 p-4") %}
+            <div class="min-w-0">
+              <h2 class="truncate text-sm font-semibold">Profile</h2>
+              <p class="truncate text-sm text-muted-foreground">
+                Update your name and contact details.
+              </p>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+              {% call field.field() %}
+                {{ field.field_label("Name", for_id="profile-name") }}
+                {{ input.input(name="name", value=user.name, required=true, attrs={"id": "profile-name", "autocomplete": "name"}) }}
+              {% endcall %}
+              {% call field.field() %}
+                {{ field.field_label("Email", for_id="profile-email") }}
+                {{ input.input(type="email", value=user.email, attrs={"id": "profile-email", "disabled": "disabled"}) }}
+                {% call field.field_description() %}Email cannot be changed.{% endcall %}
+              {% endcall %}
+            </div>
+            <div class="flex justify-end">
+              {% call button.button(type="submit", size="sm", attrs={"disabled": "disabled", "title": "Profile editing coming soon"}) %}
+                Save profile
+              {% endcall %}
+            </div>
+          {% endcall %}
+        </form>
+
+        <div class="grid content-start gap-4">
+          {% call frame.frame(class="grid gap-4 p-4") %}
+            <div class="min-w-0">
+              <h2 class="truncate text-sm font-semibold">Account Activity</h2>
+              <p class="truncate text-sm text-muted-foreground">
+                Role and current status.
+              </p>
+            </div>
+            <div class="grid gap-3 text-sm">
+              <div class="grid gap-1">
+                <span class="text-muted-foreground">Role</span>
+                <span>{{ badge.badge(user.role_label, variant="secondary") }}</span>
+              </div>
+              <div class="grid gap-1">
+                <span class="text-muted-foreground">Account status</span>
+                <span class="font-medium capitalize">{{ user.status or "—" }}</span>
+              </div>
+            </div>
+          {% endcall %}
+        </div>
+      </div>
+    {% endcall %}
+
+    {# ── Security tab ── #}
+    {% call tabs_ui.tabs_panel(value="security", active=(active_tab == "security")) %}
+      {% call frame.frame(class="grid gap-4 p-4") %}
+        <div class="min-w-0">
+          <h2 class="truncate text-sm font-semibold">Security</h2>
+          <p class="truncate text-sm text-muted-foreground">
+            Password and account access controls.
+          </p>
+        </div>
+        <div class="grid divide-y rounded-xl border">
+          <div class="flex items-center justify-between gap-4 p-4">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">Password</div>
+              <div class="text-xs text-muted-foreground">Change your account password</div>
+            </div>
+            {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
+              Change password
+            {% endcall %}
+          </div>
+          <div class="flex items-center justify-between gap-4 p-4">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">Two-factor authentication</div>
+              <div class="text-xs text-muted-foreground">Add an extra layer of security to your account</div>
+            </div>
+            {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
+              Enable 2FA
+            {% endcall %}
+          </div>
+          <div class="flex items-center justify-between gap-4 p-4">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">Sign out</div>
+              <div class="text-xs text-muted-foreground">End your current session</div>
+            </div>
+            <form method="post" action="/logout">
+              {% call button.button(type="submit", variant="destructive", size="sm") %}
+                Sign out
+              {% endcall %}
+            </form>
+          </div>
+        </div>
+      {% endcall %}
+    {% endcall %}
+
+  {% endcall %}
+</div>

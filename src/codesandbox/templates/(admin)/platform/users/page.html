@@ -1,0 +1,11 @@
+{% import "(admin)/platform/users/_components/table.html" as users_tbl %}
+
+{{ users_tbl.users_table(
+  users=users,
+  total=total,
+  page=page,
+  total_pages=total_pages,
+  search=search,
+  role_filter=role_filter,
+  status_filter=status_filter,
+) }}

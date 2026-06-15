@@ -1,0 +1,17 @@
+{% import "(admin)/platform/staff/_components/table.html" as staff_tpl %}
+
+{% if selected_member %}
+  {{ staff_tpl.staff_editor(
+    selected_member=selected_member,
+    staff=staff,
+    roles=roles,
+    error=error
+  ) }}
+{% else %}
+  {{ staff_tpl.staff_list(
+    visible_staff=visible_staff,
+    staff=staff,
+    search=search,
+    error=error
+  ) }}
+{% endif %}

@@ -1,0 +1,187 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/input-group.html" as ig %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/input.html" as input %}
+
+{% macro status_dot(status) -%}
+<span class="size-2 shrink-0 rounded-full {{ 'bg-emerald-500' if status == 'active' else 'bg-muted-foreground' }}"></span>
+{%- endmacro %}
+
+{% macro error_alert(error) -%}
+{% if error %}
+<div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive mb-3">
+  <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  {{ error }}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{# ═══ LIST VIEW ═══ #}
+{% macro staff_list(visible_staff, staff, search, error) %}
+<div class="grid gap-4">
+  <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <form method="get" action="/platform/staff">
+      {% call ig.input_group() %}
+        {{ ig.input_group_input(name="search", placeholder="Search staff", value=search, attrs={"type": "search", "aria-label": "Search staff"}) }}
+        {% call ig.input_group_addon() %}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        {% endcall %}
+      {% endcall %}
+    </form>
+    <a href="/platform/staff?member=new" class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 transition-colors sm:h-8">
+      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      Create staff
+    </a>
+  </div>
+  {{ error_alert(error) }}
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      <thead><tr>
+        <th>Application Staff — {{ staff|length }}</th>
+        <th>Email</th>
+        <th>Roles</th>
+        <th class="w-28">Status</th>
+        <th class="w-20 text-right">Actions</th>
+      </tr></thead>
+      <tbody>
+        {% if not visible_staff %}
+          <tr><td colspan="5" class="h-28 text-center text-muted-foreground">No staff found.</td></tr>
+        {% else %}
+          {% for member in visible_staff %}
+            <tr class="cursor-pointer" data-cs-href="/platform/staff?member={{ member.id }}">
+              <td>
+                <div class="min-w-0">
+                  <div class="truncate font-medium">{{ member.name }}</div>
+                  <div class="truncate text-xs text-muted-foreground">{{ member.email or "No email" }}</div>
+                </div>
+              </td>
+              <td class="text-sm text-muted-foreground">{{ member.email or "—" }}</td>
+              <td>
+                <div class="flex min-w-0 flex-wrap gap-1">
+                  {% if member.roles %}
+                    {% for r in member.roles %}{{ badge.badge(r.name, variant="outline") }}{% endfor %}
+                  {% else %}<span class="text-xs text-muted-foreground">No roles</span>{% endif %}
+                </div>
+              </td>
+              <td>{{ badge.badge(member.status.title(), variant="outline") }}</td>
+              <td>
+                <div class="flex justify-end">
+                  <a href="/platform/staff?member={{ member.id }}" aria-label="Edit {{ member.name }}"
+                     class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6">
+                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    {% endcall %}
+  {% endcall %}
+</div>
+{% endmacro %}
+
+{# ═══ EDITOR VIEW ═══ #}
+{% macro staff_editor(selected_member, staff, roles, error) %}
+{% set is_create = selected_member.id is none %}
+{% set mid = selected_member.id %}
+<div class="flex min-h-[calc(100dvh-var(--header-height)-3rem)] overflow-hidden rounded-xl border bg-background">
+  {# Left mini-sidebar #}
+  <div class="flex w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
+    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+      <a href="/platform/staff" aria-label="Back to staff" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </a>
+      <a href="/platform/staff?member=new" aria-label="Create staff" class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      </a>
+    </div>
+    <div class="min-h-0 flex-1 overflow-y-auto p-2">
+      <p class="px-2 py-1 text-xs font-medium text-muted-foreground select-none">Application Staff</p>
+      <ul class="m-0 flex flex-col gap-0.5 p-0 list-none">
+        {% if is_create %}
+          <li><span class="flex w-full items-center gap-2 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground">
+            <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/></svg>
+            New staff
+          </span></li>
+        {% endif %}
+        {% for member in staff %}
+          <li>
+            <a href="/platform/staff?member={{ member.id }}" class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {% if mid == member.id %}bg-sidebar-accent font-medium text-sidebar-accent-foreground{% else %}hover:bg-sidebar-accent hover:text-sidebar-accent-foreground{% endif %}">
+              {{ status_dot(member.status) }}
+              <span class="truncate">{{ member.name }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  {# Right: editor #}
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+      <div class="min-w-0">
+        <div class="truncate text-sm font-semibold">{{ "Create staff" if is_create else selected_member.name or "Staff member" }}</div>
+        {% if not is_create %}
+          <div class="truncate text-xs text-muted-foreground">{{ selected_member.roles|length }} assigned role{{ "" if selected_member.roles|length == 1 else "s" }}</div>
+        {% endif %}
+      </div>
+      <button type="submit" form="staff-form" aria-label="Save" class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
+      </button>
+    </div>
+    {% if error %}<div class="border-b p-3">{{ error_alert(error) }}</div>{% endif %}
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <form id="staff-form" method="post" action="/platform/staff/save" class="grid gap-6 p-4">
+        {% if mid %}<input type="hidden" name="member_id" value="{{ mid }}">{% endif %}
+        <div class="grid gap-4 md:grid-cols-2">
+          {% call field.field() %}
+            {{ field.field_label("Name", for_id="staff-name") }}
+            {{ input.input(name="name", value=selected_member.name, placeholder="Maya Singh", required=true, attrs={"id": "staff-name"}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Email", for_id="staff-email") }}
+            {% if is_create %}
+              {{ input.input(name="email", value=selected_member.email, placeholder="maya@example.com", attrs={"id": "staff-email", "type": "email", "required": "required"}) }}
+            {% else %}
+              {{ input.input(name="email", value=selected_member.email, attrs={"id": "staff-email", "type": "email", "readonly": "readonly"}) }}
+              <p class="mt-1 text-xs text-muted-foreground">Email cannot be changed.</p>
+            {% endif %}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Phone", for_id="staff-phone") }}
+            {{ input.input(name="phone", value=selected_member.phone, placeholder="+1 555 0100", attrs={"id": "staff-phone", "type": "tel"}) }}
+          {% endcall %}
+        </div>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium">Assign Roles</label>
+          <p class="mb-3 text-xs text-muted-foreground">Staff can hold multiple roles at the same time.</p>
+          <div class="divide-y rounded-lg border bg-background">
+            {% for role in roles %}
+              {% set is_assigned = role.id in selected_member.role_ids %}
+              <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-3">
+                <div class="min-w-0">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span class="size-2.5 shrink-0 rounded-full" style="background:{{ role.color }}"></span>
+                    <div class="truncate text-sm font-medium">{{ role.display_name }}</div>
+                  </div>
+                  {% if role.description %}<p class="mt-1 line-clamp-2 text-xs text-muted-foreground">{{ role.description }}</p>{% endif %}
+                </div>
+                <label class="inline-flex cursor-pointer items-center" aria-label="Assign {{ role.display_name }}">
+                  <input type="checkbox" name="role_{{ role.id }}" value="1" {{ "checked" if is_assigned else "" }} class="sr-only peer">
+                  <span class="inline-flex h-[calc(var(--thumb-size)+2px)] w-[calc(var(--thumb-size)*2-2px)] items-center rounded-full p-px transition-colors duration-200 [--thumb-size:--spacing(5)] sm:[--thumb-size:--spacing(4)] bg-input peer-checked:bg-primary">
+                    <span class="block aspect-square h-full rounded-full bg-background shadow-sm/5 transition-transform duration-150 peer-checked:translate-x-[calc(var(--thumb-size)-4px)]"></span>
+                  </span>
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endmacro %}

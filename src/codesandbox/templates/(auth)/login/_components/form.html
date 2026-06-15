@@ -1,0 +1,81 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/card.html" as card %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/form.html" as form %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/input.html" as input %}
+
+{% macro login_form(mode="signin", error=None, next_path="/dashboard") %}
+  <div class="flex w-full flex-col gap-6">
+    {% call frame.frame(class="border-none py-5") %}
+      <div class="mb-5 text-center">
+        <a href="/" class="flex flex-col items-center gap-2 self-center text-3xl font-medium">
+          <span class="flex size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground text-lg font-bold tracking-tight">CS</span>
+          <span class="text-xl font-semibold tracking-tight">CodeSandbox</span>
+        </a>
+        <p class="mt-1 text-sm text-muted-foreground">
+          {{ "Create your account" if mode == "signup" else "Sign in to your workspace" }}
+        </p>
+      </div>
+
+      {% call card.card_content(class="px-4 py-0") %}
+        {% call form.form(action="/login", method="post") %}
+          <input type="hidden" name="mode" value="{{ mode }}">
+          <input type="hidden" name="next" value="{{ next_path }}">
+
+          {% call field.field_group() %}
+            {% call field.field(orientation="horizontal", class="items-center justify-center") %}
+              {% call button.button(type="button", class="w-full px-4", attrs={"disabled": "disabled", "title": "Social auth coming soon"}) %}
+                <svg class="mr-2 size-4" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="currentColor" d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/>
+                </svg>
+                Continue with Google
+              {% endcall %}
+            {% endcall %}
+
+            {{ field.field_separator("Or continue with email", class="mt-1") }}
+
+            {% if mode == "signup" %}
+              {% call field.field() %}
+                {{ field.field_label("Name", for_id="name") }}
+                {{ input.input(name="name", placeholder="Your full name", required=true, attrs={"id": "name", "autocomplete": "name"}) }}
+              {% endcall %}
+            {% endif %}
+
+            {% call field.field() %}
+              {{ field.field_label("Email", for_id="email") }}
+              {{ input.input(type="email", name="email", placeholder="m@example.com", required=true, attrs={"id": "email", "autocomplete": "email"}) }}
+            {% endcall %}
+
+            {% call field.field() %}
+              {{ field.field_label("Password", for_id="password") }}
+              {{ input.input(type="password", name="password", placeholder="Enter your password", required=true, attrs={"id": "password", "autocomplete": "current-password" if mode == "signin" else "new-password", "minlength": "8", "maxlength": "128"}) }}
+            {% endcall %}
+
+            {% if error %}
+              {{ field.field_error(error) }}
+            {% endif %}
+
+            {% call field.field(class="space-y-1") %}
+              {% call button.button(type="submit", class="w-full") %}
+                {{ "Create account" if mode == "signup" else "Sign in" }}
+              {% endcall %}
+            {% endcall %}
+
+            {% call field.field_description(class="text-center") %}
+              {% if mode == "signup" %}
+                Already have an account?
+                <a href="/login?mode=signin" class="underline-offset-4 hover:underline font-medium">Sign in</a>
+              {% else %}
+                Don't have an account?
+                <a href="/login?mode=signup" class="underline-offset-4 hover:underline font-medium">Sign up</a>
+              {% endif %}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+
+    {{ field.field_description("By continuing, you agree to the Terms of Service and Privacy Policy.", class="px-6 text-center") }}
+  </div>
+{% endmacro %}

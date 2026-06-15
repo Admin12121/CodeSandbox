@@ -1,0 +1,10 @@
+{% import "(admin)/platform/organizations/_components/table.html" as orgs_tbl %}
+
+{{ orgs_tbl.organizations_table(
+  organizations=organizations,
+  total=total,
+  page=page,
+  total_pages=total_pages,
+  search=search,
+  status_filter=status_filter,
+) }}

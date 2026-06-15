@@ -1,0 +1,20 @@
+{% import "(admin)/platform/roles/_components/panel.html" as rbac %}
+
+{% if selected_role %}
+  {{ rbac.role_editor(
+    selected_role=selected_role,
+    roles=roles,
+    permission_groups=permission_groups,
+    nav_matrix=nav_matrix,
+    editor_tab=editor_tab,
+    available_members=available_members,
+    error=error
+  ) }}
+{% else %}
+  {{ rbac.roles_list(
+    visible_roles=visible_roles,
+    roles=roles,
+    search=search,
+    error=error
+  ) }}
+{% endif %}
