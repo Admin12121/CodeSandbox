@@ -21,8 +21,8 @@
 
 {# ═══ LIST VIEW ═══ #}
 {% macro staff_list(visible_staff, staff, search, error) %}
-<div class="grid gap-4">
-  <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+<div class="grid gap-4 p-2">
+  <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
     <form method="get" action="/platform/staff">
       {% call ig.input_group() %}
         {{ ig.input_group_input(name="search", placeholder="Search staff", value=search, attrs={"type": "search", "aria-label": "Search staff"}) }}
@@ -31,54 +31,62 @@
         {% endcall %}
       {% endcall %}
     </form>
-    <a href="/platform/staff?member=new" class="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90 transition-colors sm:h-8">
-      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-      Create staff
+
+    <div aria-hidden className="hidden lg:block"></div>
+
+    <a href="/platform/staff?member=new">
+        {% call button.button(type="button", attrs={"data-cs-menu": "new-org-popup"}, size="icon") %}
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        {% endcall %}
     </a>
   </div>
   {{ error_alert(error) }}
   {% call frame.frame() %}
     {% call table.table(variant="card") %}
-      <thead><tr>
-        <th>Application Staff — {{ staff|length }}</th>
-        <th>Email</th>
-        <th>Roles</th>
-        <th class="w-28">Status</th>
-        <th class="w-20 text-right">Actions</th>
-      </tr></thead>
-      <tbody>
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Application Staff — " ~ staff|length) }}
+          {{ table.table_head("Email") }}
+          {{ table.table_head("Roles") }}
+          {{ table.table_head("Status", class="w-28") }}
+          {{ table.table_head("Actions", class="w-20 text-right") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
         {% if not visible_staff %}
-          <tr><td colspan="5" class="h-28 text-center text-muted-foreground">No staff found.</td></tr>
+          {% call table.table_row() %}
+            {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "5"}) %}No staff found.{% endcall %}
+          {% endcall %}
         {% else %}
           {% for member in visible_staff %}
-            <tr class="cursor-pointer" data-cs-href="/platform/staff?member={{ member.id }}">
-              <td>
+            {% call table.table_row(class="cursor-pointer", attrs={"data-cs-href": "/platform/staff?member=" ~ member.id}) %}
+              {% call table.table_cell() %}
                 <div class="min-w-0">
                   <div class="truncate font-medium">{{ member.name }}</div>
                   <div class="truncate text-xs text-muted-foreground">{{ member.email or "No email" }}</div>
                 </div>
-              </td>
-              <td class="text-sm text-muted-foreground">{{ member.email or "—" }}</td>
-              <td>
+              {% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ member.email or "—" }}{% endcall %}
+              {% call table.table_cell() %}
                 <div class="flex min-w-0 flex-wrap gap-1">
                   {% if member.roles %}
                     {% for r in member.roles %}{{ badge.badge(r.name, variant="outline") }}{% endfor %}
                   {% else %}<span class="text-xs text-muted-foreground">No roles</span>{% endif %}
                 </div>
-              </td>
-              <td>{{ badge.badge(member.status.title(), variant="outline") }}</td>
-              <td>
+              {% endcall %}
+              {% call table.table_cell() %}{{ badge.badge(member.status.title(), variant="outline") }}{% endcall %}
+              {% call table.table_cell() %}
                 <div class="flex justify-end">
                   <a href="/platform/staff?member={{ member.id }}" aria-label="Edit {{ member.name }}"
                      class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6">
                     <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                   </a>
                 </div>
-              </td>
-            </tr>
+              {% endcall %}
+            {% endcall %}
           {% endfor %}
         {% endif %}
-      </tbody>
+      {% endcall %}
     {% endcall %}
   {% endcall %}
 </div>

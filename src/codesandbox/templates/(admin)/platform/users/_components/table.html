@@ -6,10 +6,10 @@
 {% import "components/ui/select-native.html" as sn %}
 
 {% macro users_table(users, total, page, total_pages, search, role_filter, status_filter) %}
-  <div class="grid gap-4">
+  <div class="grid gap-4 p-2">
 
     {# Filter toolbar — 3-col grid, selects auto-submit on change #}
-    <form method="get" action="/platform/users" class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_13rem_13rem]">
+    <form method="get" action="/platform/users" class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_13rem]">
       {% call ig.input_group() %}
         {{ ig.input_group_input(
           name="search",
@@ -22,6 +22,8 @@
         {% endcall %}
       {% endcall %}
 
+      <div aria-hidden className="hidden lg:block"></div>
+      
       {{ sn.select_native(
         name="role",
         options=[
@@ -31,7 +33,7 @@
           {"value": "system_admin", "label": "System Admin"},
         ],
         value=role_filter,
-        attrs={"aria-label": "Filter by role", "onchange": "this.form.submit()"}
+        attrs={"aria-label": "Filter by role", "data-cs-autosubmit": ""}
       ) }}
 
       {{ sn.select_native(
@@ -43,42 +45,40 @@
           {"value": "banned", "label": "Banned"},
         ],
         value=status_filter,
-        attrs={"aria-label": "Filter by status", "onchange": "this.form.submit()"}
+        attrs={"aria-label": "Filter by status", "data-cs-autosubmit": ""}
       ) }}
     </form>
 
     {# Table #}
     {% call frame.frame() %}
       {% call table.table(variant="card") %}
-        <thead>
-          <tr>
-            <th>Users — {{ total }}</th>
-            <th class="w-36">Role</th>
-            <th class="w-40">Status</th>
-            <th>Email</th>
-            <th class="w-44">Last login</th>
-            <th class="w-36 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Users — " ~ total) }}
+            {{ table.table_head("Role", class="w-36") }}
+            {{ table.table_head("Status", class="w-40") }}
+            {{ table.table_head("Email") }}
+            {{ table.table_head("Last login", class="w-44") }}
+            {{ table.table_head("Actions", class="w-36 text-right") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
           {% if not users %}
-            <tr>
-              <td colspan="6" class="h-28 text-center text-muted-foreground">
-                No users found.
-              </td>
-            </tr>
+            {% call table.table_row() %}
+              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "6"}) %}No users found.{% endcall %}
+            {% endcall %}
           {% else %}
             {% for u in users %}
-              <tr class="group">
-                <td>
+              {% call table.table_row() %}
+                {% call table.table_cell() %}
                   <div class="min-w-0">
                     <div class="truncate font-medium">{{ u.name }}</div>
                   </div>
-                </td>
-                <td class="text-sm text-muted-foreground">
+                {% endcall %}
+                {% call table.table_cell(class="text-sm text-muted-foreground") %}
                   {{ u.platform_role.replace('_', ' ').title() if u.platform_role else 'User' }}
-                </td>
-                <td>
+                {% endcall %}
+                {% call table.table_cell() %}
                   <div class="flex flex-wrap gap-1">
                     {% if u.status == "banned" %}
                       {{ badge.badge("Banned", variant="destructive") }}
@@ -88,26 +88,22 @@
                       {{ badge.badge("Inactive", variant="secondary") }}
                     {% endif %}
                   </div>
-                </td>
-                <td>
+                {% endcall %}
+                {% call table.table_cell() %}
                   <div class="flex min-w-0 items-center gap-1.5">
                     <span class="truncate text-sm">{{ u.email }}</span>
                     {% if u.email_verified %}
                       <svg class="size-4 shrink-0 text-emerald-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Email verified"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
                     {% endif %}
                   </div>
-                </td>
-                <td class="text-sm text-muted-foreground">
-                  {% if u.last_login_at %}
-                    {{ u.last_login_at.strftime("%b %d, %Y") }}
-                  {% else %}
-                    Never
-                  {% endif %}
-                </td>
-                <td>
+                {% endcall %}
+                {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                  {% if u.last_login_at %}{{ u.last_login_at.strftime("%b %d, %Y") }}{% else %}Never{% endif %}
+                {% endcall %}
+                {% call table.table_cell() %}
                   <div class="flex justify-end">
                     <button type="button"
-                      onclick="window.__csMenuEnd(this,'um-{{ u.id }}')"
+                      data-cs-menu="um-{{ u.id }}"
                       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
                       aria-label="User actions">
                       <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
@@ -134,11 +130,11 @@
                       {% endfor %}
                     </div>
                   </div>
-                </td>
-              </tr>
+                {% endcall %}
+              {% endcall %}
             {% endfor %}
           {% endif %}
-        </tbody>
+        {% endcall %}
       {% endcall %}
     {% endcall %}
 

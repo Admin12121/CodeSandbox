@@ -30,9 +30,9 @@
 
 {# ════════════════════════════ LIST VIEW ════════════════════════════ #}
 {% macro roles_list(visible_roles, roles, search, error) %}
-  <div class="grid gap-4">
+  <div class="grid gap-4 p-3">
 
-    <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
       <form method="get" action="/platform/roles">
         {% call ig.input_group() %}
           {{ ig.input_group_input(name="search", placeholder="Search roles", value=search, attrs={"type": "search", "aria-label": "Search roles"}) }}
@@ -41,9 +41,11 @@
           {% endcall %}
         {% endcall %}
       </form>
-      {% call button.button(attrs={"data-cs-href": "/platform/roles?role=new"}, class="cursor-pointer") %}
+
+      <div aria-hidden className="hidden lg:block"></div>
+      
+      {% call button.button(attrs={"data-cs-href": "/platform/roles?role=new"}, class="cursor-pointer", size="icon") %}
         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-        Create role
       {% endcall %}
     </div>
 
@@ -51,39 +53,41 @@
 
     {% call frame.frame() %}
       {% call table.table(variant="card") %}
-        <thead>
-          <tr>
-            <th class="w-9"></th>
-            <th>Staff Roles — {{ roles|length }}</th>
-            <th class="w-32">Members</th>
-            <th class="w-28 text-right">Position</th>
-            <th class="w-36 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("", class="w-9") }}
+            {{ table.table_head("Staff Roles — " ~ roles|length) }}
+            {{ table.table_head("Members", class="w-32") }}
+            {{ table.table_head("Position", class="w-28 text-right") }}
+            {{ table.table_head("Actions", class="w-36 text-right") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
           {% if not visible_roles %}
-            <tr><td colspan="5" class="h-28 text-center text-muted-foreground">No roles found.</td></tr>
+            {% call table.table_row() %}
+              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "5"}) %}No roles found.{% endcall %}
+            {% endcall %}
           {% else %}
             {% for role in visible_roles %}
-              <tr class="group cursor-pointer" data-cs-href="/platform/roles?role={{ role.id }}">
-                <td>
+              {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/platform/roles?role=" ~ role.id}) %}
+                {% call table.table_cell() %}
                   <svg class="size-4 text-muted-foreground {{ '' if role.is_mutable else 'opacity-35' }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
-                </td>
-                <td>
+                {% endcall %}
+                {% call table.table_cell() %}
                   <div class="flex min-w-0 items-center gap-3">
                     {{ role_dot(role.color) }}
                     <span class="truncate font-medium">{{ role.display_name }}</span>
                     {% if not role.is_mutable %}{{ lock_icon() }}{% endif %}
                   </div>
-                </td>
-                <td>
+                {% endcall %}
+                {% call table.table_cell() %}
                   <div class="flex items-center gap-2">
                     <span class="tabular-nums">{{ role.member_count }}</span>
                     <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
                   </div>
-                </td>
-                <td class="text-right tabular-nums">{{ role.position }}</td>
-                <td>
+                {% endcall %}
+                {% call table.table_cell(class="text-right tabular-nums") %}{{ role.position }}{% endcall %}
+                {% call table.table_cell() %}
                   <div class="flex justify-end">
                     <button type="button" data-cs-menu="rm-{{ role.id }}"
                       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
@@ -118,11 +122,11 @@
                       {% endif %}
                     </div>
                   </div>
-                </td>
-              </tr>
+                {% endcall %}
+              {% endcall %}
             {% endfor %}
           {% endif %}
-        </tbody>
+        {% endcall %}
       {% endcall %}
     {% endcall %}
 
@@ -134,7 +138,7 @@
 {% macro role_editor(selected_role, roles, permission_groups, nav_matrix, editor_tab, available_members, error) %}
   {% set is_create = selected_role.id is none %}
   {% set rid = selected_role.id %}
-  <div class="flex min-h-[calc(100dvh-var(--header-height)-3rem)] overflow-hidden rounded-xl border bg-background">
+  <div class="flex min-h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
 
     {# Left mini-sidebar: role list #}
     <div class="flex w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">

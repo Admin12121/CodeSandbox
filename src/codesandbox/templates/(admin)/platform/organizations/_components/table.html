@@ -8,11 +8,11 @@
 {% import "components/ui/field.html" as field %}
 
 {% macro organizations_table(organizations, total, page, total_pages, search, status_filter) %}
-  <div class="grid gap-4">
+  <div class="grid gap-4 p-2">
 
-    {# Toolbar: filter (3-col) + create button on same row #}
+    {# Toolbar: filter + create button #}
     <div class="flex flex-wrap items-center gap-3">
-      <form method="get" action="/platform/organizations" class="grid flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_13rem]">
+      <form method="get" action="/platform/organizations" class="grid flex-1 gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_auto]">
         {% call ig.input_group() %}
           {{ ig.input_group_input(
             name="search",
@@ -25,6 +25,8 @@
           {% endcall %}
         {% endcall %}
 
+        <div aria-hidden className="hidden lg:block" ></div>
+
         {{ sn.select_native(
           name="status",
           options=[
@@ -34,15 +36,14 @@
             {"value": "suspended", "label": "Suspended"},
           ],
           value=status_filter,
-          attrs={"aria-label": "Filter by status", "onchange": "this.form.submit()"}
+          attrs={"aria-label": "Filter by status", "data-cs-autosubmit": ""}
         ) }}
       </form>
 
       {# Create org button #}
       <div class="shrink-0">
-        {% call button.button(type="button", attrs={"onclick": "window.__csMenuEnd(this,'new-org-popup')"}) %}
+        {% call button.button(type="button", attrs={"data-cs-menu": "new-org-popup"}, size="icon") %}
           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-          New Organization
         {% endcall %}
         <div id="new-org-popup" class="hidden fixed z-[100] w-72 rounded-lg border bg-popover p-4 shadow-lg text-sm text-popover-foreground">
           <h3 class="mb-3 font-semibold">Create Organization</h3>
@@ -64,32 +65,30 @@
     {# Table #}
     {% call frame.frame() %}
       {% call table.table(variant="card") %}
-        <thead>
-          <tr>
-            <th>Organizations — {{ total }}</th>
-            <th class="w-28">Status</th>
-            <th class="w-28 text-right">Members</th>
-            <th class="w-36">Created</th>
-            <th class="w-32 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Organizations — " ~ total) }}
+            {{ table.table_head("Status", class="w-28") }}
+            {{ table.table_head("Members", class="w-28 text-right") }}
+            {{ table.table_head("Created", class="w-36") }}
+            {{ table.table_head("Actions", class="w-32 text-right") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
           {% if not organizations %}
-            <tr>
-              <td colspan="5" class="h-28 text-center text-muted-foreground">
-                No organizations found.
-              </td>
-            </tr>
+            {% call table.table_row() %}
+              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "5"}) %}No organizations found.{% endcall %}
+            {% endcall %}
           {% else %}
             {% for org in organizations %}
-              <tr class="group">
-                <td>
+              {% call table.table_row() %}
+                {% call table.table_cell() %}
                   <div class="min-w-0">
                     <div class="truncate font-medium">{{ org.name }}</div>
                     <div class="truncate text-xs text-muted-foreground">{{ org.slug }}</div>
                   </div>
-                </td>
-                <td>
+                {% endcall %}
+                {% call table.table_cell() %}
                   {% if org.status == "active" %}
                     {{ badge.badge("Active", variant="outline") }}
                   {% elif org.status == "suspended" %}
@@ -97,17 +96,15 @@
                   {% else %}
                     {{ badge.badge("Inactive", variant="secondary") }}
                   {% endif %}
-                </td>
-                <td class="text-right text-sm tabular-nums">{{ org.member_count }}</td>
-                <td class="text-sm text-muted-foreground">
-                  {% if org.created_at %}
-                    {{ org.created_at.strftime("%b %d, %Y") }}
-                  {% endif %}
-                </td>
-                <td>
+                {% endcall %}
+                {{ table.table_cell(org.member_count|string, class="text-right text-sm tabular-nums") }}
+                {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                  {% if org.created_at %}{{ org.created_at.strftime("%b %d, %Y") }}{% endif %}
+                {% endcall %}
+                {% call table.table_cell() %}
                   <div class="flex justify-end">
                     <button type="button"
-                      onclick="window.__csMenuEnd(this,'om-{{ org.id }}')"
+                      data-cs-menu="om-{{ org.id }}"
                       class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
                       aria-label="Organization actions">
                       <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
@@ -129,11 +126,11 @@
                       {% endif %}
                     </div>
                   </div>
-                </td>
-              </tr>
+                {% endcall %}
+              {% endcall %}
             {% endfor %}
           {% endif %}
-        </tbody>
+        {% endcall %}
       {% endcall %}
     {% endcall %}
 
