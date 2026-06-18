@@ -89,11 +89,9 @@
                 {% call table.table_cell(class="text-right tabular-nums") %}{{ role.position }}{% endcall %}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
-                    <button type="button" data-cs-menu="rm-{{ role.id }}"
-                      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
-                      aria-label="More actions for {{ role.display_name }}">
+                    {% call button.button(variant="ghost", size="icon-xs", class="shrink-0 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": "rm-" ~ role.id, "aria-label": "More actions for " ~ role.display_name}) %}
                       <svg class="pointer-events-none size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
-                    </button>
+                    {% endcall %}
                     <div id="rm-{{ role.id }}" class="hidden fixed z-[100] w-56 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
                       <div class="px-2 py-1 text-xs font-semibold text-muted-foreground">Role actions</div>
                       <a href="/platform/roles?role={{ role.id }}" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent hover:text-accent-foreground">
@@ -193,10 +191,9 @@
           {% if not selected_role.is_mutable %}{{ lock_icon() }}{% endif %}
         </div>
         {% if selected_role.is_mutable %}
-          <button type="submit" form="role-display-form" aria-label="Save role"
-            class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          {% call button.button(type="submit", size="icon-xs", attrs={"form": "role-display-form", "aria-label": "Save role"}) %}
             <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
-          </button>
+          {% endcall %}
         {% endif %}
       </div>
 
@@ -344,13 +341,11 @@
                 <form method="post" action="/platform/roles/{{ rid }}/members/add" class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   {% call field.field() %}
                     {{ field.field_label("Add staff member", for_id="add-member") }}
-                    <select id="add-member" name="user_id" aria-label="Select staff member"
-                      class="flex h-8.5 w-full appearance-none items-center rounded-lg border border-input bg-background px-3 py-1 pr-8 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-[3px] focus:ring-ring/24 sm:h-7.5"
-                      style="background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 0.5rem center">
+                    {% call sn.select_native(name="user_id", attrs={"id": "add-member", "aria-label": "Select staff member"}) %}
                       {% for m in available_members %}
                         <option value="{{ m.id }}">{{ m.name }} — {{ m.email }}</option>
                       {% endfor %}
-                    </select>
+                    {% endcall %}
                   {% endcall %}
                   {% call button.button(type="submit") %}Add member{% endcall %}
                 </form>
@@ -368,10 +363,9 @@
                       </div>
                       {{ badge.badge(member.status.title(), variant="outline") }}
                       <form method="post" action="/platform/roles/{{ rid }}/members/{{ member.id }}/remove">
-                        <button type="submit" aria-label="Remove {{ member.name }}"
-                          class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">
+                        {% call button.button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ member.name}) %}
                           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                        </button>
+                        {% endcall %}
                       </form>
                     </div>
                   {% endfor %}

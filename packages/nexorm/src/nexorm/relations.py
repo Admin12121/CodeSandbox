@@ -48,9 +48,10 @@ class ReverseRelation:
 def install_relations(model):
     for field in model._meta.foreign_keys:
         if isinstance(field, ForeignKey):
-            relation_name = field.name.replace("_id", "")
-            if not hasattr(model, relation_name):
-                setattr(model, relation_name, ForeignKeyDescriptor(field))
+            if field.name.endswith("_id"):
+                relation_name = field.name[: -len("_id")]
+                if relation_name and not hasattr(model, relation_name):
+                    setattr(model, relation_name, ForeignKeyDescriptor(field))
             related = field.related_name or model._meta.table_name
             target = field.target_model()
             if not hasattr(target, related):

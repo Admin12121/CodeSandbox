@@ -223,6 +223,27 @@
     if(sbSaved==='collapsed')sw.dataset.state='collapsed';
   }
 
+  /* ── keep sidebar active link in sync with SPA-style patch navigation ──
+     router.js only swaps the [data-router-boundary] content inside <main>;
+     the sidebar lives outside that boundary so its active state would
+     otherwise stay frozen on whichever page did the last full page load. */
+  function syncNavActive(url){
+    var path=(url||window.location.pathname).split('?')[0].split('#')[0];
+    document.querySelectorAll('[data-nav-href]').forEach(function(a){
+      var href=a.getAttribute('data-nav-href');
+      var active=path===href||(href!=='#help'&&path.indexOf(href+'/')===0);
+      a.classList.toggle('bg-sidebar-accent',active);
+      a.classList.toggle('text-sidebar-accent-foreground',active);
+      a.classList.toggle('font-medium',active);
+      a.classList.toggle('text-sidebar-foreground',!active);
+      a.classList.toggle('hover:bg-sidebar-accent',!active);
+      a.classList.toggle('hover:text-sidebar-accent-foreground',!active);
+    });
+  }
+  window.addEventListener('app-router:navigate',function(e){
+    syncNavActive(e.detail&&e.detail.url);
+  });
+
   /* ── fixed-position dropdown manager ─────────────────────────────── */
   var _el=null,_tr=null;
   function _close(){if(_el){_el.classList.add('hidden');_el=null;_tr=null;}}
@@ -268,7 +289,6 @@
 
   /* ── dark-mode toggle with View Transitions circular reveal ────────── */
   function toggleDark(btn){
-    var isDark=H.classList.contains('dark');
     var r=btn.getBoundingClientRect();
     var cx=r.left+r.width/2, cy=r.top+r.height/2;
     var endR=Math.hypot(Math.max(cx,window.innerWidth-cx),Math.max(cy,window.innerHeight-cy));
@@ -278,9 +298,11 @@
     if(!document.startViewTransition){applyDark();return;}
     var vt=document.startViewTransition(applyDark);
     vt.ready.then(function(){
+      /* ::view-transition-new(root) always paints above -old, so it must be
+         the one animated in both directions or the clip plays invisibly. */
       document.documentElement.animate(
-        {clipPath: isDark?[clipEnd,clipStart]:[clipStart,clipEnd]},
-        {duration:400,easing:'ease-in-out',pseudoElement:isDark?'::view-transition-old(root)':'::view-transition-new(root)'}
+        {clipPath:[clipStart,clipEnd]},
+        {duration:400,easing:'ease-in-out',pseudoElement:'::view-transition-new(root)'}
       );
     });
   }

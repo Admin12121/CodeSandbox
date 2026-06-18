@@ -102,12 +102,9 @@
                 {% endcall %}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
-                    <button type="button"
-                      data-cs-menu="um-{{ u.id }}"
-                      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6"
-                      aria-label="User actions">
+                    {% call button.button(variant="ghost", size="icon-xs", class="shrink-0 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": "um-" ~ u.id, "aria-label": "User actions"}) %}
                       <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-                    </button>
+                    {% endcall %}
                     <div id="um-{{ u.id }}" class="hidden fixed z-[100] w-52 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
                       <div class="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Role</div>
                       {% for role_val, role_lbl in [("user", "User"), ("system_staff", "App Staff"), ("system_admin", "System Admin")] %}
