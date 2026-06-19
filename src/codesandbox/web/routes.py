@@ -208,6 +208,23 @@ def platform_organizations():
     )
     total_pages = max(1, math.ceil(total / page_size))
 
+    org_param = request.args.get("org") or None
+    selected_org = None
+    if org_param == "new":
+        selected_org = {"id": None, "name": "", "slug": "", "description": "", "status": "active", "member_count": 0}
+    elif org_param:
+        from codesandbox.features.organizations.repository import get_organization, get_member_count
+        _org = get_organization(org_param)
+        if _org:
+            selected_org = {
+                "id": _org.id,
+                "name": _org.name,
+                "slug": _org.slug,
+                "description": _org.description or "",
+                "status": _org.status,
+                "member_count": get_member_count(_org.id),
+            }
+
     return {
         "_meta": {"title": "Organizations — CodeSandbox"},
         "user": _user_ctx(user),
@@ -220,6 +237,8 @@ def platform_organizations():
         "total_pages": total_pages,
         "search": search,
         "status_filter": status,
+        "selected_org": selected_org,
+        "error": request.args.get("error"),
     }
 
 

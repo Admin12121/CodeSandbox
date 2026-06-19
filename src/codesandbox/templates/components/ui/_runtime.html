@@ -126,11 +126,14 @@ function moveTabIndicator(tab) {
   const list = tab.closest(slot("tabs-list"));
   const indicator = list?.querySelector(slot("tab-indicator"));
   if (!list || !indicator) return;
+  const isUnderline = list.dataset.variant === 'underline';
   const tabRect = tab.getBoundingClientRect();
   const listRect = list.getBoundingClientRect();
-  indicator.style.width = `${tabRect.width}px`;
-  indicator.style.height = `${tabRect.height}px`;
-  indicator.style.transform = `translate(${tabRect.left - listRect.left}px, ${tabRect.top - listRect.top}px)`;
+  indicator.style.width = tabRect.width + 'px';
+  if (!isUnderline) indicator.style.height = tabRect.height + 'px';
+  const tx = tabRect.left - listRect.left;
+  const ty = isUnderline ? tabRect.bottom - listRect.top - 2 : tabRect.top - listRect.top;
+  indicator.style.translate = tx + 'px ' + ty + 'px';
 }
 
 function initDisclosure(root, itemSlot) {
@@ -233,7 +236,10 @@ document.addEventListener("click", (event) => {
     const display = select?.querySelector(slot("select-value"));
     if (display) display.textContent = selectItem.textContent.trim();
     const hidden = select?.querySelector("input[type='hidden']");
-    if (hidden) hidden.value = value;
+    if (hidden) {
+      hidden.value = value;
+      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    }
     closeFloating();
     return;
   }

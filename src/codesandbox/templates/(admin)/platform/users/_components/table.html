@@ -3,12 +3,27 @@
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/frame.html" as frame %}
 {% import "components/ui/input-group.html" as ig %}
-{% import "components/ui/select-native.html" as sn %}
+{% import "components/ui/select.html" as sel %}
 
 {% macro users_table(users, total, page, total_pages, search, role_filter, status_filter) %}
+  {% set role_options = [
+    {"value": "all", "label": "All roles"},
+    {"value": "user", "label": "User"},
+    {"value": "system_staff", "label": "App Staff"},
+    {"value": "system_admin", "label": "System Admin"},
+  ] %}
+  {% set status_options = [
+    {"value": "all", "label": "All status"},
+    {"value": "active", "label": "Active"},
+    {"value": "inactive", "label": "Inactive"},
+    {"value": "banned", "label": "Banned"},
+  ] %}
+  {% set role_match = role_options | selectattr('value', 'equalto', role_filter) | list %}
+  {% set status_match = status_options | selectattr('value', 'equalto', status_filter) | list %}
+
   <div class="grid gap-4 p-2">
 
-    {# Filter toolbar — 3-col grid, selects auto-submit on change #}
+    {# Filter toolbar #}
     <form method="get" action="/platform/users" class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_13rem]">
       {% call ig.input_group() %}
         {{ ig.input_group_input(
@@ -22,31 +37,31 @@
         {% endcall %}
       {% endcall %}
 
-      <div aria-hidden className="hidden lg:block"></div>
-      
-      {{ sn.select_native(
-        name="role",
-        options=[
-          {"value": "all", "label": "All roles"},
-          {"value": "user", "label": "User"},
-          {"value": "system_staff", "label": "App Staff"},
-          {"value": "system_admin", "label": "System Admin"},
-        ],
-        value=role_filter,
-        attrs={"aria-label": "Filter by role", "data-cs-autosubmit": ""}
-      ) }}
+      <div aria-hidden class="hidden lg:block"></div>
 
-      {{ sn.select_native(
-        name="status",
-        options=[
-          {"value": "all", "label": "All status"},
-          {"value": "active", "label": "Active"},
-          {"value": "inactive", "label": "Inactive"},
-          {"value": "banned", "label": "Banned"},
-        ],
-        value=status_filter,
-        attrs={"aria-label": "Filter by status", "data-cs-autosubmit": ""}
-      ) }}
+      {% call sel.select(name="role", value=role_filter, attrs={"data-cs-autosubmit": ""}) %}
+        {% call sel.select_trigger(target="users-role-popup") %}
+          {{ sel.select_value(role_match[0].label if role_match else "All roles") }}
+          <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        {% endcall %}
+        {% call sel.select_popup(attrs={"id": "users-role-popup"}) %}
+          {% for opt in role_options %}
+            {% call sel.select_item(value=opt.value, selected=(opt.value == role_filter)) %}{{ opt.label }}{% endcall %}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+
+      {% call sel.select(name="status", value=status_filter, attrs={"data-cs-autosubmit": ""}) %}
+        {% call sel.select_trigger(target="users-status-popup") %}
+          {{ sel.select_value(status_match[0].label if status_match else "All status") }}
+          <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        {% endcall %}
+        {% call sel.select_popup(attrs={"id": "users-status-popup"}) %}
+          {% for opt in status_options %}
+            {% call sel.select_item(value=opt.value, selected=(opt.value == status_filter)) %}{{ opt.label }}{% endcall %}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
     </form>
 
     {# Table #}

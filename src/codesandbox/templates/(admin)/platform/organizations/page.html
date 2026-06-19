@@ -1,10 +1,18 @@
 {% import "(admin)/platform/organizations/_components/table.html" as orgs_tbl %}
 
-{{ orgs_tbl.organizations_table(
-  organizations=organizations,
-  total=total,
-  page=page,
-  total_pages=total_pages,
-  search=search,
-  status_filter=status_filter,
-) }}
+{% if selected_org is defined and selected_org %}
+  {{ orgs_tbl.org_editor(
+    selected_org=selected_org,
+    organizations=organizations,
+    error=error if error is defined else none,
+  ) }}
+{% else %}
+  {{ orgs_tbl.organizations_table(
+    organizations=organizations,
+    total=total,
+    page=page,
+    total_pages=total_pages,
+    search=search,
+    status_filter=status_filter,
+  ) }}
+{% endif %}

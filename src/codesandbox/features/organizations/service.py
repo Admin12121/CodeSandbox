@@ -45,6 +45,15 @@ def get_platform_organizations(
     return result, total
 
 
+def update_organization_details(
+    org_id: str,
+    *,
+    name: str,
+    description: str | None = None,
+) -> Organization | None:
+    return repository.update_organization(org_id, name=name, description=description)
+
+
 def update_organization_status(org_id: str, status: str) -> Organization | None:
     valid = {"active", "inactive", "suspended"}
     if status not in valid:
