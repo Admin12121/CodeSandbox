@@ -34,11 +34,9 @@
 
     <div aria-hidden className="hidden lg:block"></div>
 
-    <a href="/platform/staff?member=new">
-        {% call button.button(type="button", attrs={"data-cs-menu": "new-org-popup"}, size="icon") %}
-            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-        {% endcall %}
-    </a>
+    {% call button.button(attrs={"data-cs-href": "/platform/staff?member=new"}, type="button", size="icon") %}
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+    {% endcall %}
   </div>
   {{ error_alert(error) }}
   {% call frame.frame() %}

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
+import os
 
-from flask import request
+from flask import abort, request, send_from_directory
 
 from codesandbox.features.organizations.service import get_platform_organizations
 from codesandbox.features.platform_admin.service import (
@@ -12,7 +13,26 @@ from codesandbox.features.platform_admin.service import (
 )
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.shared.session import build_nav, format_role_label, require_session, require_platform_role
-from codesandbox.web.blueprint import router
+from codesandbox.web.blueprint import router, web_bp
+
+_TEMPLATES_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../templates"))
+_PUBLIC_DIR = os.path.join(_TEMPLATES_DIR, "public")
+_FAVICON = os.path.join(_TEMPLATES_DIR, "favicon.ico")
+
+
+@web_bp.get("/favicon.ico")
+def _favicon():
+    if os.path.isfile(_FAVICON):
+        return send_from_directory(_TEMPLATES_DIR, "favicon.ico", mimetype="image/x-icon")
+    abort(404)
+
+
+@web_bp.get("/<path:filename>")
+def _public_static(filename):
+    target = os.path.normpath(os.path.join(_PUBLIC_DIR, filename))
+    if target.startswith(_PUBLIC_DIR) and os.path.isfile(target):
+        return send_from_directory(_PUBLIC_DIR, filename)
+    abort(404)
 
 
 # ── Auth pages ──────────────────────────────────────────────────────────────

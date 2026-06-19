@@ -50,7 +50,7 @@
     {# Logo + collapse trigger #}
     <div class="flex h-(--header-height) shrink-0 items-center gap-1 border-b border-sidebar-border px-2">
       <a href="/dashboard" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 hover:bg-sidebar-accent transition-colors">
-        <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background text-xs font-bold select-none">CS</span>
+        <img src="/logo.webp" class="flex object-contain size-7 items-center justify-center rounded-lg text-primary-foreground text-lg font-bold tracking-tight"/>
         <span class="truncate text-base font-semibold group-data-[state=collapsed]:hidden">CodeSandbox</span>
       </a>
       {# Collapse button — hidden when already collapsed #}
@@ -416,10 +416,11 @@
     /* close dropdown on outside click */
     if(_el&&!_el.contains(e.target))_close();
 
-    /* table row navigation */
+    /* table row / button navigation */
     var row=e.target.closest('[data-cs-href]');
-    if(row&&!e.target.closest('a,button,form,input,label')){
-      window.location.href=row.getAttribute('data-cs-href');
+    if(row){
+      var inner=e.target.closest('a,button,form,input,label');
+      if(!inner||inner===row){window.location.href=row.getAttribute('data-cs-href');}
     }
   });
 
