@@ -172,34 +172,76 @@
 </div>
 
 {# Command palette (Ctrl+J / Search) #}
-<div id="cs-cmd" class="hidden fixed inset-0 z-[300] bg-black/40 p-4 pt-[12vh]">
-  <div class="mx-auto w-full max-w-lg overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-2xl">
-    <div class="flex items-center gap-2 border-b px-3">
-      <svg class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <input type="text" placeholder="Type a page name…" autocomplete="off"
-        class="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground">
-      {{ kbd.kbd("Esc") }}
-    </div>
-    <div class="max-h-72 overflow-y-auto p-1.5">
-      {% for section in nav['sections'] %}
-        <div class="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground" data-cmd-group>{{ section['label'] }}</div>
-        {% for item in section['items'] %}
-          <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
-             class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground">
-            {{ nav_icon(item['href']) }}{{ item['label'] }}
-          </a>
-        {% endfor %}
-      {% endfor %}
-      <div class="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground" data-cmd-group>Actions</div>
-      {% for item in nav['secondary'] %}
-        {% if item['href'] != '#help' %}
-          <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
-             class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground">
-            {{ nav_icon(item['href']) }}{{ item['label'] }}
-          </a>
-        {% endif %}
-      {% endfor %}
-    </div>
+{% import "components/ui/command.html" as cmd_ui %}
+<div id="cs-cmd" class="hidden fixed inset-0 z-[300] bg-black/30 backdrop-blur-sm" aria-hidden="true" role="dialog" aria-label="Command palette">
+  <div class="flex min-h-full items-start justify-center px-4 pt-[10vh]">
+    {% call cmd_ui.command_dialog_popup(class="max-w-xl") %}
+      {% call cmd_ui.command() %}
+        <div class="flex items-center gap-2 border-b px-3" data-slot="command-input-wrapper">
+          <svg class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input id="cs-cmd-input" type="text" placeholder="Search CodeSandbox…" autocomplete="off"
+            class="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" role="combobox" aria-expanded="true" aria-controls="cs-cmd-list">
+          {{ kbd.kbd("Esc") }}
+        </div>
+        {% call cmd_ui.command_panel() %}
+          <div id="cs-cmd-empty" class="hidden py-6 text-center text-sm text-muted-foreground">No results found.</div>
+          {% call cmd_ui.command_list(attrs={"id": "cs-cmd-list", "role": "listbox"}) %}
+            {% for section in nav['sections'] %}
+              <div data-cmd-section>
+                {% call cmd_ui.command_group() %}
+                  {{ cmd_ui.command_group_label(text=section['label']) }}
+                  {% call cmd_ui.command_collection() %}
+                    {% for item in section['items'] %}
+                      <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
+                        class="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground aria-selected:bg-accent aria-selected:text-accent-foreground"
+                        role="option">
+                        {{ nav_icon(item['href']) }}
+                        <span class="flex-1 truncate">{{ item['label'] }}</span>
+                      </a>
+                    {% endfor %}
+                  {% endcall %}
+                {% endcall %}
+              </div>
+              {{ cmd_ui.command_separator() }}
+            {% endfor %}
+            {% set secondary_items = nav['secondary'] | selectattr('href', '!=', '#help') | list %}
+            {% if secondary_items %}
+              <div data-cmd-section>
+                {% call cmd_ui.command_group() %}
+                  {{ cmd_ui.command_group_label(text="Actions") }}
+                  {% call cmd_ui.command_collection() %}
+                    {% for item in secondary_items %}
+                      <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
+                        class="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground aria-selected:bg-accent aria-selected:text-accent-foreground"
+                        role="option">
+                        {{ nav_icon(item['href']) }}
+                        <span class="flex-1 truncate">{{ item['label'] }}</span>
+                      </a>
+                    {% endfor %}
+                  {% endcall %}
+                {% endcall %}
+              </div>
+            {% endif %}
+          {% endcall %}
+        {% endcall %}
+        {% call cmd_ui.command_footer() %}
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+              {% call kbd.kbd_group() %}{{ kbd.kbd("↑") }}{{ kbd.kbd("↓") }}{% endcall %}
+              <span>Navigate</span>
+            </div>
+            <div class="flex items-center gap-2">
+              {{ kbd.kbd("↵") }}
+              <span>Open</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            {{ kbd.kbd("Esc") }}
+            <span>Close</span>
+          </div>
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
   </div>
 </div>
 
@@ -267,28 +309,60 @@
 
   /* ── command palette ─────────────────────────────────────────────── */
   var cmd=document.getElementById('cs-cmd');
-  var cmdInput=cmd?cmd.querySelector('input'):null;
+  var cmdInput=document.getElementById('cs-cmd-input');
+  var cmdEmpty=document.getElementById('cs-cmd-empty');
+  var _cmdIdx=-1;
+  function _cmdItems(){return cmd?Array.from(cmd.querySelectorAll('[data-cmd-item]:not(.hidden)')):[];}
+  function _cmdSetActive(items,idx){
+    items.forEach(function(it,i){
+      var active=i===idx;
+      it.setAttribute('aria-selected',active?'true':'false');
+      if(active)it.scrollIntoView({block:'nearest'});
+    });
+  }
   function openCmd(){
     if(!cmd)return;
     _close();
     cmd.classList.remove('hidden');
+    cmd.removeAttribute('aria-hidden');
+    _cmdIdx=-1;
     if(cmdInput){cmdInput.value='';filterCmd('');cmdInput.focus();}
   }
-  function closeCmd(){if(cmd)cmd.classList.add('hidden');}
+  function closeCmd(){
+    if(!cmd)return;
+    cmd.classList.add('hidden');
+    cmd.setAttribute('aria-hidden','true');
+    _cmdIdx=-1;
+  }
   function filterCmd(q){
     q=q.trim().toLowerCase();
+    var any=false;
     cmd.querySelectorAll('[data-cmd-item]').forEach(function(it){
       var hit=!q||it.getAttribute('data-cmd-item').toLowerCase().indexOf(q)!==-1;
       it.classList.toggle('hidden',!hit);
+      if(hit)any=true;
     });
+    /* hide section headers when all their items are hidden */
+    cmd.querySelectorAll('[data-cmd-section]').forEach(function(sec){
+      var visible=Array.from(sec.querySelectorAll('[data-cmd-item]')).some(function(it){return!it.classList.contains('hidden');});
+      sec.classList.toggle('hidden',!visible);
+    });
+    if(cmdEmpty)cmdEmpty.classList.toggle('hidden',any);
+    _cmdIdx=-1;
+    _cmdSetActive([],0);
   }
   if(cmd){
-    cmd.addEventListener('click',function(e){if(e.target===cmd)closeCmd();});
+    cmd.addEventListener('click',function(e){
+      var inner=cmd.querySelector('[data-slot="command-dialog-popup"]');
+      if(inner&&!inner.contains(e.target))closeCmd();
+    });
     if(cmdInput)cmdInput.addEventListener('input',function(){filterCmd(this.value);});
   }
 
   /* ── dark-mode toggle with View Transitions circular reveal ────────── */
+  var _vtBusy=false;
   function toggleDark(btn){
+    if(_vtBusy)return;
     var r=btn.getBoundingClientRect();
     var cx=r.left+r.width/2, cy=r.top+r.height/2;
     var endR=Math.hypot(Math.max(cx,window.innerWidth-cx),Math.max(cy,window.innerHeight-cy));
@@ -296,6 +370,7 @@
     var clipEnd='circle('+endR+'px at '+cx+'px '+cy+'px)';
     function applyDark(){H.classList.toggle('dark');localStorage.setItem(S,H.classList.contains('dark')?'dark':'light');}
     if(!document.startViewTransition){applyDark();return;}
+    _vtBusy=true;
     var vt=document.startViewTransition(applyDark);
     vt.ready.then(function(){
       /* ::view-transition-new(root) always paints above -old, so it must be
@@ -305,6 +380,7 @@
         {duration:400,easing:'ease-in-out',pseudoElement:'::view-transition-new(root)'}
       );
     });
+    vt.finished.then(function(){_vtBusy=false;}).catch(function(){_vtBusy=false;});
   }
 
   /* ── delegated clicks (CSP-safe: no inline handlers) ─────────────── */
@@ -363,9 +439,66 @@
   });
 
   document.addEventListener('keydown',function(e){
-    if(e.key==='Escape'){_close();closeCmd();}
-    if((e.ctrlKey||e.metaKey)&&(e.key==='j'||e.key==='J')){e.preventDefault();openCmd();}
+    if(e.key==='Escape'){_close();closeCmd();return;}
+    if((e.ctrlKey||e.metaKey)&&(e.key==='j'||e.key==='J')){e.preventDefault();openCmd();return;}
+    if(cmd&&!cmd.classList.contains('hidden')){
+      if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+        e.preventDefault();
+        var items=_cmdItems();
+        if(!items.length)return;
+        _cmdIdx=e.key==='ArrowDown'
+          ?Math.min(_cmdIdx+1,items.length-1)
+          :Math.max(_cmdIdx-1,0);
+        _cmdSetActive(items,_cmdIdx);
+      }else if(e.key==='Enter'){
+        var items=_cmdItems();
+        if(_cmdIdx>=0&&items[_cmdIdx]){
+          e.preventDefault();
+          closeCmd();
+          window.location.href=items[_cmdIdx].getAttribute('href');
+        }
+      }
+    }
   });
   window.addEventListener('resize',_close);
+
+  /* ── OTP field auto-advance (delegated — works after SPA navigation) ── */
+  function _otpSync(root){
+    var frm=root.closest('form');
+    var h=frm?frm.querySelector('input[type=hidden][name=code]'):null;
+    if(h)h.value=Array.from(root.querySelectorAll('[data-otp-idx]')).map(function(i){return i.value;}).join('');
+  }
+  document.addEventListener('input',function(e){
+    var el=e.target;if(!el.hasAttribute('data-otp-idx'))return;
+    el.value=el.value.replace(/[^0-9]/g,'').slice(-1);
+    var root=el.closest('[data-otp-root]');if(!root)return;
+    _otpSync(root);
+    var idx=+el.getAttribute('data-otp-idx');
+    var inp=Array.from(root.querySelectorAll('[data-otp-idx]'));
+    if(el.value&&idx<inp.length-1)inp[idx+1].focus();
+  });
+  document.addEventListener('keydown',function(e){
+    var el=e.target;if(!el.hasAttribute('data-otp-idx'))return;
+    var root=el.closest('[data-otp-root]');if(!root)return;
+    var idx=+el.getAttribute('data-otp-idx');
+    var inp=Array.from(root.querySelectorAll('[data-otp-idx]'));
+    if(e.key==='Backspace'&&!el.value&&idx>0){inp[idx-1].focus();inp[idx-1].value='';_otpSync(root);}
+    else if(e.key==='ArrowLeft'&&idx>0)inp[idx-1].focus();
+    else if(e.key==='ArrowRight'&&idx<inp.length-1)inp[idx+1].focus();
+  },true);
+  document.addEventListener('paste',function(e){
+    var el=e.target;if(!el.hasAttribute('data-otp-idx'))return;
+    var root=el.closest('[data-otp-root]');if(!root)return;
+    e.preventDefault();
+    var d=(e.clipboardData||window.clipboardData).getData('text').replace(/[^0-9]/g,'').slice(0,6);
+    var inp=Array.from(root.querySelectorAll('[data-otp-idx]'));
+    for(var i=0;i<d.length;i++)if(inp[i])inp[i].value=d[i];
+    _otpSync(root);
+    var f=Math.min(d.length,inp.length-1);if(inp[f])inp[f].focus();
+  });
+  document.addEventListener('submit',function(e){
+    var root=e.target.querySelector('[data-otp-root]');
+    if(root)_otpSync(root);
+  },true);
 })();
 {% end_app_script %}

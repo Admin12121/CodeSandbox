@@ -32,3 +32,6 @@ __all__ = [
     "OrganizationRolePermission",
     "OrganizationMemberRole",
 ]
+
+# Auth extensions — imported here so NexORM registers them for migrations
+from codesandbox.features.identity.models import AuthAccount, TwoFactorMethod, VerificationToken  # noqa: F401

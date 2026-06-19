@@ -1,7 +1,11 @@
 {% import "(auth)/login/_components/form.html" as login %}
+{% import "components/ui/field.html" as field %}
 
 <main class="grid min-h-screen place-items-center px-6 py-10">
   <section class="w-full max-w-sm">
-    {{ login.login_form(mode=request.args.get("mode", mode), error=request.args.get("error", error), next_path=request.args.get("next", "/dashboard")) }}
+    {% if info %}
+      <div class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">{{ info }}</div>
+    {% endif %}
+    {{ login.login_form(mode=mode, error=error, next_path=next_path) }}
   </section>
 </main>

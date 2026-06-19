@@ -97,12 +97,19 @@
           </div>
           <div class="flex items-center justify-between gap-4 p-4">
             <div class="min-w-0">
-              <div class="text-sm font-medium">Two-factor authentication</div>
+              <div class="flex items-center gap-2 text-sm font-medium">
+                Two-factor authentication
+                {% if totp_enabled %}
+                  {{ badge.badge("Enabled", variant="outline") }}
+                {% endif %}
+              </div>
               <div class="text-xs text-muted-foreground">Add an extra layer of security to your account</div>
             </div>
-            {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
-              Enable 2FA
-            {% endcall %}
+            <a href="/settings/2fa">
+              {% call button.button(type="button", variant="outline", size="sm") %}
+                {{ "Manage 2FA" if totp_enabled else "Set up 2FA" }}
+              {% endcall %}
+            </a>
           </div>
           <div class="flex items-center justify-between gap-4 p-4">
             <div class="min-w-0">

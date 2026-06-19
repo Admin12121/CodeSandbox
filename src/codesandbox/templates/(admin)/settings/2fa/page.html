@@ -1,0 +1,122 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/form.html" as form %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/otp-field.html" as otp_ui %}
+{% import "components/ui/badge.html" as badge %}
+
+<div class="mx-auto max-w-2xl space-y-6 p-4 md:p-6">
+  <div>
+    <h2 class="text-lg font-semibold">Two-Factor Authentication</h2>
+    <p class="text-sm text-muted-foreground">Add an extra layer of security to your account using a TOTP authenticator app.</p>
+  </div>
+
+  {% if enabled %}
+    {# Just enabled — show backup codes #}
+    {% call frame.frame() %}
+      <div class="p-4 space-y-4">
+        <div class="flex items-center gap-2">
+          <svg class="size-5 text-emerald-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+          <p class="text-sm font-medium text-emerald-600 dark:text-emerald-400">Two-factor authentication enabled!</p>
+        </div>
+        {% if backup %}
+          <div>
+            <p class="mb-2 text-sm font-medium">Save your backup codes</p>
+            <p class="mb-3 text-xs text-muted-foreground">Store these codes somewhere safe. Each can only be used once if you lose access to your authenticator app.</p>
+            <div class="grid grid-cols-2 gap-1.5 rounded-lg border bg-muted/50 p-3">
+              {% for code in backup %}
+                <code class="text-center font-mono text-sm tracking-widest">{{ code }}</code>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+        <a href="/settings" class="text-sm text-muted-foreground underline-offset-4 hover:underline">← Back to settings</a>
+      </div>
+    {% endcall %}
+
+  {% elif totp_enabled %}
+    {# Already enabled — show disable option #}
+    {% call frame.frame() %}
+      <div class="p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            {{ badge.badge("Enabled", variant="outline") }}
+            <p class="text-sm font-medium">Authenticator app (TOTP)</p>
+          </div>
+        </div>
+        <p class="text-xs text-muted-foreground">Your account is protected with two-factor authentication.</p>
+        {% call form.form(action="/settings/2fa/disable", method="post") %}
+          {% call button.button(type="submit", variant="destructive-outline", size="sm") %}
+            Disable two-factor auth
+          {% endcall %}
+        {% endcall %}
+      </div>
+    {% endcall %}
+
+  {% elif secret %}
+    {# Setup in progress — show QR / manual entry + confirm form #}
+    {% call frame.frame() %}
+      <div class="p-4 space-y-4">
+        <div>
+          <p class="text-sm font-medium">Scan with your authenticator app</p>
+          <p class="mt-1 text-xs text-muted-foreground">Open Google Authenticator, Authy, 1Password, or another TOTP app and scan the QR code.</p>
+        </div>
+
+        {# QR code via Google Charts or show raw URI #}
+        <div class="flex justify-center">
+          <div class="rounded-lg border bg-white p-3">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={{ uri | urlencode }}"
+                 alt="TOTP QR Code" class="size-44" width="180" height="180">
+          </div>
+        </div>
+
+        <details class="text-xs">
+          <summary class="cursor-pointer text-muted-foreground hover:text-foreground">Can't scan? Enter manually</summary>
+          <div class="mt-2 rounded-md border bg-muted/50 p-3">
+            <p class="mb-1 text-muted-foreground">Account: {{ user['email'] }}</p>
+            <p class="font-mono tracking-widest">{{ secret }}</p>
+          </div>
+        </details>
+
+        {% call form.form(action="/settings/2fa/confirm", method="post") %}
+          {% call field.field_group() %}
+            {% call field.field(class="flex flex-col items-center gap-3") %}
+              {{ field.field_label("Enter the 6-digit code from your app", for_id="otp-setup-0") }}
+              {% call otp_ui.otp_field(attrs={"data-otp-root": ""}) %}
+                {{ otp_ui.otp_field_input(attrs={"id": "otp-setup-0", "data-otp-idx": "0", "autofocus": "autofocus"}) }}
+                {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "1"}) }}
+                {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "2"}) }}
+                {{ otp_ui.otp_field_separator() }}
+                {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "3"}) }}
+                {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "4"}) }}
+                {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "5"}) }}
+              {% endcall %}
+              <input type="hidden" name="code">
+            {% endcall %}
+            {% if error %}
+              {{ field.field_error(error) }}
+            {% endif %}
+            {% call button.button(type="submit", class="w-full") %}Enable two-factor authentication{% endcall %}
+          {% endcall %}
+        {% endcall %}
+      </div>
+    {% endcall %}
+
+  {% else %}
+    {# Not set up — offer to start #}
+    {% call frame.frame() %}
+      <div class="p-4 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium">Authenticator app (TOTP)</p>
+            <p class="text-xs text-muted-foreground mt-0.5">Use an app like Google Authenticator or Authy.</p>
+          </div>
+          {{ badge.badge("Not configured", variant="secondary") }}
+        </div>
+        {% call form.form(action="/settings/2fa/setup", method="post") %}
+          {% call button.button(type="submit", size="sm") %}Set up authenticator{% endcall %}
+        {% endcall %}
+      </div>
+    {% endcall %}
+  {% endif %}
+</div>

@@ -1,0 +1,84 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/card.html" as card %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/form.html" as form %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/otp-field.html" as otp_ui %}
+
+<main class="grid min-h-screen place-items-center px-6 py-10">
+  <section class="w-full max-w-sm">
+    <div class="flex flex-col gap-6">
+      {% call frame.frame(class="border-none py-5") %}
+        <div class="mb-5 text-center">
+          <a href="/" class="flex flex-col items-center gap-2 self-center text-3xl font-medium">
+            <span class="flex size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground text-lg font-bold tracking-tight">CS</span>
+            <span class="text-xl font-semibold tracking-tight">CodeSandbox</span>
+          </a>
+          <p class="mt-2 text-sm font-medium">Two-factor authentication</p>
+          <p class="mt-1 text-xs text-muted-foreground">Enter the 6-digit code from your authenticator app, or use a backup code.</p>
+        </div>
+
+        {% call card.card_content(class="px-4 py-0") %}
+          {% call form.form(action="/two-factor/verify", method="post") %}
+            {% call field.field_group() %}
+              {% call field.field(class="flex flex-col items-center gap-3") %}
+                {{ field.field_label("Authentication code", for_id="otp-0") }}
+                {% call otp_ui.otp_field(attrs={"data-otp-root": "", "id": "otp-root"}) %}
+                  {{ otp_ui.otp_field_input(attrs={"id": "otp-0", "data-otp-idx": "0", "autofocus": "autofocus"}) }}
+                  {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "1"}) }}
+                  {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "2"}) }}
+                  {{ otp_ui.otp_field_separator() }}
+                  {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "3"}) }}
+                  {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "4"}) }}
+                  {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "5"}) }}
+                {% endcall %}
+                <input type="hidden" name="code" id="otp-hidden">
+              {% endcall %}
+              {% if error %}
+                {{ field.field_error(error) }}
+              {% endif %}
+              {% call field.field(class="space-y-1") %}
+                {% call button.button(type="submit", class="w-full") %}Verify{% endcall %}
+              {% endcall %}
+              {% call field.field_description(class="text-center") %}
+                <a href="/login" class="underline-offset-4 hover:underline text-xs">Use a different account</a>
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+    </div>
+  </section>
+</main>
+
+<script>
+(function(){
+  var root=document.getElementById('otp-root');
+  var hidden=document.getElementById('otp-hidden');
+  if(!root||!hidden)return;
+  function inputs(){return Array.from(root.querySelectorAll('[data-otp-idx]'));}
+  function sync(){hidden.value=inputs().map(function(i){return i.value;}).join('');}
+  root.addEventListener('input',function(e){
+    var el=e.target;if(!el.hasAttribute('data-otp-idx'))return;
+    el.value=el.value.replace(/[^0-9]/g,'').slice(-1);sync();
+    var idx=+el.getAttribute('data-otp-idx'),inp=inputs();
+    if(el.value&&idx<5)inp[idx+1].focus();
+  });
+  root.addEventListener('keydown',function(e){
+    var el=e.target;if(!el.hasAttribute('data-otp-idx'))return;
+    var idx=+el.getAttribute('data-otp-idx'),inp=inputs();
+    if(e.key==='Backspace'&&!el.value&&idx>0){inp[idx-1].focus();inp[idx-1].value='';sync();}
+    else if(e.key==='ArrowLeft'&&idx>0)inp[idx-1].focus();
+    else if(e.key==='ArrowRight'&&idx<5)inp[idx+1].focus();
+  },true);
+  root.addEventListener('paste',function(e){
+    e.preventDefault();
+    var d=(e.clipboardData||window.clipboardData).getData('text').replace(/[^0-9]/g,'').slice(0,6);
+    var inp=inputs();
+    for(var i=0;i<d.length;i++)if(inp[i])inp[i].value=d[i];
+    sync();
+    if(inp[Math.min(d.length,5)])inp[Math.min(d.length,5)].focus();
+  });
+  var frm=root.closest('form');if(frm)frm.addEventListener('submit',sync,true);
+})();
+</script>

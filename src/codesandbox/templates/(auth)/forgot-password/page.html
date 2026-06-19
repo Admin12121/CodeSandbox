@@ -1,0 +1,64 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/card.html" as card %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/form.html" as form %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/input.html" as input %}
+
+<main class="grid min-h-screen place-items-center px-6 py-10">
+  <section class="w-full max-w-sm">
+    <div class="flex flex-col gap-6">
+      {% call frame.frame(class="border-none py-5") %}
+        <div class="mb-5 text-center">
+          <a href="/" class="flex flex-col items-center gap-2 self-center text-3xl font-medium">
+            <span class="flex size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground text-lg font-bold tracking-tight">CS</span>
+            <span class="text-xl font-semibold tracking-tight">CodeSandbox</span>
+          </a>
+          <p class="mt-1 text-sm text-muted-foreground">
+            {% if sent %}Reset link sent{% else %}Reset your password{% endif %}
+          </p>
+        </div>
+
+        {% call card.card_content(class="px-4 py-0") %}
+          {% if sent %}
+            <div class="flex flex-col items-center gap-4 py-4 text-center">
+              <div class="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <svg class="size-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              </div>
+              <div>
+                <p class="text-sm font-medium">Check your email</p>
+                <p class="mt-1 text-xs text-muted-foreground">We sent a password reset link to your email address.</p>
+              </div>
+              {% if dev_url %}
+                <div class="w-full rounded-lg border border-dashed border-amber-500/50 bg-amber-500/10 p-3 text-left">
+                  <p class="text-xs font-medium text-amber-600 dark:text-amber-400">Dev mode — reset link:</p>
+                  <a href="{{ dev_url }}" class="mt-1 block break-all text-xs text-blue-600 dark:text-blue-400 hover:underline">{{ request.url_root }}{{ dev_url[1:] if dev_url.startswith('/') else dev_url }}</a>
+                </div>
+              {% endif %}
+              <a href="/login" class="text-sm text-muted-foreground underline-offset-4 hover:underline">Back to sign in</a>
+            </div>
+          {% else %}
+            {% call form.form(action="/forgot-password", method="post") %}
+              {% call field.field_group() %}
+                {% call field.field() %}
+                  {{ field.field_label("Email address", for_id="email") }}
+                  {{ field.field_description("We'll send a reset link to this address.") }}
+                  {{ input.input(type="email", name="email", placeholder="m@example.com", required=true, attrs={"id": "email", "autocomplete": "email"}) }}
+                {% endcall %}
+                {% if error %}
+                  {{ field.field_error(error) }}
+                {% endif %}
+                {% call field.field(class="space-y-1") %}
+                  {% call button.button(type="submit", class="w-full") %}Send reset link{% endcall %}
+                {% endcall %}
+                {% call field.field_description(class="text-center") %}
+                  <a href="/login" class="underline-offset-4 hover:underline">Back to sign in</a>
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+          {% endif %}
+        {% endcall %}
+      {% endcall %}
+    </div>
+  </section>
+</main>

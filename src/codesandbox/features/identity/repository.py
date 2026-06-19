@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from nexorm.exceptions import DoesNotExist
 
-from .models import ApiKey, LoginAttempt, Session, User
+from .models import ApiKey, AuthAccount, LoginAttempt, Session, TwoFactorMethod, User, VerificationToken
 
 
 def find_user_by_email(email: str) -> User | None:
@@ -94,6 +94,129 @@ def record_login_attempt(
         failure_reason=failure_reason,
     )
     attempt.save()
+
+
+# ── Verification tokens ──────────────────────────────────────────────────────
+
+def create_verification_token(
+    *,
+    user_id: str | None,
+    identifier: str,
+    token_hash: str,
+    purpose: str,
+    expires_at: datetime,
+) -> VerificationToken:
+    VerificationToken.objects.filter(identifier=identifier, purpose=purpose, used_at__isnull=True).delete() if False else None
+    # expire old tokens for this identifier+purpose
+    for old in VerificationToken.objects.filter(identifier=identifier, purpose=purpose).all():
+        old.delete()
+    vt = VerificationToken(
+        user_id=user_id,
+        identifier=identifier,
+        token_hash=token_hash,
+        purpose=purpose,
+        expires_at=expires_at,
+    )
+    vt.save()
+    return vt
+
+
+def find_verification_token(token_hash: str) -> VerificationToken | None:
+    try:
+        return VerificationToken.objects.filter(token_hash=token_hash).first()
+    except Exception:
+        return None
+
+
+def consume_verification_token(token: VerificationToken) -> None:
+    token.used_at = datetime.now(timezone.utc)
+    token.save()
+
+
+# ── Auth accounts (OAuth) ─────────────────────────────────────────────────────
+
+def find_auth_account(provider: str, provider_account_id: str) -> AuthAccount | None:
+    try:
+        return AuthAccount.objects.filter(provider=provider, provider_account_id=provider_account_id).first()
+    except Exception:
+        return None
+
+
+def upsert_auth_account(
+    *,
+    user_id: str,
+    provider: str,
+    provider_account_id: str,
+    access_token: str | None = None,
+    refresh_token: str | None = None,
+) -> AuthAccount:
+    existing = find_auth_account(provider, provider_account_id)
+    if existing:
+        existing.access_token = access_token
+        existing.refresh_token = refresh_token
+        existing.updated_at = datetime.now(timezone.utc)
+        existing.save()
+        return existing
+    account = AuthAccount(
+        user_id=user_id,
+        provider=provider,
+        provider_account_id=provider_account_id,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+    account.save()
+    return account
+
+
+# ── Two-factor methods ────────────────────────────────────────────────────────
+
+def get_totp_method(user_id: str) -> TwoFactorMethod | None:
+    try:
+        return TwoFactorMethod.objects.filter(user_id=user_id, method_type="totp").first()
+    except Exception:
+        return None
+
+
+def upsert_totp_method(
+    *,
+    user_id: str,
+    secret_encrypted: str,
+    is_enabled: bool = False,
+) -> TwoFactorMethod:
+    existing = get_totp_method(user_id)
+    if existing:
+        existing.secret_encrypted = secret_encrypted
+        existing.is_enabled = is_enabled
+        existing.updated_at = datetime.now(timezone.utc)
+        existing.save()
+        return existing
+    method = TwoFactorMethod(
+        user_id=user_id,
+        method_type="totp",
+        secret_encrypted=secret_encrypted,
+        is_enabled=is_enabled,
+    )
+    method.save()
+    return method
+
+
+def enable_totp(user_id: str, backup_codes_encrypted: str | None = None) -> None:
+    method = get_totp_method(user_id)
+    if method:
+        method.is_enabled = True
+        method.verified_at = datetime.now(timezone.utc)
+        if backup_codes_encrypted:
+            method.backup_codes_encrypted = backup_codes_encrypted
+        method.updated_at = datetime.now(timezone.utc)
+        method.save()
+
+
+def disable_totp(user_id: str) -> None:
+    method = get_totp_method(user_id)
+    if method:
+        method.is_enabled = False
+        method.updated_at = datetime.now(timezone.utc)
+        method.save()
 
 
 def list_users(

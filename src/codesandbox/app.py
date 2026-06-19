@@ -13,6 +13,7 @@ def create_app() -> Flask:
 
     app = Flask(__name__, template_folder="templates")
     app.config["SECRET_KEY"] = settings.secret_key
+    app.config["SESSION_TYPE"] = "filesystem"
     app.config["DATABASE_URL"] = settings.database_url
     app.config["SESSION_COOKIE_NAME"] = settings.session_cookie_name
     app.config["SESSION_TTL_HOURS"] = settings.session_ttl_hours

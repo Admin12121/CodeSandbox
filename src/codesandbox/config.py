@@ -28,6 +28,13 @@ class Settings:
         self.s3_access_key = os.environ.get("S3_ACCESS_KEY", "minioadmin")
         self.s3_secret_key = os.environ.get("S3_SECRET_KEY", "minioadmin")
         self.s3_bucket = os.environ.get("S3_BUCKET", "codesandbox")
+        self.github_client_id = os.environ.get("GITHUB_CLIENT_ID", "")
+        self.github_client_secret = os.environ.get("GITHUB_CLIENT_SECRET", "")
+        self.google_client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+        self.google_client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+        self.app_url = os.environ.get("APP_URL", "http://localhost")
+        self.resend_api_key = os.environ.get("RESEND_APIKEY", "")
+        self.from_email = os.environ.get("FROM_EMAIL", "CodeSandbox <noreply@admin12121.com>")
 
 
 @lru_cache(maxsize=1)

@@ -1,10 +1,39 @@
 from __future__ import annotations
 
-from flask import current_app, redirect, request
+import urllib.parse
 
+from flask import current_app, redirect, request, session
+
+from codesandbox.config import get_settings
 from codesandbox.web.blueprint import web_bp
 
-from .service import sign_in, sign_out, sign_up
+from .service import (
+    confirm_totp_setup,
+    disable_2fa,
+    generate_totp_setup,
+    request_email_verification,
+    request_password_reset,
+    reset_password,
+    sign_in,
+    sign_in_with_github,
+    sign_in_with_google,
+    sign_out,
+    sign_up,
+    verify_email,
+    verify_totp,
+)
+
+
+def _set_session_cookie(response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        current_app.config["SESSION_COOKIE_NAME"],
+        token,
+        httponly=True,
+        samesite="Lax",
+        secure=request.is_secure,
+        max_age=current_app.config["SESSION_TTL_HOURS"] * 3600,
+    )
 
 
 @web_bp.post("/login")
@@ -32,17 +61,16 @@ def login_action():
         )
 
     if not result.ok or not result.token:
-        return redirect(f"/login?error={result.message}&mode={mode}", code=303)
+        return redirect(f"/login?error={urllib.parse.quote(result.message)}&mode={mode}", code=303)
+
+    # If 2FA is pending, store token in server-side session and redirect
+    if result.requires_2fa:
+        session["_2fa_pending_token"] = result.token
+        session["_2fa_next"] = next_path
+        return redirect("/two-factor", code=303)
 
     response = redirect(next_path, code=303)
-    response.set_cookie(
-        current_app.config["SESSION_COOKIE_NAME"],
-        result.token,
-        httponly=True,
-        samesite="Lax",
-        secure=request.is_secure,
-        max_age=current_app.config["SESSION_TTL_HOURS"] * 3600,
-    )
+    _set_session_cookie(response, result.token)
     return response
 
 
@@ -52,6 +80,208 @@ def logout_action():
     token = request.cookies.get(cookie_name)
     if token:
         sign_out(token)
+    session.pop("_2fa_pending_token", None)
+    session.pop("_2fa_next", None)
     response = redirect("/login", code=303)
     response.delete_cookie(cookie_name)
+    return response
+
+
+# ── Email verification ────────────────────────────────────────────────────────
+
+@web_bp.get("/verify-email")
+def verify_email_page():
+    token = request.args.get("token", "")
+    if token:
+        result = verify_email(token)
+        if result.ok:
+            return redirect("/dashboard?verified=1", code=303)
+        return redirect(f"/login?error={urllib.parse.quote(result.message)}", code=303)
+    return redirect("/login", code=303)
+
+
+@web_bp.post("/resend-verification")
+def resend_verification():
+    from codesandbox.shared.session import get_current_session
+    from codesandbox.shared.email import send_email_verification
+    cs = get_current_session()
+    if cs and not cs.user.email_verified:
+        settings = get_settings()
+        token = request_email_verification(cs.user.id, cs.user.email)
+        verify_url = f"{settings.app_url}/verify-email?token={token}"
+        sent = send_email_verification(to=cs.user.email, verify_url=verify_url)
+        if sent:
+            return redirect("/settings?info=Verification+email+sent.+Check+your+inbox.", code=303)
+        return redirect(f"/settings?info=Verification+email+sent.+Dev+token:+{token}", code=303)
+    return redirect("/settings", code=303)
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+
+@web_bp.post("/forgot-password")
+def forgot_password_action():
+    from codesandbox.shared.email import send_password_reset
+    email = request.form.get("email", "").strip()
+    found, raw_token = request_password_reset(email)
+    if found:
+        settings = get_settings()
+        reset_url = f"{settings.app_url}/reset-password?token={raw_token}"
+        sent = send_password_reset(to=email, reset_url=reset_url)
+        if sent:
+            return redirect("/forgot-password?sent=1", code=303)
+        dev_path = f"/reset-password?token={raw_token}"
+        return redirect(f"/forgot-password?sent=1&dev_url={urllib.parse.quote(dev_path)}", code=303)
+    return redirect("/forgot-password?sent=1", code=303)
+
+
+@web_bp.post("/reset-password")
+def reset_password_action():
+    token = request.form.get("token", "")
+    password = request.form.get("password", "")
+    confirm = request.form.get("confirm_password", "")
+    if password != confirm:
+        return redirect(f"/reset-password?token={urllib.parse.quote(token)}&error=Passwords+do+not+match", code=303)
+    result = reset_password(token, password)
+    if result.ok:
+        return redirect("/login?info=Password+reset+successfully.+You+can+now+sign+in.", code=303)
+    return redirect(f"/reset-password?token={urllib.parse.quote(token)}&error={urllib.parse.quote(result.message)}", code=303)
+
+
+# ── 2FA verification at login ─────────────────────────────────────────────────
+
+@web_bp.post("/two-factor/verify")
+def two_factor_verify():
+    from codesandbox.shared.session import get_current_session
+    from . import repository
+    pending_token = session.get("_2fa_pending_token")
+    next_path = session.pop("_2fa_next", "/dashboard")
+    code = request.form.get("code", "").strip().replace(" ", "")
+
+    if not pending_token:
+        return redirect("/login", code=303)
+
+    # Decode user_id from the pending token
+    from .service import hash_token
+    token_hash = hash_token(pending_token)
+    db_session = repository.find_active_session(token_hash)
+    if not db_session:
+        return redirect("/login?error=Session+expired", code=303)
+
+    if not verify_totp(db_session.user_id, code):
+        return redirect("/two-factor?error=Invalid+code", code=303)
+
+    session.pop("_2fa_pending_token", None)
+    response = redirect(next_path, code=303)
+    _set_session_cookie(response, pending_token)
+    return response
+
+
+# ── TOTP setup (in settings) ──────────────────────────────────────────────────
+
+@web_bp.post("/settings/2fa/setup")
+def totp_setup_action():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redir
+    data = generate_totp_setup(cs.user.id, cs.user.email)
+    return redirect(f"/settings/2fa?secret={data['secret']}&uri={urllib.parse.quote(data['uri'])}", code=303)
+
+
+@web_bp.post("/settings/2fa/confirm")
+def totp_confirm_action():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redir
+    code = request.form.get("code", "").strip()
+    result = confirm_totp_setup(cs.user.id, code)
+    if result.ok:
+        backup = result.token or ""
+        return redirect(f"/settings/2fa?enabled=1&backup={urllib.parse.quote(backup)}", code=303)
+    return redirect(f"/settings/2fa?error={urllib.parse.quote(result.message)}", code=303)
+
+
+@web_bp.post("/settings/2fa/disable")
+def totp_disable_action():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redir
+    disable_2fa(cs.user.id)
+    return redirect("/settings?info=Two-factor+authentication+disabled.", code=303)
+
+
+# ── GitHub OAuth ──────────────────────────────────────────────────────────────
+
+@web_bp.get("/auth/github")
+def github_authorize():
+    settings = get_settings()
+    if not settings.github_client_id:
+        return redirect("/login?error=GitHub+OAuth+not+configured", code=303)
+    next_path = request.args.get("next", "/dashboard")
+    session["_oauth_next"] = next_path
+    params = urllib.parse.urlencode({
+        "client_id": settings.github_client_id,
+        "redirect_uri": f"{settings.app_url}/auth/github/callback",
+        "scope": "user:email",
+    })
+    return redirect(f"https://github.com/login/oauth/authorize?{params}", code=302)
+
+
+@web_bp.get("/auth/github/callback")
+def github_callback():
+    code = request.args.get("code", "")
+    next_path = session.pop("_oauth_next", "/dashboard")
+    if not code:
+        return redirect("/login?error=GitHub+authorization+cancelled", code=303)
+    result = sign_in_with_github(
+        code=code,
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    if not result.ok or not result.token:
+        return redirect(f"/login?error={urllib.parse.quote(result.message)}", code=303)
+    response = redirect(next_path, code=303)
+    _set_session_cookie(response, result.token)
+    return response
+
+
+# ── Google OAuth ──────────────────────────────────────────────────────────────
+
+@web_bp.get("/auth/google")
+def google_authorize():
+    settings = get_settings()
+    if not settings.google_client_id:
+        return redirect("/login?error=Google+OAuth+not+configured", code=303)
+    next_path = request.args.get("next", "/dashboard")
+    session["_google_next"] = next_path
+    params = urllib.parse.urlencode({
+        "client_id": settings.google_client_id,
+        "redirect_uri": f"{settings.app_url}/auth/google/callback",
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account",
+    })
+    return redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{params}", code=302)
+
+
+@web_bp.get("/auth/google/callback")
+def google_callback():
+    code = request.args.get("code", "")
+    next_path = session.pop("_google_next", "/dashboard")
+    if not code:
+        return redirect("/login?error=Google+authorization+cancelled", code=303)
+    settings = get_settings()
+    result = sign_in_with_google(
+        code=code,
+        redirect_uri=f"{settings.app_url}/auth/google/callback",
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    if not result.ok or not result.token:
+        return redirect(f"/login?error={urllib.parse.quote(result.message)}", code=303)
+    response = redirect(next_path, code=303)
+    _set_session_cookie(response, result.token)
     return response

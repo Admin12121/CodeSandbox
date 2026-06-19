@@ -12,6 +12,8 @@ dependencies = [
     "werkzeug>=3.0",
     "pymysql>=1.1",
     "uvicorn[standard]>=0.30",
+    "pyotp>=2.10.0",
+    "requests>=2.34.2",
 ]
 
 [tool.uv.workspace]

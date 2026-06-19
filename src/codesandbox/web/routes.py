@@ -25,11 +25,49 @@ def home():
 
 @router.page("/login")
 def login():
+    mode = request.args.get("mode", "signin")
     return {
         "_meta": {"title": "Sign in — CodeSandbox"},
-        "mode": "signin",
-        "error": None,
+        "mode": mode,
+        "error": request.args.get("error"),
+        "info": request.args.get("info"),
+        "next_path": request.args.get("next", "/dashboard"),
     }
+
+
+@router.page("/forgot-password")
+def forgot_password():
+    return {
+        "_meta": {"title": "Forgot Password — CodeSandbox"},
+        "sent": bool(request.args.get("sent")),
+        "dev_url": request.args.get("dev_url"),
+        "error": request.args.get("error"),
+    }
+
+
+@router.page("/reset-password")
+def reset_password_page():
+    token = request.args.get("token", "")
+    if not token:
+        return {"_redirect": "/forgot-password"}
+    return {
+        "_meta": {"title": "Reset Password — CodeSandbox"},
+        "token": token,
+        "error": request.args.get("error"),
+    }
+
+
+@router.page("/two-factor")
+def two_factor():
+    from flask import session as flask_session
+    if not flask_session.get("_2fa_pending_token"):
+        return {"_redirect": "/login"}
+    return {
+        "_meta": {"title": "Two-Factor Auth — CodeSandbox"},
+        "error": request.args.get("error"),
+    }
+
+
 
 
 # ── Platform admin dashboard ─────────────────────────────────────────────────
@@ -284,12 +322,38 @@ def settings():
         return redirect
     user = session.user
     nav = build_nav("/settings", user)
+    from codesandbox.features.identity.repository import get_totp_method
+    totp = get_totp_method(user.id)
     return {
         "_meta": {"title": "Settings — CodeSandbox"},
         "user": _user_ctx(user),
         "nav": nav,
         "page_title": "Account Settings",
         "page_description": "Manage your account and security",
+        "info": request.args.get("info"),
+        "totp_enabled": totp.is_enabled if totp else False,
+    }
+
+
+@router.page("/settings/2fa")
+def settings_2fa():
+    cs, redir = require_session()
+    if redir:
+        return redir
+    from codesandbox.features.identity.repository import get_totp_method
+    totp = get_totp_method(cs.user.id)
+    nav = build_nav("/settings", cs.user)
+    return {
+        "_meta": {"title": "Two-Factor Auth — CodeSandbox"},
+        "user": _user_ctx(cs.user),
+        "nav": nav,
+        "page_title": "Two-Factor Authentication",
+        "secret": request.args.get("secret"),
+        "uri": request.args.get("uri"),
+        "enabled": bool(request.args.get("enabled")),
+        "backup": request.args.get("backup", "").split(",") if request.args.get("backup") else [],
+        "error": request.args.get("error"),
+        "totp_enabled": totp.is_enabled if totp else False,
     }
 
 

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import secrets
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+import pyotp
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from codesandbox.config import get_settings
@@ -17,6 +22,7 @@ class AuthResult:
     ok: bool
     message: str
     token: str | None = None
+    requires_2fa: bool = False
 
 
 def hash_token(token: str) -> str:
@@ -112,8 +118,348 @@ def sign_in(
         ip_address=ip_address,
         succeeded=True,
     )
+    if user.two_factor_enabled:
+        return AuthResult(True, "2FA required.", token=token, requires_2fa=True)
     return AuthResult(True, "Signed in.", token=token)
 
 
 def sign_out(token: str) -> None:
     repository.delete_session(hash_token(token))
+
+
+# ── Email verification ────────────────────────────────────────────────────────
+
+def _token_for_purpose(purpose: str, ttl_hours: int = 1) -> tuple[str, str]:
+    """Return (raw_token, token_hash) for a new verification token."""
+    raw = secrets.token_urlsafe(32)
+    return raw, hash_token(raw)
+
+
+def request_email_verification(user_id: str, email: str) -> str:
+    """Create an email-verify token and return the raw token (caller sends email)."""
+    raw, h = _token_for_purpose("email_verify")
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    repository.create_verification_token(
+        user_id=user_id,
+        identifier=email,
+        token_hash=h,
+        purpose="email_verify",
+        expires_at=expires,
+    )
+    return raw
+
+
+def verify_email(token: str) -> AuthResult:
+    vt = repository.find_verification_token(hash_token(token))
+    if not vt:
+        return AuthResult(False, "Invalid or expired verification link.")
+    now = datetime.now(timezone.utc)
+    exp = vt.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now:
+        return AuthResult(False, "This verification link has expired.")
+    if vt.used_at:
+        return AuthResult(False, "This link has already been used.")
+    repository.consume_verification_token(vt)
+    if vt.user_id:
+        repository.update_user(vt.user_id, email_verified=True)
+    return AuthResult(True, "Email verified.")
+
+
+# ── Password reset ────────────────────────────────────────────────────────────
+
+def request_password_reset(email: str) -> tuple[bool, str]:
+    """Create a reset token. Returns (found, raw_token). Caller sends email."""
+    user = repository.find_user_by_email(email)
+    if not user:
+        return False, ""
+    raw, h = _token_for_purpose("password_reset")
+    expires = datetime.now(timezone.utc) + timedelta(hours=2)
+    repository.create_verification_token(
+        user_id=user.id,
+        identifier=email,
+        token_hash=h,
+        purpose="password_reset",
+        expires_at=expires,
+    )
+    return True, raw
+
+
+def reset_password(token: str, new_password: str) -> AuthResult:
+    if len(new_password) < 8:
+        return AuthResult(False, "Password must be at least 8 characters.")
+    vt = repository.find_verification_token(hash_token(token))
+    if not vt:
+        return AuthResult(False, "Invalid or expired reset link.")
+    now = datetime.now(timezone.utc)
+    exp = vt.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now:
+        return AuthResult(False, "This reset link has expired. Please request a new one.")
+    if vt.used_at:
+        return AuthResult(False, "This link has already been used.")
+    repository.consume_verification_token(vt)
+    pw_hash = generate_password_hash(new_password)
+    repository.update_user(vt.user_id, password_hash=pw_hash)
+    return AuthResult(True, "Password reset successfully.")
+
+
+# ── TOTP / 2FA ────────────────────────────────────────────────────────────────
+
+def _encrypt_secret(secret: str) -> str:
+    """Trivial XOR encoding (replace with real encryption in production)."""
+    key = get_settings().secret_key.encode()
+    data = secret.encode()
+    xor = bytes(data[i] ^ key[i % len(key)] for i in range(len(data)))
+    return base64.b64encode(xor).decode()
+
+
+def _decrypt_secret(enc: str) -> str:
+    key = get_settings().secret_key.encode()
+    data = base64.b64decode(enc)
+    xor = bytes(data[i] ^ key[i % len(key)] for i in range(len(data)))
+    return xor.decode()
+
+
+def generate_totp_setup(user_id: str, email: str) -> dict:
+    """Generate a new TOTP secret and provisioning URI for setup."""
+    secret = pyotp.random_base32()
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=email, issuer_name="CodeSandbox")
+    repository.upsert_totp_method(
+        user_id=user_id,
+        secret_encrypted=_encrypt_secret(secret),
+        is_enabled=False,
+    )
+    return {"secret": secret, "uri": uri}
+
+
+def confirm_totp_setup(user_id: str, code: str) -> AuthResult:
+    """Verify the user's OTP code during setup and enable TOTP."""
+    method = repository.get_totp_method(user_id)
+    if not method or not method.secret_encrypted:
+        return AuthResult(False, "No pending TOTP setup found.")
+    secret = _decrypt_secret(method.secret_encrypted)
+    totp = pyotp.TOTP(secret)
+    if not totp.verify(code, valid_window=1):
+        return AuthResult(False, "Invalid code. Please try again.")
+    backup_codes = [secrets.token_hex(5).upper() for _ in range(10)]
+    repository.enable_totp(
+        user_id,
+        backup_codes_encrypted=_encrypt_secret(json.dumps(backup_codes)),
+    )
+    repository.update_user(user_id, two_factor_enabled=True)
+    return AuthResult(True, "Two-factor authentication enabled.", token=",".join(backup_codes))
+
+
+def verify_totp(user_id: str, code: str) -> bool:
+    """Verify a TOTP code at login."""
+    method = repository.get_totp_method(user_id)
+    if not method or not method.is_enabled or not method.secret_encrypted:
+        return False
+    secret = _decrypt_secret(method.secret_encrypted)
+    totp = pyotp.TOTP(secret)
+    if totp.verify(code, valid_window=1):
+        return True
+    # Check backup codes
+    if method.backup_codes_encrypted:
+        try:
+            codes: list[str] = json.loads(_decrypt_secret(method.backup_codes_encrypted))
+            if code.upper() in codes:
+                codes.remove(code.upper())
+                repository.upsert_totp_method(
+                    user_id=user_id,
+                    secret_encrypted=method.secret_encrypted,
+                    is_enabled=True,
+                )
+                method.backup_codes_encrypted = _encrypt_secret(json.dumps(codes))
+                method.save()
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def disable_2fa(user_id: str) -> None:
+    repository.disable_totp(user_id)
+    repository.update_user(user_id, two_factor_enabled=False)
+
+
+# ── GitHub OAuth ──────────────────────────────────────────────────────────────
+
+def github_exchange_code(code: str) -> dict | None:
+    """Exchange GitHub OAuth code for access token. Returns token info dict."""
+    settings = get_settings()
+    client_id = getattr(settings, "github_client_id", None)
+    client_secret = getattr(settings, "github_client_secret", None)
+    if not client_id or not client_secret:
+        return None
+    data = urllib.parse.urlencode({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+    }).encode()
+    req = urllib.request.Request(
+        "https://github.com/login/oauth/access_token",
+        data=data,
+        headers={"Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def github_get_user(access_token: str) -> dict | None:
+    req = urllib.request.Request(
+        "https://api.github.com/user",
+        headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def google_exchange_code(code: str, redirect_uri: str) -> dict | None:
+    """Exchange Google OAuth code for access token."""
+    settings = get_settings()
+    data = urllib.parse.urlencode({
+        "client_id": settings.google_client_id,
+        "client_secret": settings.google_client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }).encode()
+    req = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def google_get_user(access_token: str) -> dict | None:
+    req = urllib.request.Request(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def sign_in_with_google(
+    *,
+    code: str,
+    redirect_uri: str,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> AuthResult:
+    token_data = google_exchange_code(code, redirect_uri)
+    if not token_data or "access_token" not in token_data:
+        return AuthResult(False, "Google authentication failed.")
+    access_token = token_data["access_token"]
+    g_user = google_get_user(access_token)
+    if not g_user:
+        return AuthResult(False, "Could not fetch Google profile.")
+
+    g_id = str(g_user.get("sub", ""))
+    g_email = g_user.get("email") or f"g_{g_id}@google.local"
+    g_name = g_user.get("name") or g_user.get("given_name") or "Google User"
+
+    account = repository.find_auth_account("google", g_id)
+    if account:
+        user = repository.find_user_by_id(account.user_id)
+        if not user:
+            return AuthResult(False, "Account not found.")
+        repository.upsert_auth_account(
+            user_id=user.id, provider="google",
+            provider_account_id=g_id, access_token=access_token,
+        )
+    else:
+        user = repository.find_user_by_email(g_email)
+        if not user:
+            user = repository.create_user(email=g_email, name=g_name, password_hash=None)
+            repository.update_user(user.id, email_verified=True)
+        repository.upsert_auth_account(
+            user_id=user.id, provider="google",
+            provider_account_id=g_id, access_token=access_token,
+        )
+
+    settings = get_settings()
+    raw_token = secrets.token_urlsafe(48)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
+    repository.create_session(
+        user_id=user.id,
+        token_hash=hash_token(raw_token),
+        expires_at=expires_at,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    repository.update_user(user.id, last_login_at=datetime.now(timezone.utc))
+    return AuthResult(True, "Signed in with Google.", token=raw_token)
+
+
+def sign_in_with_github(
+    *,
+    code: str,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> AuthResult:
+    token_data = github_exchange_code(code)
+    if not token_data or "access_token" not in token_data:
+        return AuthResult(False, "GitHub authentication failed.")
+    access_token = token_data["access_token"]
+    gh_user = github_get_user(access_token)
+    if not gh_user:
+        return AuthResult(False, "Could not fetch GitHub profile.")
+
+    gh_id = str(gh_user.get("id", ""))
+    gh_email = gh_user.get("email") or f"gh_{gh_id}@github.local"
+    gh_name = gh_user.get("name") or gh_user.get("login") or "GitHub User"
+
+    account = repository.find_auth_account("github", gh_id)
+    if account:
+        user = repository.find_user_by_id(account.user_id)
+        if not user:
+            return AuthResult(False, "Account not found.")
+        repository.upsert_auth_account(
+            user_id=user.id, provider="github",
+            provider_account_id=gh_id, access_token=access_token,
+        )
+    else:
+        user = repository.find_user_by_email(gh_email)
+        if not user:
+            user = repository.create_user(
+                email=gh_email, name=gh_name, password_hash=None
+            )
+            repository.update_user(user.id, email_verified=True)
+        repository.upsert_auth_account(
+            user_id=user.id, provider="github",
+            provider_account_id=gh_id, access_token=access_token,
+        )
+
+    settings = get_settings()
+    raw_token = secrets.token_urlsafe(48)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
+    repository.create_session(
+        user_id=user.id,
+        token_hash=hash_token(raw_token),
+        expires_at=expires_at,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    repository.update_user(user.id, last_login_at=datetime.now(timezone.utc))
+    return AuthResult(True, "Signed in with GitHub.", token=raw_token)
