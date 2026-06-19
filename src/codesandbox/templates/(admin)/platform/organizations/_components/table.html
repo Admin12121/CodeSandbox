@@ -197,7 +197,16 @@
             class="grid gap-6 p-4">
         {% if oid %}<input type="hidden" name="org_id" value="{{ oid }}">{% endif %}
 
-        {# Basic info #}
+        {# Identity #}
+        {% set industry_opts = ["Technology","Software & SaaS","Finance & Banking","Healthcare","Education","Retail & E-commerce","Media & Entertainment","Manufacturing","Consulting & Services","Nonprofit","Government","Other"] %}
+        {% set size_opts = [
+          {"value": "1-10", "label": "1–10 employees"},
+          {"value": "11-50", "label": "11–50 employees"},
+          {"value": "51-200", "label": "51–200 employees"},
+          {"value": "201-500", "label": "201–500 employees"},
+          {"value": "501-1000", "label": "501–1,000 employees"},
+          {"value": "1000+", "label": "1,000+ employees"},
+        ] %}
         <div class="grid gap-4 md:grid-cols-2">
           {% call field.field(class="md:col-span-2") %}
             {{ field.field_label("Name", for_id="org-name") }}
@@ -205,7 +214,50 @@
           {% endcall %}
           {% call field.field(class="md:col-span-2") %}
             {{ field.field_label("Description", for_id="org-desc") }}
-            {{ input.input(name="description", value=selected_org.description, placeholder="Optional description", attrs={"id": "org-desc"}) }}
+            {{ input.input(name="description", value=selected_org.description, placeholder="What does this org do?", attrs={"id": "org-desc"}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Website", for_id="org-website") }}
+            {{ input.input(type="url", name="website", value=selected_org.website if selected_org.website is defined else "", placeholder="https://acme.com", attrs={"id": "org-website"}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Contact email", for_id="org-cemail") }}
+            {{ input.input(type="email", name="contact_email", value=selected_org.contact_email if selected_org.contact_email is defined else "", placeholder="hello@acme.com", attrs={"id": "org-cemail"}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Industry", for_id="org-industry") }}
+            {% set org_industry = selected_org.industry if selected_org.industry is defined else "" %}
+            {% call sel.select(name="industry", value=org_industry) %}
+              {% call sel.select_trigger(target="org-industry-popup") %}
+                {{ sel.select_value(org_industry if org_industry else "Select industry") }}
+                <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              {% endcall %}
+              {% call sel.select_popup(attrs={"id": "org-industry-popup"}) %}
+                {% for ind in industry_opts %}
+                  {% call sel.select_item(value=ind, selected=(ind == org_industry)) %}{{ ind }}{% endcall %}
+                {% endfor %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Organization size", for_id="org-size") }}
+            {% set org_size = selected_org.size if selected_org.size is defined else "" %}
+            {% set sz_match = size_opts | selectattr('value', 'equalto', org_size) | list %}
+            {% call sel.select(name="size", value=org_size) %}
+              {% call sel.select_trigger(target="org-size-popup") %}
+                {{ sel.select_value(sz_match[0].label if sz_match else "Select size") }}
+                <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              {% endcall %}
+              {% call sel.select_popup(attrs={"id": "org-size-popup"}) %}
+                {% for opt in size_opts %}
+                  {% call sel.select_item(value=opt.value, selected=(opt.value == org_size)) %}{{ opt.label }}{% endcall %}
+                {% endfor %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Location", for_id="org-location") }}
+            {{ input.input(name="location", value=selected_org.location if selected_org.location is defined else "", placeholder="San Francisco, CA", attrs={"id": "org-location"}) }}
           {% endcall %}
           {% if not is_create %}
             {% call field.field() %}
@@ -221,6 +273,31 @@
             {% call button.button(type="submit", class="w-full sm:w-auto") %}Create organization{% endcall %}
           </div>
         {% else %}
+          {# Pending approval banner — shown prominently when status is pending #}
+          {% if selected_org.status == "pending" %}
+            <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/8 px-3 py-3">
+              <div class="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-400">
+                <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                This organization is awaiting approval.
+              </div>
+              <div class="flex gap-2">
+                <form method="post" action="/platform/organizations/{{ oid }}/update-status">
+                  <input type="hidden" name="status" value="active">
+                  {% call button.button(type="submit", size="sm") %}
+                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                    Approve
+                  {% endcall %}
+                </form>
+                <form method="post" action="/platform/organizations/{{ oid }}/update-status">
+                  <input type="hidden" name="status" value="rejected">
+                  {% call button.button(type="submit", variant="destructive-outline", size="sm") %}
+                    Reject
+                  {% endcall %}
+                </form>
+              </div>
+            </div>
+          {% endif %}
+
           {# Status management #}
           <div class="grid gap-3">
             <div class="text-sm font-semibold">Status</div>
@@ -228,6 +305,8 @@
               {% for st_val, st_label, st_desc, st_variant in [
                 ("active", "Active", "Organization is operational and members can access it.", "outline"),
                 ("inactive", "Inactive", "Organization is hidden but data is preserved.", "secondary"),
+                ("pending", "Pending", "Awaiting admin approval before going active.", "warning"),
+                ("rejected", "Rejected", "Organization request was denied.", "error"),
                 ("suspended", "Suspended", "Access is blocked. Use for policy violations.", "destructive"),
               ] %}
                 <div class="flex items-center justify-between gap-4 p-3">
@@ -241,7 +320,7 @@
                   {% if selected_org.status != st_val %}
                     <form method="post" action="/platform/organizations/{{ oid }}/update-status">
                       <input type="hidden" name="status" value="{{ st_val }}">
-                      {% call button.button(type="submit", variant="destructive-outline" if st_val == "suspended" else "outline", size="sm") %}
+                      {% call button.button(type="submit", variant="destructive-outline" if st_val in ("suspended", "rejected") else "outline", size="sm") %}
                         Set {{ st_label | lower }}
                       {% endcall %}
                     </form>

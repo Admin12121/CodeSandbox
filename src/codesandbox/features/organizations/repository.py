@@ -173,3 +173,73 @@ def seed_org_roles(org_id: str) -> None:
                 is_system=is_system,
             )
             role.save()
+
+
+# ── User-facing repository functions ─────────────────────────────────────────
+
+
+def get_user_organizations(user_id: str) -> list[Organization]:
+    """Return all organizations where the given user is a member."""
+    memberships = OrganizationMember.objects.filter(user_id=user_id).all()
+    orgs = []
+    for m in memberships:
+        org = get_organization(m.org_id)
+        if org is not None:
+            orgs.append(org)
+    return orgs
+
+
+def get_members_with_info(org_id: str) -> list[dict]:
+    """Return members with user name/email and their role names."""
+    from codesandbox.features.identity import repository as identity_repo
+
+    members = OrganizationMember.objects.filter(org_id=org_id).all()
+    result = []
+    for m in members:
+        user = identity_repo.find_user_by_id(m.user_id)
+        if user is None:
+            continue
+        member_roles = OrganizationMemberRole.objects.filter(member_id=m.id).all()
+        role_names = []
+        role_colors = []
+        for mr in member_roles:
+            role = None
+            try:
+                role = OrganizationRole.objects.get(id=mr.role_id)
+            except Exception:
+                pass
+            if role:
+                role_names.append(role.name)
+                role_colors.append(role.color)
+        result.append({
+            "id": m.id,
+            "user_id": m.user_id,
+            "name": user.name,
+            "email": user.email,
+            "roles": role_names,
+            "role_colors": role_colors,
+            "joined_at": m.joined_at,
+        })
+    return result
+
+
+def find_invitation_by_token(token: str) -> OrganizationInvitation | None:
+    return OrganizationInvitation.objects.filter(token=token).first()
+
+
+def mark_invitation_accepted(invitation: OrganizationInvitation) -> None:
+    invitation.status = "accepted"
+    invitation.save()
+
+
+def delete_member(member_id: str) -> None:
+    """Delete OrganizationMemberRole rows then the member itself."""
+    roles = OrganizationMemberRole.objects.filter(member_id=member_id).all()
+    for r in roles:
+        r.delete()
+    try:
+        from nexorm.exceptions import DoesNotExist
+        member = OrganizationMember.objects.get(id=member_id)
+        member.delete()
+    except Exception:
+        pass

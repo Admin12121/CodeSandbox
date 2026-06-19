@@ -110,3 +110,30 @@ def send_email_verification(*, to: str, verify_url: str) -> bool:
       </p>
     """
     return _send(to=to, subject="Verify your CodeSandbox email", html=_BASE.format(content=content))
+
+
+def send_org_invitation(
+    *,
+    to: str,
+    org_name: str,
+    invite_url: str,
+    invited_by_name: str,
+) -> bool:
+    content = f"""
+      <h1 style="margin:0 0 8px;font-size:22px;font-weight:600;color:#18181b">You've been invited</h1>
+      <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#71717a">
+        <strong>{invited_by_name}</strong> has invited you to join the organization
+        <strong>{org_name}</strong> on CodeSandbox.<br>
+        Click the button below to accept the invitation. This link expires in <strong>7 days</strong>.
+      </p>
+      <p style="margin:0 0 28px">{_btn(invite_url, 'Accept invitation')}</p>
+      <p style="margin:0;font-size:13px;color:#a1a1aa">
+        Or copy and paste this URL into your browser:<br>
+        <a href="{invite_url}" style="color:#3b82f6;word-break:break-all">{invite_url}</a>
+      </p>
+    """
+    return _send(
+        to=to,
+        subject=f"You've been invited to {org_name} on CodeSandbox",
+        html=_BASE.format(content=content),
+    )

@@ -211,7 +211,7 @@ def platform_organizations():
     org_param = request.args.get("org") or None
     selected_org = None
     if org_param == "new":
-        selected_org = {"id": None, "name": "", "slug": "", "description": "", "status": "active", "member_count": 0}
+        selected_org = {"id": None, "name": "", "slug": "", "description": "", "website": "", "industry": "", "size": "", "location": "", "contact_email": "", "status": "active", "member_count": 0}
     elif org_param:
         from codesandbox.features.organizations.repository import get_organization, get_member_count
         _org = get_organization(org_param)
@@ -221,6 +221,11 @@ def platform_organizations():
                 "name": _org.name,
                 "slug": _org.slug,
                 "description": _org.description or "",
+                "website": _org.website or "",
+                "industry": _org.industry or "",
+                "size": _org.size or "",
+                "location": _org.location or "",
+                "contact_email": _org.contact_email or "",
                 "status": _org.status,
                 "member_count": get_member_count(_org.id),
             }
@@ -393,6 +398,70 @@ def settings_2fa():
         "backup": request.args.get("backup", "").split(",") if request.args.get("backup") else [],
         "error": request.args.get("error"),
         "totp_enabled": totp.is_enabled if totp else False,
+    }
+
+
+# ── My Organizations ──────────────────────────────────────────────────────────
+
+
+@router.page("/my/organizations")
+def my_organizations():
+    session, redirect = require_session()
+    if redirect:
+        return redirect
+    user = session.user
+    nav = build_nav("/my/organizations", user)
+
+    from codesandbox.features.organizations.service import get_user_org_list
+    organizations = get_user_org_list(user.id)
+    has_pending = any(o["status"] == "pending" for o in organizations)
+
+    return {
+        "_meta": {"title": "My Organizations — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": "My Organizations",
+        "page_description": "Organizations you belong to",
+        "organizations": organizations,
+        "has_pending": has_pending,
+        "info": request.args.get("info"),
+        "error": request.args.get("error"),
+    }
+
+
+@router.page("/my/organizations/<slug>")
+def my_organization_detail(slug: str):
+    session, redirect = require_session()
+    if redirect:
+        return redirect
+    user = session.user
+    nav = build_nav("/my/organizations", user)
+
+    from codesandbox.features.organizations.service import get_org_for_user
+    org = get_org_for_user(slug, user.id)
+    if org is None:
+        return {"_redirect": "/my/organizations"}
+
+    tab = request.args.get("tab", "members")
+    if tab not in ("members", "settings"):
+        tab = "members"
+
+    invite_link_raw = request.args.get("invite_link")
+    invite_link = None
+    if invite_link_raw:
+        import urllib.parse
+        invite_link = urllib.parse.unquote(invite_link_raw)
+
+    return {
+        "_meta": {"title": f"{org['name']} — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": org["name"],
+        "org": org,
+        "active_tab": tab,
+        "invite_link": invite_link,
+        "info": request.args.get("info"),
+        "error": request.args.get("error"),
     }
 
 

@@ -1,0 +1,543 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/select.html" as sel %}
+
+{% set page_mode = request.args.get('mode', '') %}
+{% set show_create = page_mode == 'create' %}
+{% set show_join   = page_mode == 'join' %}
+
+{% set industry_options = [
+  {"value": "Technology",    "label": "Technology"},
+  {"value": "Software",      "label": "Software & SaaS"},
+  {"value": "Cybersecurity", "label": "Cybersecurity"},
+  {"value": "Finance",       "label": "Finance & Banking"},
+  {"value": "Healthcare",    "label": "Healthcare"},
+  {"value": "Education",     "label": "Education"},
+  {"value": "Retail",        "label": "Retail & E-commerce"},
+  {"value": "Media",         "label": "Media & Entertainment"},
+  {"value": "Manufacturing", "label": "Manufacturing"},
+  {"value": "Consulting",    "label": "Consulting & Services"},
+  {"value": "Nonprofit",     "label": "Nonprofit"},
+  {"value": "Government",    "label": "Government"},
+  {"value": "Other",         "label": "Other"},
+] %}
+{% set size_options = [
+  {"value": "1-10",    "label": "1–10 employees"},
+  {"value": "11-50",   "label": "11–50 employees"},
+  {"value": "51-200",  "label": "51–200 employees"},
+  {"value": "201-500", "label": "201–500 employees"},
+  {"value": "501-1000","label": "501–1,000 employees"},
+  {"value": "1000+",   "label": "1,000+ employees"},
+] %}
+
+{# ── Banners (always visible) ── #}
+<div class="grid gap-4 p-2">
+{% if info is defined and info %}
+  <div class="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm text-primary">
+    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    {{ info }}
+  </div>
+{% endif %}
+{% if error is defined and error %}
+  <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    {{ error }}
+  </div>
+{% endif %}
+
+{# ════════════════════════════════════════ CREATE WIZARD ════════════════════ #}
+{% if show_create %}
+  <div class="flex min-w-0 items-center justify-between gap-3">
+    <div>
+      <h2 class="text-sm font-semibold">Create organization</h2>
+      <p class="text-xs text-muted-foreground">Fill in your organization details. An admin will review before activation.</p>
+    </div>
+    <a href="/my/organizations" aria-label="Cancel">
+      {% call button.button(type="button", variant="ghost", size="icon") %}
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      {% endcall %}
+    </a>
+  </div>
+
+  {% call frame.frame() %}
+    {# Stepper #}
+    <div class="overflow-x-auto border-b px-5 py-4">
+      <ol id="wizard-stepper" class="flex min-w-max items-center">
+        {% for s in [
+          {"n": 1, "label": "Identity"},
+          {"n": 2, "label": "Profile"},
+          {"n": 3, "label": "Review"},
+        ] %}
+          <li class="flex items-center" data-step-li="{{ s.n }}">
+            <div class="flex items-center gap-2.5 whitespace-nowrap text-sm font-medium
+              {{ 'text-foreground' if loop.first else 'text-muted-foreground' }}"
+              data-step-item="{{ s.n }}">
+              <span class="flex size-7 items-center justify-center rounded-lg text-xs font-semibold text-white shadow-xs
+                {{ 'bg-primary' if loop.first else 'bg-muted-foreground/35' }}"
+                data-step-dot="{{ s.n }}">
+                {{ s.n }}
+              </span>
+              <span>{{ s.label }}</span>
+            </div>
+            {% if not loop.last %}
+              <span class="mx-3 h-px w-12 shrink-0 bg-border" data-step-line="{{ s.n }}"></span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+
+    {# Form — all inputs present in DOM, panels toggled #}
+    <form id="org-wizard-form" method="post" action="/my/organizations/create" novalidate>
+
+      {# ── Step 1: Identity ── #}
+      <div data-wizard-panel="1" class="grid gap-6 p-5">
+        <div class="grid gap-1">
+          <h3 class="text-sm font-semibold">Organization identity</h3>
+          <p class="text-sm text-muted-foreground">Start with the basics — your organization's name and public presence.</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          {% call field.field() %}
+            {{ field.field_label("Organization name *", for_id="w-name") }}
+            {{ input.input(name="name", placeholder="Acme Security Corp", required=true, attrs={"id": "w-name", "autocomplete": "organization", "data-wizard-required": "1"}) }}
+            <p id="w-name-err" class="hidden text-xs text-destructive mt-1">Name is required.</p>
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Official website", for_id="w-website") }}
+            {{ input.input(type="url", name="website", placeholder="https://acme.com", attrs={"id": "w-website"}) }}
+          {% endcall %}
+          {% call field.field(class="sm:col-span-2") %}
+            {{ field.field_label("Description", for_id="w-desc") }}
+            {{ input.input(name="description", placeholder="What does your organization do? Mission, tools, scope…", attrs={"id": "w-desc"}) }}
+          {% endcall %}
+        </div>
+      </div>
+
+      {# ── Step 2: Profile ── #}
+      <div data-wizard-panel="2" class="hidden grid gap-6 p-5">
+        <div class="grid gap-1">
+          <h3 class="text-sm font-semibold">Organization profile</h3>
+          <p class="text-sm text-muted-foreground">Help others understand your organization's scale and focus area.</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          {% call field.field() %}
+            {{ field.field_label("Industry", for_id="w-industry") }}
+            {% call sel.select(name="industry", value="") %}
+              {% call sel.select_trigger(target="w-industry-popup") %}
+                {{ sel.select_value("Select industry") }}
+                <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              {% endcall %}
+              {% call sel.select_popup(attrs={"id": "w-industry-popup"}) %}
+                {% for opt in industry_options %}
+                  {% call sel.select_item(value=opt.value, selected=false) %}{{ opt.label }}{% endcall %}
+                {% endfor %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Organization size", for_id="w-size") }}
+            {% call sel.select(name="size", value="") %}
+              {% call sel.select_trigger(target="w-size-popup") %}
+                {{ sel.select_value("Select size") }}
+                <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              {% endcall %}
+              {% call sel.select_popup(attrs={"id": "w-size-popup"}) %}
+                {% for opt in size_options %}
+                  {% call sel.select_item(value=opt.value, selected=false) %}{{ opt.label }}{% endcall %}
+                {% endfor %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Location", for_id="w-location") }}
+            {{ input.input(name="location", placeholder="San Francisco, CA", attrs={"id": "w-location"}) }}
+          {% endcall %}
+          {% call field.field(class="sm:col-span-2") %}
+            {{ field.field_label("Contact email", for_id="w-email") }}
+            {{ input.input(type="email", name="contact_email", placeholder="security@acme.com", attrs={"id": "w-email"}) }}
+          {% endcall %}
+        </div>
+      </div>
+
+      {# ── Step 3: Review ── #}
+      <div data-wizard-panel="3" class="hidden grid gap-5 p-5">
+        <div class="grid gap-1">
+          <h3 class="text-sm font-semibold">Review & submit</h3>
+          <p class="text-sm text-muted-foreground">Confirm your details before submitting for admin approval.</p>
+        </div>
+
+        {# Review card — populated by JS #}
+        <div class="rounded-xl border bg-muted/30 p-5">
+          <div class="flex items-start gap-4">
+            <span id="rv-avatar" class="flex size-12 shrink-0 items-center justify-center rounded-xl border bg-gradient-to-br from-primary/20 to-primary/5 text-lg font-bold text-primary select-none">--</span>
+            <div class="min-w-0 flex-1">
+              <p id="rv-name" class="font-semibold text-foreground">—</p>
+              <p id="rv-desc" class="mt-0.5 text-sm text-muted-foreground">—</p>
+              <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span id="rv-industry" class="hidden flex items-center gap-1">
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/></svg>
+                  <span id="rv-industry-val"></span>
+                </span>
+                <span id="rv-size" class="hidden flex items-center gap-1">
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  <span id="rv-size-val"></span> employees
+                </span>
+                <span id="rv-location" class="hidden flex items-center gap-1">
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <span id="rv-location-val"></span>
+                </span>
+                <span id="rv-website" class="hidden flex items-center gap-1">
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                  <span id="rv-website-val"></span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-2.5 rounded-lg border border-yellow-500/30 bg-yellow-500/8 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-400">
+          <svg class="mt-0.5 size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div>
+            <p class="font-medium">Pending admin review</p>
+            <p class="mt-0.5 text-xs opacity-80">Your organization will be reviewed before it becomes active. You will be notified once it's approved or rejected.</p>
+          </div>
+        </div>
+      </div>
+
+      {# ── Navigation footer ── #}
+      <div class="flex items-center justify-between border-t px-5 py-4">
+        <a href="/my/organizations" id="wizard-cancel"
+           class="text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</a>
+        <div class="flex items-center gap-2">
+          <div id="wizard-back-wrap" class="hidden">
+            {% call button.button(type="button", variant="outline", size="sm", attrs={"id": "wizard-back"}) %}
+              <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+              Back
+            {% endcall %}
+          </div>
+          {% call button.button(type="button", size="sm", attrs={"id": "wizard-next"}) %}
+            Continue to Profile
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          {% endcall %}
+          {% call button.button(type="submit", size="sm", attrs={"id": "wizard-submit", "style": "display:none"}) %}
+            Submit for approval
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          {% endcall %}
+        </div>
+      </div>
+
+    </form>
+  {% endcall %}
+
+  {% app_script "org-wizard" %}
+  (function(){
+    var currentStep = 1;
+    var totalSteps = 3;
+    var stepLabels = ['Identity','Profile','Review'];
+    var stepActions = ['Continue to Profile','Continue to Review',''];
+
+    function q(sel){ return document.querySelector(sel); }
+
+    function updateStepper(){
+      for(var i=1;i<=totalSteps;i++){
+        var dot = q('[data-step-dot="'+i+'"]');
+        var item = q('[data-step-item="'+i+'"]');
+        var line = q('[data-step-line="'+(i-1)+'"]');
+        if(!dot||!item) continue;
+        if(i < currentStep){
+          dot.className = 'flex size-7 items-center justify-center rounded-lg text-xs font-semibold text-white shadow-xs bg-emerald-500';
+          dot.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="size-3.5"><path d="M20 6 9 17l-5-5"/></svg>';
+          item.className = 'flex items-center gap-2.5 whitespace-nowrap text-sm font-medium text-emerald-600 dark:text-emerald-400';
+          if(line){ line.className='mx-3 h-px w-12 shrink-0 bg-emerald-500'; }
+        } else if(i === currentStep){
+          dot.className = 'flex size-7 items-center justify-center rounded-lg text-xs font-semibold text-white shadow-xs bg-primary';
+          dot.textContent = String(i);
+          item.className = 'flex items-center gap-2.5 whitespace-nowrap text-sm font-medium text-foreground';
+          if(line){ line.className='mx-3 h-px w-12 shrink-0 bg-border'; }
+        } else {
+          dot.className = 'flex size-7 items-center justify-center rounded-lg text-xs font-semibold text-white shadow-xs bg-muted-foreground/35';
+          dot.textContent = String(i);
+          item.className = 'flex items-center gap-2.5 whitespace-nowrap text-sm font-medium text-muted-foreground';
+          if(line){ line.className='mx-3 h-px w-12 shrink-0 bg-border'; }
+        }
+      }
+    }
+
+    function showPanel(n){
+      for(var i=1;i<=totalSteps;i++){
+        var p=q('[data-wizard-panel="'+i+'"]');
+        if(p){ p.classList.toggle('hidden', i!==n); }
+      }
+    }
+
+    function updateNav(){
+      var back = q('#wizard-back-wrap');
+      var next = q('#wizard-next');
+      var submit = q('#wizard-submit');
+      if(back){ back.classList.toggle('hidden', currentStep<=1); }
+      if(next){ next.style.display = currentStep>=totalSteps ? 'none' : ''; }
+      if(submit){ submit.style.display = currentStep>=totalSteps ? '' : 'none'; }
+      if(next && currentStep < totalSteps){
+        next.childNodes[0].textContent = stepActions[currentStep-1]+' ';
+      }
+    }
+
+    function populateReview(){
+      var name = (q('#w-name')||{}).value||'';
+      var desc = (q('#w-desc')||{}).value||'';
+      var website = (q('#w-website')||{}).value||'';
+      var location = (q('#w-location')||{}).value||'';
+      var industryHidden = q('[name="industry"]');
+      var sizeHidden = q('[name="size"]');
+      var industry = industryHidden ? industryHidden.value : '';
+      var size = sizeHidden ? sizeHidden.value : '';
+
+      var av = q('#rv-avatar'); if(av) av.textContent=(name.slice(0,2)||'--').toUpperCase();
+      var nm = q('#rv-name');   if(nm) nm.textContent=name||'Unnamed organization';
+      var ds = q('#rv-desc');   if(ds) ds.textContent=desc||'No description provided.';
+
+      function toggle(id, valId, val){
+        var el=q(id); var vl=q(valId);
+        if(!el) return;
+        if(val){ el.classList.remove('hidden'); if(vl) vl.textContent=val; }
+        else { el.classList.add('hidden'); }
+      }
+      toggle('#rv-industry','#rv-industry-val', industry);
+      toggle('#rv-size','#rv-size-val', size);
+      toggle('#rv-location','#rv-location-val', location);
+      toggle('#rv-website','#rv-website-val', website.replace(/https?:\/\//,'').replace(/\/$/,''));
+    }
+
+    function validateStep(){
+      if(currentStep===1){
+        var nameEl = q('#w-name');
+        var errEl  = q('#w-name-err');
+        if(!nameEl||!nameEl.value.trim()){
+          if(errEl) errEl.classList.remove('hidden');
+          if(nameEl) nameEl.focus();
+          return false;
+        }
+        if(errEl) errEl.classList.add('hidden');
+      }
+      return true;
+    }
+
+    function goNext(){
+      if(!validateStep()) return;
+      if(currentStep < totalSteps){
+        currentStep++;
+        if(currentStep===3) populateReview();
+        showPanel(currentStep);
+        updateStepper();
+        updateNav();
+      }
+    }
+
+    function goBack(){
+      if(currentStep > 1){
+        currentStep--;
+        showPanel(currentStep);
+        updateStepper();
+        updateNav();
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      var nb = q('#wizard-next');
+      var bb = q('#wizard-back');
+      if(nb) nb.addEventListener('click', goNext);
+      if(bb) bb.addEventListener('click', goBack);
+      updateStepper();
+      updateNav();
+    });
+  })();
+  {% end_app_script %}
+
+{# ════════════════════════════════════════ JOIN FLOW ═══════════════════════ #}
+{% elif show_join %}
+  <div class="flex min-w-0 items-center justify-between gap-3">
+    <div>
+      <h2 class="text-sm font-semibold">Join an organization</h2>
+      <p class="text-xs text-muted-foreground">Paste an invite link sent by an organization owner.</p>
+    </div>
+    <a href="/my/organizations" aria-label="Cancel">
+      {% call button.button(type="button", variant="ghost", size="icon") %}
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      {% endcall %}
+    </a>
+  </div>
+
+  {% call frame.frame(class="p-6") %}
+    <div class="mx-auto max-w-md grid gap-5">
+      <div class="flex size-12 items-center justify-center rounded-2xl border bg-muted">
+        <svg class="size-6 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      </div>
+
+      <div id="join-form-wrap" class="grid gap-4">
+        {% call field.field() %}
+          {{ field.field_label("Invite link or code", for_id="join-input") }}
+          {{ input.input(
+            name="token",
+            placeholder="https://… or paste token directly",
+            attrs={"id": "join-input", "autocomplete": "off", "autocorrect": "off", "spellcheck": "false"}
+          ) }}
+          {% call field.field_description() %}An invite link looks like: <code class="font-mono text-xs">/my/organizations/join/&lt;token&gt;</code>{% endcall %}
+        {% endcall %}
+        {% call button.button(type="button", size="sm", attrs={"id": "join-btn"}) %}
+          Join organization
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        {% endcall %}
+      </div>
+
+      <p class="text-center text-xs text-muted-foreground">
+        Don't have an invite?
+        <a href="/my/organizations?mode=create" class="text-primary hover:underline">Create your own organization</a>
+        instead.
+      </p>
+    </div>
+  {% endcall %}
+
+  {% app_script "join-org" %}
+  (function(){
+    function q(s){ return document.querySelector(s); }
+    document.addEventListener('DOMContentLoaded',function(){
+      var btn = q('#join-btn');
+      if(!btn) return;
+      btn.addEventListener('click', function(){
+        var inp = q('#join-input');
+        if(!inp) return;
+        var raw = inp.value.trim();
+        if(!raw) { inp.focus(); return; }
+        var token = raw;
+        var m = raw.match(/\/join\/([^/?#]+)/);
+        if(m) token = m[1];
+        window.location.href = '/my/organizations/join/' + encodeURIComponent(token);
+      });
+    });
+  })();
+  {% end_app_script %}
+
+{# ════════════════════════════════════════ LIST / EMPTY ════════════════════ #}
+{% else %}
+  {# Pending banner #}
+  {% if has_pending is defined and has_pending %}
+    <div class="flex items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/8 px-3 py-2.5 text-sm text-yellow-700 dark:text-yellow-400">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      One or more organizations are pending admin approval.
+    </div>
+  {% endif %}
+
+  {% if not organizations %}
+    {# Empty state: two choice cards #}
+    <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-muted-foreground">You don't belong to any organization yet.</p>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <a href="/my/organizations?mode=create" class="group block">
+        {% call frame.frame(class="h-full cursor-pointer p-6 transition-colors hover:border-primary/50 hover:bg-muted/40") %}
+          <div class="flex items-start gap-4">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-muted group-hover:border-primary/30 group-hover:bg-primary/5 transition-colors">
+              <svg class="size-5 text-muted-foreground group-hover:text-primary transition-colors" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            </div>
+            <div>
+              <p class="font-semibold text-sm">Create an organization</p>
+              <p class="mt-1 text-sm text-muted-foreground">Set up a new team or company workspace. Requires admin approval.</p>
+            </div>
+          </div>
+        {% endcall %}
+      </a>
+      <a href="/my/organizations?mode=join" class="group block">
+        {% call frame.frame(class="h-full cursor-pointer p-6 transition-colors hover:border-primary/50 hover:bg-muted/40") %}
+          <div class="flex items-start gap-4">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-muted group-hover:border-primary/30 group-hover:bg-primary/5 transition-colors">
+              <svg class="size-5 text-muted-foreground group-hover:text-primary transition-colors" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </div>
+            <div>
+              <p class="font-semibold text-sm">Join with invite link</p>
+              <p class="mt-1 text-sm text-muted-foreground">Have an invite link from an organization owner? Paste it to join.</p>
+            </div>
+          </div>
+        {% endcall %}
+      </a>
+    </div>
+  {% else %}
+    {# Has orgs: header with actions + table #}
+    <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-muted-foreground">Organizations you belong to.</p>
+      <div class="flex items-center gap-2">
+        <a href="/my/organizations?mode=join">
+          {% call button.button(type="button", variant="outline", size="sm") %}
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Join with invite
+          {% endcall %}
+        </a>
+        <a href="/my/organizations?mode=create">
+          {% call button.button(type="button", size="sm") %}
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            New organization
+          {% endcall %}
+        </a>
+      </div>
+    </div>
+
+    {% call frame.frame() %}
+      {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Organization") }}
+            {{ table.table_head("Industry", class="w-36 max-sm:hidden") }}
+            {{ table.table_head("Status", class="w-28") }}
+            {{ table.table_head("Members", class="w-24 text-right") }}
+            {{ table.table_head("", class="w-10") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+          {% for org in organizations %}
+            {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/my/organizations/" ~ org.slug}) %}
+              {% call table.table_cell() %}
+                <div class="flex items-center gap-3">
+                  <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-gradient-to-br from-primary/15 to-primary/5 text-xs font-bold text-primary select-none">
+                    {{ org.name[:2] | upper }}
+                  </span>
+                  <div class="min-w-0">
+                    <div class="truncate font-medium">{{ org.name }}</div>
+                    <div class="truncate text-xs text-muted-foreground">
+                      {{ org.location if org.location else org.slug }}
+                    </div>
+                  </div>
+                </div>
+              {% endcall %}
+              {% call table.table_cell(class="max-sm:hidden") %}
+                <span class="text-sm text-muted-foreground">{{ org.industry or "—" }}</span>
+              {% endcall %}
+              {% call table.table_cell() %}
+                {% if org.status == "active" %}
+                  {{ badge.badge("Active", variant="outline") }}
+                {% elif org.status == "pending" %}
+                  {{ badge.badge("Pending", variant="warning") }}
+                {% elif org.status == "rejected" %}
+                  {{ badge.badge("Rejected", variant="destructive") }}
+                {% elif org.status == "suspended" %}
+                  {{ badge.badge("Suspended", variant="destructive") }}
+                {% else %}
+                  {{ badge.badge("Inactive", variant="secondary") }}
+                {% endif %}
+              {% endcall %}
+              {{ table.table_cell(org.member_count|string, class="text-right text-sm tabular-nums text-muted-foreground") }}
+              {% call table.table_cell() %}
+                <span class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity sm:size-6">
+                  <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </span>
+              {% endcall %}
+            {% endcall %}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  {% endif %}
+{% endif %}
+</div>
