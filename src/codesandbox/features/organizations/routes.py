@@ -19,6 +19,7 @@ from .service import (
     leave_org,
     remove_org_member,
     remove_role_from_org_member,
+    toggle_org_role_permission,
     update_organization_details,
     update_organization_status,
 )
@@ -344,6 +345,30 @@ def user_remove_member_role_action(slug: str, member_id: str):
                       member_info["role_colors"] if member_info else [],
                   )] if member_info else [],
     })
+
+
+@web_bp.post("/my/organizations/<slug>/roles/<role_id>/permission")
+def user_org_role_permission_action(slug: str, role_id: str):
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    key = request.form.get("key", "").strip()
+    enabled = request.form.get("enabled") == "1"
+    ok, msg = toggle_org_role_permission(slug, role_id, key, enabled, session.user.id)
+    if not ok:
+        err = urllib.parse.quote(msg)
+        return redirect(f"/my/organizations/{slug}?tab=roles&rp={role_id}&error={err}", code=303)
+    return redirect(f"/my/organizations/{slug}?tab=roles&rp={role_id}", code=303)
+
+
+@web_bp.get("/my/workspace/personal")
+def switch_to_personal_workspace():
+    from flask import session as flask_session
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    flask_session.pop("active_workspace_slug", None)
+    return redirect("/dashboard", code=303)
 
 
 @web_bp.post("/my/organizations/<slug>/leave")

@@ -13,10 +13,13 @@ def create_app() -> Flask:
 
     app = Flask(__name__, template_folder="templates")
     app.config["SECRET_KEY"] = settings.secret_key
-    app.config["SESSION_TYPE"] = "filesystem"
     app.config["DATABASE_URL"] = settings.database_url
-    app.config["SESSION_COOKIE_NAME"] = settings.session_cookie_name
     app.config["SESSION_TTL_HOURS"] = settings.session_ttl_hours
+    # Auth token cookie — read/written by identity code via CS_AUTH_COOKIE key
+    app.config["CS_AUTH_COOKIE"] = settings.session_cookie_name
+    # Flask's built-in session cookie must use a DIFFERENT name to avoid
+    # overwriting the auth token when flask.session is modified (e.g. 2FA, workspace slug)
+    app.config["SESSION_COOKIE_NAME"] = "_cs_sess"
 
     import codesandbox.models  # noqa: F401 — registers all NexORM models
 

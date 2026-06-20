@@ -11,6 +11,8 @@ from .service import (
     confirm_totp_setup,
     disable_2fa,
     generate_totp_setup,
+    link_github_account,
+    link_google_account,
     request_email_verification,
     request_password_reset,
     reset_password,
@@ -19,6 +21,7 @@ from .service import (
     sign_in_with_google,
     sign_out,
     sign_up,
+    unlink_account,
     verify_email,
     verify_totp,
 )
@@ -27,7 +30,7 @@ from .service import (
 def _set_session_cookie(response, token: str) -> None:
     settings = get_settings()
     response.set_cookie(
-        current_app.config["SESSION_COOKIE_NAME"],
+        current_app.config["CS_AUTH_COOKIE"],
         token,
         httponly=True,
         samesite="Lax",
@@ -76,7 +79,7 @@ def login_action():
 
 @web_bp.post("/logout")
 def logout_action():
-    cookie_name = current_app.config["SESSION_COOKIE_NAME"]
+    cookie_name = current_app.config["CS_AUTH_COOKIE"]
     token = request.cookies.get(cookie_name)
     if token:
         sign_out(token)
@@ -285,3 +288,92 @@ def google_callback():
     response = redirect(next_path, code=303)
     _set_session_cookie(response, result.token)
     return response
+
+
+# ── Social account linking (settings) ────────────────────────────────────────
+
+@web_bp.get("/auth/google/connect")
+def google_connect_authorize():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    settings = get_settings()
+    if not settings.google_client_id:
+        return redirect("/settings?tab=security&error=Google+OAuth+not+configured", code=303)
+    params = urllib.parse.urlencode({
+        "client_id": settings.google_client_id,
+        "redirect_uri": f"{settings.app_url}/auth/google/connect/callback",
+        "response_type": "code",
+        "scope": "openid email profile",
+        "access_type": "offline",
+        "prompt": "select_account",
+    })
+    return redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{params}", code=302)
+
+
+@web_bp.get("/auth/google/connect/callback")
+def google_connect_callback():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    code = request.args.get("code", "")
+    if not code:
+        return redirect("/settings?tab=security&error=Google+authorization+cancelled", code=303)
+    settings = get_settings()
+    result = link_google_account(
+        user_id=cs.user.id,
+        code=code,
+        redirect_uri=f"{settings.app_url}/auth/google/connect/callback",
+    )
+    if not result.ok:
+        return redirect(f"/settings?tab=security&error={urllib.parse.quote(result.message)}", code=303)
+    return redirect("/settings?tab=security&info=Google+account+connected.", code=303)
+
+
+@web_bp.get("/auth/github/connect")
+def github_connect_authorize():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    settings = get_settings()
+    if not settings.github_client_id:
+        return redirect("/settings?tab=security&error=GitHub+OAuth+not+configured", code=303)
+    params = urllib.parse.urlencode({
+        "client_id": settings.github_client_id,
+        "redirect_uri": f"{settings.app_url}/auth/github/connect/callback",
+        "scope": "user:email",
+    })
+    return redirect(f"https://github.com/login/oauth/authorize?{params}", code=302)
+
+
+@web_bp.get("/auth/github/connect/callback")
+def github_connect_callback():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    code = request.args.get("code", "")
+    if not code:
+        return redirect("/settings?tab=security&error=GitHub+authorization+cancelled", code=303)
+    result = link_github_account(user_id=cs.user.id, code=code)
+    if not result.ok:
+        return redirect(f"/settings?tab=security&error={urllib.parse.quote(result.message)}", code=303)
+    return redirect("/settings?tab=security&info=GitHub+account+connected.", code=303)
+
+
+@web_bp.post("/settings/connected-accounts/<provider>/disconnect")
+def disconnect_account_action(provider: str):
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    if provider not in ("google", "github"):
+        return redirect("/settings?tab=security", code=303)
+    ok, err = unlink_account(cs.user.id, provider)
+    if not ok:
+        return redirect(f"/settings?tab=security&error={urllib.parse.quote(err)}", code=303)
+    label = "Google" if provider == "google" else "GitHub"
+    return redirect(f"/settings?tab=security&info={urllib.parse.quote(label + ' account disconnected.')}", code=303)

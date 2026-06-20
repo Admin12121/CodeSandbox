@@ -24,7 +24,7 @@ def _hash_token(token: str) -> str:
 def get_current_session() -> CurrentSession | None:
     if hasattr(g, "_cs_session"):
         return g._cs_session  # type: ignore[attr-defined]
-    cookie_name = current_app.config.get("SESSION_COOKIE_NAME", "cs_session")
+    cookie_name = current_app.config.get("CS_AUTH_COOKIE", "cs_session")
     token = request.cookies.get(cookie_name)
     if not token:
         return None

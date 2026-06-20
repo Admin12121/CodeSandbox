@@ -8,6 +8,20 @@
 {% set active_tab = request.args.get('tab', 'profile') %}
 
 <div class="grid gap-4 p-2">
+
+  {% if info is defined and info %}
+    <div class="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm text-primary">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+      {{ info }}
+    </div>
+  {% endif %}
+  {% if error is defined and error %}
+    <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {{ error }}
+    </div>
+  {% endif %}
+
   <div class="flex min-w-0 items-center justify-between gap-3">
     <div class="min-w-0">
       <p class="truncate text-sm text-muted-foreground">
@@ -78,52 +92,139 @@
 
     {# ── Security tab ── #}
     {% call tabs_ui.tabs_panel(value="security", active=(active_tab == "security")) %}
-      {% call frame.frame(class="grid gap-4 p-4") %}
-        <div class="min-w-0">
-          <h2 class="truncate text-sm font-semibold">Security</h2>
-          <p class="truncate text-sm text-muted-foreground">
-            Password and account access controls.
-          </p>
-        </div>
-        <div class="grid divide-y rounded-xl border">
-          <div class="flex items-center justify-between gap-4 p-4">
-            <div class="min-w-0">
-              <div class="text-sm font-medium">Password</div>
-              <div class="text-xs text-muted-foreground">Change your account password</div>
-            </div>
-            {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
-              Change password
-            {% endcall %}
+      <div class="grid gap-4">
+
+        {% call frame.frame(class="grid gap-4 p-4") %}
+          <div class="min-w-0">
+            <h2 class="truncate text-sm font-semibold">Security</h2>
+            <p class="truncate text-sm text-muted-foreground">
+              Password and account access controls.
+            </p>
           </div>
-          <div class="flex items-center justify-between gap-4 p-4">
-            <div class="min-w-0">
-              <div class="flex items-center gap-2 text-sm font-medium">
-                Two-factor authentication
-                {% if totp_enabled %}
-                  {{ badge.badge("Enabled", variant="outline") }}
-                {% endif %}
+          <div class="grid divide-y rounded-xl border">
+            <div class="flex items-center justify-between gap-4 p-4">
+              <div class="min-w-0">
+                <div class="text-sm font-medium">Password</div>
+                <div class="text-xs text-muted-foreground">
+                  {% if has_password is defined and has_password %}Password set{% else %}No password — sign in via social accounts{% endif %}
+                </div>
               </div>
-              <div class="text-xs text-muted-foreground">Add an extra layer of security to your account</div>
-            </div>
-            <a href="/settings/2fa">
-              {% call button.button(type="button", variant="outline", size="sm") %}
-                {{ "Manage 2FA" if totp_enabled else "Set up 2FA" }}
+              {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
+                Change password
               {% endcall %}
-            </a>
-          </div>
-          <div class="flex items-center justify-between gap-4 p-4">
-            <div class="min-w-0">
-              <div class="text-sm font-medium">Sign out</div>
-              <div class="text-xs text-muted-foreground">End your current session</div>
             </div>
-            <form method="post" action="/logout">
-              {% call button.button(type="submit", variant="destructive", size="sm") %}
-                Sign out
-              {% endcall %}
-            </form>
+            <div class="flex items-center justify-between gap-4 p-4">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 text-sm font-medium">
+                  Two-factor authentication
+                  {% if totp_enabled %}
+                    {{ badge.badge("Enabled", variant="outline") }}
+                  {% endif %}
+                </div>
+                <div class="text-xs text-muted-foreground">Add an extra layer of security to your account</div>
+              </div>
+              <a href="/settings/2fa">
+                {% call button.button(type="button", variant="outline", size="sm") %}
+                  {{ "Manage 2FA" if totp_enabled else "Set up 2FA" }}
+                {% endcall %}
+              </a>
+            </div>
+            <div class="flex items-center justify-between gap-4 p-4">
+              <div class="min-w-0">
+                <div class="text-sm font-medium">Sign out</div>
+                <div class="text-xs text-muted-foreground">End your current session</div>
+              </div>
+              <form method="post" action="/logout">
+                {% call button.button(type="submit", variant="destructive", size="sm") %}
+                  Sign out
+                {% endcall %}
+              </form>
+            </div>
           </div>
-        </div>
-      {% endcall %}
+        {% endcall %}
+
+        {# ── Connected accounts ── #}
+        {% set _cp = connected_providers if connected_providers is defined else [] %}
+        {% call frame.frame(class="grid gap-4 p-4") %}
+          <div class="min-w-0">
+            <h2 class="truncate text-sm font-semibold">Connected Accounts</h2>
+            <p class="truncate text-sm text-muted-foreground">
+              Link Google or GitHub for one-click sign-in. If your email matches an existing account it will be linked automatically.
+            </p>
+          </div>
+          <div class="grid divide-y rounded-xl border">
+
+            {# ── Google ── #}
+            {% set google_connected = "google" in _cp %}
+            <div class="flex items-center justify-between gap-4 p-4">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background">
+                  <svg class="size-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                  </svg>
+                </span>
+                <div class="min-w-0">
+                  <div class="text-sm font-medium">Google</div>
+                  <div class="text-xs text-muted-foreground">
+                    {% if google_connected %}Connected{% else %}Not connected{% endif %}
+                  </div>
+                </div>
+              </div>
+              {% if google_connected %}
+                <form method="post" action="/settings/connected-accounts/google/disconnect">
+                  {% set _can_disconnect = (has_password is defined and has_password) or ("github" in _cp) %}
+                  {% if _can_disconnect %}
+                    {% call button.button(type="submit", variant="outline", size="sm") %}Disconnect{% endcall %}
+                  {% else %}
+                    {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
+                  {% endif %}
+                </form>
+              {% else %}
+                <a href="/auth/google/connect">
+                  {% call button.button(type="button", variant="outline", size="sm") %}Connect{% endcall %}
+                </a>
+              {% endif %}
+            </div>
+
+            {# ── GitHub ── #}
+            {% set github_connected = "github" in _cp %}
+            <div class="flex items-center justify-between gap-4 p-4">
+              <div class="flex items-center gap-3 min-w-0">
+                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background">
+                  <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
+                  </svg>
+                </span>
+                <div class="min-w-0">
+                  <div class="text-sm font-medium">GitHub</div>
+                  <div class="text-xs text-muted-foreground">
+                    {% if github_connected %}Connected{% else %}Not connected{% endif %}
+                  </div>
+                </div>
+              </div>
+              {% if github_connected %}
+                <form method="post" action="/settings/connected-accounts/github/disconnect">
+                  {% set _can_disconnect_gh = (has_password is defined and has_password) or google_connected %}
+                  {% if _can_disconnect_gh %}
+                    {% call button.button(type="submit", variant="outline", size="sm") %}Disconnect{% endcall %}
+                  {% else %}
+                    {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
+                  {% endif %}
+                </form>
+              {% else %}
+                <a href="/auth/github/connect">
+                  {% call button.button(type="button", variant="outline", size="sm") %}Connect{% endcall %}
+                </a>
+              {% endif %}
+            </div>
+
+          </div>
+        {% endcall %}
+
+      </div>
     {% endcall %}
 
   {% endcall %}

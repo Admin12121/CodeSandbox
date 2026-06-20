@@ -433,6 +433,57 @@ def _split_sql_statements(sql: str) -> list[str]:
     return stmts
 
 
+_ORG_PERMISSIONS = [
+    ("org.members.invite",  "Invite Members",                 "Members"),
+    ("org.members.remove",  "Remove Members",                 "Members"),
+    ("org.roles.assign",    "Assign Roles to Members",        "Roles"),
+    ("org.roles.manage",    "Create and Delete Custom Roles", "Roles"),
+    ("org.settings.edit",   "Edit Organization Settings",     "Settings"),
+]
+
+
+def ensure_org_permissions_seeded() -> None:
+    for key, label, group in _ORG_PERMISSIONS:
+        if not OrganizationPermission.objects.filter(key=key).first():
+            p = OrganizationPermission(
+                id=str(uuid.uuid4()), key=key, label=label, group=group,
+            )
+            p.save()
+
+
+def get_all_org_permissions() -> list[OrganizationPermission]:
+    return OrganizationPermission.objects.filter().all()
+
+
+def get_permissions_for_org_role(role_id: str) -> list[str]:
+    rps = OrganizationRolePermission.objects.filter(role_id=role_id).all()
+    keys: list[str] = []
+    for rp in rps:
+        try:
+            p = OrganizationPermission.objects.get(id=rp.permission_id)
+            keys.append(p.key)
+        except Exception:
+            pass
+    return keys
+
+
+def set_org_role_permission(role_id: str, permission_key: str, enabled: bool) -> bool:
+    perm = OrganizationPermission.objects.filter(key=permission_key).first()
+    if not perm:
+        return False
+    existing = OrganizationRolePermission.objects.filter(
+        role_id=role_id, permission_id=perm.id
+    ).first()
+    if enabled and not existing:
+        rp = OrganizationRolePermission(
+            id=str(uuid.uuid4()), role_id=role_id, permission_id=perm.id,
+        )
+        rp.save()
+    elif not enabled and existing:
+        existing.delete()
+    return True
+
+
 def delete_organization(org_id: str) -> None:
     """Cascade-delete all org data then the org itself."""
     members = OrganizationMember.objects.filter(org_id=org_id).all()

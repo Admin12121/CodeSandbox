@@ -180,6 +180,7 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
             "description": r.description or "",
             "is_system": bool(r.is_system),
             "member_count": cnt,
+            "permission_keys": repository.get_permissions_for_org_role(r.id),
         })
 
     return {
@@ -437,6 +438,37 @@ def remove_role_from_org_member(
         if owner_count <= 1:
             return False, "Cannot remove the last owner's owner role."
     repository.remove_role_from_member(member_id, role_id)
+    return True, ""
+
+
+def toggle_org_role_permission(
+    slug: str,
+    role_id: str,
+    permission_key: str,
+    enabled: bool,
+    requesting_user_id: str,
+) -> tuple[bool, str]:
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return False, "Organization not found."
+    member = repository.get_member(org.id, requesting_user_id)
+    if member is None:
+        return False, "Not a member."
+    req_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
+    is_owner = any(
+        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
+        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
+        for mr in req_roles
+    )
+    if not is_owner:
+        return False, "Only owners can manage role permissions."
+    try:
+        role = OrganizationRole.objects.get(id=role_id)
+    except Exception:
+        return False, "Role not found."
+    if str(role.org_id) != str(org.id):
+        return False, "Role not found."
+    repository.set_org_role_permission(role_id, permission_key, enabled)
     return True, ""
 
 

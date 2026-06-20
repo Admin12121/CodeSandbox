@@ -219,6 +219,15 @@ def disable_totp(user_id: str) -> None:
         method.save()
 
 
+def get_user_auth_accounts(user_id: str) -> list[AuthAccount]:
+    return AuthAccount.objects.filter(user_id=user_id).all()
+
+
+def delete_auth_account_by_provider(user_id: str, provider: str) -> None:
+    for acc in AuthAccount.objects.filter(user_id=user_id, provider=provider).all():
+        acc.delete()
+
+
 def list_users(
     *,
     search: str | None = None,

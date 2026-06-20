@@ -371,8 +371,10 @@ def settings():
         return redirect
     user = session.user
     nav = build_nav("/settings", user)
-    from codesandbox.features.identity.repository import get_totp_method
+    from codesandbox.features.identity.repository import get_totp_method, get_user_auth_accounts
     totp = get_totp_method(user.id)
+    accounts = get_user_auth_accounts(user.id)
+    connected_providers = {a.provider for a in accounts}
     return {
         "_meta": {"title": "Settings — CodeSandbox"},
         "user": _user_ctx(user),
@@ -380,7 +382,10 @@ def settings():
         "page_title": "Account Settings",
         "page_description": "Manage your account and security",
         "info": request.args.get("info"),
+        "error": request.args.get("error"),
         "totp_enabled": totp.is_enabled if totp else False,
+        "connected_providers": connected_providers,
+        "has_password": bool(user.password_hash),
         **_workspaces_ctx(user),
     }
 
@@ -450,9 +455,29 @@ def my_organization_detail(slug: str):
     if org is None:
         return {"_redirect": "/my/organizations"}
 
+    # Persist active workspace in server-side session
+    from flask import session as flask_session
+    flask_session["active_workspace_slug"] = org["slug"]
+
     tab = request.args.get("tab", "members")
     if tab not in ("members", "roles", "settings"):
         tab = "members"
+
+    # Lazy-seed org permissions on first roles tab visit
+    org_permissions = []
+    role_permissions_id = None
+    if tab == "roles":
+        from codesandbox.features.organizations.repository import (
+            ensure_org_permissions_seeded,
+            get_all_org_permissions,
+        )
+        ensure_org_permissions_seeded()
+        perms = get_all_org_permissions()
+        org_permissions = [
+            {"id": p.id, "key": p.key, "label": p.label, "group": p.group}
+            for p in perms
+        ]
+        role_permissions_id = request.args.get("rp")
 
     invite_link_raw = request.args.get("invite_link")
     invite_link = None
@@ -470,6 +495,8 @@ def my_organization_detail(slug: str):
         "invite_link": invite_link,
         "info": request.args.get("info"),
         "error": request.args.get("error"),
+        "org_permissions": org_permissions,
+        "role_permissions_id": role_permissions_id,
         **_workspaces_ctx(user, active_workspace=org),
     }
 
@@ -492,11 +519,18 @@ def _workspaces_ctx(user, active_workspace=None) -> dict:
     """Workspace switcher context. Returns None values for admin/staff users."""
     if user.platform_role in ("system_admin", "system_staff"):
         return {"workspace_list": None, "active_workspace": None}
-    from flask import g
+    from flask import g, session as flask_session
     if not hasattr(g, "_workspace_list"):
         from codesandbox.features.organizations.service import get_user_org_list
         g._workspace_list = get_user_org_list(user.id)
+    workspace_list = g._workspace_list
+    if active_workspace is None:
+        persisted_slug = flask_session.get("active_workspace_slug")
+        if persisted_slug:
+            active_workspace = next(
+                (w for w in workspace_list if w["slug"] == persisted_slug), None
+            )
     return {
-        "workspace_list": g._workspace_list,
+        "workspace_list": workspace_list,
         "active_workspace": active_workspace,
     }

@@ -256,7 +256,7 @@
       <span class="text-xs font-medium text-muted-foreground">{{ user['email'] }}</span>
     </div>
     {# Personal space (always first) #}
-    <a href="/dashboard"
+    <a href="/my/workspace/personal" data-router-reload="true"
        class="flex items-center gap-2.5 px-3 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">
       <span class="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold select-none">{{ (user['name'][:1] or '?') | upper }}</span>
       <span class="flex-1 text-sm truncate">{{ user['name'] }}'s Space</span>
@@ -267,7 +267,7 @@
     {# Organization workspaces #}
     {% if workspace_list %}
     {% for org in workspace_list %}
-    <a href="/my/organizations/{{ org['slug'] }}"
+    <a href="/my/organizations/{{ org['slug'] }}" data-router-reload="true"
        class="flex items-center gap-2.5 px-3 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">
       <span class="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold select-none">{{ (org['name'][:1] or '?') | upper }}</span>
       <span class="flex-1 text-sm truncate">{{ org['name'] }}</span>

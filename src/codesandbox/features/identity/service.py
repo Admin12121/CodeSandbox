@@ -287,6 +287,56 @@ def disable_2fa(user_id: str) -> None:
     repository.update_user(user_id, two_factor_enabled=False)
 
 
+# ── Social account linking ─────────────────────────────────────────────────────
+
+def link_google_account(user_id: str, code: str, redirect_uri: str) -> AuthResult:
+    token_data = google_exchange_code(code, redirect_uri)
+    if not token_data or "access_token" not in token_data:
+        return AuthResult(False, "Google authentication failed.")
+    g_user = google_get_user(token_data["access_token"])
+    if not g_user:
+        return AuthResult(False, "Could not fetch Google profile.")
+    g_id = str(g_user.get("sub", ""))
+    existing = repository.find_auth_account("google", g_id)
+    if existing and str(existing.user_id) != str(user_id):
+        return AuthResult(False, "This Google account is already connected to another user.")
+    repository.upsert_auth_account(
+        user_id=user_id, provider="google",
+        provider_account_id=g_id, access_token=token_data["access_token"],
+    )
+    return AuthResult(True, "Google account connected.")
+
+
+def link_github_account(user_id: str, code: str) -> AuthResult:
+    token_data = github_exchange_code(code)
+    if not token_data or "access_token" not in token_data:
+        return AuthResult(False, "GitHub authentication failed.")
+    gh_user = github_get_user(token_data["access_token"])
+    if not gh_user:
+        return AuthResult(False, "Could not fetch GitHub profile.")
+    gh_id = str(gh_user.get("id", ""))
+    existing = repository.find_auth_account("github", gh_id)
+    if existing and str(existing.user_id) != str(user_id):
+        return AuthResult(False, "This GitHub account is already connected to another user.")
+    repository.upsert_auth_account(
+        user_id=user_id, provider="github",
+        provider_account_id=gh_id, access_token=token_data["access_token"],
+    )
+    return AuthResult(True, "GitHub account connected.")
+
+
+def unlink_account(user_id: str, provider: str) -> tuple[bool, str]:
+    user = repository.find_user_by_id(user_id)
+    if not user:
+        return False, "User not found."
+    accounts = repository.get_user_auth_accounts(user_id)
+    other_providers = [a for a in accounts if a.provider != provider]
+    if not other_providers and not user.password_hash:
+        return False, "Cannot disconnect your only sign-in method. Add a password first."
+    repository.delete_auth_account_by_provider(user_id, provider)
+    return True, ""
+
+
 # ── GitHub OAuth ──────────────────────────────────────────────────────────────
 
 def github_exchange_code(code: str) -> dict | None:
