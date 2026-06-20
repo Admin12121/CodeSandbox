@@ -9,6 +9,7 @@
 {% import "components/ui/switch.html" as sw %}
 {% import "components/ui/alert.html" as alert %}
 {% import "components/ui/select-native.html" as sn %}
+{% import "components/ui/table-pagination.html" as tp %}
 
 {% macro role_dot(color) -%}
 <span aria-hidden="true" class="size-3 shrink-0 rounded-full" style="background:{{ color }}"></span>
@@ -29,7 +30,8 @@
 
 
 {# ════════════════════════════ LIST VIEW ════════════════════════════ #}
-{% macro roles_list(visible_roles, roles, search, error) %}
+{% macro roles_list(visible_roles, roles, search, error, page=1, page_size=20, total=none, total_pages=1) %}
+  {% set _total = total if total is not none else roles|length %}
   <div class="grid gap-4 p-3">
 
     <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
@@ -43,7 +45,7 @@
       </form>
 
       <div aria-hidden className="hidden lg:block"></div>
-      
+
       {% call button.button(attrs={"data-cs-href": "/platform/roles?role=new"}, class="cursor-pointer", size="icon") %}
         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
       {% endcall %}
@@ -56,7 +58,7 @@
         {% call table.table_header() %}
           {% call table.table_row() %}
             {{ table.table_head("", class="w-9") }}
-            {{ table.table_head("Staff Roles — " ~ roles|length) }}
+            {{ table.table_head("Staff Roles — " ~ _total) }}
             {{ table.table_head("Members", class="w-32") }}
             {{ table.table_head("Position", class="w-28 text-right") }}
             {{ table.table_head("Actions", class="w-36 text-right") }}
@@ -127,6 +129,14 @@
         {% endcall %}
       {% endcall %}
     {% endcall %}
+
+    {{ tp.table_pagination(
+      current_page=page,
+      total_pages=total_pages,
+      total_items=_total,
+      page_size=page_size,
+      base_url="/platform/roles?search=" ~ search
+    ) }}
 
   </div>
 {% endmacro %}

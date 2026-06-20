@@ -320,6 +320,46 @@ def create_org_custom_role(
     return True, ""
 
 
+def update_org_custom_role(
+    slug: str,
+    role_id: str,
+    name: str,
+    color: str,
+    description: str | None,
+    requesting_user_id: str,
+) -> tuple[bool, str]:
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return False, "Organization not found."
+    member = repository.get_member(org.id, requesting_user_id)
+    if member is None:
+        return False, "Not a member."
+    user_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
+    is_owner = any(
+        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
+        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
+        for mr in user_roles
+    )
+    if not is_owner:
+        return False, "Only owners can update roles."
+    name = name.strip()
+    if not name:
+        return False, "Role name is required."
+    try:
+        role = OrganizationRole.objects.get(id=role_id)
+    except Exception:
+        return False, "Role not found."
+    if str(role.org_id) != str(org.id):
+        return False, "Role not found."
+    if role.is_system:
+        return False, "System roles cannot be edited."
+    existing = OrganizationRole.objects.filter(org_id=org.id, name=name).first()
+    if existing and str(existing.id) != str(role_id):
+        return False, f'A role named "{name}" already exists.'
+    repository.update_org_role(role_id, name, color, description)
+    return True, ""
+
+
 def delete_org_custom_role(
     slug: str,
     role_id: str,
@@ -470,6 +510,10 @@ def toggle_org_role_permission(
         return False, "Role not found."
     repository.set_org_role_permission(role_id, permission_key, enabled)
     return True, ""
+
+
+def get_role_members_for_org(org_id: str, role_id: str) -> list[dict]:
+    return repository.get_role_members(org_id, role_id)
 
 
 def leave_org(org_id: str, user_id: str) -> tuple[bool, str]:

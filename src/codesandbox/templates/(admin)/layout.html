@@ -88,13 +88,13 @@
           <p class="mb-0.5 px-2 py-1 text-xs font-medium text-sidebar-foreground/70 select-none group-data-[state=collapsed]:hidden">{{ _ows['name'] }}</p>
           <ul class="m-0 flex w-full flex-col gap-0.5 p-0 list-none">
             <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'], "label": "Overview", "icon": "_org_overview",
-              "active": _op == ("/my/organizations/" ~ _ows['slug']) and _ot == ""}) }}</li>
-            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "?tab=members", "label": "Members", "icon": "_org_members",
-              "active": _op == ("/my/organizations/" ~ _ows['slug']) and _ot == "members"}) }}</li>
-            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "?tab=roles", "label": "Roles", "icon": "_org_roles",
-              "active": _op == ("/my/organizations/" ~ _ows['slug']) and _ot == "roles"}) }}</li>
-            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "?tab=settings", "label": "Settings", "icon": "_org_settings",
-              "active": _op == ("/my/organizations/" ~ _ows['slug']) and _ot == "settings"}) }}</li>
+              "active": _op == ("/my/organizations/" ~ _ows['slug'])}) }}</li>
+            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "/members", "label": "Members", "icon": "_org_members",
+              "active": _op.startswith("/my/organizations/" ~ _ows['slug'] ~ "/members")}) }}</li>
+            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "/roles", "label": "Roles", "icon": "_org_roles",
+              "active": _op.startswith("/my/organizations/" ~ _ows['slug'] ~ "/roles")}) }}</li>
+            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "/settings", "label": "Settings", "icon": "_org_settings",
+              "active": _op.startswith("/my/organizations/" ~ _ows['slug'] ~ "/settings")}) }}</li>
           </ul>
         </div>
       {% endif %}

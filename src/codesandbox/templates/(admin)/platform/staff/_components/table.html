@@ -5,6 +5,7 @@
 {% import "components/ui/input-group.html" as ig %}
 {% import "components/ui/field.html" as field %}
 {% import "components/ui/input.html" as input %}
+{% import "components/ui/table-pagination.html" as tp %}
 
 {% macro status_dot(status) -%}
 <span class="size-2 shrink-0 rounded-full {{ 'bg-emerald-500' if status == 'active' else 'bg-muted-foreground' }}"></span>
@@ -20,7 +21,7 @@
 {%- endmacro %}
 
 {# ═══ LIST VIEW ═══ #}
-{% macro staff_list(visible_staff, staff, search, error) %}
+{% macro staff_list(visible_staff, staff, search, error, page=1, page_size=20, total=none, total_pages=1) %}
 <div class="grid gap-4 p-2">
   <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
     <form method="get" action="/platform/staff">
@@ -39,11 +40,12 @@
     {% endcall %}
   </div>
   {{ error_alert(error) }}
+  {% set _total = total if total is not none else staff|length %}
   {% call frame.frame() %}
     {% call table.table(variant="card") %}
       {% call table.table_header() %}
         {% call table.table_row() %}
-          {{ table.table_head("Application Staff — " ~ staff|length) }}
+          {{ table.table_head("Application Staff — " ~ _total) }}
           {{ table.table_head("Email") }}
           {{ table.table_head("Roles") }}
           {{ table.table_head("Status", class="w-28") }}
@@ -87,6 +89,14 @@
       {% endcall %}
     {% endcall %}
   {% endcall %}
+
+  {{ tp.table_pagination(
+    current_page=page,
+    total_pages=total_pages,
+    total_items=_total,
+    page_size=page_size,
+    base_url="/platform/staff?search=" ~ search
+  ) }}
 </div>
 {% endmacro %}
 

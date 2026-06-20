@@ -6,9 +6,10 @@
 {% import "components/ui/select.html" as sel %}
 {% import "components/ui/field.html" as field %}
 {% import "components/ui/input.html" as input %}
+{% import "components/ui/table-pagination.html" as tp %}
 
 {# ═══ LIST VIEW ═══ #}
-{% macro organizations_table(organizations, total, page, total_pages, search, status_filter) %}
+{% macro organizations_table(organizations, total, page, total_pages, search, status_filter, page_size=25) %}
   {% set status_options = [
     {"value": "all", "label": "All status"},
     {"value": "active", "label": "Active"},
@@ -107,22 +108,13 @@
     {% endcall %}
 
     {# Pagination #}
-    {% if total_pages > 1 %}
-      <div class="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{{ total }} organizations total</span>
-        <div class="flex items-center gap-1">
-          {% if page > 1 %}
-            <a href="?page={{ page - 1 }}&search={{ search }}&status={{ status_filter }}"
-               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">← Prev</a>
-          {% endif %}
-          <span class="px-2">{{ page }} / {{ total_pages }}</span>
-          {% if page < total_pages %}
-            <a href="?page={{ page + 1 }}&search={{ search }}&status={{ status_filter }}"
-               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">Next →</a>
-          {% endif %}
-        </div>
-      </div>
-    {% endif %}
+    {{ tp.table_pagination(
+      current_page=page,
+      total_pages=total_pages,
+      total_items=total,
+      page_size=page_size,
+      base_url="/platform/organizations?search=" ~ search ~ "&status=" ~ status_filter
+    ) }}
 
   </div>
 {% endmacro %}

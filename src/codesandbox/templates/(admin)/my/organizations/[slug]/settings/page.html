@@ -1,0 +1,188 @@
+{% import "(admin)/my/organizations/[slug]/_components/header.html" as org_ui %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/textarea.html" as textarea %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/select-native.html" as sn %}
+
+{% set slug = org.slug %}
+{% set is_owner = org.is_owner %}
+
+<div class="grid gap-0">
+
+  {{ org_ui.breadcrumb(org, "Settings", info=info, error=error) }}
+
+  <div class="grid gap-5 p-3 pt-4">
+
+    {# ── Organization details ── #}
+    {% call frame.frame(class="grid gap-4 p-5") %}
+      <div>
+        <h2 class="text-sm font-semibold">Organization details</h2>
+        <p class="text-sm text-muted-foreground">
+          {% if is_owner %}Update your organization profile.{% else %}Organization information (read-only for members).{% endif %}
+        </p>
+      </div>
+      <form method="post" action="/my/organizations/{{ slug }}/update" class="grid gap-4">
+        <div class="grid gap-4 md:grid-cols-2">
+          {% call field.field() %}
+            {{ field.field_label("Organization name", for_id="org-name") }}
+            {{ input.input(name="name", value=org.name, required=true,
+              attrs={"id": "org-name"} if is_owner else {"id": "org-name", "disabled": true}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Contact email", for_id="org-contact-email") }}
+            {{ input.input(type="email", name="contact_email", value=org.contact_email or "",
+              placeholder="billing@example.com",
+              attrs={"id": "org-contact-email"} if is_owner else {"id": "org-contact-email", "disabled": true}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Website", for_id="org-website") }}
+            {{ input.input(type="url", name="website", value=org.website or "",
+              placeholder="https://example.com",
+              attrs={"id": "org-website"} if is_owner else {"id": "org-website", "disabled": true}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Location", for_id="org-location") }}
+            {{ input.input(name="location", value=org.location or "",
+              placeholder="San Francisco, CA",
+              attrs={"id": "org-location"} if is_owner else {"id": "org-location", "disabled": true}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Industry", for_id="org-industry") }}
+            {{ input.input(name="industry", value=org.industry or "",
+              placeholder="Software & Technology",
+              attrs={"id": "org-industry"} if is_owner else {"id": "org-industry", "disabled": true}) }}
+          {% endcall %}
+          {% call field.field() %}
+            {{ field.field_label("Company size", for_id="org-size") }}
+            {% if is_owner %}
+              {% call sn.select_native(name="size", attrs={"id": "org-size"}) %}
+                <option value="" {% if not org.size %}selected{% endif %}>Select size…</option>
+                {% for opt in ["1–10", "11–50", "51–200", "201–500", "501–1000", "1000+"] %}
+                  <option value="{{ opt }}" {% if org.size == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+              {% endcall %}
+            {% else %}
+              {{ input.input(name="size", value=org.size or "", attrs={"id": "org-size", "disabled": true}) }}
+            {% endif %}
+          {% endcall %}
+        </div>
+        {% call field.field() %}
+          {{ field.field_label("Description", for_id="org-description") }}
+          {{ textarea.textarea(name="description", value=org.description or "",
+            placeholder="What does your organization do?",
+            attrs={"id": "org-description", "rows": "3"} if is_owner else {"id": "org-description", "disabled": true, "rows": "3"}) }}
+        {% endcall %}
+        {% if is_owner %}
+          <div class="flex justify-end">
+            {% call button.button(type="submit", size="sm") %}Save changes{% endcall %}
+          </div>
+        {% endif %}
+      </form>
+    {% endcall %}
+
+    {# ── Info row ── #}
+    {% call frame.frame(class="grid gap-4 p-5") %}
+      <div>
+        <h2 class="text-sm font-semibold">Organization info</h2>
+        <p class="text-sm text-muted-foreground">Read-only metadata.</p>
+      </div>
+      <dl class="grid gap-3 sm:grid-cols-2 text-sm">
+        <div class="grid gap-1">
+          <dt class="text-muted-foreground">Slug</dt>
+          <dd class="font-mono text-xs">{{ org.slug }}</dd>
+        </div>
+        <div class="grid gap-1">
+          <dt class="text-muted-foreground">Status</dt>
+          <dd>
+            {% if org.status == "active" %}{{ badge.badge("Active", variant="outline") }}
+            {% elif org.status == "pending" %}{{ badge.badge("Pending approval", variant="warning") }}
+            {% elif org.status == "rejected" %}{{ badge.badge("Rejected", variant="destructive") }}
+            {% elif org.status == "suspended" %}{{ badge.badge("Suspended", variant="destructive") }}
+            {% else %}{{ badge.badge("Inactive", variant="secondary") }}{% endif %}
+          </dd>
+        </div>
+        <div class="grid gap-1">
+          <dt class="text-muted-foreground">Members</dt>
+          <dd>{{ org.member_count }} member{{ "" if org.member_count == 1 else "s" }}</dd>
+        </div>
+        <div class="grid gap-1">
+          <dt class="text-muted-foreground">Created</dt>
+          <dd>{{ org.created_at.strftime("%b %d, %Y") if org.created_at else "—" }}</dd>
+        </div>
+      </dl>
+    {% endcall %}
+
+    {# ── Danger zone ── #}
+    {% call frame.frame(class="grid gap-4 p-5 border-destructive/40") %}
+      <div>
+        <h2 class="text-sm font-semibold text-destructive">Danger zone</h2>
+        <p class="text-sm text-muted-foreground">Irreversible and destructive actions.</p>
+      </div>
+      <div class="grid divide-y rounded-lg border border-destructive/30">
+
+        {# Leave org (non-owner members) #}
+        {% if not is_owner %}
+          <div class="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">Leave organization</div>
+              <div class="text-xs text-muted-foreground">
+                Remove yourself from {{ org.name }}. You will lose access immediately.
+              </div>
+            </div>
+            <form method="post" action="/my/organizations/{{ slug }}/leave"
+                  id="leave-org-form">
+              {% call button.button(type="submit", variant="destructive", size="sm",
+                attrs={"data-cs-confirm": "leave-org",
+                       "aria-describedby": "leave-org-desc"}) %}
+                Leave organization
+              {% endcall %}
+            </form>
+          </div>
+        {% endif %}
+
+        {# Delete org (owner only) #}
+        {% if is_owner %}
+          <div class="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div class="min-w-0">
+              <div class="text-sm font-medium">Delete organization</div>
+              <div class="text-xs text-muted-foreground">
+                Permanently delete <strong>{{ org.name }}</strong> and all its data. This cannot be undone.
+              </div>
+            </div>
+            <form method="post" action="/my/organizations/{{ slug }}/delete"
+                  id="delete-org-form">
+              {% call button.button(type="submit", variant="destructive", size="sm",
+                attrs={"data-cs-confirm": "delete-org"}) %}
+                Delete organization
+              {% endcall %}
+            </form>
+          </div>
+        {% endif %}
+
+      </div>
+    {% endcall %}
+
+  </div>
+</div>
+
+{% app_script "org-settings-confirm" %}
+(function(){
+  var msgs = {
+    'leave-org': 'Are you sure you want to leave {{ org.name | replace("'", "\\'") }}? You will lose access immediately.',
+    'delete-org': 'Permanently delete "{{ org.name | replace("'", "\\'") }}"? This action cannot be undone and all data will be lost.'
+  };
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-cs-confirm]');
+    if(!btn) return;
+    var key = btn.getAttribute('data-cs-confirm');
+    var msg = msgs[key] || 'Are you sure?';
+    if(!confirm(msg)){
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+})();
+{% end_app_script %}

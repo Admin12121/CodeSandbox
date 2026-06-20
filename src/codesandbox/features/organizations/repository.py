@@ -245,6 +245,26 @@ def create_org_role(
     return role
 
 
+def update_org_role(
+    role_id: str,
+    name: str,
+    color: str,
+    description: str | None = None,
+) -> bool:
+    """Update a custom (non-system) role. Returns False if system role or not found."""
+    try:
+        role = OrganizationRole.objects.get(id=role_id)
+    except Exception:
+        return False
+    if role.is_system:
+        return False
+    role.name = name.strip()
+    role.color = color or "#6366f1"
+    role.description = description
+    role.save()
+    return True
+
+
 def delete_org_role(role_id: str) -> bool:
     """Delete a custom (non-system) role. Returns False if system role."""
     try:
@@ -433,17 +453,9 @@ def _split_sql_statements(sql: str) -> list[str]:
     return stmts
 
 
-_ORG_PERMISSIONS = [
-    ("org.members.invite",  "Invite Members",                 "Members"),
-    ("org.members.remove",  "Remove Members",                 "Members"),
-    ("org.roles.assign",    "Assign Roles to Members",        "Roles"),
-    ("org.roles.manage",    "Create and Delete Custom Roles", "Roles"),
-    ("org.settings.edit",   "Edit Organization Settings",     "Settings"),
-]
-
-
 def ensure_org_permissions_seeded() -> None:
-    for key, label, group in _ORG_PERMISSIONS:
+    from codesandbox.shared.permissions import get_registered_org_permissions
+    for key, label, group in get_registered_org_permissions():
         if not OrganizationPermission.objects.filter(key=key).first():
             p = OrganizationPermission(
                 id=str(uuid.uuid4()), key=key, label=label, group=group,
@@ -482,6 +494,31 @@ def set_org_role_permission(role_id: str, permission_key: str, enabled: bool) ->
     elif not enabled and existing:
         existing.delete()
     return True
+
+
+def get_role_members(org_id: str, role_id: str) -> list[dict]:
+    """Return user info for every member who holds role_id in org_id."""
+    from codesandbox.features.identity import repository as identity_repo
+    mrs = OrganizationMemberRole.objects.filter(role_id=role_id).all()
+    result = []
+    for mr in mrs:
+        try:
+            member = OrganizationMember.objects.get(id=mr.member_id)
+        except Exception:
+            continue
+        if str(member.org_id) != str(org_id):
+            continue
+        user = identity_repo.find_user_by_id(member.user_id)
+        if user is None:
+            continue
+        result.append({
+            "id": member.id,
+            "user_id": member.user_id,
+            "name": user.name,
+            "email": user.email,
+            "joined_at": member.joined_at,
+        })
+    return result
 
 
 def delete_organization(org_id: str) -> None:

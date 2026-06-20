@@ -1,0 +1,309 @@
+{% import "(admin)/my/organizations/[slug]/_components/header.html" as org_ui %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/input-group.html" as ig %}
+{% import "components/ui/table-pagination.html" as tp %}
+
+{% set slug = org.slug %}
+{% set is_owner = org.is_owner %}
+
+<div class="grid gap-0">
+
+  {{ org_ui.breadcrumb(org, "Members", info=info, error=error) }}
+
+  <div class="grid gap-4 p-3 pt-4">
+
+    {# ── Invite link banner ── #}
+    {% if invite_link %}
+      <div class="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/8 px-4 py-3 text-sm">
+        <svg class="size-4 shrink-0 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <span class="font-medium text-primary">Invite link ready</span>
+        <code id="invite-link-text" class="flex-1 min-w-0 truncate rounded bg-background border px-2 py-1 text-xs font-mono">{{ invite_link }}</code>
+        <button type="button" id="copy-invite-btn"
+          class="inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+          Copy link
+        </button>
+      </div>
+      {% app_script "copy-invite-link-org" %}
+      (function(){
+        var btn=document.getElementById('copy-invite-btn'),txt=document.getElementById('invite-link-text');
+        if(btn&&txt){btn.addEventListener('click',function(){navigator.clipboard.writeText(txt.textContent.trim()).then(function(){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy link';},2000);}).catch(function(){});});}
+      })();
+      {% end_app_script %}
+    {% endif %}
+
+    {# ── Toolbar: single form with search | spacer | role filter | + ── #}
+    <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_auto] md:items-center">
+      <form method="get" action="/my/organizations/{{ slug }}/members" id="members-form"
+            class="contents">
+        {% call ig.input_group() %}
+          {{ ig.input_group_input(name="search", placeholder="Search members…", value=search, attrs={"type": "search", "aria-label": "Search members", "form": "members-form"}) }}
+          {% call ig.input_group_addon() %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          {% endcall %}
+        {% endcall %}
+
+        <div aria-hidden="true" class="hidden lg:block"></div>
+
+        <select name="role" aria-label="Filter by role" form="members-form"
+          class="h-9 rounded-lg border border-input bg-background px-3 pr-8 text-sm shadow-xs outline-none appearance-none cursor-pointer hover:bg-accent transition-colors"
+          onchange="document.getElementById('members-form').submit()">
+          <option value="all" {% if role_filter == "all" or not role_filter %}selected{% endif %}>All roles</option>
+          {% for r in org.roles %}
+            <option value="{{ r.name }}" {% if role_filter == r.name %}selected{% endif %}>{{ r.name | capitalize }}</option>
+          {% endfor %}
+        </select>
+      </form>
+
+      {% if is_owner %}
+        {% call button.button(type="button", size="icon", attrs={"id": "invite-open-btn", "aria-label": "Invite member"}) %}
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        {% endcall %}
+      {% endif %}
+    </div>
+
+    {# ── Members table ── #}
+    {% call frame.frame() %}
+      {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Member — " ~ total ~ " total") }}
+            {{ table.table_head("Roles", class="w-52") }}
+            {{ table.table_head("Joined", class="w-32") }}
+            {{ table.table_head("Actions", class="w-20 text-right") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+          {% if not members %}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="h-24 text-center text-muted-foreground", attrs={"colspan": "4"}) %}
+                No members found{% if search %} for "{{ search }}"{% endif %}{% if role_filter and role_filter != "all" %} with role "{{ role_filter }}"{% endif %}.
+              {% endcall %}
+            {% endcall %}
+          {% else %}
+            {% for member in members %}
+              {% call table.table_row() %}
+
+                {# Name + email #}
+                {% call table.table_cell() %}
+                  <div class="flex items-center gap-3">
+                    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-xs font-semibold uppercase text-muted-foreground select-none">{{ (member.name or "?")[:2] }}</span>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <span class="truncate text-sm font-medium">{{ member.name }}</span>
+                        {% if member.user_id == user.id %}{{ badge.badge("You", variant="secondary") }}{% endif %}
+                      </div>
+                      <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
+                    </div>
+                  </div>
+                {% endcall %}
+
+                {# Roles cell with inline add/remove for owner #}
+                {% call table.table_cell() %}
+                  {% if is_owner %}
+                    <div class="flex flex-wrap items-center gap-1 role-cell" data-member-id="{{ member.id }}">
+                      {% for i in range(member.roles | length) %}
+                        <span class="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-xs font-medium"
+                          style="border-color:{{ member.role_colors[i] }}33;background-color:{{ member.role_colors[i] }}18;color:{{ member.role_colors[i] }};">
+                          {{ member.roles[i] | capitalize }}
+                          <button type="button"
+                            class="ml-0.5 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-black/10 transition-colors"
+                            data-remove-role="{{ member.id }}" data-role-id="{{ member.role_ids[i] }}"
+                            aria-label="Remove {{ member.roles[i] }}">
+                            <svg class="size-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                          </button>
+                        </span>
+                      {% endfor %}
+                      {% set available = [] %}
+                      {% for _r in org.roles %}{% if _r.id not in member.role_ids %}{% set available = available + [_r] %}{% endif %}{% endfor %}
+                      {% if available %}
+                        <div class="relative inline-block">
+                          <button type="button" data-add-role-btn="{{ member.id }}"
+                            class="inline-flex size-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                            aria-label="Add role">
+                            <svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                          </button>
+                          <div class="role-menu absolute z-20 hidden mt-1 min-w-36 rounded-lg border bg-popover shadow-md p-1 left-0 top-full">
+                            {% for role in available %}
+                              <button type="button"
+                                class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors text-left"
+                                data-assign-role="{{ member.id }}" data-role-id="{{ role.id }}">
+                                <span class="size-2 rounded-full shrink-0" style="background-color:{{ role.color }};"></span>
+                                {{ role.name | capitalize }}
+                              </button>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% else %}
+                    <div class="flex flex-wrap gap-1">
+                      {% for i in range(member.roles | length) %}
+                        <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium"
+                          style="border-color:{{ member.role_colors[i] }}33;background-color:{{ member.role_colors[i] }}18;color:{{ member.role_colors[i] }};">
+                          {{ member.roles[i] | capitalize }}
+                        </span>
+                      {% endfor %}
+                      {% if not member.roles %}<span class="text-xs text-muted-foreground">—</span>{% endif %}
+                    </div>
+                  {% endif %}
+                {% endcall %}
+
+                {# Joined date #}
+                {% call table.table_cell(class="text-xs text-muted-foreground") %}
+                  {% if member.joined_at %}{{ member.joined_at.strftime("%b %d, %Y") }}{% endif %}
+                {% endcall %}
+
+                {# Actions three-dot menu #}
+                {% call table.table_cell() %}
+                  <div class="flex justify-end">
+                    {% call button.button(variant="ghost", size="icon-xs",
+                      class="shrink-0 text-muted-foreground hover:text-accent-foreground",
+                      attrs={"data-cs-menu": "mam-" ~ member.id, "aria-label": "Actions for " ~ member.name}) %}
+                      <svg class="pointer-events-none size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+                    {% endcall %}
+                    <div id="mam-{{ member.id }}" class="hidden fixed z-[100] w-48 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
+                      <div class="px-2 py-1 text-xs font-semibold text-muted-foreground truncate">{{ member.name }}</div>
+                      {% if is_owner and member.user_id != user.id %}
+                        <div class="my-1 h-px bg-border"></div>
+                        <form method="post" action="/my/organizations/{{ slug }}/remove-member/{{ member.id }}">
+                          <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10 transition-colors">
+                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/><line x1="17" x2="22" y1="14" y2="14"/></svg>
+                            Remove member
+                          </button>
+                        </form>
+                      {% else %}
+                        <div class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-muted-foreground opacity-50 cursor-not-allowed text-xs">
+                          No actions available
+                        </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                {% endcall %}
+
+              {% endcall %}
+            {% endfor %}
+          {% endif %}
+        {% endcall %}
+      {% endcall %}
+
+    {% endcall %}
+
+    {# Pagination — outside frame, always visible #}
+    {{ tp.table_pagination(
+      current_page=page,
+      total_pages=total_pages,
+      total_items=total,
+      page_size=page_size,
+      base_url="/my/organizations/" ~ slug ~ "/members?search=" ~ search ~ "&role=" ~ role_filter
+    ) }}
+
+  </div>
+</div>
+
+{# ── Invite dialog ── #}
+{% if is_owner %}
+  <dialog id="invite-modal"
+    class="w-full max-w-md rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/40">
+    <div class="flex items-center justify-between border-b px-5 py-4">
+      <h2 class="text-sm font-semibold">Invite a member</h2>
+      <button type="button" id="invite-close-btn"
+        class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+        aria-label="Close">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="grid gap-4 px-5 py-5">
+      <p class="text-sm text-muted-foreground">Send an invitation by email. The recipient will receive a link to join <strong>{{ org.name }}</strong>.</p>
+      <form method="post" action="/my/organizations/{{ slug }}/invite" class="grid gap-4">
+        <div class="grid gap-1.5">
+          <label for="invite-email" class="text-sm font-medium">Email address</label>
+          <input type="email" id="invite-email" name="email" required
+            placeholder="colleague@example.com" autocomplete="email"
+            class="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring">
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" id="invite-cancel-btn"
+            class="inline-flex h-8 items-center justify-center rounded-md border px-3.5 text-sm font-medium hover:bg-accent transition-colors">
+            Cancel
+          </button>
+          <button type="submit"
+            class="inline-flex h-8 items-center gap-1.5 justify-center rounded-md bg-primary px-3.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            Send invitation
+          </button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  {% app_script "org-members-invite-dialog" %}
+  (function(){
+    var openBtn=document.getElementById('invite-open-btn');
+    var modal=document.getElementById('invite-modal');
+    var closeBtn=document.getElementById('invite-close-btn');
+    var cancelBtn=document.getElementById('invite-cancel-btn');
+    function openModal(){ if(modal) modal.showModal(); }
+    function closeModal(){ if(modal) modal.close(); }
+    if(openBtn) openBtn.addEventListener('click',openModal);
+    if(closeBtn) closeBtn.addEventListener('click',closeModal);
+    if(cancelBtn) cancelBtn.addEventListener('click',closeModal);
+    if(modal){ modal.addEventListener('click',function(e){ if(e.target===modal) modal.close(); }); }
+  })();
+  {% end_app_script %}
+
+  {% app_script "org-members-role-assign" %}
+  (function(){
+    var _slug='{{ slug }}';
+    var _roles={{ org.roles | tojson }};
+    function renderRoleCell(memberId,roles){
+      var cell=document.querySelector('.role-cell[data-member-id="'+memberId+'"]');
+      if(!cell) return;
+      var assignedIds=roles.map(function(r){return r.id;});
+      var available=_roles.filter(function(r){return assignedIds.indexOf(r.id)===-1;});
+      var html='';
+      roles.forEach(function(r){
+        html+='<span class="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-xs font-medium" style="border-color:'+r.color+'33;background-color:'+r.color+'18;color:'+r.color+';">'+(r.name.charAt(0).toUpperCase()+r.name.slice(1))+'<button type="button" class="ml-0.5 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-black/10 transition-colors" data-remove-role="'+memberId+'" data-role-id="'+r.id+'" aria-label="Remove '+r.name+'"><svg class="size-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></span>';
+      });
+      if(available.length){
+        html+='<div class="relative inline-block"><button type="button" data-add-role-btn="'+memberId+'" class="inline-flex size-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors" aria-label="Add role"><svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg></button><div class="role-menu absolute z-20 hidden mt-1 min-w-36 rounded-lg border bg-popover shadow-md p-1 left-0 top-full">';
+        available.forEach(function(role){html+='<button type="button" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors text-left" data-assign-role="'+memberId+'" data-role-id="'+role.id+'"><span class="size-2 rounded-full shrink-0" style="background-color:'+role.color+';"></span>'+(role.name.charAt(0).toUpperCase()+role.name.slice(1))+'</button>';});
+        html+='</div></div>';
+      }
+      cell.innerHTML=html;
+    }
+    document.addEventListener('click',function(e){
+      var addBtn=e.target.closest('[data-add-role-btn]');
+      if(addBtn){
+        var menu=addBtn.nextElementSibling;
+        if(!menu) return;
+        var hidden=menu.classList.contains('hidden');
+        document.querySelectorAll('.role-menu').forEach(function(m){m.classList.add('hidden');});
+        if(hidden) menu.classList.remove('hidden');
+        return;
+      }
+      var assignBtn=e.target.closest('[data-assign-role]');
+      if(assignBtn){
+        var m2=assignBtn.closest('.role-menu');
+        if(m2) m2.classList.add('hidden');
+        var mid=assignBtn.getAttribute('data-assign-role');
+        var rid=assignBtn.getAttribute('data-role-id');
+        fetch('/my/organizations/'+_slug+'/members/'+mid+'/assign-role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:rid})}).then(function(r){return r.json();}).then(function(d){if(!d.ok){alert(d.error||'Failed');return;}renderRoleCell(mid,d.roles);}).catch(function(){alert('Network error');});
+        return;
+      }
+      var removeBtn=e.target.closest('[data-remove-role]');
+      if(removeBtn){
+        var mid2=removeBtn.getAttribute('data-remove-role');
+        var rid2=removeBtn.getAttribute('data-role-id');
+        fetch('/my/organizations/'+_slug+'/members/'+mid2+'/remove-role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:rid2})}).then(function(r){return r.json();}).then(function(d){if(!d.ok){alert(d.error||'Failed');return;}renderRoleCell(mid2,d.roles);}).catch(function(){alert('Network error');});
+        return;
+      }
+      if(!e.target.closest('.role-menu')&&!e.target.closest('[data-add-role-btn]')){
+        document.querySelectorAll('.role-menu').forEach(function(m){m.classList.add('hidden');});
+      }
+    });
+  })();
+  {% end_app_script %}
+{% endif %}

@@ -149,7 +149,7 @@ def user_update_org_action(slug: str):
     name = request.form.get("name", "").strip()
     if not name:
         err = urllib.parse.quote("Name is required.")
-        return redirect(f"/my/organizations/{slug}?tab=settings&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/settings?error={err}", code=303)
     update_organization_details(
         org_data["id"],
         name=name,
@@ -161,11 +161,10 @@ def user_update_org_action(slug: str):
         contact_email=request.form.get("contact_email", "").strip() or None,
     )
     info = urllib.parse.quote("Organization updated.")
-    # Slug may have changed; re-fetch to get updated slug
     from .repository import get_organization
     updated_org = get_organization(org_data["id"])
     new_slug = updated_org.slug if updated_org else slug
-    return redirect(f"/my/organizations/{new_slug}?tab=settings&info={info}", code=303)
+    return redirect(f"/my/organizations/{new_slug}/settings?info={info}", code=303)
 
 
 @web_bp.post("/my/organizations/<slug>/invite")
@@ -179,11 +178,11 @@ def user_invite_org_action(slug: str):
         return redirect("/my/organizations", code=303)
     if not org_data["is_owner"]:
         err = urllib.parse.quote("Only owners can invite members.")
-        return redirect(f"/my/organizations/{slug}?tab=members&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/members?error={err}", code=303)
     email = request.form.get("email", "").strip()
     if not email:
         err = urllib.parse.quote("Email address is required.")
-        return redirect(f"/my/organizations/{slug}?tab=members&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/members?error={err}", code=303)
 
     invitation = invite_to_org(org_id=org_data["id"], email=email, invited_by=session.user.id)
 
@@ -205,11 +204,11 @@ def user_invite_org_action(slug: str):
 
     if sent:
         info = urllib.parse.quote(f"Invitation sent to {email}.")
-        return redirect(f"/my/organizations/{slug}?tab=members&info={info}", code=303)
+        return redirect(f"/my/organizations/{slug}/members?info={info}", code=303)
     else:
         encoded_link = urllib.parse.quote(invite_url)
         info = urllib.parse.quote(f"Email delivery unavailable. Share this invite link manually.")
-        return redirect(f"/my/organizations/{slug}?tab=members&info={info}&invite_link={encoded_link}", code=303)
+        return redirect(f"/my/organizations/{slug}/members?info={info}&invite_link={encoded_link}", code=303)
 
 
 @web_bp.get("/my/organizations/join/<token>")
@@ -246,9 +245,9 @@ def user_remove_member_action(slug: str, member_id: str):
     )
     if not ok:
         err = urllib.parse.quote(msg)
-        return redirect(f"/my/organizations/{slug}?tab=members&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/members?error={err}", code=303)
     info = urllib.parse.quote("Member removed.")
-    return redirect(f"/my/organizations/{slug}?tab=members&info={info}", code=303)
+    return redirect(f"/my/organizations/{slug}/members?info={info}", code=303)
 
 
 @web_bp.post("/my/organizations/<slug>/delete")
@@ -259,7 +258,7 @@ def user_delete_org_action(slug: str):
     ok, result = delete_user_organization(slug, session.user.id)
     if not ok:
         err = urllib.parse.quote(result)
-        return redirect(f"/my/organizations/{slug}?tab=settings&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/settings?error={err}", code=303)
     info = urllib.parse.quote(f'Organization "{result}" has been permanently deleted.')
     return redirect(f"/my/organizations?info={info}", code=303)
 
@@ -275,9 +274,26 @@ def user_create_org_role_action(slug: str):
     ok, msg = create_org_custom_role(slug, name, color, description, session.user.id)
     if not ok:
         err = urllib.parse.quote(msg)
-        return redirect(f"/my/organizations/{slug}?tab=roles&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/roles?error={err}", code=303)
     info = urllib.parse.quote(f'Role "{name}" created.')
-    return redirect(f"/my/organizations/{slug}?tab=roles&info={info}", code=303)
+    return redirect(f"/my/organizations/{slug}/roles?info={info}", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/roles/<role_id>/update")
+def user_update_org_role_action(slug: str, role_id: str):
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    name = request.form.get("name", "").strip()
+    color = request.form.get("color", "#6366f1").strip() or "#6366f1"
+    description = request.form.get("description", "").strip() or None
+    from .service import update_org_custom_role
+    ok, msg = update_org_custom_role(slug, role_id, name, color, description, session.user.id)
+    if not ok:
+        err = urllib.parse.quote(msg)
+        return redirect(f"/my/organizations/{slug}/roles?role={role_id}&error={err}", code=303)
+    info = urllib.parse.quote("Role updated.")
+    return redirect(f"/my/organizations/{slug}/roles?role={role_id}&info={info}", code=303)
 
 
 @web_bp.post("/my/organizations/<slug>/roles/<role_id>/delete")
@@ -288,9 +304,9 @@ def user_delete_org_role_action(slug: str, role_id: str):
     ok, msg = delete_org_custom_role(slug, role_id, session.user.id)
     if not ok:
         err = urllib.parse.quote(msg)
-        return redirect(f"/my/organizations/{slug}?tab=roles&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/roles?error={err}", code=303)
     info = urllib.parse.quote("Role deleted.")
-    return redirect(f"/my/organizations/{slug}?tab=roles&info={info}", code=303)
+    return redirect(f"/my/organizations/{slug}/roles?info={info}", code=303)
 
 
 @web_bp.post("/my/organizations/<slug>/members/<member_id>/assign-role")
@@ -357,8 +373,36 @@ def user_org_role_permission_action(slug: str, role_id: str):
     ok, msg = toggle_org_role_permission(slug, role_id, key, enabled, session.user.id)
     if not ok:
         err = urllib.parse.quote(msg)
-        return redirect(f"/my/organizations/{slug}?tab=roles&rp={role_id}&error={err}", code=303)
-    return redirect(f"/my/organizations/{slug}?tab=roles&rp={role_id}", code=303)
+        return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=permissions&error={err}", code=303)
+    return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=permissions", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/roles/<role_id>/members/add")
+def user_org_role_add_member_action(slug: str, role_id: str):
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    member_id = request.form.get("member_id", "").strip()
+    if not member_id:
+        err = urllib.parse.quote("Please select a member.")
+        return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=members&error={err}", code=303)
+    ok, msg = assign_role_to_org_member(slug, member_id, role_id, session.user.id)
+    if not ok:
+        err = urllib.parse.quote(msg)
+        return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=members&error={err}", code=303)
+    return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=members", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/roles/<role_id>/members/<member_id>/remove")
+def user_org_role_remove_member_action(slug: str, role_id: str, member_id: str):
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    ok, msg = remove_role_from_org_member(slug, member_id, role_id, session.user.id)
+    if not ok:
+        err = urllib.parse.quote(msg)
+        return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=members&error={err}", code=303)
+    return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=members", code=303)
 
 
 @web_bp.get("/my/workspace/personal")
@@ -383,6 +427,6 @@ def user_leave_org_action(slug: str):
     ok, msg = leave_org(org_id=org.id, user_id=session.user.id)
     if not ok:
         err = urllib.parse.quote(msg)
-        return redirect(f"/my/organizations/{slug}?tab=settings&error={err}", code=303)
+        return redirect(f"/my/organizations/{slug}/settings?error={err}", code=303)
     info = urllib.parse.quote(f"You have left {org.name}.")
     return redirect(f"/my/organizations?info={info}", code=303)
