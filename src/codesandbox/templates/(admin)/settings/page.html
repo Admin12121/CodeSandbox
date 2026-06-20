@@ -60,7 +60,7 @@
               {% endcall %}
             </div>
             <div class="flex justify-end">
-              {% call button.button(type="submit", size="sm", attrs={"disabled": "disabled", "title": "Profile editing coming soon"}) %}
+              {% call button.button(type="submit", attrs={"disabled": "disabled", "title": "Profile editing coming soon"}) %}
                 Save profile
               {% endcall %}
             </div>
@@ -109,7 +109,7 @@
                   {% if has_password is defined and has_password %}Password set{% else %}No password — sign in via social accounts{% endif %}
                 </div>
               </div>
-              {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
+              {% call button.button(type="button", variant="outline", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
                 Change password
               {% endcall %}
             </div>
@@ -124,7 +124,7 @@
                 <div class="text-xs text-muted-foreground">Add an extra layer of security to your account</div>
               </div>
               <a href="/settings/2fa">
-                {% call button.button(type="button", variant="outline", size="sm") %}
+                {% call button.button(type="button", variant="outline") %}
                   {{ "Manage 2FA" if totp_enabled else "Set up 2FA" }}
                 {% endcall %}
               </a>
@@ -135,7 +135,7 @@
                 <div class="text-xs text-muted-foreground">End your current session</div>
               </div>
               <form method="post" action="/logout">
-                {% call button.button(type="submit", variant="destructive", size="sm") %}
+                {% call button.button(type="submit", variant="destructive") %}
                   Sign out
                 {% endcall %}
               </form>
@@ -177,14 +177,14 @@
                 <form method="post" action="/settings/connected-accounts/google/disconnect">
                   {% set _can_disconnect = (has_password is defined and has_password) or ("github" in _cp) %}
                   {% if _can_disconnect %}
-                    {% call button.button(type="submit", variant="outline", size="sm") %}Disconnect{% endcall %}
+                    {% call button.button(type="submit", variant="outline") %}Disconnect{% endcall %}
                   {% else %}
-                    {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
+                    {% call button.button(type="button", variant="outline", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
                   {% endif %}
                 </form>
               {% else %}
                 <a href="/auth/google/connect">
-                  {% call button.button(type="button", variant="outline", size="sm") %}Connect{% endcall %}
+                  {% call button.button(type="button", variant="outline") %}Connect{% endcall %}
                 </a>
               {% endif %}
             </div>
@@ -209,14 +209,14 @@
                 <form method="post" action="/settings/connected-accounts/github/disconnect">
                   {% set _can_disconnect_gh = (has_password is defined and has_password) or google_connected %}
                   {% if _can_disconnect_gh %}
-                    {% call button.button(type="submit", variant="outline", size="sm") %}Disconnect{% endcall %}
+                    {% call button.button(type="submit", variant="outline") %}Disconnect{% endcall %}
                   {% else %}
-                    {% call button.button(type="button", variant="outline", size="sm", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
+                    {% call button.button(type="button", variant="outline", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
                   {% endif %}
                 </form>
               {% else %}
                 <a href="/auth/github/connect">
-                  {% call button.button(type="button", variant="outline", size="sm") %}Connect{% endcall %}
+                  {% call button.button(type="button", variant="outline") %}Connect{% endcall %}
                 </a>
               {% endif %}
             </div>

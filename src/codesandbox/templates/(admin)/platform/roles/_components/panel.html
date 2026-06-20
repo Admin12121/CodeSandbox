@@ -8,7 +8,7 @@
 {% import "components/ui/textarea.html" as textarea %}
 {% import "components/ui/switch.html" as sw %}
 {% import "components/ui/alert.html" as alert %}
-{% import "components/ui/select-native.html" as sn %}
+{% import "components/ui/select.html" as sel %}
 {% import "components/ui/table-pagination.html" as tp %}
 
 {% macro role_dot(color) -%}
@@ -351,10 +351,16 @@
                 <form method="post" action="/platform/roles/{{ rid }}/members/add" class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                   {% call field.field() %}
                     {{ field.field_label("Add staff member", for_id="add-member") }}
-                    {% call sn.select_native(name="user_id", attrs={"id": "add-member", "aria-label": "Select staff member"}) %}
-                      {% for m in available_members %}
-                        <option value="{{ m.id }}">{{ m.name }} — {{ m.email }}</option>
-                      {% endfor %}
+                    {% call sel.select(name="user_id", value="") %}
+                      {% call sel.select_trigger(target="add-staff-member-popup") %}
+                        {{ sel.select_value("Select staff member…") }}
+                        <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                      {% endcall %}
+                      {% call sel.select_popup(attrs={"id": "add-staff-member-popup"}) %}
+                        {% for m in available_members %}
+                          {% call sel.select_item(value=m.id|string) %}{{ m.name }} — {{ m.email }}{% endcall %}
+                        {% endfor %}
+                      {% endcall %}
                     {% endcall %}
                   {% endcall %}
                   {% call button.button(type="submit") %}Add member{% endcall %}

@@ -1,0 +1,425 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/table.html" as table %}
+
+
+{% macro settings_panel(org, is_owner) %}
+{% set slug = org.slug %}
+
+{% set industry_opts = [
+  {"value": "Technology",    "label": "Technology"},
+  {"value": "Software",      "label": "Software & SaaS"},
+  {"value": "Cybersecurity", "label": "Cybersecurity"},
+  {"value": "Finance",       "label": "Finance & Banking"},
+  {"value": "Healthcare",    "label": "Healthcare"},
+  {"value": "Education",     "label": "Education"},
+  {"value": "Retail",        "label": "Retail & E-commerce"},
+  {"value": "Media",         "label": "Media & Entertainment"},
+  {"value": "Manufacturing", "label": "Manufacturing"},
+  {"value": "Consulting",    "label": "Consulting & Services"},
+  {"value": "Nonprofit",     "label": "Nonprofit"},
+  {"value": "Government",    "label": "Government"},
+  {"value": "Other",         "label": "Other"},
+] %}
+
+{% set size_opts = [
+  {"value": "1-10",    "label": "1–10 employees"},
+  {"value": "11-50",   "label": "11–50 employees"},
+  {"value": "51-200",  "label": "51–200 employees"},
+  {"value": "201-500", "label": "201–500 employees"},
+  {"value": "501-1000","label": "501–1,000 employees"},
+  {"value": "1000+",   "label": "1,000+ employees"},
+] %}
+
+{% set industry_match = industry_opts | selectattr("value", "equalto", org.industry or "") | list %}
+{% set size_match     = size_opts     | selectattr("value", "equalto", org.size     or "") | list %}
+
+<div class="grid gap-5 p-3 pt-4">
+
+  {# ── Organization details — per-row inline editable ── #}
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Organization details", class="w-48") }}
+          {{ table.table_head("Value") }}
+          {{ table.table_head("", class="w-24 text-right") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+
+        {# name #}
+        {% call table.table_row(attrs={"data-editable-row": "name"}) %}
+          {% call table.table_cell(class="font-medium text-sm align-middle") %}Name{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}
+            <span data-view>{{ org.name or "—" }}</span>
+            {% if is_owner %}
+              <input data-edit hidden data-edit-input type="text" value="{{ org.name or '' }}"
+                class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {% endif %}
+          {% endcall %}
+          {% call table.table_cell(class="text-right") %}{% if is_owner %}{{ _edit_actions() }}{% endif %}{% endcall %}
+        {% endcall %}
+
+        {# contact_email #}
+        {% call table.table_row(attrs={"data-editable-row": "contact_email"}) %}
+          {% call table.table_cell(class="font-medium text-sm align-middle") %}Contact email{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}
+            <span data-view>{{ org.contact_email or "—" }}</span>
+            {% if is_owner %}
+              <input data-edit hidden data-edit-input type="email" value="{{ org.contact_email or '' }}"
+                placeholder="billing@example.com"
+                class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {% endif %}
+          {% endcall %}
+          {% call table.table_cell(class="text-right") %}{% if is_owner %}{{ _edit_actions() }}{% endif %}{% endcall %}
+        {% endcall %}
+
+        {# website #}
+        {% call table.table_row(attrs={"data-editable-row": "website"}) %}
+          {% call table.table_cell(class="font-medium text-sm align-middle") %}Website{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}
+            <span data-view>
+              {% if org.website %}<a href="{{ org.website }}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">{{ org.website | replace("https://","") | replace("http://","") | truncate(50, true, "") }}</a>
+              {% else %}—{% endif %}
+            </span>
+            {% if is_owner %}
+              <input data-edit hidden data-edit-input type="url" value="{{ org.website or '' }}"
+                placeholder="https://example.com"
+                class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {% endif %}
+          {% endcall %}
+          {% call table.table_cell(class="text-right") %}{% if is_owner %}{{ _edit_actions() }}{% endif %}{% endcall %}
+        {% endcall %}
+
+        {# location #}
+        {% call table.table_row(attrs={"data-editable-row": "location"}) %}
+          {% call table.table_cell(class="font-medium text-sm align-middle") %}Location{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}
+            <span data-view>{{ org.location or "—" }}</span>
+            {% if is_owner %}
+              <input data-edit hidden data-edit-input type="text" value="{{ org.location or '' }}"
+                placeholder="San Francisco, CA"
+                class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            {% endif %}
+          {% endcall %}
+          {% call table.table_cell(class="text-right") %}{% if is_owner %}{{ _edit_actions() }}{% endif %}{% endcall %}
+        {% endcall %}
+
+        {# industry — inline select #}
+        {% call table.table_row(attrs={"data-editable-row": "industry"}) %}
+          {% call table.table_cell(class="font-medium text-sm align-middle") %}Industry{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}
+            <span data-view>{{ industry_match[0].label if industry_match else (org.industry or "—") }}</span>
+            {% if is_owner %}
+              <select data-edit hidden data-edit-input
+                class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">Select industry…</option>
+                {% for opt in industry_opts %}
+                  <option value="{{ opt.value }}" {% if org.industry == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
+          {% endcall %}
+          {% call table.table_cell(class="text-right") %}{% if is_owner %}{{ _edit_actions() }}{% endif %}{% endcall %}
+        {% endcall %}
+
+        {# size — inline select #}
+        {% call table.table_row(attrs={"data-editable-row": "size"}) %}
+          {% call table.table_cell(class="font-medium text-sm align-middle") %}Company size{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}
+            <span data-view>{{ size_match[0].label if size_match else (org.size or "—") }}</span>
+            {% if is_owner %}
+              <select data-edit hidden data-edit-input
+                class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">Select size…</option>
+                {% for opt in size_opts %}
+                  <option value="{{ opt.value }}" {% if org.size == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
+          {% endcall %}
+          {% call table.table_cell(class="text-right") %}{% if is_owner %}{{ _edit_actions() }}{% endif %}{% endcall %}
+        {% endcall %}
+
+        {# description — textarea #}
+        {% call table.table_row(attrs={"data-editable-row": "description"}) %}
+          {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Description{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}
+            <span data-view class="whitespace-pre-wrap">{{ org.description or "—" }}</span>
+            {% if is_owner %}
+              <textarea data-edit hidden data-edit-input rows="3"
+                placeholder="What does your organization do?"
+                class="w-full min-h-16 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y">{{ org.description or '' }}</textarea>
+            {% endif %}
+          {% endcall %}
+          {% call table.table_cell(class="text-right align-top pt-2") %}{% if is_owner %}{{ _edit_actions() }}{% endif %}{% endcall %}
+        {% endcall %}
+
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+
+  {# ── Organization info — read-only ── #}
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Organization info", class="w-48") }}
+          {{ table.table_head("") }}
+          {{ table.table_head("", class="w-24") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% call table.table_row() %}
+          {% call table.table_cell(class="font-medium text-sm") %}Slug{% endcall %}
+          {% call table.table_cell(class="font-mono text-xs text-muted-foreground") %}{{ org.slug }}{% endcall %}
+          {% call table.table_cell() %}{% endcall %}
+        {% endcall %}
+        {% call table.table_row() %}
+          {% call table.table_cell(class="font-medium text-sm") %}Status{% endcall %}
+          {% call table.table_cell() %}
+            {% if org.status == "active" %}{{ badge.badge("Active", variant="outline") }}
+            {% elif org.status == "pending" %}{{ badge.badge("Pending approval", variant="warning") }}
+            {% elif org.status == "rejected" %}{{ badge.badge("Rejected", variant="destructive") }}
+            {% elif org.status == "suspended" %}{{ badge.badge("Suspended", variant="destructive") }}
+            {% else %}{{ badge.badge("Inactive", variant="secondary") }}{% endif %}
+          {% endcall %}
+          {% call table.table_cell() %}{% endcall %}
+        {% endcall %}
+        {% call table.table_row() %}
+          {% call table.table_cell(class="font-medium text-sm") %}Members{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ org.member_count }} member{{ "" if org.member_count == 1 else "s" }}{% endcall %}
+          {% call table.table_cell() %}{% endcall %}
+        {% endcall %}
+        {% call table.table_row() %}
+          {% call table.table_cell(class="font-medium text-sm") %}Created{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ org.created_at.strftime("%b %d, %Y") if org.created_at else "—" }}{% endcall %}
+          {% call table.table_cell() %}{% endcall %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+
+  {# ── Danger zone ── #}
+  {% call frame.frame(class="border-destructive/40") %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {% call table.table_head(class="text-destructive") %}Danger zone{% endcall %}
+          {{ table.table_head("") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if not is_owner %}
+          {% call table.table_row() %}
+            {% call table.table_cell() %}
+              <div class="text-sm font-medium">Leave organization</div>
+              <div class="text-xs text-muted-foreground mt-0.5">Remove yourself from {{ org.name }}. You will lose access immediately.</div>
+            {% endcall %}
+            {% call table.table_cell(class="text-right") %}
+              <form method="post" action="/my/organizations/{{ slug }}/leave">
+                {% call button.button(type="submit", variant="destructive", size="sm", attrs={"data-cs-confirm": "leave-org"}) %}Leave organization{% endcall %}
+              </form>
+            {% endcall %}
+          {% endcall %}
+        {% endif %}
+        {% if is_owner %}
+          {% call table.table_row() %}
+            {% call table.table_cell() %}
+              <div class="text-sm font-medium">Delete organization</div>
+              <div class="text-xs text-muted-foreground mt-0.5">Permanently delete <strong>{{ org.name }}</strong> and all its data. This cannot be undone.</div>
+            {% endcall %}
+            {% call table.table_cell(class="text-right") %}
+              <form method="post" action="/my/organizations/{{ slug }}/delete">
+                {% call button.button(type="submit", variant="destructive", size="sm", attrs={"data-cs-confirm": "delete-org"}) %}Delete organization{% endcall %}
+              </form>
+            {% endcall %}
+          {% endcall %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+  <div id="org-field-error" hidden
+    class="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
+    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    <span id="org-field-error-msg"></span>
+  </div>
+
+</div>
+
+{% app_script "org-settings" %}
+(function(){
+  var SLUG = '{{ slug }}';
+  var editingRow = null;
+
+  var LABEL_MAP = {
+    industry: [
+      {value:"Technology",    label:"Technology"},
+      {value:"Software",      label:"Software & SaaS"},
+      {value:"Cybersecurity", label:"Cybersecurity"},
+      {value:"Finance",       label:"Finance & Banking"},
+      {value:"Healthcare",    label:"Healthcare"},
+      {value:"Education",     label:"Education"},
+      {value:"Retail",        label:"Retail & E-commerce"},
+      {value:"Media",         label:"Media & Entertainment"},
+      {value:"Manufacturing", label:"Manufacturing"},
+      {value:"Consulting",    label:"Consulting & Services"},
+      {value:"Nonprofit",     label:"Nonprofit"},
+      {value:"Government",    label:"Government"},
+      {value:"Other",         label:"Other"}
+    ],
+    size: [
+      {value:"1-10",    label:"1-10 employees"},
+      {value:"11-50",   label:"11-50 employees"},
+      {value:"51-200",  label:"51-200 employees"},
+      {value:"201-500", label:"201-500 employees"},
+      {value:"501-1000",label:"501-1000 employees"},
+      {value:"1000+",   label:"1000+ employees"}
+    ]
+  };
+
+  var ORG_NAME = '{{ org.name | replace("'", "\\'") }}';
+  var confirmMsgs = {
+    'leave-org':  'Are you sure you want to leave ' + ORG_NAME + '? You will lose access immediately.',
+    'delete-org': 'Permanently delete "' + ORG_NAME + '"? This cannot be undone and all data will be lost.'
+  };
+
+  document.addEventListener('click', function(e){
+    var startBtn = e.target.closest('[data-start-edit]');
+    if(startBtn){ enterEdit(startBtn.closest('[data-editable-row]')); return; }
+
+    var saveBtn = e.target.closest('[data-save-edit]');
+    if(saveBtn){ saveEdit(saveBtn.closest('[data-editable-row]')); return; }
+
+    var cancelBtn = e.target.closest('[data-cancel-edit]');
+    if(cancelBtn){ exitEdit(cancelBtn.closest('[data-editable-row]')); return; }
+
+    var confirmBtn = e.target.closest('[data-cs-confirm]');
+    if(confirmBtn){
+      var key = confirmBtn.getAttribute('data-cs-confirm');
+      if(!confirm(confirmMsgs[key] || 'Are you sure?')){ e.preventDefault(); e.stopPropagation(); }
+    }
+  });
+
+  document.addEventListener('keydown', function(e){
+    if(!editingRow) return;
+    if(e.key === 'Escape'){ e.preventDefault(); exitEdit(editingRow); return; }
+    var inp = editingRow.querySelector('[data-edit-input]');
+    if(e.key === 'Enter' && inp && inp.tagName !== 'TEXTAREA'){ e.preventDefault(); saveEdit(editingRow); }
+  });
+
+  function enterEdit(row){
+    if(editingRow && editingRow !== row) exitEdit(editingRow);
+    editingRow = row;
+    row.querySelectorAll('[data-view]').forEach(function(el){ el.hidden = true; });
+    row.querySelectorAll('[data-edit]').forEach(function(el){ el.hidden = false; });
+    var inp = row.querySelector('[data-edit-input]');
+    if(inp){ inp.focus(); if(inp.select) inp.select(); }
+    setAllPencilsDisabled(true, row);
+  }
+
+  function exitEdit(row){
+    row.querySelectorAll('[data-view]').forEach(function(el){ el.hidden = false; });
+    row.querySelectorAll('[data-edit]').forEach(function(el){ el.hidden = true; });
+    editingRow = null;
+    setAllPencilsDisabled(false, null);
+  }
+
+  function setAllPencilsDisabled(disabled, exceptRow){
+    document.querySelectorAll('[data-start-edit]').forEach(function(btn){
+      if(btn.closest('[data-editable-row]') !== exceptRow) btn.disabled = disabled;
+    });
+  }
+
+  function getEditValue(row){
+    // sel.select stores value in a hidden input inside [data-slot="select"]
+    var selectInput = row.querySelector('[data-edit] [data-slot="select"] input[type="hidden"]');
+    if(selectInput) return selectInput.value.trim();
+    var inp = row.querySelector('[data-edit-input]');
+    return inp ? inp.value.trim() : '';
+  }
+
+  function getViewLabel(field, value){
+    var opts = LABEL_MAP[field];
+    if(!opts) return value || '—';
+    var match = opts.find(function(o){ return o.value === value; });
+    return match ? match.label : (value || '—');
+  }
+
+  function saveEdit(row){
+    var field = row.getAttribute('data-editable-row');
+    var value = getEditValue(row);
+    var saveBtn = row.querySelector('[data-save-edit]');
+    if(saveBtn) saveBtn.disabled = true;
+
+    fetch('/my/organizations/' + SLUG + '/update-field', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({field: field, value: value})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(body){
+      if(!body.ok) throw new Error(body.error || 'Update failed.');
+      var viewEl = row.querySelector('[data-view]');
+      if(viewEl){
+        if(field === 'website' && value){
+          viewEl.innerHTML = '<a href="' + esc(value) + '" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">' + esc(value.replace(/^https?:\/\//, '').substring(0, 50)) + '</a>';
+        } else {
+          viewEl.textContent = getViewLabel(field, value);
+        }
+      }
+      if(field === 'name' && body.slug && body.slug !== SLUG){
+        window.location.href = '/my/organizations/' + body.slug + '/settings';
+        return;
+      }
+      exitEdit(row);
+    })
+    .catch(function(err){
+      showError(err.message);
+      if(saveBtn) saveBtn.disabled = false;
+    });
+  }
+
+  function showError(msg){
+    var toast = document.getElementById('org-field-error');
+    var msgEl = document.getElementById('org-field-error-msg');
+    if(!toast) return;
+    msgEl.textContent = msg;
+    toast.hidden = false;
+    setTimeout(function(){ toast.hidden = true; }, 4000);
+  }
+
+  function esc(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+})();
+{% end_app_script %}
+
+{% endmacro %}
+
+
+{% macro _edit_actions() %}
+<div class="flex justify-end gap-1">
+  <div data-view>
+    {% call button.button(type="button", variant="ghost", size="icon-xs",
+      attrs={"data-start-edit": "", "aria-label": "Edit"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
+    {% endcall %}
+  </div>
+  <div data-edit hidden class="flex gap-1">
+    {% call button.button(type="button", variant="ghost", size="icon-xs",
+      attrs={"data-save-edit": "", "aria-label": "Save"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    {% endcall %}
+    {% call button.button(type="button", variant="ghost", size="icon-xs",
+      attrs={"data-cancel-edit": "", "aria-label": "Cancel"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    {% endcall %}
+  </div>
+</div>
+{% endmacro %}

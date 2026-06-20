@@ -1,42 +1,9 @@
 {% import "components/ui/badge.html" as badge %}
 
-{% macro breadcrumb(org, page_label, info=none, error=none) %}
-{% set slug = org.slug %}
-<div class="flex flex-col gap-3 p-3 pb-0">
-  <div class="flex items-center gap-2 text-sm text-muted-foreground">
-    <a href="/my/organizations" class="hover:text-foreground transition-colors">My Organizations</a>
-    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-    <a href="/my/organizations/{{ slug }}" class="hover:text-foreground transition-colors">{{ org.name }}</a>
-    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-    <span class="text-foreground font-medium">{{ page_label }}</span>
-  </div>
-  {% if info %}
-    <div class="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm text-primary">
-      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-      {{ info }}
-    </div>
-  {% endif %}
-  {% if error %}
-    <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
-      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      {{ error }}
-    </div>
-  {% endif %}
-</div>
-{% endmacro %}
-
-{% macro org_header(org, active_tab, info=none, error=none, show_tabs=true) %}
+{% macro org_header(org, info=none, error=none, show_profile=true) %}
 {% set slug = org.slug %}
 <div class="flex flex-col gap-4 p-3 pb-0">
 
-  {# Breadcrumb #}
-  <div class="flex items-center gap-2 text-sm text-muted-foreground">
-    <a href="/my/organizations" class="hover:text-foreground transition-colors">My Organizations</a>
-    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-    <span class="text-foreground font-medium truncate">{{ org.name }}</span>
-  </div>
-
-  {# Banners #}
   {% if info %}
     <div class="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm text-primary">
       <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
@@ -50,7 +17,7 @@
     </div>
   {% endif %}
 
-  {# Org profile card #}
+  {% if show_profile %}
   <div class="flex flex-wrap items-center gap-4 rounded-xl border bg-card px-5 py-4">
     {% if org.logo_url %}
       <img src="{{ org.logo_url }}" alt="{{ org.name }}" class="size-14 shrink-0 rounded-xl border object-cover">
@@ -77,23 +44,6 @@
         {% if org.created_at %}<span>Since {{ org.created_at.strftime("%b %Y") }}</span>{% endif %}
       </div>
     </div>
-  </div>
-
-  {# Sub-page navigation #}
-  {% if show_tabs %}
-  <div class="flex w-fit rounded-lg bg-muted p-0.5 text-muted-foreground/80 text-sm gap-0.5">
-    {% for href, label, tab_name in [
-      ("/my/organizations/" ~ slug, "Overview", "overview"),
-      ("/my/organizations/" ~ slug ~ "/members", "Members", "members"),
-      ("/my/organizations/" ~ slug ~ "/roles", "Roles", "roles"),
-      ("/my/organizations/" ~ slug ~ "/settings", "Settings", "settings"),
-    ] %}
-      <a href="{{ href }}"
-         class="relative flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-transparent px-3 font-medium transition-colors
-           {% if active_tab == tab_name %}bg-background text-foreground shadow-sm dark:bg-input{% else %}hover:text-foreground{% endif %}">
-        {{ label }}
-      </a>
-    {% endfor %}
   </div>
   {% endif %}
 

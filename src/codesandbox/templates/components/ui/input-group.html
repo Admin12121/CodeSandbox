@@ -1,5 +1,25 @@
-{% macro input_group(class="", attrs={}) -%}<div class="{{ cn('relative inline-flex h-8.5 w-full min-w-0 items-center rounded-lg border border-input bg-background shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/24 sm:h-7.5', class) }}" data-slot="input-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro input_group_addon(class="", attrs={}) -%}<div class="{{ cn('flex shrink-0 items-center gap-2 px-3 text-muted-foreground [&_svg]:size-4', class) }}" data-slot="input-group-addon" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro input_group_text(text="", class="", attrs={}) -%}<span class="{{ cn('text-muted-foreground text-sm', class) }}" data-slot="input-group-text" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>{%- endmacro %}
-{% macro input_group_input(name="", value="", placeholder="", class="", attrs={}) -%}<input class="{{ cn('h-full min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground', class) }}" data-slot="input-group-input" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}>{%- endmacro %}
-{% macro input_group_textarea(name="", value="", placeholder="", class="", attrs={}) -%}<textarea class="{{ cn('min-h-20 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground', class) }}" data-slot="input-group-textarea" {% if name %}name="{{ name }}"{% endif %} placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}>{{ value }}</textarea>{%- endmacro %}
+{% macro input_group(class="", attrs={}) -%}
+    <div class="{{ cn('relative inline-flex h-9 w-full min-w-0 items-center rounded-lg border border-input bg-background shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/24', class) }}" data-slot="input-group" {{ html_attrs(**attrs) }}>
+            {% if caller is defined %}{{ caller() }}{% endif %}
+    </div>
+{%- endmacro %}
+
+{% macro input_group_addon(class="", attrs={}) -%}
+    <div class="{{ cn('flex shrink-0 items-center gap-2 px-3 text-muted-foreground [&_svg]:size-4', class) }}" data-slot="input-group-addon" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}{{ caller() }}{% endif %}
+    </div>
+{%- endmacro %}
+
+{% macro input_group_text(text="", class="", attrs={}) -%}
+    <span class="{{ cn('text-muted-foreground text-sm', class) }}" data-slot="input-group-text" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
+    </span>
+{%- endmacro %}
+
+{% macro input_group_input(name="", value="", placeholder="", class="", attrs={}) -%}
+    <input class="{{ cn('h-full min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground', class) }}" data-slot="input-group-input" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}>
+{%- endmacro %}
+
+{% macro input_group_textarea(name="", value="", placeholder="", class="", attrs={}) -%}
+    <textarea class="{{ cn('min-h-20 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground', class) }}" data-slot="input-group-textarea" {% if name %}name="{{ name }}"{% endif %} placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}>{{ value }}</textarea>
+{%- endmacro %}

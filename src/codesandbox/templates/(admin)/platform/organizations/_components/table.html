@@ -275,14 +275,14 @@
               <div class="flex gap-2">
                 <form method="post" action="/platform/organizations/{{ oid }}/update-status">
                   <input type="hidden" name="status" value="active">
-                  {% call button.button(type="submit", size="sm") %}
+                  {% call button.button(type="submit") %}
                     <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
                     Approve
                   {% endcall %}
                 </form>
                 <form method="post" action="/platform/organizations/{{ oid }}/update-status">
                   <input type="hidden" name="status" value="rejected">
-                  {% call button.button(type="submit", variant="destructive-outline", size="sm") %}
+                  {% call button.button(type="submit", variant="destructive-outline") %}
                     Reject
                   {% endcall %}
                 </form>
