@@ -421,7 +421,7 @@ def my_organizations():
 
     from codesandbox.features.organizations.service import get_user_org_list
     organizations = get_user_org_list(user.id)
-    has_pending = any(o["status"] == "pending" for o in organizations)
+    user_owns_org = any(o.get("created_by") == user.id for o in organizations)
 
     return {
         "_meta": {"title": "My Organizations — CodeSandbox"},
@@ -430,7 +430,7 @@ def my_organizations():
         "page_title": "My Organizations",
         "page_description": "Organizations you belong to",
         "organizations": organizations,
-        "has_pending": has_pending,
+        "user_owns_org": user_owns_org,
         "info": request.args.get("info"),
         "error": request.args.get("error"),
         **_workspaces_ctx(user),

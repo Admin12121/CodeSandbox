@@ -603,6 +603,8 @@
     var f=Math.min(d.length,inp.length-1);if(inp[f])inp[f].focus();
   });
   document.addEventListener('submit',function(e){
+    var msg=e.target.getAttribute('data-confirm');
+    if(msg&&!window.confirm(msg)){e.preventDefault();return;}
     var root=e.target.querySelector('[data-otp-root]');
     if(root)_otpSync(root);
   },true);

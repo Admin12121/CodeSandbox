@@ -11,6 +11,7 @@ from .service import (
     accept_org_invitation,
     create_organization,
     create_user_organization,
+    delete_user_organization,
     invite_to_org,
     leave_org,
     remove_org_member,
@@ -198,6 +199,19 @@ def user_remove_member_action(slug: str, member_id: str):
         return redirect(f"/my/organizations/{slug}?tab=members&error={err}", code=303)
     info = urllib.parse.quote("Member removed.")
     return redirect(f"/my/organizations/{slug}?tab=members&info={info}", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/delete")
+def user_delete_org_action(slug: str):
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    ok, result = delete_user_organization(slug, session.user.id)
+    if not ok:
+        err = urllib.parse.quote(result)
+        return redirect(f"/my/organizations/{slug}?tab=settings&error={err}", code=303)
+    info = urllib.parse.quote(f'Organization "{result}" has been permanently deleted.')
+    return redirect(f"/my/organizations?info={info}", code=303)
 
 
 @web_bp.post("/my/organizations/<slug>/leave")

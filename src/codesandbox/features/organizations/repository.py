@@ -238,8 +238,25 @@ def delete_member(member_id: str) -> None:
     for r in roles:
         r.delete()
     try:
-        from nexorm.exceptions import DoesNotExist
         member = OrganizationMember.objects.get(id=member_id)
         member.delete()
     except Exception:
         pass
+
+
+def delete_organization(org_id: str) -> None:
+    """Cascade-delete all org data then the org itself."""
+    members = OrganizationMember.objects.filter(org_id=org_id).all()
+    for m in members:
+        for r in OrganizationMemberRole.objects.filter(member_id=m.id).all():
+            r.delete()
+        m.delete()
+    for inv in OrganizationInvitation.objects.filter(org_id=org_id).all():
+        inv.delete()
+    for role in OrganizationRole.objects.filter(org_id=org_id).all():
+        for p in OrganizationRolePermission.objects.filter(role_id=role.id).all():
+            p.delete()
+        role.delete()
+    org = get_organization(org_id)
+    if org:
+        org.delete()

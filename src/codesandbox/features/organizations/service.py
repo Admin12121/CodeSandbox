@@ -104,6 +104,7 @@ def get_user_org_list(user_id: str) -> list[dict]:
             "status": org.status,
             "member_count": member_count,
             "created_at": org.created_at,
+            "created_by": org.created_by,
         })
     return result
 
@@ -240,6 +241,28 @@ def remove_org_member(
 
     repository.delete_member(member_id)
     return True, ""
+
+
+def delete_user_organization(slug: str, user_id: str) -> tuple[bool, str]:
+    """Delete an org entirely. Only owners may do this."""
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return False, "Organization not found."
+    member = repository.get_member(org.id, user_id)
+    if member is None:
+        return False, "You are not a member of this organization."
+    from .models import OrganizationMemberRole, OrganizationRole
+    user_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
+    is_owner = any(
+        OrganizationRole.objects.filter(id=mr.role_id).first() is not None and
+        OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
+        for mr in user_roles
+    )
+    if not is_owner:
+        return False, "Only owners can delete an organization."
+    org_name = org.name
+    repository.delete_organization(org.id)
+    return True, org_name
 
 
 def leave_org(org_id: str, user_id: str) -> tuple[bool, str]:
