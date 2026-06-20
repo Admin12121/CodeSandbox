@@ -451,7 +451,7 @@ def my_organization_detail(slug: str):
         return {"_redirect": "/my/organizations"}
 
     tab = request.args.get("tab", "members")
-    if tab not in ("members", "settings"):
+    if tab not in ("members", "roles", "settings"):
         tab = "members"
 
     invite_link_raw = request.args.get("invite_link")

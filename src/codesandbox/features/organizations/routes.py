@@ -9,12 +9,16 @@ from codesandbox.web.blueprint import web_bp
 
 from .service import (
     accept_org_invitation,
+    assign_role_to_org_member,
+    create_org_custom_role,
     create_organization,
     create_user_organization,
+    delete_org_custom_role,
     delete_user_organization,
     invite_to_org,
     leave_org,
     remove_org_member,
+    remove_role_from_org_member,
     update_organization_details,
     update_organization_status,
 )
@@ -257,6 +261,89 @@ def user_delete_org_action(slug: str):
         return redirect(f"/my/organizations/{slug}?tab=settings&error={err}", code=303)
     info = urllib.parse.quote(f'Organization "{result}" has been permanently deleted.')
     return redirect(f"/my/organizations?info={info}", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/roles/create")
+def user_create_org_role_action(slug: str):
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    name = request.form.get("name", "").strip()
+    color = request.form.get("color", "#6366f1").strip() or "#6366f1"
+    description = request.form.get("description", "").strip() or None
+    ok, msg = create_org_custom_role(slug, name, color, description, session.user.id)
+    if not ok:
+        err = urllib.parse.quote(msg)
+        return redirect(f"/my/organizations/{slug}?tab=roles&error={err}", code=303)
+    info = urllib.parse.quote(f'Role "{name}" created.')
+    return redirect(f"/my/organizations/{slug}?tab=roles&info={info}", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/roles/<role_id>/delete")
+def user_delete_org_role_action(slug: str, role_id: str):
+    session, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    ok, msg = delete_org_custom_role(slug, role_id, session.user.id)
+    if not ok:
+        err = urllib.parse.quote(msg)
+        return redirect(f"/my/organizations/{slug}?tab=roles&error={err}", code=303)
+    info = urllib.parse.quote("Role deleted.")
+    return redirect(f"/my/organizations/{slug}?tab=roles&info={info}", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/members/<member_id>/assign-role")
+def user_assign_member_role_action(slug: str, member_id: str):
+    from flask import jsonify
+    session, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    role_id = str(data.get("role_id", "")).strip()
+    if not role_id:
+        return jsonify({"ok": False, "error": "role_id required"}), 400
+    ok, msg = assign_role_to_org_member(slug, member_id, role_id, session.user.id)
+    if not ok:
+        return jsonify({"ok": False, "error": msg}), 400
+    from .service import get_org_for_user
+    org_data = get_org_for_user(slug, session.user.id)
+    member_info = next((m for m in (org_data["members"] if org_data else []) if m["id"] == member_id), None)
+    return jsonify({
+        "ok": True,
+        "roles": [{"id": rid, "name": n, "color": c}
+                  for rid, n, c in zip(
+                      member_info["role_ids"] if member_info else [],
+                      member_info["roles"] if member_info else [],
+                      member_info["role_colors"] if member_info else [],
+                  )] if member_info else [],
+    })
+
+
+@web_bp.post("/my/organizations/<slug>/members/<member_id>/remove-role")
+def user_remove_member_role_action(slug: str, member_id: str):
+    from flask import jsonify
+    session, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    role_id = str(data.get("role_id", "")).strip()
+    if not role_id:
+        return jsonify({"ok": False, "error": "role_id required"}), 400
+    ok, msg = remove_role_from_org_member(slug, member_id, role_id, session.user.id)
+    if not ok:
+        return jsonify({"ok": False, "error": msg}), 400
+    from .service import get_org_for_user
+    org_data = get_org_for_user(slug, session.user.id)
+    member_info = next((m for m in (org_data["members"] if org_data else []) if m["id"] == member_id), None)
+    return jsonify({
+        "ok": True,
+        "roles": [{"id": rid, "name": n, "color": c}
+                  for rid, n, c in zip(
+                      member_info["role_ids"] if member_info else [],
+                      member_info["roles"] if member_info else [],
+                      member_info["role_colors"] if member_info else [],
+                  )] if member_info else [],
+    })
 
 
 @web_bp.post("/my/organizations/<slug>/leave")

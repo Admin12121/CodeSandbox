@@ -169,6 +169,7 @@
   {% call tabs_ui.tabs(class="grid gap-5") %}
     {% call tabs_ui.tabs_list(class="w-fit") %}
       {{ tabs_ui.tabs_tab("Members", value="members", active=(active_tab == "members")) }}
+      {{ tabs_ui.tabs_tab("Roles", value="roles", active=(active_tab == "roles")) }}
       {{ tabs_ui.tabs_tab("Settings", value="settings", active=(active_tab == "settings")) }}
     {% endcall %}
 
@@ -212,14 +213,59 @@
                       </div>
                     {% endcall %}
                     {% call table.table_cell() %}
-                      <div class="flex flex-wrap gap-1">
-                        {% for role in member.roles %}
-                          {{ badge.badge(role | capitalize, variant="secondary") }}
-                        {% endfor %}
-                        {% if not member.roles %}
-                          <span class="text-xs text-muted-foreground">—</span>
-                        {% endif %}
-                      </div>
+                      {% if is_owner %}
+                        {# Inline role management for owners #}
+                        <div class="flex flex-wrap items-center gap-1 role-cell" data-member-id="{{ member.id }}">
+                          {% for i in range(member.roles | length) %}
+                            <span class="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-xs font-medium"
+                              style="border-color: {{ member.role_colors[i] }}33; background-color: {{ member.role_colors[i] }}18; color: {{ member.role_colors[i] }};">
+                              {{ member.roles[i] | capitalize }}
+                              <button type="button"
+                                class="ml-0.5 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-black/10 transition-colors"
+                                onclick="orgRemoveRole('{{ member.id }}', '{{ member.role_ids[i] }}')"
+                                aria-label="Remove {{ member.roles[i] }}">
+                                <svg class="size-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                              </button>
+                            </span>
+                          {% endfor %}
+                          {# Available roles to assign #}
+                          {% set assigned_ids = member.role_ids %}
+                          {% set available = [] %}
+                          {% for _r in org.roles %}{% if _r.id not in assigned_ids %}{% set available = available + [_r] %}{% endif %}{% endfor %}
+                          {% if available %}
+                            <div class="relative inline-block">
+                              <button type="button"
+                                class="inline-flex size-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                                onclick="orgToggleRoleMenu(this)"
+                                aria-label="Add role">
+                                <svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                              </button>
+                              <div class="role-menu absolute z-20 hidden mt-1 min-w-36 rounded-lg border bg-popover shadow-md p-1 left-0 top-full">
+                                {% for role in available %}
+                                  <button type="button"
+                                    class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors text-left"
+                                    onclick="orgAssignRole('{{ member.id }}', '{{ role.id }}', this.closest('.role-menu'))">
+                                    <span class="size-2 rounded-full shrink-0" style="background-color: {{ role.color }};"></span>
+                                    {{ role.name | capitalize }}
+                                  </button>
+                                {% endfor %}
+                              </div>
+                            </div>
+                          {% endif %}
+                        </div>
+                      {% else %}
+                        <div class="flex flex-wrap gap-1">
+                          {% for i in range(member.roles | length) %}
+                            <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium"
+                              style="border-color: {{ member.role_colors[i] }}33; background-color: {{ member.role_colors[i] }}18; color: {{ member.role_colors[i] }};">
+                              {{ member.roles[i] | capitalize }}
+                            </span>
+                          {% endfor %}
+                          {% if not member.roles %}
+                            <span class="text-xs text-muted-foreground">—</span>
+                          {% endif %}
+                        </div>
+                      {% endif %}
                     {% endcall %}
                     {% call table.table_cell(class="text-xs text-muted-foreground") %}
                       {% if member.joined_at %}{{ member.joined_at.strftime("%b %d, %Y") }}{% endif %}
@@ -261,6 +307,184 @@
               {% call button.button(type="submit", size="sm") %}
                 <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
                 Send invitation
+              {% endcall %}
+            </form>
+          {% endcall %}
+        {% endif %}
+
+      </div>
+
+      {% if is_owner %}
+      {% app_script "org-role-assignment" %}
+      (function(){
+        var _slug = '{{ slug }}';
+        // Build roles map from server-rendered data
+        var _roles = {{ org.roles | tojson }};
+
+        function renderRoleCell(memberId, roles){
+          var cell = document.querySelector('.role-cell[data-member-id="'+memberId+'"]');
+          if(!cell) return;
+          // Compute available roles (not in roles array)
+          var assignedIds = roles.map(function(r){ return r.id; });
+          var available = _roles.filter(function(r){ return assignedIds.indexOf(r.id) === -1; });
+          var html = '';
+          roles.forEach(function(r){
+            html += '<span class="inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-xs font-medium" '
+              + 'style="border-color:'+r.color+'33;background-color:'+r.color+'18;color:'+r.color+';">'
+              + (r.name.charAt(0).toUpperCase()+r.name.slice(1))
+              + '<button type="button" class="ml-0.5 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-black/10 transition-colors" '
+              + 'onclick="orgRemoveRole(\''+memberId+'\',\''+r.id+'\')" aria-label="Remove '+r.name+'">'
+              + '<svg class="size-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
+              + '</button></span>';
+          });
+          if(available.length){
+            html += '<div class="relative inline-block">'
+              + '<button type="button" class="inline-flex size-5 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors" onclick="orgToggleRoleMenu(this)" aria-label="Add role">'
+              + '<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg>'
+              + '</button><div class="role-menu absolute z-20 hidden mt-1 min-w-36 rounded-lg border bg-popover shadow-md p-1 left-0 top-full">';
+            available.forEach(function(role){
+              html += '<button type="button" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground transition-colors text-left" '
+                + 'onclick="orgAssignRole(\''+memberId+'\',\''+role.id+'\',this.closest(\'.role-menu\'))">'
+                + '<span class="size-2 rounded-full shrink-0" style="background-color:'+role.color+';"></span>'
+                + (role.name.charAt(0).toUpperCase()+role.name.slice(1))
+                + '</button>';
+            });
+            html += '</div></div>';
+          }
+          cell.innerHTML = html;
+        }
+
+        window.orgToggleRoleMenu = function(btn){
+          var menu = btn.nextElementSibling;
+          if(!menu) return;
+          var isHidden = menu.classList.contains('hidden');
+          // Close all other open menus
+          document.querySelectorAll('.role-menu').forEach(function(m){ m.classList.add('hidden'); });
+          if(isHidden){ menu.classList.remove('hidden'); }
+        };
+
+        window.orgAssignRole = function(memberId, roleId, menu){
+          if(menu) menu.classList.add('hidden');
+          fetch('/my/organizations/'+_slug+'/members/'+memberId+'/assign-role', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({role_id: roleId})
+          }).then(function(r){ return r.json(); }).then(function(data){
+            if(!data.ok){ alert(data.error || 'Failed'); return; }
+            renderRoleCell(memberId, data.roles);
+          }).catch(function(){ alert('Network error'); });
+        };
+
+        window.orgRemoveRole = function(memberId, roleId){
+          fetch('/my/organizations/'+_slug+'/members/'+memberId+'/remove-role', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({role_id: roleId})
+          }).then(function(r){ return r.json(); }).then(function(data){
+            if(!data.ok){ alert(data.error || 'Failed'); return; }
+            renderRoleCell(memberId, data.roles);
+          }).catch(function(){ alert('Network error'); });
+        };
+
+        // Close menus on outside click
+        document.addEventListener('click', function(e){
+          if(!e.target.closest('.role-menu') && !e.target.closest('[onclick*="orgToggleRoleMenu"]')){
+            document.querySelectorAll('.role-menu').forEach(function(m){ m.classList.add('hidden'); });
+          }
+        });
+      })();
+      {% end_app_script %}
+      {% endif %}
+
+    {% endcall %}
+
+    {# ══ Roles tab ══ #}
+    {% call tabs_ui.tabs_panel(value="roles", active=(active_tab == "roles")) %}
+      <div class="grid gap-5">
+
+        {# Roles table #}
+        {% call frame.frame() %}
+          {% call table.table(variant="card") %}
+            {% call table.table_header() %}
+              {% call table.table_row() %}
+                {{ table.table_head("Role") }}
+                {{ table.table_head("Members", class="w-28") }}
+                {{ table.table_head("Type", class="w-28") }}
+                {% if is_owner %}{{ table.table_head("", class="w-10") }}{% endif %}
+              {% endcall %}
+            {% endcall %}
+            {% call table.table_body() %}
+              {% if not org.roles %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="h-24 text-center text-muted-foreground", attrs={"colspan": "4"}) %}No roles.{% endcall %}
+                {% endcall %}
+              {% else %}
+                {% for role in org.roles %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell() %}
+                      <div class="flex items-center gap-2">
+                        <span class="size-3 rounded-full shrink-0" style="background-color: {{ role.color }};"></span>
+                        <span class="text-sm font-medium">{{ role.name | capitalize }}</span>
+                      </div>
+                      {% if role.description %}
+                        <p class="mt-0.5 text-xs text-muted-foreground">{{ role.description }}</p>
+                      {% endif %}
+                    {% endcall %}
+                    {{ table.table_cell(role.member_count | string ~ " member" ~ ("s" if role.member_count != 1 else ""), class="text-sm text-muted-foreground") }}
+                    {% call table.table_cell() %}
+                      {% if role.is_system %}
+                        {{ badge.badge("System", variant="secondary") }}
+                      {% else %}
+                        {{ badge.badge("Custom", variant="outline") }}
+                      {% endif %}
+                    {% endcall %}
+                    {% if is_owner %}
+                      {% call table.table_cell() %}
+                        {% if not role.is_system %}
+                          <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role.id }}/delete"
+                            data-confirm="Delete role &quot;{{ role.name }}&quot;? Members with this role will have it removed.">
+                            <button type="submit"
+                              class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors sm:size-6"
+                              aria-label="Delete {{ role.name }}">
+                              <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                            </button>
+                          </form>
+                        {% endif %}
+                      {% endcall %}
+                    {% endif %}
+                  {% endcall %}
+                {% endfor %}
+              {% endif %}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+
+        {# Create custom role (owner only) #}
+        {% if is_owner %}
+          {% call frame.frame(class="p-5") %}
+            <div class="mb-4">
+              <h3 class="text-sm font-semibold">Create a custom role</h3>
+              <p class="text-sm text-muted-foreground">Custom roles can be assigned to members and given specific permissions.</p>
+            </div>
+            <form method="post" action="/my/organizations/{{ slug }}/roles/create" class="grid gap-4">
+              <div class="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+                {% call field.field(class="flex-1") %}
+                  {{ field.field_label("Role name", for_id="role-name") }}
+                  {{ input.input(type="text", name="name", placeholder="e.g. Analyst", attrs={"id": "role-name", "required": "required"}) }}
+                {% endcall %}
+                {% call field.field() %}
+                  {{ field.field_label("Color", for_id="role-color") }}
+                  <div class="flex items-center gap-2">
+                    <input type="color" id="role-color" name="color" value="#6366f1"
+                      class="size-9 rounded-md border border-input cursor-pointer bg-background p-1">
+                  </div>
+                {% endcall %}
+                {% call field.field(class="flex-1") %}
+                  {{ field.field_label("Description (optional)", for_id="role-desc") }}
+                  {{ input.input(type="text", name="description", placeholder="What can this role do?", attrs={"id": "role-desc"}) }}
+                {% endcall %}
+              </div>
+              {% call button.button(type="submit", size="sm", class="w-fit") %}
+                <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                Create role
               {% endcall %}
             </form>
           {% endcall %}

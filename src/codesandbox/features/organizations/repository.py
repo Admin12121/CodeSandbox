@@ -9,6 +9,7 @@ from nexorm.exceptions import DoesNotExist
 
 from .models import (
     Organization,
+    OrganizationDatabase,
     OrganizationInvitation,
     OrganizationMember,
     OrganizationMemberRole,
@@ -202,6 +203,7 @@ def get_members_with_info(org_id: str) -> list[dict]:
         member_roles = OrganizationMemberRole.objects.filter(member_id=m.id).all()
         role_names = []
         role_colors = []
+        role_ids = []
         for mr in member_roles:
             role = None
             try:
@@ -211,6 +213,7 @@ def get_members_with_info(org_id: str) -> list[dict]:
             if role:
                 role_names.append(role.name)
                 role_colors.append(role.color)
+                role_ids.append(role.id)
         result.append({
             "id": m.id,
             "user_id": m.user_id,
@@ -218,9 +221,62 @@ def get_members_with_info(org_id: str) -> list[dict]:
             "email": user.email,
             "roles": role_names,
             "role_colors": role_colors,
+            "role_ids": role_ids,
             "joined_at": m.joined_at,
         })
     return result
+
+
+def create_org_role(
+    org_id: str,
+    name: str,
+    color: str,
+    description: str | None = None,
+) -> OrganizationRole:
+    role = OrganizationRole(
+        id=str(uuid.uuid4()),
+        org_id=org_id,
+        name=name.strip(),
+        color=color or "#6366f1",
+        description=description,
+        is_system=False,
+    )
+    role.save()
+    return role
+
+
+def delete_org_role(role_id: str) -> bool:
+    """Delete a custom (non-system) role. Returns False if system role."""
+    try:
+        role = OrganizationRole.objects.get(id=role_id)
+    except Exception:
+        return False
+    if role.is_system:
+        return False
+    for rp in OrganizationRolePermission.objects.filter(role_id=role_id).all():
+        rp.delete()
+    for mr in OrganizationMemberRole.objects.filter(role_id=role_id).all():
+        mr.delete()
+    role.delete()
+    return True
+
+
+def assign_role_to_member(member_id: str, role_id: str) -> bool:
+    if OrganizationMemberRole.objects.filter(member_id=member_id, role_id=role_id).first():
+        return True
+    mr = OrganizationMemberRole(
+        id=str(uuid.uuid4()),
+        member_id=member_id,
+        role_id=role_id,
+    )
+    mr.save()
+    return True
+
+
+def remove_role_from_member(member_id: str, role_id: str) -> None:
+    mr = OrganizationMemberRole.objects.filter(member_id=member_id, role_id=role_id).first()
+    if mr:
+        mr.delete()
 
 
 def find_invitation_by_token(token: str) -> OrganizationInvitation | None:
@@ -258,6 +314,123 @@ def delete_member(member_id: str) -> None:
         member.delete()
     except Exception:
         pass
+
+
+def get_org_database(org_id: str) -> OrganizationDatabase | None:
+    return OrganizationDatabase.objects.filter(org_id=org_id).first()
+
+
+def provision_org_database(org_id: str) -> OrganizationDatabase | None:
+    """
+    Create a per-org MySQL database from the cyberrange_org_template schema.
+    Stores the mapping in organization_databases. Idempotent — skips if already exists.
+    """
+    existing = get_org_database(org_id)
+    if existing and existing.status == "ready":
+        return existing
+
+    org = get_organization(org_id)
+    if org is None:
+        return None
+
+    db_name = f"cyberrange_org_{org.slug.replace('-', '_')}"
+
+    if existing is None:
+        existing = OrganizationDatabase(
+            id=str(uuid.uuid4()),
+            org_id=org_id,
+            db_name=db_name,
+            status="provisioning",
+        )
+        existing.save()
+    else:
+        existing.db_name = db_name
+        existing.status = "provisioning"
+        existing.updated_at = datetime.now(timezone.utc)
+        existing.save()
+
+    try:
+        import os
+        import pymysql
+        from codesandbox.config import get_settings
+        settings = get_settings()
+        db_url = settings.database_url
+        # Parse mysql://user:pass@host:port/dbname
+        import urllib.parse as _up
+        parsed = _up.urlparse(db_url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 3306
+        user = parsed.username or "root"
+        password = parsed.password or ""
+
+        conn = pymysql.connect(host=host, port=port, user=user, password=password, charset="utf8mb4")
+        cur = conn.cursor()
+        cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+
+        # Run the template SQL against the new database
+        template_path = os.path.join(os.path.dirname(__file__), "../../../../docs/cyberrange_organization_schema_mysql.sql")
+        template_path = os.path.normpath(template_path)
+        if os.path.exists(template_path):
+            with open(template_path, "r", encoding="utf-8") as f:
+                sql_text = f.read()
+            # Swap the CREATE DATABASE / USE statements to target the new DB name
+            import re as _re
+            sql_text = _re.sub(r"CREATE DATABASE IF NOT EXISTS `[^`]+`[^;]+;", "", sql_text, flags=_re.IGNORECASE)
+            sql_text = _re.sub(r"USE `[^`]+`;", f"USE `{db_name}`;", sql_text, flags=_re.IGNORECASE)
+            sql_text = _re.sub(r"SET foreign_key_checks\s*=\s*0;", "SET foreign_key_checks = 0;", sql_text, flags=_re.IGNORECASE)
+            conn.select_db(db_name)
+            cur.execute("SET foreign_key_checks = 0")
+            for stmt in _split_sql_statements(sql_text):
+                stmt = stmt.strip()
+                if stmt:
+                    try:
+                        cur.execute(stmt)
+                    except Exception:
+                        pass
+            cur.execute("SET foreign_key_checks = 1")
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        existing.status = "ready"
+        existing.provisioned_at = datetime.now(timezone.utc)
+        existing.updated_at = datetime.now(timezone.utc)
+        existing.db_user = user
+        existing.save()
+    except Exception as exc:
+        existing.status = "failed"
+        existing.updated_at = datetime.now(timezone.utc)
+        existing.save()
+        import logging
+        logging.getLogger(__name__).error("Failed to provision org DB %s: %s", org_id, exc)
+
+    return existing
+
+
+def _split_sql_statements(sql: str) -> list[str]:
+    """Naive SQL splitter on ';' respecting string literals."""
+    import re as _re
+    # Remove single-line comments
+    sql = _re.sub(r"--[^\n]*", "", sql)
+    # Split on ; outside quotes (simple heuristic)
+    stmts = []
+    buf = []
+    in_str = False
+    str_char = ""
+    for ch in sql:
+        if not in_str and ch in ("'", '"', '`'):
+            in_str = True
+            str_char = ch
+        elif in_str and ch == str_char:
+            in_str = False
+        if not in_str and ch == ";":
+            stmts.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    if "".join(buf).strip():
+        stmts.append("".join(buf))
+    return stmts
 
 
 def delete_organization(org_id: str) -> None:
