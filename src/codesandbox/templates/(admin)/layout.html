@@ -11,6 +11,9 @@
   {%- elif href.startswith("/settings") -%}<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
   {%- elif href == "#help" -%}<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>
   {%- elif href == "/my/organizations" -%}<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/>
+  {%- elif href == "_org_overview" -%}<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
+  {%- elif href == "_org_members" -%}<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  {%- elif href == "_org_settings" -%}<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>
   {%- else -%}<circle cx="12" cy="12" r="10"/>
   {%- endif -%}
 </svg>
@@ -74,6 +77,25 @@
 
     {# Main navigation #}
     <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden py-1">
+
+      {# Org workspace nav — injected when an org workspace is active #}
+      {% if active_workspace is defined and active_workspace %}
+        {% set _ows = active_workspace %}
+        {% set _op = request.path %}
+        {% set _ot = request.args.get('tab', '') %}
+        <div class="px-2 py-1">
+          <p class="mb-0.5 px-2 py-1 text-xs font-medium text-sidebar-foreground/70 select-none group-data-[state=collapsed]:hidden">{{ _ows['name'] }}</p>
+          <ul class="m-0 flex w-full flex-col gap-0.5 p-0 list-none">
+            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'], "label": "Overview", "icon": "_org_overview",
+              "active": _op == ("/my/organizations/" ~ _ows['slug']) and _ot == ""}) }}</li>
+            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "?tab=members", "label": "Members", "icon": "_org_members",
+              "active": _op == ("/my/organizations/" ~ _ows['slug']) and _ot == "members"}) }}</li>
+            <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "?tab=settings", "label": "Settings", "icon": "_org_settings",
+              "active": _op == ("/my/organizations/" ~ _ows['slug']) and _ot == "settings"}) }}</li>
+          </ul>
+        </div>
+      {% endif %}
+
       {% for section in nav['sections'] %}
         <div class="px-2 py-1">
           <p class="mb-0.5 px-2 py-1 text-xs font-medium text-sidebar-foreground/70 select-none group-data-[state=collapsed]:hidden">{{ section['label'] }}</p>

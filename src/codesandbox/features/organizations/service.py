@@ -143,6 +143,8 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
     org = repository.get_organization_by_slug(slug)
     if org is None:
         return None
+    if org.created_by == user_id:
+        repository.ensure_creator_is_owner(org.id, user_id)
     member = repository.get_member(org.id, user_id)
     if member is None:
         return None

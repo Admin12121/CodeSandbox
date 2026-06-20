@@ -75,9 +75,9 @@ def create_organization(
         created_by=created_by,
     )
     org.save()
+    seed_org_roles(org.id)  # roles must exist before add_member tries to assign owner
     if created_by:
         add_member(org_id=org.id, user_id=created_by)
-    seed_org_roles(org.id)
     return org
 
 
@@ -230,6 +230,22 @@ def find_invitation_by_token(token: str) -> OrganizationInvitation | None:
 def mark_invitation_accepted(invitation: OrganizationInvitation) -> None:
     invitation.status = "accepted"
     invitation.save()
+
+
+def ensure_creator_is_owner(org_id: str, user_id: str) -> None:
+    """Repair orgs created before the seed-before-add-member fix."""
+    if not OrganizationRole.objects.filter(org_id=org_id, name="owner").first():
+        seed_org_roles(org_id)
+    owner_role = OrganizationRole.objects.filter(org_id=org_id, name="owner").first()
+    if not owner_role:
+        return
+    member = get_member(org_id, user_id)
+    if not member:
+        member = OrganizationMember(id=str(uuid.uuid4()), org_id=org_id, user_id=user_id)
+        member.save()
+    if not OrganizationMemberRole.objects.filter(member_id=member.id, role_id=owner_role.id).first():
+        mr = OrganizationMemberRole(id=str(uuid.uuid4()), member_id=member.id, role_id=owner_role.id)
+        mr.save()
 
 
 def delete_member(member_id: str) -> None:

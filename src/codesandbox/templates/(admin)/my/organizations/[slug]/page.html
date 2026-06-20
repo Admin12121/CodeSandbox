@@ -271,157 +271,158 @@
 
     {# ══ Settings tab ══ #}
     {% call tabs_ui.tabs_panel(value="settings", active=(active_tab == "settings")) %}
+      {% set ind_match = industry_options | selectattr('value', 'equalto', org.industry) | list %}
+      {% set ind_label = ind_match[0].label if ind_match else (org.industry or '—') %}
+      {% set sz_match = size_options | selectattr('value', 'equalto', org.size) | list %}
+      {% set sz_label = sz_match[0].label if sz_match else (org.size or '—') %}
+
       <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
 
-        {# Details form (owner) / read-only (member) #}
-        {% if is_owner %}
-          <form method="post" action="/my/organizations/{{ slug }}/update">
-            {% call frame.frame() %}
-              <div class="border-b px-5 py-4">
-                <h3 class="text-sm font-semibold">Organization profile</h3>
-                <p class="text-sm text-muted-foreground">Update your organization's public information.</p>
-              </div>
-              <div class="grid gap-6 p-5">
+        {# Detail tables #}
+        <div class="grid gap-5">
 
-                {# Identity #}
-                <div>
-                  <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Identity</p>
-                  <div class="grid gap-4 sm:grid-cols-2">
-                    {% call field.field() %}
-                      {{ field.field_label("Organization name *", for_id="s-name") }}
-                      {{ input.input(name="name", value=org.name, required=true, attrs={"id": "s-name", "autocomplete": "off"}) }}
-                    {% endcall %}
-                    {% call field.field() %}
-                      {{ field.field_label("Website", for_id="s-website") }}
-                      {{ input.input(type="url", name="website", value=org.website, placeholder="https://example.com", attrs={"id": "s-website"}) }}
-                    {% endcall %}
-                    {% call field.field(class="sm:col-span-2") %}
-                      {{ field.field_label("Description", for_id="s-desc") }}
-                      <span class="relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px] sm:text-sm dark:bg-input/32">
-                        <textarea id="s-desc" name="description" placeholder="What does your organization do?" rows="3"
-                          class="w-full min-w-0 rounded-[inherit] bg-transparent outline-none placeholder:text-muted-foreground/72 px-3 py-2 resize-none">{{ org.description }}</textarea>
-                      </span>
-                    {% endcall %}
-                    {% call field.field() %}
-                      {{ field.field_label("Slug") }}
-                      {{ input.input(value=org.slug, attrs={"readonly": "readonly", "tabindex": "-1"}) }}
-                      {% call field.field_description() %}Derived from the name. Read-only.{% endcall %}
-                    {% endcall %}
-                  </div>
-                </div>
+          {# ── Identity ── #}
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Identity", class="w-48") }}
+                  {{ table.table_head("") }}
+                  {% if is_owner %}{{ table.table_head("", class="w-20 text-right") }}{% endif %}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
 
-                {# Classification #}
-                <div>
-                  <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Classification</p>
-                  <div class="grid gap-4 sm:grid-cols-3">
-                    {% call field.field() %}
-                      {{ field.field_label("Industry", for_id="s-industry") }}
-                      {% set ind_match = industry_options | selectattr('value', 'equalto', org.industry) | list %}
-                      {% call sel.select(name="industry", value=org.industry) %}
-                        {% call sel.select_trigger(target="s-industry-popup") %}
-                          {{ sel.select_value(ind_match[0].label if ind_match else "Select industry") }}
-                          <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                        {% endcall %}
-                        {% call sel.select_popup(attrs={"id": "s-industry-popup"}) %}
-                          {% for opt in industry_options %}
-                            {% call sel.select_item(value=opt.value, selected=(opt.value == org.industry)) %}{{ opt.label }}{% endcall %}
-                          {% endfor %}
-                        {% endcall %}
-                      {% endcall %}
-                    {% endcall %}
-                    {% call field.field() %}
-                      {{ field.field_label("Organization size", for_id="s-size") }}
-                      {% set sz_match = size_options | selectattr('value', 'equalto', org.size) | list %}
-                      {% call sel.select(name="size", value=org.size) %}
-                        {% call sel.select_trigger(target="s-size-popup") %}
-                          {{ sel.select_value(sz_match[0].label if sz_match else "Select size") }}
-                          <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-                        {% endcall %}
-                        {% call sel.select_popup(attrs={"id": "s-size-popup"}) %}
-                          {% for opt in size_options %}
-                            {% call sel.select_item(value=opt.value, selected=(opt.value == org.size)) %}{{ opt.label }}{% endcall %}
-                          {% endfor %}
-                        {% endcall %}
-                      {% endcall %}
-                    {% endcall %}
-                    {% call field.field() %}
-                      {{ field.field_label("Location", for_id="s-location") }}
-                      {{ input.input(name="location", value=org.location, placeholder="San Francisco, CA", attrs={"id": "s-location"}) }}
-                    {% endcall %}
-                  </div>
-                </div>
+                {# Name #}
+                {% call table.table_row(attrs={"data-cs-field": "name", "data-cs-orig": org.name|e, "data-cs-kind": "text"}) %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Name{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span class="cs-field-display">{{ org.name or "—" }}</span>
+                    {% if is_owner %}<span class="cs-field-editor hidden"><span class="relative inline-flex w-full max-w-sm rounded-lg border border-input bg-background text-sm text-foreground shadow-xs/5 ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px]"><input class="cs-field-input w-full rounded-[inherit] bg-transparent outline-none px-3 py-1.5" type="text" value="{{ org.name|e }}"></span></span>{% endif %}
+                  {% endcall %}
+                  {% if is_owner %}{% call table.table_cell(class="text-right") %}<button type="button" class="cs-edit-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditStart('name')" aria-label="Edit"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button><div class="cs-save-cancel hidden flex justify-end gap-1"><button type="button" class="cs-save-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditSave('name')" aria-label="Save"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditCancel()" aria-label="Cancel"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>{% endcall %}{% endif %}
+                {% endcall %}
 
-                {# Contact #}
-                <div>
-                  <p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contact</p>
-                  <div class="grid gap-4 sm:grid-cols-2">
-                    {% call field.field() %}
-                      {{ field.field_label("Contact email", for_id="s-email") }}
-                      {{ input.input(type="email", name="contact_email", value=org.contact_email, placeholder="hello@example.com", attrs={"id": "s-email"}) }}
-                    {% endcall %}
-                  </div>
-                </div>
+                {# Description #}
+                {% call table.table_row(attrs={"data-cs-field": "description", "data-cs-orig": (org.description or '')|e, "data-cs-kind": "textarea"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Description{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span class="cs-field-display whitespace-pre-wrap">{{ org.description or "—" }}</span>
+                    {% if is_owner %}<span class="cs-field-editor hidden"><span class="relative inline-flex w-full rounded-lg border border-input bg-background text-sm text-foreground shadow-xs/5 ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px]"><textarea class="cs-field-input w-full rounded-[inherit] bg-transparent outline-none px-3 py-2 resize-none" rows="3" placeholder="What does your organization do?">{{ org.description|e }}</textarea></span></span>{% endif %}
+                  {% endcall %}
+                  {% if is_owner %}{% call table.table_cell(class="text-right align-top pt-2") %}<button type="button" class="cs-edit-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditStart('description')" aria-label="Edit"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button><div class="cs-save-cancel hidden flex justify-end gap-1"><button type="button" class="cs-save-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditSave('description')" aria-label="Save"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditCancel()" aria-label="Cancel"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>{% endcall %}{% endif %}
+                {% endcall %}
 
-              </div>
-              <div class="flex justify-end border-t px-5 py-4">
-                {% call button.button(type="submit", size="sm") %}Save changes{% endcall %}
-              </div>
+                {# Website #}
+                {% call table.table_row(attrs={"data-cs-field": "website", "data-cs-orig": (org.website or '')|e, "data-cs-kind": "text"}) %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Website{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span class="cs-field-display">{% if org.website %}<a href="{{ org.website }}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">{{ org.website }}</a>{% else %}—{% endif %}</span>
+                    {% if is_owner %}<span class="cs-field-editor hidden"><span class="relative inline-flex w-full max-w-sm rounded-lg border border-input bg-background text-sm text-foreground shadow-xs/5 ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px]"><input class="cs-field-input w-full rounded-[inherit] bg-transparent outline-none px-3 py-1.5" type="url" value="{{ (org.website or '')|e }}" placeholder="https://example.com"></span></span>{% endif %}
+                  {% endcall %}
+                  {% if is_owner %}{% call table.table_cell(class="text-right") %}<button type="button" class="cs-edit-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditStart('website')" aria-label="Edit"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button><div class="cs-save-cancel hidden flex justify-end gap-1"><button type="button" class="cs-save-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditSave('website')" aria-label="Save"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditCancel()" aria-label="Cancel"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>{% endcall %}{% endif %}
+                {% endcall %}
+
+                {# Slug — read-only #}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Slug{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}<code class="font-mono text-xs">{{ org.slug }}</code>{% endcall %}
+                  {% if is_owner %}{{ table.table_cell("", class="") }}{% endif %}
+                {% endcall %}
+
+              {% endcall %}
             {% endcall %}
-          </form>
-        {% else %}
-          {# Read-only view for non-owners #}
-          {% call frame.frame(class="p-5") %}
-            <div class="mb-4">
-              <h3 class="text-sm font-semibold">Organization profile</h3>
-            </div>
-            <dl class="grid gap-3 sm:grid-cols-2 text-sm">
-              <div class="grid gap-0.5">
-                <dt class="text-xs text-muted-foreground">Name</dt>
-                <dd class="font-medium">{{ org.name }}</dd>
-              </div>
-              {% if org.description %}
-                <div class="grid gap-0.5 sm:col-span-2">
-                  <dt class="text-xs text-muted-foreground">Description</dt>
-                  <dd>{{ org.description }}</dd>
-                </div>
-              {% endif %}
-              {% if org.industry %}
-                <div class="grid gap-0.5">
-                  <dt class="text-xs text-muted-foreground">Industry</dt>
-                  <dd>{{ org.industry }}</dd>
-                </div>
-              {% endif %}
-              {% if org.size %}
-                <div class="grid gap-0.5">
-                  <dt class="text-xs text-muted-foreground">Size</dt>
-                  <dd>{{ org.size }} employees</dd>
-                </div>
-              {% endif %}
-              {% if org.location %}
-                <div class="grid gap-0.5">
-                  <dt class="text-xs text-muted-foreground">Location</dt>
-                  <dd>{{ org.location }}</dd>
-                </div>
-              {% endif %}
-              {% if org.website %}
-                <div class="grid gap-0.5">
-                  <dt class="text-xs text-muted-foreground">Website</dt>
-                  <dd><a href="{{ org.website }}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">{{ org.website }}</a></dd>
-                </div>
-              {% endif %}
-              {% if org.contact_email %}
-                <div class="grid gap-0.5">
-                  <dt class="text-xs text-muted-foreground">Contact email</dt>
-                  <dd><a href="mailto:{{ org.contact_email }}" class="text-primary hover:underline">{{ org.contact_email }}</a></dd>
-                </div>
-              {% endif %}
-              <div class="grid gap-0.5">
-                <dt class="text-xs text-muted-foreground">Slug</dt>
-                <dd><code class="text-xs font-mono text-muted-foreground">{{ org.slug }}</code></dd>
-              </div>
-            </dl>
           {% endcall %}
-        {% endif %}
+
+          {# ── Profile ── #}
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Profile", class="w-48") }}
+                  {{ table.table_head("") }}
+                  {% if is_owner %}{{ table.table_head("", class="w-20 text-right") }}{% endif %}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+
+                {# Industry #}
+                {% call table.table_row(attrs={"data-cs-field": "industry", "data-cs-orig": (org.industry or '')|e, "data-cs-kind": "select"}) %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Industry{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span class="cs-field-display">{{ ind_label }}</span>
+                    {% if is_owner %}<span class="cs-field-editor hidden"><span class="relative inline-flex w-full max-w-xs rounded-lg border border-input bg-background text-sm text-foreground shadow-xs/5"><select class="cs-field-input w-full rounded-[inherit] bg-transparent outline-none px-3 py-1.5 cursor-pointer">{% for opt in industry_options %}<option value="{{ opt.value }}" {% if opt.value == org.industry %}selected{% endif %}>{{ opt.label }}</option>{% endfor %}</select></span></span>{% endif %}
+                  {% endcall %}
+                  {% if is_owner %}{% call table.table_cell(class="text-right") %}<button type="button" class="cs-edit-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditStart('industry')" aria-label="Edit"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button><div class="cs-save-cancel hidden flex justify-end gap-1"><button type="button" class="cs-save-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditSave('industry')" aria-label="Save"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditCancel()" aria-label="Cancel"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>{% endcall %}{% endif %}
+                {% endcall %}
+
+                {# Size #}
+                {% call table.table_row(attrs={"data-cs-field": "size", "data-cs-orig": (org.size or '')|e, "data-cs-kind": "select"}) %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Size{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span class="cs-field-display">{{ sz_label }}</span>
+                    {% if is_owner %}<span class="cs-field-editor hidden"><span class="relative inline-flex w-full max-w-xs rounded-lg border border-input bg-background text-sm text-foreground shadow-xs/5"><select class="cs-field-input w-full rounded-[inherit] bg-transparent outline-none px-3 py-1.5 cursor-pointer">{% for opt in size_options %}<option value="{{ opt.value }}" {% if opt.value == org.size %}selected{% endif %}>{{ opt.label }}</option>{% endfor %}</select></span></span>{% endif %}
+                  {% endcall %}
+                  {% if is_owner %}{% call table.table_cell(class="text-right") %}<button type="button" class="cs-edit-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditStart('size')" aria-label="Edit"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button><div class="cs-save-cancel hidden flex justify-end gap-1"><button type="button" class="cs-save-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditSave('size')" aria-label="Save"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditCancel()" aria-label="Cancel"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>{% endcall %}{% endif %}
+                {% endcall %}
+
+                {# Location #}
+                {% call table.table_row(attrs={"data-cs-field": "location", "data-cs-orig": (org.location or '')|e, "data-cs-kind": "text"}) %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Location{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span class="cs-field-display">{{ org.location or "—" }}</span>
+                    {% if is_owner %}<span class="cs-field-editor hidden"><span class="relative inline-flex w-full max-w-sm rounded-lg border border-input bg-background text-sm text-foreground shadow-xs/5 ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px]"><input class="cs-field-input w-full rounded-[inherit] bg-transparent outline-none px-3 py-1.5" type="text" value="{{ (org.location or '')|e }}" placeholder="San Francisco, CA"></span></span>{% endif %}
+                  {% endcall %}
+                  {% if is_owner %}{% call table.table_cell(class="text-right") %}<button type="button" class="cs-edit-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditStart('location')" aria-label="Edit"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button><div class="cs-save-cancel hidden flex justify-end gap-1"><button type="button" class="cs-save-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditSave('location')" aria-label="Save"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditCancel()" aria-label="Cancel"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>{% endcall %}{% endif %}
+                {% endcall %}
+
+                {# Contact email #}
+                {% call table.table_row(attrs={"data-cs-field": "contact_email", "data-cs-orig": (org.contact_email or '')|e, "data-cs-kind": "text"}) %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Contact email{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span class="cs-field-display">{% if org.contact_email %}<a href="mailto:{{ org.contact_email }}" class="text-primary hover:underline">{{ org.contact_email }}</a>{% else %}—{% endif %}</span>
+                    {% if is_owner %}<span class="cs-field-editor hidden"><span class="relative inline-flex w-full max-w-sm rounded-lg border border-input bg-background text-sm text-foreground shadow-xs/5 ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px]"><input class="cs-field-input w-full rounded-[inherit] bg-transparent outline-none px-3 py-1.5" type="email" value="{{ (org.contact_email or '')|e }}" placeholder="hello@example.com"></span></span>{% endif %}
+                  {% endcall %}
+                  {% if is_owner %}{% call table.table_cell(class="text-right") %}<button type="button" class="cs-edit-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditStart('contact_email')" aria-label="Edit"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button><div class="cs-save-cancel hidden flex justify-end gap-1"><button type="button" class="cs-save-btn inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditSave('contact_email')" aria-label="Save"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button><button type="button" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors sm:size-6" onclick="csEditCancel()" aria-label="Cancel"><svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>{% endcall %}{% endif %}
+                {% endcall %}
+
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+
+          {# ── Overview (read-only) ── #}
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Overview", class="w-48") }}
+                  {{ table.table_head("") }}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Status{% endcall %}
+                  {% call table.table_cell() %}
+                    {% if org.status == "active" %}{{ badge.badge("Active", variant="outline") }}
+                    {% elif org.status == "pending" %}{{ badge.badge("Pending approval", variant="warning") }}
+                    {% elif org.status == "rejected" %}{{ badge.badge("Rejected", variant="destructive") }}
+                    {% elif org.status == "suspended" %}{{ badge.badge("Suspended", variant="destructive") }}
+                    {% else %}{{ badge.badge("Inactive", variant="secondary") }}{% endif %}
+                  {% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Members{% endcall %}
+                  {{ table.table_cell(org.member_count|string ~ " member" ~ ("s" if org.member_count != 1 else ""), class="text-sm text-muted-foreground") }}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Created{% endcall %}
+                  {{ table.table_cell(org.created_at.strftime("%b %d, %Y") if org.created_at else "—", class="text-sm text-muted-foreground") }}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+
+        </div>
 
         {# Sidebar: membership card #}
         <div class="grid content-start gap-5">
@@ -470,6 +471,117 @@
         </div>
 
       </div>
+
+      {% if is_owner %}
+      {% app_script "org-inline-edit" %}
+      (function(){
+        var _slug = '{{ slug }}';
+        var _editing = null;
+        var _saving = false;
+
+        function getRow(f){ return document.querySelector('[data-cs-field="'+f+'"]'); }
+
+        function rowSetEditing(f, on){
+          var r = getRow(f); if(!r) return;
+          r.querySelector('.cs-field-display').classList.toggle('hidden', on);
+          var ed = r.querySelector('.cs-field-editor'); if(ed) ed.classList.toggle('hidden', !on);
+          var eb = r.querySelector('.cs-edit-btn');    if(eb) eb.classList.toggle('hidden', on);
+          var sc = r.querySelector('.cs-save-cancel'); if(sc) sc.classList.toggle('hidden', !on);
+        }
+
+        function lockAllEdits(lock){
+          document.querySelectorAll('.cs-edit-btn').forEach(function(b){ b.disabled = lock; });
+        }
+
+        window.csEditStart = function(f){
+          if(_editing) return;
+          _editing = f;
+          rowSetEditing(f, true);
+          lockAllEdits(true);
+          var r = getRow(f);
+          var inp = r && r.querySelector('.cs-field-input');
+          if(inp) setTimeout(function(){ inp.focus(); if(inp.tagName==='INPUT'&&inp.select) inp.select(); }, 10);
+        };
+
+        window.csEditCancel = function(){
+          if(!_editing) return;
+          var f = _editing; _editing = null;
+          var r = getRow(f);
+          var inp = r && r.querySelector('.cs-field-input');
+          if(inp) inp.value = r.getAttribute('data-cs-orig') || '';
+          rowSetEditing(f, false);
+          lockAllEdits(false);
+        };
+
+        window.csEditSave = function(f){
+          if(_saving) return;
+          _saving = true;
+          var r = getRow(f);
+          var inp = r.querySelector('.cs-field-input');
+          var kind = r.getAttribute('data-cs-kind') || 'text';
+          var value = inp ? inp.value.trim() : '';
+          var displayLabel = value;
+          if(kind === 'select' && inp && inp.selectedIndex >= 0){
+            displayLabel = inp.options[inp.selectedIndex].text || value;
+          }
+          var sb = r.querySelector('.cs-save-btn');
+          if(sb) sb.disabled = true;
+
+          fetch('/my/organizations/'+_slug+'/update-field', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({field: f, value: value})
+          })
+          .then(function(res){ return res.json(); })
+          .then(function(data){
+            _saving = false;
+            var r2 = getRow(f);
+            var sb2 = r2 && r2.querySelector('.cs-save-btn');
+            if(sb2) sb2.disabled = false;
+            if(!data.ok){ alert(data.error || 'Save failed.'); return; }
+            r2.setAttribute('data-cs-orig', value);
+            var disp = r2.querySelector('.cs-field-display');
+            if(disp){
+              if(f === 'website'){
+                disp.innerHTML = value
+                  ? '<a href="'+value+'" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">'+value+'</a>'
+                  : '—';
+              } else if(f === 'contact_email'){
+                disp.innerHTML = value
+                  ? '<a href="mailto:'+value+'" class="text-primary hover:underline">'+value+'</a>'
+                  : '—';
+              } else {
+                disp.textContent = displayLabel || '—';
+              }
+            }
+            _editing = null;
+            rowSetEditing(f, false);
+            lockAllEdits(false);
+            if(f === 'name' && data.slug && data.slug !== _slug){
+              _slug = data.slug;
+              history.replaceState(null, '', '/my/organizations/'+_slug+'?tab=settings');
+              document.querySelectorAll('form[action]').forEach(function(fm){
+                fm.action = fm.action.replace(/\/my\/organizations\/[^\/]+\//, '/my/organizations/'+_slug+'/');
+              });
+            }
+          })
+          .catch(function(){
+            _saving = false;
+            if(sb) sb.disabled = false;
+            alert('Network error. Please try again.');
+          });
+        };
+
+        document.querySelectorAll('[data-cs-field]').forEach(function(r){
+          r.addEventListener('dblclick', function(){
+            var f = r.getAttribute('data-cs-field');
+            if(f && !_editing) csEditStart(f);
+          });
+        });
+      })();
+      {% end_app_script %}
+      {% endif %}
+
     {% endcall %}
 
   {% endcall %}

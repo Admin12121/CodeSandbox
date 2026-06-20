@@ -84,6 +84,51 @@ def user_create_org_action():
     return redirect(f"/my/organizations?info={info}", code=303)
 
 
+@web_bp.post("/my/organizations/<slug>/update-field")
+def user_update_org_field_action(slug: str):
+    from flask import jsonify
+    session, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+
+    data = request.get_json(silent=True) or {}
+    field = str(data.get("field", "")).strip()
+    value = str(data.get("value", "")).strip() or None
+
+    _allowed = {"name", "description", "website", "industry", "size", "location", "contact_email"}
+    if field not in _allowed:
+        return jsonify({"ok": False, "error": "Invalid field."}), 400
+    if field == "name" and not value:
+        return jsonify({"ok": False, "error": "Name is required."}), 400
+
+    from .service import get_org_for_user
+    org_data = get_org_for_user(slug, session.user.id)
+    if org_data is None:
+        return jsonify({"ok": False, "error": "Organization not found."}), 404
+    if not org_data["is_owner"]:
+        return jsonify({"ok": False, "error": "Only owners can update organization details."}), 403
+
+    kwargs = {
+        "name": org_data["name"],
+        "description": org_data["description"] or None,
+        "website": org_data["website"] or None,
+        "industry": org_data["industry"] or None,
+        "size": org_data["size"] or None,
+        "location": org_data["location"] or None,
+        "contact_email": org_data["contact_email"] or None,
+    }
+    kwargs[field] = value
+    update_organization_details(org_data["id"], **kwargs)
+
+    new_slug = slug
+    if field == "name":
+        from .repository import get_organization
+        updated = get_organization(org_data["id"])
+        new_slug = updated.slug if updated else slug
+
+    return jsonify({"ok": True, "slug": new_slug})
+
+
 @web_bp.post("/my/organizations/<slug>/update")
 def user_update_org_action(slug: str):
     session, redir = require_session()
