@@ -124,6 +124,7 @@ def dashboard():
         "page_title": "Dashboard",
         "page_description": "Platform overview — users, orgs, runtime, cases",
         "metrics": metrics,
+        **_workspaces_ctx(user),
     }
 
 
@@ -173,6 +174,7 @@ def platform_users():
         "user": _user_ctx(user),
         "nav": nav,
         "page_title": "Platform Users",
+        **_workspaces_ctx(user),
         "page_description": "All accounts — admins, staff, and regular users",
         "users": users_data,
         "total": total,
@@ -235,6 +237,7 @@ def platform_organizations():
         "user": _user_ctx(user),
         "nav": nav,
         "page_title": "Organizations",
+        **_workspaces_ctx(user),
         "page_description": "All tenant organizations on the platform",
         "organizations": orgs,
         "total": total,
@@ -286,6 +289,7 @@ def platform_staff():
         "user": _user_ctx(user),
         "nav": nav,
         "page_title": "Application Staff",
+        **_workspaces_ctx(user),
         "page_description": "Platform admins and staff members",
         "staff": staff,
         "visible_staff": visible_staff,
@@ -343,6 +347,7 @@ def platform_roles():
         "user": _user_ctx(user),
         "nav": nav,
         "page_title": "Staff Roles",
+        **_workspaces_ctx(user),
         "page_description": "Platform-level roles and permission assignments",
         "roles": rbac["roles"],
         "visible_roles": visible_roles,
@@ -376,6 +381,7 @@ def settings():
         "page_description": "Manage your account and security",
         "info": request.args.get("info"),
         "totp_enabled": totp.is_enabled if totp else False,
+        **_workspaces_ctx(user),
     }
 
 
@@ -398,6 +404,7 @@ def settings_2fa():
         "backup": request.args.get("backup", "").split(",") if request.args.get("backup") else [],
         "error": request.args.get("error"),
         "totp_enabled": totp.is_enabled if totp else False,
+        **_workspaces_ctx(cs.user),
     }
 
 
@@ -426,6 +433,7 @@ def my_organizations():
         "has_pending": has_pending,
         "info": request.args.get("info"),
         "error": request.args.get("error"),
+        **_workspaces_ctx(user),
     }
 
 
@@ -462,6 +470,7 @@ def my_organization_detail(slug: str):
         "invite_link": invite_link,
         "info": request.args.get("info"),
         "error": request.args.get("error"),
+        **_workspaces_ctx(user, active_workspace=org),
     }
 
 
@@ -476,4 +485,18 @@ def _user_ctx(user) -> dict:
         "platform_role": user.platform_role,
         "role_label": format_role_label(user.platform_role),
         "status": user.status,
+    }
+
+
+def _workspaces_ctx(user, active_workspace=None) -> dict:
+    """Workspace switcher context. Returns None values for admin/staff users."""
+    if user.platform_role in ("system_admin", "system_staff"):
+        return {"workspace_list": None, "active_workspace": None}
+    from flask import g
+    if not hasattr(g, "_workspace_list"):
+        from codesandbox.features.organizations.service import get_user_org_list
+        g._workspace_list = get_user_org_list(user.id)
+    return {
+        "workspace_list": g._workspace_list,
+        "active_workspace": active_workspace,
     }

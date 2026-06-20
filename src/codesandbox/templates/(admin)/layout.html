@@ -47,12 +47,24 @@
   {# ── Sidebar ─────────────────────────────────────────────────────────── #}
   <aside class="hidden md:flex shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-linear w-(--sidebar-width) group-data-[state=collapsed]:w-(--sidebar-width-icon) overflow-hidden">
 
-    {# Logo + collapse trigger #}
+    {# Logo / Workspace Switcher + collapse trigger #}
     <div class="flex h-(--header-height) shrink-0 items-center gap-1 border-b border-sidebar-border px-2">
+      {% if user['platform_role'] == 'user' %}
+      {%- set _ws_btn = active_workspace -%}
+      {%- set _ws_btn_name = _ws_btn['name'] if _ws_btn else (user['name'] + "'s Space") -%}
+      {%- set _ws_btn_initial = (_ws_btn_name[:1] or '?') | upper -%}
+      <button type="button" id="ws-trigger" data-cs-menu="ws-menu" data-cs-menu-dir="down-left"
+        class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 hover:bg-sidebar-accent transition-colors">
+        <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold select-none">{{ _ws_btn_initial }}</span>
+        <span class="min-w-0 flex-1 truncate text-sm font-semibold text-left group-data-[state=collapsed]:hidden">{{ _ws_btn_name }}</span>
+        <svg class="size-4 shrink-0 text-muted-foreground group-data-[state=collapsed]:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+      </button>
+      {% else %}
       <a href="/dashboard" class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 hover:bg-sidebar-accent transition-colors">
         <img src="/logo.webp" class="flex object-contain size-7 items-center justify-center rounded-lg text-primary-foreground text-lg font-bold tracking-tight"/>
         <span class="truncate text-base font-semibold group-data-[state=collapsed]:hidden">CodeSandbox</span>
       </a>
+      {% endif %}
       {# Collapse button — hidden when already collapsed #}
       <button type="button" data-cs-sidebar-toggle aria-label="Collapse sidebar"
         class="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[state=collapsed]:hidden">
@@ -170,6 +182,95 @@
     </button>
   </form>
 </div>
+
+{# Workspace Switcher Menu — for regular users only #}
+{% if user['platform_role'] == 'user' %}
+{%- set _ws = active_workspace -%}
+{%- set _ws_name = _ws['name'] if _ws else (user['name'] + "'s Space") -%}
+{%- set _ws_member_count = _ws['member_count'] if _ws else 1 -%}
+{%- set _ws_initial = (_ws_name[:1] or '?') | upper -%}
+<div id="ws-menu" role="menu"
+  class="hidden fixed z-[200] w-72 rounded-xl border bg-popover text-sm text-popover-foreground shadow-xl overflow-hidden">
+
+  {# ── Active workspace header ─────────────────────────────────────────── #}
+  <div class="p-3 border-b border-border">
+    <div class="flex items-start gap-3 mb-2.5">
+      <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-base select-none">{{ _ws_initial }}</span>
+      <div class="min-w-0 flex-1 pt-0.5">
+        <p class="font-semibold text-sm leading-tight truncate">{{ _ws_name }}</p>
+        <p class="text-xs text-muted-foreground mt-0.5">Free Plan · {{ _ws_member_count }} member{{ 's' if _ws_member_count != 1 else '' }}</p>
+      </div>
+    </div>
+    {% if _ws %}
+      {% if _ws.get('is_owner') %}
+      <div class="flex gap-1.5">
+        <a href="/my/organizations/{{ _ws['slug'] }}"
+           class="flex flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+          <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
+        </a>
+        <a href="/my/organizations/{{ _ws['slug'] }}?tab=members"
+           class="flex flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+          <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Invite members
+        </a>
+      </div>
+      {% else %}
+      <a href="/my/organizations/{{ _ws['slug'] }}"
+         class="flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+        <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg>
+        View workspace
+      </a>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {# ── Workspace list ──────────────────────────────────────────────────── #}
+  <div class="border-b border-border">
+    <div class="px-3 pt-2 pb-0.5">
+      <span class="text-xs font-medium text-muted-foreground">{{ user['email'] }}</span>
+    </div>
+    {# Personal space (always first) #}
+    <a href="/dashboard"
+       class="flex items-center gap-2.5 px-3 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">
+      <span class="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold select-none">{{ (user['name'][:1] or '?') | upper }}</span>
+      <span class="flex-1 text-sm truncate">{{ user['name'] }}'s Space</span>
+      {% if not _ws %}
+      <svg class="size-3.5 text-primary shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      {% endif %}
+    </a>
+    {# Organization workspaces #}
+    {% if workspace_list %}
+    {% for org in workspace_list %}
+    <a href="/my/organizations/{{ org['slug'] }}"
+       class="flex items-center gap-2.5 px-3 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">
+      <span class="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold select-none">{{ (org['name'][:1] or '?') | upper }}</span>
+      <span class="flex-1 text-sm truncate">{{ org['name'] }}</span>
+      {% if org['status'] == 'pending' %}
+      <span class="text-xs text-muted-foreground shrink-0 italic">Pending</span>
+      {% elif _ws and _ws['slug'] == org['slug'] %}
+      <svg class="size-3.5 text-primary shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+      {% endif %}
+    </a>
+    {% endfor %}
+    {% endif %}
+  </div>
+
+  {# ── Footer: new workspace ───────────────────────────────────────────── #}
+  <div class="p-1">
+    <a href="/my/organizations?mode=create"
+       class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      New workspace
+    </a>
+    <a href="/my/organizations?mode=join"
+       class="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+      Join with invite
+    </a>
+  </div>
+</div>
+{% endif %}
 
 {# Command palette (Ctrl+J / Search) #}
 {% import "components/ui/command.html" as cmd_ui %}
@@ -289,14 +390,18 @@
   /* ── fixed-position dropdown manager ─────────────────────────────── */
   var _el=null,_tr=null;
   function _close(){if(_el){_el.classList.add('hidden');_el=null;_tr=null;}}
-  function _open(el,tr,up,matchW){
+  function _open(el,tr,dir,matchW){
     if(_el===el){_close();return;}
     _close();
     var r=tr.getBoundingClientRect();
     el.style.position='fixed';
     el.style.top='';el.style.bottom='';el.style.left='';el.style.right='';el.style.width='';
-    if(up){
+    if(dir==='up'){
       el.style.bottom=(window.innerHeight-r.top+4)+'px';
+      el.style.left=r.left+'px';
+      if(matchW)el.style.width=Math.max(r.width,224)+'px';
+    }else if(dir==='down-left'){
+      el.style.top=(r.bottom+4)+'px';
       el.style.left=r.left+'px';
       if(matchW)el.style.width=Math.max(r.width,224)+'px';
     }else{
@@ -402,7 +507,7 @@
     if(t){
       e.preventDefault();
       var el=document.getElementById(t.getAttribute('data-cs-menu'));
-      if(el)_open(el,t,t.getAttribute('data-cs-menu-dir')==='up',t.hasAttribute('data-cs-menu-match'));
+      if(el)_open(el,t,t.getAttribute('data-cs-menu-dir')||'',t.hasAttribute('data-cs-menu-match'));
       return;
     }
 

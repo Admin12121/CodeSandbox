@@ -183,7 +183,7 @@ def totp_setup_action():
     from codesandbox.shared.session import require_session
     cs, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     data = generate_totp_setup(cs.user.id, cs.user.email)
     return redirect(f"/settings/2fa?secret={data['secret']}&uri={urllib.parse.quote(data['uri'])}", code=303)
 
@@ -193,7 +193,7 @@ def totp_confirm_action():
     from codesandbox.shared.session import require_session
     cs, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     code = request.form.get("code", "").strip()
     result = confirm_totp_setup(cs.user.id, code)
     if result.ok:
@@ -207,7 +207,7 @@ def totp_disable_action():
     from codesandbox.shared.session import require_session
     cs, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     disable_2fa(cs.user.id)
     return redirect("/settings?info=Two-factor+authentication+disabled.", code=303)
 

@@ -99,7 +99,6 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
 
     user_items = [
         item("Dashboard", "/dashboard"),
-        item("My Organizations", "/my/organizations"),
     ]
     return {
         "sections": [{"label": "Workspace", "items": user_items}],

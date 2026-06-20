@@ -34,37 +34,29 @@
   {"value": "1000+",   "label": "1,000+ employees"},
 ] %}
 
-{# ── Banners (always visible) ── #}
-<div class="grid gap-4 p-2">
-{% if info is defined and info %}
+{# ── Top banners (info / error) ── #}
+{% if (info is defined and info) or (error is defined and error) %}
+<div class="flex flex-col gap-2 px-4 pt-4">
+  {% if info is defined and info %}
   <div class="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm text-primary">
     <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
     {{ info }}
   </div>
-{% endif %}
-{% if error is defined and error %}
+  {% endif %}
+  {% if error is defined and error %}
   <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
     <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
     {{ error }}
   </div>
+  {% endif %}
+</div>
 {% endif %}
 
 {# ════════════════════════════════════════ CREATE WIZARD ════════════════════ #}
 {% if show_create %}
-  <div class="flex min-w-0 items-center justify-between gap-3">
-    <div>
-      <h2 class="text-sm font-semibold">Create organization</h2>
-      <p class="text-xs text-muted-foreground">Fill in your organization details. An admin will review before activation.</p>
-    </div>
-    <a href="/my/organizations" aria-label="Cancel">
-      {% call button.button(type="button", variant="ghost", size="icon") %}
-        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-      {% endcall %}
-    </a>
-  </div>
-
-  {% call frame.frame() %}
-    {# Stepper #}
+<div class="flex h-full gap-4 p-4">
+  <img src="/post.jpg" alt="Organization logo" class="h-full rounded-lg w-1/2" />
+  {% call frame.frame(class="h-full w-1/2") %}
     <div class="overflow-x-auto border-b px-5 py-4">
       <ol id="wizard-stepper" class="flex min-w-max items-center">
         {% for s in [
@@ -210,8 +202,7 @@
 
       {# ── Navigation footer ── #}
       <div class="flex items-center justify-between border-t px-5 py-4">
-        <a href="/my/organizations" id="wizard-cancel"
-           class="text-sm text-muted-foreground hover:text-foreground transition-colors">Cancel</a>
+        <span></span>
         <div class="flex items-center gap-2">
           <div id="wizard-back-wrap" class="hidden">
             {% call button.button(type="button", variant="outline", size="sm", attrs={"id": "wizard-back"}) %}
@@ -220,25 +211,24 @@
             {% endcall %}
           </div>
           {% call button.button(type="button", size="sm", attrs={"id": "wizard-next"}) %}
-            Continue to Profile
-            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            Continue 
           {% endcall %}
           {% call button.button(type="submit", size="sm", attrs={"id": "wizard-submit", "style": "display:none"}) %}
-            Submit for approval
-            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Submit
           {% endcall %}
         </div>
       </div>
 
     </form>
   {% endcall %}
+</div>{# /create flex wrapper #}
 
   {% app_script "org-wizard" %}
   (function(){
     var currentStep = 1;
     var totalSteps = 3;
     var stepLabels = ['Identity','Profile','Review'];
-    var stepActions = ['Continue to Profile','Continue to Review',''];
+    var stepActions = ['Continue','Continue',''];
 
     function q(sel){ return document.querySelector(sel); }
 
@@ -359,19 +349,8 @@
 
 {# ════════════════════════════════════════ JOIN FLOW ═══════════════════════ #}
 {% elif show_join %}
-  <div class="flex min-w-0 items-center justify-between gap-3">
-    <div>
-      <h2 class="text-sm font-semibold">Join an organization</h2>
-      <p class="text-xs text-muted-foreground">Paste an invite link sent by an organization owner.</p>
-    </div>
-    <a href="/my/organizations" aria-label="Cancel">
-      {% call button.button(type="button", variant="ghost", size="icon") %}
-        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-      {% endcall %}
-    </a>
-  </div>
-
-  {% call frame.frame(class="p-6") %}
+<div class="flex min-h-[70vh] items-center justify-center p-6">
+  {% call frame.frame(class="w-full max-w-md p-6") %}
     <div class="mx-auto max-w-md grid gap-5">
       <div class="flex size-12 items-center justify-center rounded-2xl border bg-muted">
         <svg class="size-6 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -400,6 +379,7 @@
       </p>
     </div>
   {% endcall %}
+</div>{# /join center wrapper #}
 
   {% app_script "join-org" %}
   (function(){
@@ -423,6 +403,7 @@
 
 {# ════════════════════════════════════════ LIST / EMPTY ════════════════════ #}
 {% else %}
+<div class="flex flex-col gap-4 p-4 md:p-6">
   {# Pending banner #}
   {% if has_pending is defined and has_pending %}
     <div class="flex items-center gap-2 rounded-lg border border-yellow-500/30 bg-yellow-500/8 px-3 py-2.5 text-sm text-yellow-700 dark:text-yellow-400">
@@ -470,15 +451,13 @@
       <p class="text-sm text-muted-foreground">Organizations you belong to.</p>
       <div class="flex items-center gap-2">
         <a href="/my/organizations?mode=join">
-          {% call button.button(type="button", variant="outline", size="sm") %}
-            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-            Join with invite
+          {% call button.button(type="button", variant="outline", size="lg") %}
+            Join
           {% endcall %}
         </a>
         <a href="/my/organizations?mode=create">
-          {% call button.button(type="button", size="sm") %}
+          {% call button.button(type="button", size="icon") %}
             <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-            New organization
           {% endcall %}
         </a>
       </div>
@@ -539,5 +518,5 @@
       {% endcall %}
     {% endcall %}
   {% endif %}
+</div>{# /list flex-col wrapper #}
 {% endif %}
-</div>

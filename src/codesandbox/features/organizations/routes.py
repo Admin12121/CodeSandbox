@@ -64,7 +64,7 @@ def update_org_status_action(org_id: str):
 def user_create_org_action():
     session, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     name = request.form.get("name", "").strip()
     description = request.form.get("description", "").strip() or None
     if not name:
@@ -87,7 +87,7 @@ def user_create_org_action():
 def user_update_org_action(slug: str):
     session, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     from .service import get_org_for_user
     org_data = get_org_for_user(slug, session.user.id)
     if org_data is None:
@@ -121,7 +121,7 @@ def user_update_org_action(slug: str):
 def user_invite_org_action(slug: str):
     session, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     from .service import get_org_for_user
     org_data = get_org_for_user(slug, session.user.id)
     if org_data is None:
@@ -165,7 +165,7 @@ def user_invite_org_action(slug: str):
 def join_org_action(token: str):
     session, redir = require_session(next_path=f"/my/organizations/join/{token}")
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     ok, result = accept_org_invitation(token, session.user.id)
     if not ok:
         err = urllib.parse.quote(result)
@@ -183,7 +183,7 @@ def join_org_action(token: str):
 def user_remove_member_action(slug: str, member_id: str):
     session, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     from .service import get_org_for_user
     org_data = get_org_for_user(slug, session.user.id)
     if org_data is None:
@@ -204,7 +204,7 @@ def user_remove_member_action(slug: str, member_id: str):
 def user_leave_org_action(slug: str):
     session, redir = require_session()
     if redir:
-        return redir
+        return redirect(redir.url, code=303)
     from .repository import get_organization_by_slug
     org = get_organization_by_slug(slug)
     if org is None:
