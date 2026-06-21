@@ -109,6 +109,7 @@ def get_user_org_list(user_id: str) -> list[dict]:
             "size": org.size or "",
             "location": org.location or "",
             "contact_email": org.contact_email or "",
+            "logo_url": org.logo_url or "",
             "status": org.status,
             "member_count": member_count,
             "created_at": org.created_at,
@@ -126,6 +127,7 @@ def create_user_organization(
     size: str | None = None,
     location: str | None = None,
     contact_email: str | None = None,
+    logo_url: str | None = None,
     created_by: str,
 ) -> Organization:
     """Create an org with pending status for the given user."""
@@ -142,6 +144,7 @@ def create_user_organization(
         size=size,
         location=location,
         contact_email=contact_email,
+        logo_url=logo_url,
     )
     return org
 
@@ -193,6 +196,7 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
         "size": org.size or "",
         "location": org.location or "",
         "contact_email": org.contact_email or "",
+        "logo_url": org.logo_url or "",
         "status": org.status,
         "created_at": org.created_at,
         "members": members,

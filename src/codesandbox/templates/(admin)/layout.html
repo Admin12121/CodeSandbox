@@ -57,9 +57,14 @@
       {%- set _ws_btn = active_workspace -%}
       {%- set _ws_btn_name = _ws_btn['name'] if _ws_btn else (user['name'] + "'s Space") -%}
       {%- set _ws_btn_initial = (_ws_btn_name[:1] or '?') | upper -%}
+      {%- set _ws_btn_logo = _ws_btn['logo_url'] if (_ws_btn and _ws_btn['logo_url']) else '' -%}
       <button type="button" id="ws-trigger" data-cs-menu="ws-menu" data-cs-menu-dir="down-left"
         class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 hover:bg-sidebar-accent transition-colors">
+        {% if _ws_btn_logo %}
+        <img src="{{ _ws_btn_logo }}" alt="{{ _ws_btn_name }}" class="flex size-7 shrink-0 rounded-md object-cover border border-sidebar-border">
+        {% else %}
         <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold select-none">{{ _ws_btn_initial }}</span>
+        {% endif %}
         <span class="min-w-0 flex-1 truncate text-sm font-semibold text-left group-data-[state=collapsed]:hidden">{{ _ws_btn_name }}</span>
         <svg class="size-4 shrink-0 text-muted-foreground group-data-[state=collapsed]:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
       </button>
@@ -214,13 +219,18 @@
 {%- set _ws_name = _ws['name'] if _ws else (user['name'] + "'s Space") -%}
 {%- set _ws_member_count = _ws['member_count'] if _ws else 1 -%}
 {%- set _ws_initial = (_ws_name[:1] or '?') | upper -%}
+{%- set _ws_logo = _ws['logo_url'] if (_ws and _ws['logo_url']) else '' -%}
 <div id="ws-menu" role="menu"
   class="hidden fixed z-[200] w-72 rounded-xl border bg-popover text-sm text-popover-foreground shadow-xl overflow-hidden">
 
   {# ── Active workspace header ─────────────────────────────────────────── #}
   <div class="p-3 border-b border-border">
     <div class="flex items-start gap-3 mb-2.5">
+      {% if _ws_logo %}
+      <img src="{{ _ws_logo }}" alt="{{ _ws_name }}" class="size-9 shrink-0 rounded-lg object-cover border border-border">
+      {% else %}
       <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-base select-none">{{ _ws_initial }}</span>
+      {% endif %}
       <div class="min-w-0 flex-1 pt-0.5">
         <p class="font-semibold text-sm leading-tight truncate">{{ _ws_name }}</p>
         <p class="text-xs text-muted-foreground mt-0.5">Free Plan · {{ _ws_member_count }} member{{ 's' if _ws_member_count != 1 else '' }}</p>
@@ -269,7 +279,11 @@
     {% for org in workspace_list %}
     <a href="/my/organizations/{{ org['slug'] }}" data-router-reload="true"
        class="flex items-center gap-2.5 px-3 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">
+      {% if org['logo_url'] %}
+      <img src="{{ org['logo_url'] }}" alt="{{ org['name'] }}" class="size-6 shrink-0 rounded-md object-cover border border-border">
+      {% else %}
       <span class="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold select-none">{{ (org['name'][:1] or '?') | upper }}</span>
+      {% endif %}
       <span class="flex-1 text-sm truncate">{{ org['name'] }}</span>
       {% if org['status'] == 'pending' %}
       <span class="text-xs text-muted-foreground shrink-0 italic">Pending</span>

@@ -16,139 +16,165 @@
 {% endif %}
 
 {% if show_create %}
-<div class="flex gap-4 p-4" style="height:calc(100dvh - var(--header-height))">
+<style>
+  @media (max-width: 1299px) {
+    #org-create-grid { grid-template-rows: 50dvh auto; }
+    #org-slideshow   { height: 50dvh; }
+  }
+  @media (min-width: 1300px) {
+    #org-create-grid {
+      grid-template-columns: repeat(2, 1fr);
+      height: calc(100dvh - var(--header-height));
+    }
+  }
+</style>
+<div id="org-create-grid" class="grid gap-4 p-4">
   {{ wizard_ui.slideshow() }}
   {{ wizard_ui.create_wizard() }}
 </div>
 
 {% app_script "org-slideshow" %}
 (function(){
-  /* ── Dissolve slideshow — port of /scroll/ demo, timer-driven ── */
+  /* ── Dissolve slideshow — canvas port of /scroll/ demo ── */
   var el = document.getElementById('org-slideshow');
   if (!el) return;
   var slides = Array.from(el.querySelectorAll('[data-slide]'));
   if (slides.length < 2) return;
-  var dissolveEl = document.getElementById('slideshow-dissolve');
 
-  /* Parameters matching the scroll demo */
-  var CELL      = 16;
-  var SPREAD_A  = 0.25;   /* dissolveSpreadAbove */
-  var SPREAD_B  = 0.25;   /* dissolveSpreadBelow */
-  var SCATTER   = 0.15;   /* dissolveScatterIntensity */
-  var CORE_R    = 0.025;  /* dissolveSolidCoreRadius */
-  var MIN_SC    = 0.3;    /* dissolveMinScatterAtCenter */
-  var VIS_THR   = 0.65;   /* dissolveVisibilityThreshold */
-  var COLOR     = '#ff5101';
-  var CHARS     = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@$%*+=?!~<>[]{}|';
-  var RANGE     = 1 + SPREAD_A + SPREAD_B; /* 1.5 */
-  var DURATION  = 2200;   /* ms per transition */
-  var INTERVAL  = 4000;   /* ms between transition starts */
+  var CELL     = 16;
+  var SPREAD_A = 0.25;
+  var SPREAD_B = 0.25;
+  var SCATTER  = 0.15;
+  var CORE_R   = 0.025;
+  var MIN_SC   = 0.3;
+  var VIS_THR  = 0.65;
+  var COLOR    = '#ff5101';
+  var CHARS    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@$%*+=?!~<>[]{}|';
+  var RANGE    = 1 + SPREAD_A + SPREAD_B;
+  var DURATION = 1400;
+  var INTERVAL = 3800;
 
   var N = slides.length;
   var current = 0;
   var animating = false;
-  var cellEls = [], cellNY = [], cellVR = [], cellSC = [];
 
   function hash(r, c, seed) {
     var v = Math.sin(r * seed + c * (seed * 2.45)) * 43758.5453;
     return v - Math.floor(v);
   }
-
   function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+  function ease(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
 
-  function buildGrid() {
+  function init() {
     var W = el.offsetWidth, H = el.offsetHeight;
-    if (!W || !H) { requestAnimationFrame(buildGrid); return; }
-    var cols = Math.ceil(W / CELL), rows = Math.ceil(H / CELL);
-    var fs = Math.round(CELL * 0.7);
-    var frag = document.createDocumentFragment();
+    if (!W || !H) { requestAnimationFrame(init); return; }
+
+    var cols = Math.ceil(W / CELL);
+    var rows = Math.ceil(H / CELL);
+    var fs   = Math.round(CELL * 0.72);
+    var total = cols * rows;
+
+    /* ── Canvas overlay ── */
+    var canvas = document.createElement('canvas');
+    canvas.width  = W;
+    canvas.height = H;
+    canvas.style.cssText =
+      'position:absolute;inset:0;width:100%;height:100%;' +
+      'pointer-events:none;z-index:100;';
+    el.appendChild(canvas);
+    var ctx = canvas.getContext('2d');
+    ctx.font = 'bold ' + fs + 'px monospace';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+
+    /* ── Typed arrays for speed ── */
+    var cellNY   = new Float32Array(total);
+    var cellVR   = new Float32Array(total);
+    var cellSC   = new Float32Array(total);
+    var cellChar = new Uint8Array(total);
+    var cellX    = new Uint16Array(total);
+    var cellCY   = new Uint16Array(total);
+
     for (var r = 0; r < rows; r++) {
       for (var c = 0; c < cols; c++) {
-        var d = document.createElement('div');
-        d.style.cssText =
-          'position:absolute;left:' + (c*CELL) + 'px;top:' + (r*CELL) + 'px;' +
-          'width:' + CELL + 'px;height:' + CELL + 'px;' +
-          'font-size:' + fs + 'px;line-height:1;background:' + COLOR + ';color:#000;' +
-          'display:flex;align-items:center;justify-content:center;' +
-          'font-family:monospace;font-weight:500;overflow:hidden;visibility:hidden;';
-        d.textContent = CHARS[Math.floor(Math.random() * CHARS.length)];
-        frag.appendChild(d);
-        cellEls.push(d);
-        cellNY.push((r + 0.5) / rows);
-        cellVR.push(hash(r, c, 127.1));
-        cellSC.push((hash(r, c, 269.3) - 0.5) * SCATTER);
+        var i = r * cols + c;
+        cellX[i]    = c * CELL;
+        cellCY[i]   = r * CELL;
+        cellNY[i]   = (r + 0.5) / rows;
+        cellVR[i]   = hash(r, c, 127.1);
+        cellSC[i]   = (hash(r, c, 269.3) - 0.5) * SCATTER;
+        cellChar[i] = Math.floor(Math.random() * CHARS.length);
       }
     }
-    if (dissolveEl) dissolveEl.appendChild(frag);
 
-    /* Stack slides: first on top */
+    /* ── Slide stack ── */
     slides.forEach(function(s, i) {
       s.style.willChange = 'clip-path';
       s.style.zIndex = i === 0 ? N : 1;
       s.style.clipPath = '';
     });
 
+    /* ── Render ── */
+    var frame = 0;
+
+    function renderBand(bandY) {
+      ctx.clearRect(0, 0, W, H);
+      var refreshChar = (++frame % 4 === 0);
+      for (var i = 0; i < total; i++) {
+        var ny  = cellNY[i];
+        var raw = Math.abs(ny - bandY);
+        var ss  = clamp(raw / CORE_R, MIN_SC, 1);
+        var sc  = ny - bandY + cellSC[i] * ss;
+        var nd  = sc >= 0 ? sc / SPREAD_B : Math.abs(sc) / SPREAD_A;
+        if (nd >= 1) continue;
+        if ((1 - nd) * (1 - nd) > cellVR[i] * VIS_THR) {
+          if (refreshChar) cellChar[i] = Math.floor(Math.random() * CHARS.length);
+          var cx = cellX[i], cy = cellCY[i];
+          ctx.fillStyle = COLOR;
+          ctx.fillRect(cx, cy, CELL, CELL);
+          ctx.fillStyle = '#000';
+          ctx.fillText(CHARS[cellChar[i]], cx + CELL * 0.5, cy + CELL * 0.5 + 1);
+        }
+      }
+    }
+
+    /* ── Transition ── */
+    function advance() {
+      if (animating) return;
+      animating = true;
+      var prev = current;
+      var next = (current + 1) % N;
+      slides[next].style.clipPath = '';
+      slides[next].style.zIndex  = N - 1;
+      slides[prev].style.zIndex  = N;
+      var start = null;
+      function step(ts) {
+        if (!start) start = ts;
+        var t  = clamp((ts - start) / DURATION, 0, 1);
+        var et = ease(t);
+        var pct = clamp((-SPREAD_A + et * RANGE) * 100, 0, 100);
+        slides[prev].style.clipPath =
+          'polygon(0% ' + pct.toFixed(1) + '%, 100% ' + pct.toFixed(1) + '%, 100% 100%, 0% 100%)';
+        renderBand(-SPREAD_A + et * RANGE);
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          ctx.clearRect(0, 0, W, H);
+          slides[prev].style.clipPath = 'polygon(0% 100%,100% 100%,100% 100%,0% 100%)';
+          slides[prev].style.zIndex   = 1;
+          slides[next].style.zIndex   = N;
+          slides[next].style.clipPath = '';
+          current   = next;
+          animating = false;
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
     setInterval(advance, INTERVAL);
   }
 
-  function hideAll() {
-    for (var i = 0; i < cellEls.length; i++) cellEls[i].style.visibility = 'hidden';
-  }
-
-  function updateBand(bandY) {
-    for (var i = 0; i < cellEls.length; i++) {
-      var ny = cellNY[i];
-      var raw = Math.abs(ny - bandY);
-      var ss = clamp(raw / CORE_R, MIN_SC, 1);
-      var sc = ny - bandY + cellSC[i] * ss;
-      var nd = sc >= 0 ? sc / SPREAD_B : Math.abs(sc) / SPREAD_A;
-      if (nd >= 1) { cellEls[i].style.visibility = 'hidden'; continue; }
-      var density = (1 - nd) * (1 - nd);
-      if (density > cellVR[i] * VIS_THR) {
-        cellEls[i].style.visibility = 'visible';
-        cellEls[i].textContent = CHARS[Math.floor(Math.random() * CHARS.length)];
-      } else {
-        cellEls[i].style.visibility = 'hidden';
-      }
-    }
-  }
-
-  function advance() {
-    if (animating) return;
-    animating = true;
-    var prev = current;
-    var next = (current + 1) % N;
-    /* Reveal next beneath prev */
-    slides[next].style.clipPath = '';
-    slides[next].style.zIndex = N - 1;
-    slides[prev].style.zIndex = N;
-    var start = null;
-    function step(ts) {
-      if (!start) start = ts;
-      var t = clamp((ts - start) / DURATION, 0, 1);
-      /* Clip prev: polygon shows bottom portion, shrinking upward */
-      var pct = clamp((-SPREAD_A + t * RANGE) * 100, 0, 100);
-      slides[prev].style.clipPath =
-        'polygon(0% ' + pct + '%, 100% ' + pct + '%, 100% 100%, 0% 100%)';
-      /* Dissolve band */
-      var bandY = -SPREAD_A + t * RANGE;
-      if (t > 0 && t < 1) { updateBand(bandY); } else { hideAll(); }
-      if (t < 1) {
-        requestAnimationFrame(step);
-      } else {
-        hideAll();
-        slides[prev].style.zIndex = 1;
-        slides[prev].style.clipPath = 'polygon(0% 100%,100% 100%,100% 100%,0% 100%)';
-        slides[next].style.zIndex = N;
-        slides[next].style.clipPath = '';
-        current = next;
-        animating = false;
-      }
-    }
-    requestAnimationFrame(step);
-  }
-
-  buildGrid();
+  init();
 })();
 {% end_app_script %}
 
@@ -205,18 +231,27 @@
   }
 
   function populateReview(){
-    var name = (q('#w-name')||{}).value||'';
-    var desc = (q('#w-desc')||{}).value||'';
-    var website = (q('#w-website')||{}).value||'';
+    var name     = (q('#w-name')||{}).value||'';
+    var desc     = (q('#w-desc')||{}).value||'';
+    var website  = (q('#w-website')||{}).value||'';
     var location = (q('#w-location')||{}).value||'';
-    var industryHidden = q('[name="industry"]');
-    var sizeHidden = q('[name="size"]');
-    var industry = industryHidden ? industryHidden.value : '';
-    var size = sizeHidden ? sizeHidden.value : '';
+    var industry = (q('#w-industry')||{}).value||'';
+    var size     = (q('#w-size')||{}).value||'';
 
-    var av = q('#rv-avatar'); if(av) av.textContent=(name.slice(0,2)||'--').toUpperCase();
-    var nm = q('#rv-name');   if(nm) nm.textContent=name||'Unnamed organization';
-    var ds = q('#rv-desc');   if(ds) ds.textContent=desc||'No description provided.';
+    /* Avatar: logo or initials */
+    var logoPreview = q('#w-logo-preview');
+    var rvImg  = q('#rv-avatar-img');
+    var rvText = q('#rv-avatar-text');
+    if(logoPreview && logoPreview.src && !logoPreview.classList.contains('hidden')){
+      if(rvImg)  { rvImg.src = logoPreview.src; rvImg.classList.remove('hidden'); }
+      if(rvText) rvText.classList.add('hidden');
+    } else {
+      if(rvImg)  rvImg.classList.add('hidden');
+      if(rvText) { rvText.classList.remove('hidden'); rvText.textContent=(name.slice(0,2)||'--').toUpperCase(); }
+    }
+
+    var nm = q('#rv-name'); if(nm) nm.textContent=name||'Unnamed organization';
+    var ds = q('#rv-desc'); if(ds) ds.textContent=desc||'No description provided.';
 
     function toggle(id, valId, val){
       var el=q(id); var vl=q(valId);
@@ -271,6 +306,31 @@
     if(bb) bb.addEventListener('click', goBack);
     updateStepper();
     updateNav();
+
+    /* Logo upload */
+    var logoInput   = q('#w-logo');
+    var logoPreview = q('#w-logo-preview');
+    var logoIcon    = q('#w-logo-icon');
+    var logoClear   = q('#w-logo-clear');
+
+    if(logoClear) logoClear.addEventListener('click', function(){
+      if(logoInput)   logoInput.value = '';
+      if(logoPreview) { logoPreview.src = ''; logoPreview.classList.add('hidden'); }
+      if(logoIcon)    logoIcon.classList.remove('hidden');
+      logoClear.classList.add('hidden');
+    });
+
+    if(logoInput) logoInput.addEventListener('change', function(){
+      var file = logoInput.files && logoInput.files[0];
+      if(!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){
+        if(logoPreview){ logoPreview.src = ev.target.result; logoPreview.classList.remove('hidden'); }
+        if(logoIcon)    logoIcon.classList.add('hidden');
+        if(logoClear)   logoClear.classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    });
   });
 })();
 {% end_app_script %}

@@ -5,7 +5,12 @@ import urllib.parse
 from flask import redirect, request
 
 from codesandbox.shared.session import require_session
+from codesandbox.shared.storage import upload_image_from_filestorage
 from codesandbox.web.blueprint import web_bp
+
+
+def _save_logo(file_storage) -> str | None:
+    return upload_image_from_filestorage(file_storage, prefix="orgs")
 
 from .service import (
     accept_org_invitation,
@@ -72,9 +77,9 @@ def user_create_org_action():
     if redir:
         return redirect(redir.url, code=303)
     name = request.form.get("name", "").strip()
-    description = request.form.get("description", "").strip() or None
     if not name:
         return redirect(f"/my/organizations?mode=create&error={urllib.parse.quote('Organization name is required.')}", code=303)
+    logo_url = _save_logo(request.files.get("logo"))
     org = create_user_organization(
         name=name,
         description=request.form.get("description", "").strip() or None,
@@ -83,6 +88,7 @@ def user_create_org_action():
         size=request.form.get("size", "").strip() or None,
         location=request.form.get("location", "").strip() or None,
         contact_email=request.form.get("contact_email", "").strip() or None,
+        logo_url=logo_url,
         created_by=session.user.id,
     )
     info = urllib.parse.quote(f"Organization \"{org.name}\" created and is pending admin approval.")
@@ -132,6 +138,26 @@ def user_update_org_field_action(slug: str):
         new_slug = updated.slug if updated else slug
 
     return jsonify({"ok": True, "slug": new_slug})
+
+
+@web_bp.post("/my/organizations/<slug>/upload-logo")
+def user_upload_org_logo_action(slug: str):
+    from flask import jsonify
+    from .service import get_org_for_user
+    from .repository import update_organization
+    session, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    org_data = get_org_for_user(slug, session.user.id)
+    if org_data is None:
+        return jsonify({"ok": False, "error": "Organization not found."}), 404
+    if not org_data["is_owner"]:
+        return jsonify({"ok": False, "error": "Only owners can upload a logo."}), 403
+    logo_url = _save_logo(request.files.get("logo"))
+    if logo_url is None:
+        return jsonify({"ok": False, "error": "Invalid file. Use PNG, JPG, or WebP under 2 MB."}), 400
+    update_organization(org_data["id"], logo_url=logo_url)
+    return jsonify({"ok": True, "logo_url": logo_url})
 
 
 @web_bp.post("/my/organizations/<slug>/update")
