@@ -17,6 +17,8 @@ RUN --network=host uv sync --frozen --no-install-project
 
 ENV PYTHONPATH=/app/src
 ENV FLASK_APP=codesandbox.app:app
+# FLASK_DEBUG=1 enables the Werkzeug debugger (interactive code execution in browser).
+# NEVER set this in production — create a separate Dockerfile.prod without this line.
 ENV FLASK_DEBUG=1
 
 EXPOSE 5000

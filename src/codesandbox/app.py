@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+import logging
+import warnings
+
 from flask import Flask
 
 from codesandbox.config import get_settings
 from codesandbox.infrastructure.nexorm import configure_db
 from codesandbox.web.blueprint import web_bp
 
+_WEAK_KEYS = {"dev-secret-change-in-production", "secret", "changeme", ""}
+
 
 def create_app() -> Flask:
     settings = get_settings()
+    if settings.secret_key in _WEAK_KEYS or len(settings.secret_key) < 32:
+        warnings.warn(
+            "SECRET_KEY is weak or default — set a strong random value in production.",
+            stacklevel=1,
+        )
+        logging.getLogger(__name__).warning(
+            "SECURITY: SECRET_KEY is weak or default. Generate one with: "
+            "python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
     configure_db(settings.database_url)
 
     app = Flask(__name__, template_folder="templates")

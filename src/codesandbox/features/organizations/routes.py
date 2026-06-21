@@ -4,9 +4,11 @@ import urllib.parse
 
 from flask import redirect, request
 
-from codesandbox.shared.session import require_session
+from codesandbox.shared.session import require_platform_role, require_session
 from codesandbox.shared.storage import upload_image_from_filestorage
 from codesandbox.web.blueprint import web_bp
+
+_ADMIN_ROLES = ("system_admin", "system_staff")
 
 
 def _save_logo(file_storage) -> str | None:
@@ -35,6 +37,9 @@ from .service import (
 
 @web_bp.post("/platform/organizations/create")
 def create_org_action():
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     name = request.form.get("name", "").strip()
     description = request.form.get("description", "").strip() or None
     if not name:
@@ -45,6 +50,9 @@ def create_org_action():
 
 @web_bp.post("/platform/organizations/<org_id>/update")
 def update_org_action(org_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     name = request.form.get("name", "").strip()
     if not name:
         return redirect(f"/platform/organizations?org={org_id}&error={urllib.parse.quote('Name is required.')}", code=303)
@@ -63,6 +71,9 @@ def update_org_action(org_id: str):
 
 @web_bp.post("/platform/organizations/<org_id>/update-status")
 def update_org_status_action(org_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     status = request.form.get("status", "")
     update_organization_status(org_id, status)
     return redirect(f"/platform/organizations?org={org_id}", code=303)
@@ -210,11 +221,11 @@ def user_invite_org_action(slug: str):
         err = urllib.parse.quote("Email address is required.")
         return redirect(f"/my/organizations/{slug}/members?error={err}", code=303)
 
-    invitation = invite_to_org(org_id=org_data["id"], email=email, invited_by=session.user.id)
+    invitation, raw_token = invite_to_org(org_id=org_data["id"], email=email, invited_by=session.user.id)
 
     from codesandbox.config import get_settings
     settings = get_settings()
-    invite_url = f"{settings.app_url}/my/organizations/join/{invitation.token}"
+    invite_url = f"{settings.app_url}/my/organizations/join/{raw_token}"
 
     # Try to send email; fall back to showing the link
     try:

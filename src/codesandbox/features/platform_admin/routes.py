@@ -4,8 +4,10 @@ from urllib.parse import quote
 
 from flask import redirect, request
 
-from codesandbox.shared.session import get_current_session
+from codesandbox.shared.session import get_current_session, require_platform_role
 from codesandbox.web.blueprint import web_bp
+
+_ADMIN_ROLES = ("system_admin", "system_staff")
 
 from .service import (
     add_role_member,
@@ -35,6 +37,9 @@ def _roles_redirect(role_id: str | None = None, tab: str = "display", error: str
 
 @web_bp.post("/platform/users/<user_id>/update")
 def update_user_action(user_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     platform_role = request.form.get("platform_role") or None
     status = request.form.get("status") or None
     update_platform_user(user_id, platform_role=platform_role, status=status)
@@ -46,6 +51,9 @@ def update_user_action(user_id: str):
 
 @web_bp.post("/platform/roles/create")
 def create_role_action():
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     result, error = create_platform_role(
         name=request.form.get("name", ""),
         color=request.form.get("color", "#6366f1"),
@@ -58,6 +66,9 @@ def create_role_action():
 
 @web_bp.post("/platform/roles/<role_id>/update")
 def update_role_action(role_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     error = update_platform_role(
         role_id,
         name=request.form.get("name"),
@@ -69,6 +80,9 @@ def update_role_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/duplicate")
 def duplicate_role_action(role_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     new_id, error = duplicate_platform_role(role_id)
     if error:
         return _roles_redirect(None, error=error)
@@ -77,12 +91,18 @@ def duplicate_role_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/delete")
 def delete_role_action(role_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     error = delete_platform_role(role_id)
     return _roles_redirect(None, error=error)
 
 
 @web_bp.post("/platform/roles/<role_id>/permission")
 def toggle_permission_action(role_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     key = request.form.get("key", "")
     enabled = request.form.get("enabled") == "1"
     tab = request.form.get("tab", "permissions")
@@ -92,14 +112,19 @@ def toggle_permission_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/members/add")
 def add_role_member_action(role_id: str):
-    session = get_current_session()
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     user_id = request.form.get("user_id", "")
-    error = add_role_member(role_id, user_id, granted_by=session.user.id if session else None)
+    error = add_role_member(role_id, user_id, granted_by=cs.user.id)
     return _roles_redirect(role_id, "members", error)
 
 
 @web_bp.post("/platform/roles/<role_id>/members/<user_id>/remove")
 def remove_role_member_action(role_id: str, user_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     remove_role_member(role_id, user_id)
     return _roles_redirect(role_id, "members")
 
@@ -109,7 +134,9 @@ def remove_role_member_action(role_id: str, user_id: str):
 
 @web_bp.post("/platform/staff/save")
 def save_staff_action():
-    session = get_current_session()
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return redirect(redir.url, code=303)
     member_id = request.form.get("member_id") or None
     role_ids = [k[len("role_"):] for k in request.form if k.startswith("role_")]
     saved_id, error = save_staff_member(
@@ -118,7 +145,7 @@ def save_staff_action():
         email=request.form.get("email", ""),
         phone=request.form.get("phone") or None,
         role_ids=role_ids,
-        granted_by=session.user.id if session else None,
+        granted_by=cs.user.id,
     )
     if error:
         target = member_id or "new"

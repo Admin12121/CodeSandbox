@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from nexorm.exceptions import DoesNotExist
+from nexorm.exceptions import DoesNotExist, IntegrityError
 
 from .models import (
     Organization,
@@ -62,20 +63,29 @@ def create_organization(
     description: str | None = None,
     created_by: str | None = None,
 ) -> Organization:
-    slug = _slugify(name)
-    base_slug = slug
+    base_slug = _slugify(name)
+    # Pre-check slug availability, then rely on unique constraint + retry for safety
     counter = 1
+    slug = base_slug
     while get_organization_by_slug(slug):
         slug = f"{base_slug}-{counter}"
         counter += 1
-    org = Organization(
-        id=str(uuid.uuid4()),
-        name=name,
-        slug=slug,
-        description=description,
-        created_by=created_by,
-    )
-    org.save()
+    for attempt in range(5):
+        candidate = slug if attempt == 0 else f"{base_slug}-{secrets.token_hex(3)}"
+        org = Organization(
+            id=str(uuid.uuid4()),
+            name=name,
+            slug=candidate,
+            description=description,
+            created_by=created_by,
+        )
+        try:
+            org.save()
+            break
+        except IntegrityError:
+            if attempt == 4:
+                raise
+            continue
     seed_org_roles(org.id)  # roles must exist before add_member tries to assign owner
     if created_by:
         add_member(org_id=org.id, user_id=created_by)
@@ -139,19 +149,20 @@ def create_invitation(
     org_id: str,
     email: str,
     invited_by: str | None = None,
-) -> OrganizationInvitation:
-    token = secrets.token_urlsafe(32)
+) -> tuple[OrganizationInvitation, str]:
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     inv = OrganizationInvitation(
         id=str(uuid.uuid4()),
         org_id=org_id,
         email=email,
-        token=token,
+        token=token_hash,
         invited_by=invited_by,
         expires_at=expires_at,
     )
     inv.save()
-    return inv
+    return inv, raw_token
 
 
 def list_org_roles(org_id: str) -> list[OrganizationRole]:
@@ -299,8 +310,9 @@ def remove_role_from_member(member_id: str, role_id: str) -> None:
         mr.delete()
 
 
-def find_invitation_by_token(token: str) -> OrganizationInvitation | None:
-    return OrganizationInvitation.objects.filter(token=token).first()
+def find_invitation_by_token(raw_token: str) -> OrganizationInvitation | None:
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    return OrganizationInvitation.objects.filter(token=token_hash).first()
 
 
 def mark_invitation_accepted(invitation: OrganizationInvitation) -> None:

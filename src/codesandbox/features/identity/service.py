@@ -208,19 +208,21 @@ def reset_password(token: str, new_password: str) -> AuthResult:
 
 # ── TOTP / 2FA ────────────────────────────────────────────────────────────────
 
+def _fernet() -> "Fernet":
+    from cryptography.fernet import Fernet
+    import hashlib, base64
+    # Derive a 32-byte Fernet key from SECRET_KEY via SHA-256
+    raw = hashlib.sha256(get_settings().secret_key.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(raw))
+
+
 def _encrypt_secret(secret: str) -> str:
-    """Trivial XOR encoding (replace with real encryption in production)."""
-    key = get_settings().secret_key.encode()
-    data = secret.encode()
-    xor = bytes(data[i] ^ key[i % len(key)] for i in range(len(data)))
-    return base64.b64encode(xor).decode()
+    """AES-128 (Fernet) encryption of TOTP secret / backup codes."""
+    return _fernet().encrypt(secret.encode()).decode()
 
 
 def _decrypt_secret(enc: str) -> str:
-    key = get_settings().secret_key.encode()
-    data = base64.b64decode(enc)
-    xor = bytes(data[i] ^ key[i % len(key)] for i in range(len(data)))
-    return xor.decode()
+    return _fernet().decrypt(enc.encode()).decode()
 
 
 def generate_totp_setup(user_id: str, email: str) -> dict:
@@ -273,9 +275,8 @@ def verify_totp(user_id: str, code: str) -> bool:
                     user_id=user_id,
                     secret_encrypted=method.secret_encrypted,
                     is_enabled=True,
+                    backup_codes_encrypted=_encrypt_secret(json.dumps(codes)),
                 )
-                method.backup_codes_encrypted = _encrypt_secret(json.dumps(codes))
-                method.save()
                 return True
         except Exception:
             pass

@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from . import repository
 from .models import Organization, OrganizationInvitation, OrganizationMemberRole, OrganizationRole
+
+
+def _safe_url(url: str | None) -> str | None:
+    """Reject URLs with non-http(s) schemes to prevent javascript:/data: injection."""
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if parsed.scheme and parsed.scheme not in ("http", "https"):
+        return None
+    return url
 
 
 def create_organization(
@@ -67,7 +78,7 @@ def update_organization_details(
         org_id,
         name=name,
         description=description,
-        website=website,
+        website=_safe_url(website),
         industry=industry,
         size=size,
         location=location,
@@ -139,7 +150,7 @@ def create_user_organization(
     repository.update_organization(
         org.id,
         status="pending",
-        website=website,
+        website=_safe_url(website),
         industry=industry,
         size=size,
         location=location,
@@ -207,7 +218,7 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
     }
 
 
-def invite_to_org(org_id: str, email: str, invited_by: str) -> OrganizationInvitation:
+def invite_to_org(org_id: str, email: str, invited_by: str) -> tuple[OrganizationInvitation, str]:
     return repository.create_invitation(
         org_id=org_id,
         email=email,
@@ -228,8 +239,10 @@ def accept_org_invitation(token: str, user_id: str) -> tuple[bool, str]:
             expires = expires.replace(tzinfo=timezone.utc)
         if expires < datetime.now(timezone.utc):
             return False, "Invitation has expired."
-    repository.add_member(org_id=invitation.org_id, user_id=user_id)
-    repository.mark_invitation_accepted(invitation)
+    from nexorm.database import default_db
+    with default_db.transaction():
+        repository.add_member(org_id=invitation.org_id, user_id=user_id)
+        repository.mark_invitation_accepted(invitation)
     return True, invitation.org_id
 
 

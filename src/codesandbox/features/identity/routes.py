@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+import secrets
 import urllib.parse
+from urllib.parse import urlparse
 
 from flask import current_app, redirect, request, session
+
+
+def _safe_next(next_path: str, default: str = "/dashboard") -> str:
+    """Reject absolute URLs to prevent open-redirect attacks."""
+    parsed = urlparse(next_path)
+    if parsed.scheme or parsed.netloc:
+        return default
+    return next_path or default
 
 from codesandbox.config import get_settings
 from codesandbox.web.blueprint import web_bp
@@ -34,7 +44,7 @@ def _set_session_cookie(response, token: str) -> None:
         token,
         httponly=True,
         samesite="Lax",
-        secure=request.is_secure,
+        secure=settings.cookie_secure,
         max_age=current_app.config["SESSION_TTL_HOURS"] * 3600,
     )
 
@@ -45,7 +55,7 @@ def login_action():
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
     name = request.form.get("name", "").strip() or email.split("@")[0]
-    next_path = request.form.get("next", "/dashboard")
+    next_path = _safe_next(request.form.get("next", "/dashboard"))
 
     if mode == "signup":
         result = sign_up(
@@ -68,10 +78,13 @@ def login_action():
 
     # If 2FA is pending, store token in server-side session and redirect
     if result.requires_2fa:
+        # Clear any leftover OAuth state before storing 2FA state
+        session.clear()
         session["_2fa_pending_token"] = result.token
         session["_2fa_next"] = next_path
         return redirect("/two-factor", code=303)
 
+    session.clear()
     response = redirect(next_path, code=303)
     _set_session_cookie(response, result.token)
     return response
@@ -115,7 +128,7 @@ def resend_verification():
         sent = send_email_verification(to=cs.user.email, verify_url=verify_url)
         if sent:
             return redirect("/settings?info=Verification+email+sent.+Check+your+inbox.", code=303)
-        return redirect(f"/settings?info=Verification+email+sent.+Dev+token:+{token}", code=303)
+        return redirect("/settings?error=Failed+to+send+verification+email.+Please+try+again+later.", code=303)
     return redirect("/settings", code=303)
 
 
@@ -188,7 +201,10 @@ def totp_setup_action():
     if redir:
         return redirect(redir.url, code=303)
     data = generate_totp_setup(cs.user.id, cs.user.email)
-    return redirect(f"/settings/2fa?secret={data['secret']}&uri={urllib.parse.quote(data['uri'])}", code=303)
+    # Store secret in server-side session — never expose in URL/logs
+    session["_2fa_setup_secret"] = data["secret"]
+    session["_2fa_setup_uri"] = data["uri"]
+    return redirect("/settings/2fa?setup=1", code=303)
 
 
 @web_bp.post("/settings/2fa/confirm")
@@ -200,8 +216,11 @@ def totp_confirm_action():
     code = request.form.get("code", "").strip()
     result = confirm_totp_setup(cs.user.id, code)
     if result.ok:
-        backup = result.token or ""
-        return redirect(f"/settings/2fa?enabled=1&backup={urllib.parse.quote(backup)}", code=303)
+        # Store backup codes in session for one-time display, then clear
+        session["_2fa_backup_codes"] = result.token or ""
+        session.pop("_2fa_setup_secret", None)
+        session.pop("_2fa_setup_uri", None)
+        return redirect("/settings/2fa?enabled=1", code=303)
     return redirect(f"/settings/2fa?error={urllib.parse.quote(result.message)}", code=303)
 
 
@@ -222,20 +241,26 @@ def github_authorize():
     settings = get_settings()
     if not settings.github_client_id:
         return redirect("/login?error=GitHub+OAuth+not+configured", code=303)
-    next_path = request.args.get("next", "/dashboard")
-    session["_oauth_next"] = next_path
+    state = secrets.token_urlsafe(16)
+    session["_oauth_state"] = state
+    session["_oauth_next"] = _safe_next(request.args.get("next", "/dashboard"))
     params = urllib.parse.urlencode({
         "client_id": settings.github_client_id,
         "redirect_uri": f"{settings.app_url}/auth/github/callback",
         "scope": "user:email",
+        "state": state,
     })
     return redirect(f"https://github.com/login/oauth/authorize?{params}", code=302)
 
 
 @web_bp.get("/auth/github/callback")
 def github_callback():
-    code = request.args.get("code", "")
+    returned_state = request.args.get("state", "")
+    expected_state = session.pop("_oauth_state", None)
     next_path = session.pop("_oauth_next", "/dashboard")
+    if not expected_state or not secrets.compare_digest(returned_state, expected_state):
+        return redirect("/login?error=Invalid+OAuth+state.+Please+try+again.", code=303)
+    code = request.args.get("code", "")
     if not code:
         return redirect("/login?error=GitHub+authorization+cancelled", code=303)
     result = sign_in_with_github(
@@ -245,6 +270,7 @@ def github_callback():
     )
     if not result.ok or not result.token:
         return redirect(f"/login?error={urllib.parse.quote(result.message)}", code=303)
+    session.clear()
     response = redirect(next_path, code=303)
     _set_session_cookie(response, result.token)
     return response
@@ -257,8 +283,9 @@ def google_authorize():
     settings = get_settings()
     if not settings.google_client_id:
         return redirect("/login?error=Google+OAuth+not+configured", code=303)
-    next_path = request.args.get("next", "/dashboard")
-    session["_google_next"] = next_path
+    state = secrets.token_urlsafe(16)
+    session["_oauth_state"] = state
+    session["_oauth_next"] = _safe_next(request.args.get("next", "/dashboard"))
     params = urllib.parse.urlencode({
         "client_id": settings.google_client_id,
         "redirect_uri": f"{settings.app_url}/auth/google/callback",
@@ -266,14 +293,19 @@ def google_authorize():
         "scope": "openid email profile",
         "access_type": "offline",
         "prompt": "select_account",
+        "state": state,
     })
     return redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{params}", code=302)
 
 
 @web_bp.get("/auth/google/callback")
 def google_callback():
+    returned_state = request.args.get("state", "")
+    expected_state = session.pop("_oauth_state", None)
+    next_path = session.pop("_oauth_next", "/dashboard")
+    if not expected_state or not secrets.compare_digest(returned_state, expected_state):
+        return redirect("/login?error=Invalid+OAuth+state.+Please+try+again.", code=303)
     code = request.args.get("code", "")
-    next_path = session.pop("_google_next", "/dashboard")
     if not code:
         return redirect("/login?error=Google+authorization+cancelled", code=303)
     settings = get_settings()
@@ -285,6 +317,7 @@ def google_callback():
     )
     if not result.ok or not result.token:
         return redirect(f"/login?error={urllib.parse.quote(result.message)}", code=303)
+    session.clear()
     response = redirect(next_path, code=303)
     _set_session_cookie(response, result.token)
     return response
@@ -301,6 +334,8 @@ def google_connect_authorize():
     settings = get_settings()
     if not settings.google_client_id:
         return redirect("/settings?tab=security&error=Google+OAuth+not+configured", code=303)
+    state = secrets.token_urlsafe(16)
+    session["_connect_state"] = state
     params = urllib.parse.urlencode({
         "client_id": settings.google_client_id,
         "redirect_uri": f"{settings.app_url}/auth/google/connect/callback",
@@ -308,6 +343,7 @@ def google_connect_authorize():
         "scope": "openid email profile",
         "access_type": "offline",
         "prompt": "select_account",
+        "state": state,
     })
     return redirect(f"https://accounts.google.com/o/oauth2/v2/auth?{params}", code=302)
 
@@ -318,6 +354,10 @@ def google_connect_callback():
     cs, redir = require_session()
     if redir:
         return redirect(redir.url, code=303)
+    returned_state = request.args.get("state", "")
+    expected_state = session.pop("_connect_state", None)
+    if not expected_state or not secrets.compare_digest(returned_state, expected_state):
+        return redirect("/settings?tab=security&error=Invalid+OAuth+state.+Please+try+again.", code=303)
     code = request.args.get("code", "")
     if not code:
         return redirect("/settings?tab=security&error=Google+authorization+cancelled", code=303)
@@ -341,10 +381,13 @@ def github_connect_authorize():
     settings = get_settings()
     if not settings.github_client_id:
         return redirect("/settings?tab=security&error=GitHub+OAuth+not+configured", code=303)
+    state = secrets.token_urlsafe(16)
+    session["_connect_state"] = state
     params = urllib.parse.urlencode({
         "client_id": settings.github_client_id,
         "redirect_uri": f"{settings.app_url}/auth/github/connect/callback",
         "scope": "user:email",
+        "state": state,
     })
     return redirect(f"https://github.com/login/oauth/authorize?{params}", code=302)
 
@@ -355,6 +398,10 @@ def github_connect_callback():
     cs, redir = require_session()
     if redir:
         return redirect(redir.url, code=303)
+    returned_state = request.args.get("state", "")
+    expected_state = session.pop("_connect_state", None)
+    if not expected_state or not secrets.compare_digest(returned_state, expected_state):
+        return redirect("/settings?tab=security&error=Invalid+OAuth+state.+Please+try+again.", code=303)
     code = request.args.get("code", "")
     if not code:
         return redirect("/settings?tab=security&error=GitHub+authorization+cancelled", code=303)
