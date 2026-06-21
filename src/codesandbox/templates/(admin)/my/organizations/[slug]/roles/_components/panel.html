@@ -46,7 +46,7 @@
         {% call table.table_row() %}
           {{ table.table_head("Role — " ~ visible_roles | length) }}
           {{ table.table_head("Members", class="w-32") }}
-          {% if is_owner %}{{ table.table_head("", class="w-10") }}{% endif %}
+          {% if is_owner %}{{ table.table_head("Actions", class="w-10") }}{% endif %}
         {% endcall %}
       {% endcall %}
       {% call table.table_body() %}

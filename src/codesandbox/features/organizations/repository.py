@@ -3,8 +3,15 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+import string
 import uuid
 from datetime import datetime, timedelta, timezone
+
+_CODE_CHARS = string.ascii_uppercase + string.digits
+
+
+def _gen_invite_code() -> str:
+    return "".join(secrets.choice(_CODE_CHARS) for _ in range(16))
 
 from nexorm.exceptions import DoesNotExist, IntegrityError
 
@@ -318,6 +325,27 @@ def find_invitation_by_token(raw_token: str) -> OrganizationInvitation | None:
 def mark_invitation_accepted(invitation: OrganizationInvitation) -> None:
     invitation.status = "accepted"
     invitation.save()
+
+
+def get_or_create_org_invite_code(org_id: str) -> str:
+    org = get_organization(org_id)
+    if org is None:
+        return ""
+    if org.invite_code:
+        return org.invite_code
+    code = _gen_invite_code()
+    update_organization(org_id, invite_code=code)
+    return code
+
+
+def regenerate_org_invite_code(org_id: str) -> str:
+    code = _gen_invite_code()
+    update_organization(org_id, invite_code=code)
+    return code
+
+
+def get_org_by_invite_code(code: str) -> Organization | None:
+    return Organization.objects.filter(invite_code=code).first()
 
 
 def ensure_creator_is_owner(org_id: str, user_id: str) -> None:

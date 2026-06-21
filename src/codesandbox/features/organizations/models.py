@@ -24,6 +24,7 @@ class Organization(Model):
     location = StringField(max_length=120, nullable=True)
     contact_email = StringField(max_length=255, nullable=True)
     status = StringField(max_length=20, default="active")
+    invite_code = StringField(max_length=20, nullable=True)
     created_by = ForeignKey(to=User, on_delete="SET NULL", nullable=True)
     created_at = DateTimeField(default=_now)
     updated_at = DateTimeField(nullable=True)

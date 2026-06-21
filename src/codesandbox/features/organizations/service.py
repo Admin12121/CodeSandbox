@@ -226,6 +226,86 @@ def invite_to_org(org_id: str, email: str, invited_by: str) -> tuple[Organizatio
     )
 
 
+def get_org_invite_link_data(slug: str, user_id: str) -> dict | None:
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return None
+    if repository.get_member(org.id, user_id) is None:
+        return None
+    code = repository.get_or_create_org_invite_code(org.id)
+    from codesandbox.config import get_settings
+    url = f"{get_settings().app_url}/my/organizations/join/code/{code}"
+    return {"code": code, "url": url}
+
+
+def regenerate_org_invite_link(slug: str, user_id: str) -> dict | None:
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return None
+    member = repository.get_member(org.id, user_id)
+    if member is None:
+        return None
+    from .models import OrganizationMemberRole, OrganizationRole
+    is_owner = any(
+        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
+        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
+        for mr in OrganizationMemberRole.objects.filter(member_id=member.id).all()
+    )
+    if not is_owner:
+        return None
+    code = repository.regenerate_org_invite_code(org.id)
+    from codesandbox.config import get_settings
+    url = f"{get_settings().app_url}/my/organizations/join/code/{code}"
+    return {"code": code, "url": url}
+
+
+def batch_invite_to_org(
+    slug: str, emails: list[str], invited_by: str, invited_by_name: str
+) -> list[dict]:
+    from codesandbox.config import get_settings
+    from codesandbox.shared.email import send_org_invitation
+
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return [{"email": e, "ok": False, "error": "org_not_found"} for e in emails]
+    settings = get_settings()
+    results = []
+    for email in emails[:5]:
+        email = email.strip()
+        if not email:
+            continue
+        try:
+            invitation, raw_token = repository.create_invitation(
+                org_id=org.id, email=email, invited_by=invited_by,
+            )
+            invite_url = f"{settings.app_url}/my/organizations/join/{raw_token}"
+            try:
+                sent = send_org_invitation(
+                    to=email, org_name=org.name,
+                    invite_url=invite_url, invited_by_name=invited_by_name,
+                )
+            except Exception:
+                sent = False
+            results.append({"email": email, "ok": True, "sent": sent, "url": invite_url})
+        except Exception as exc:
+            results.append({"email": email, "ok": False, "error": str(exc)})
+    return results
+
+
+def join_by_invite_code(code: str, user_id: str) -> tuple[bool, str]:
+    org = repository.get_org_by_invite_code(code)
+    if org is None:
+        return False, "Invalid invite code."
+    if org.status != "active":
+        return False, "This organization is not currently accepting members."
+    if repository.get_member(org.id, user_id):
+        return True, org.id
+    from nexorm.database import default_db
+    with default_db.transaction():
+        repository.add_member(org_id=org.id, user_id=user_id)
+    return True, org.id
+
+
 def accept_org_invitation(token: str, user_id: str) -> tuple[bool, str]:
     """Accept an invitation. Returns (True, org_id) or (False, error_msg)."""
     invitation = repository.find_invitation_by_token(token)

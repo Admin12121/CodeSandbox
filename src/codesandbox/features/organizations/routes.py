@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import urllib.parse
 
-from flask import redirect, request
+from flask import jsonify, redirect, request
 
 from codesandbox.shared.session import require_platform_role, require_session
 from codesandbox.shared.storage import upload_image_from_filestorage
@@ -17,13 +17,17 @@ def _save_logo(file_storage) -> str | None:
 from .service import (
     accept_org_invitation,
     assign_role_to_org_member,
+    batch_invite_to_org,
     create_org_custom_role,
     create_organization,
     create_user_organization,
     delete_org_custom_role,
     delete_user_organization,
+    get_org_invite_link_data,
     invite_to_org,
+    join_by_invite_code,
     leave_org,
+    regenerate_org_invite_link,
     remove_org_member,
     remove_role_from_org_member,
     toggle_org_role_permission,
@@ -77,6 +81,38 @@ def update_org_status_action(org_id: str):
     status = request.form.get("status", "")
     update_organization_status(org_id, status)
     return redirect(f"/platform/organizations?org={org_id}", code=303)
+
+
+@web_bp.post("/platform/organizations/<org_id>/update-field")
+def platform_update_org_field_action(org_id: str):
+    from flask import jsonify
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    field = str(data.get("field", "")).strip()
+    value = str(data.get("value", "")).strip() or None
+    _allowed = {"name", "description", "website", "industry", "size", "location", "contact_email"}
+    if field not in _allowed:
+        return jsonify({"ok": False, "error": "Invalid field."}), 400
+    if field == "name" and not value:
+        return jsonify({"ok": False, "error": "Name is required."}), 400
+    from .repository import get_organization
+    org = get_organization(org_id)
+    if org is None:
+        return jsonify({"ok": False, "error": "Organization not found."}), 404
+    kwargs = {
+        "name": org.name,
+        "description": org.description or None,
+        "website": org.website or None,
+        "industry": org.industry or None,
+        "size": org.size or None,
+        "location": org.location or None,
+        "contact_email": org.contact_email or None,
+    }
+    kwargs[field] = value
+    update_organization_details(org_id, **kwargs)
+    return jsonify({"ok": True})
 
 
 # ── User-facing actions ───────────────────────────────────────────────────────
@@ -257,13 +293,90 @@ def join_org_action(token: str):
     if not ok:
         err = urllib.parse.quote(result)
         return redirect(f"/my/organizations?error={err}", code=303)
-    # result is org_id; find slug
     from .repository import get_organization
     org = get_organization(result)
     if org:
         info = urllib.parse.quote(f"You have joined {org.name}.")
         return redirect(f"/my/organizations/{org.slug}?info={info}", code=303)
     return redirect("/my/organizations", code=303)
+
+
+@web_bp.get("/my/organizations/join/code/<code>")
+def join_org_by_code(code: str):
+    session, redir = require_session(next_path=f"/my/organizations/join/code/{code}")
+    if redir:
+        return redirect(redir.url, code=303)
+    ok, result = join_by_invite_code(code, session.user.id)
+    if not ok:
+        return redirect(f"/my/organizations?error={urllib.parse.quote(result)}", code=303)
+    from .repository import get_organization
+    org = get_organization(result)
+    if org:
+        return redirect(f"/my/organizations/{org.slug}?info={urllib.parse.quote('You have joined ' + org.name + '.')}", code=303)
+    return redirect("/my/organizations", code=303)
+
+
+@web_bp.get("/my/organizations/<slug>/invite-link-data")
+def user_org_invite_link_data(slug: str):
+    session, redir = require_session()
+    if redir:
+        return jsonify({"ok": False}), 401
+    data = get_org_invite_link_data(slug, session.user.id)
+    if data is None:
+        return jsonify({"ok": False}), 403
+    return jsonify({"ok": True, **data})
+
+
+@web_bp.post("/my/organizations/<slug>/invite-link/regenerate")
+def user_org_invite_link_regenerate(slug: str):
+    session, redir = require_session()
+    if redir:
+        return jsonify({"ok": False}), 401
+    data = regenerate_org_invite_link(slug, session.user.id)
+    if data is None:
+        return jsonify({"ok": False, "error": "Unauthorized or not found"}), 403
+    return jsonify({"ok": True, **data})
+
+
+@web_bp.post("/my/organizations/<slug>/invite-batch")
+def user_org_invite_batch(slug: str):
+    session, redir = require_session()
+    if redir:
+        return jsonify({"ok": False}), 401
+    body = request.get_json(silent=True) or {}
+    emails = body.get("emails", [])
+    if not isinstance(emails, list):
+        return jsonify({"ok": False, "error": "emails must be a list"}), 400
+    results = batch_invite_to_org(slug, emails[:5], session.user.id, session.user.name)
+    return jsonify({"ok": True, "results": results})
+
+
+@web_bp.get("/my/organizations/<slug>/invite-qr")
+def user_org_invite_qr(slug: str):
+    from flask import Response
+    session, redir = require_session()
+    if redir:
+        return Response("", status=401)
+    data = get_org_invite_link_data(slug, session.user.id)
+    if data is None:
+        return Response("", status=403)
+    try:
+        import io
+        import qrcode
+        import qrcode.image.svg
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=6, border=2,
+        )
+        qr.add_data(data["url"])
+        qr.make(fit=True)
+        img = qr.make_image(image_factory=qrcode.image.svg.SvgPathImage)
+        buf = io.BytesIO()
+        img.save(buf)
+        return Response(buf.getvalue(), mimetype="image/svg+xml",
+                        headers={"Cache-Control": "no-store"})
+    except ImportError:
+        return Response("QR library not installed", status=501)
 
 
 @web_bp.post("/my/organizations/<slug>/remove-member/<member_id>")

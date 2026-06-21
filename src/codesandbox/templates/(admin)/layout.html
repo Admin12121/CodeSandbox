@@ -244,11 +244,11 @@
           <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           Settings
         </a>
-        <a href="/my/organizations/{{ _ws['slug'] }}?tab=members"
+        <button type="button" id="layout-invite-btn" data-invite-slug="{{ _ws['slug'] }}"
            class="flex flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
           <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Invite members
-        </a>
+        </button>
       </div>
       {% else %}
       <a href="/my/organizations/{{ _ws['slug'] }}"
@@ -387,6 +387,86 @@
 
 {# Include UI runtime (tabs, dialogs, etc.) for all admin pages #}
 {% include "components/ui/_runtime.html" %}
+
+{# ── Invite members dialog (global, shown from sidebar) ─────────────────── #}
+{% if _ws and _ws.get('is_owner') %}
+<dialog id="layout-invite-modal"
+  style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);margin:0;width:min(calc(100vw - 2rem),28rem);max-height:90vh;overflow-y:auto"
+  class="rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/50 backdrop:backdrop-blur-sm">
+
+  {# Header #}
+  <div class="flex items-start gap-3 border-b px-5 pt-5 pb-4">
+    <div class="flex size-10 shrink-0 items-center justify-center rounded-full border bg-muted/40">
+      <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    </div>
+    <div class="flex-1 min-w-0 pt-0.5">
+      <p class="text-sm font-semibold leading-snug dark:text-white">Invite team members</p>
+      <p class="mt-0.5 text-xs text-muted-foreground">Add teammates to <strong class="font-medium text-foreground">{{ _ws['name'] }}</strong>.</p>
+    </div>
+    <button type="button" id="layout-invite-close"
+      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+      aria-label="Close dialog">
+      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="px-5 pt-5 pb-6 space-y-5">
+
+    <div class="flex flex-col items-center gap-3">
+      <div id="layout-qr-canvas" class="rounded-2xl overflow-hidden bg-white dark:bg-zinc-950 p-3"></div>
+    </div>
+
+    <div class="my-8 w-full relative">
+        <div class="backdrop-blur-md text-nowrap p-2 absolute dark:text-white text-xs top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">or</div>
+        <div data-orientation="horizontal" role="none" class="shrink-0 bg-border h-[1px] w-full"></div>
+    </div>
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between">
+        <p class="text-xs font-medium text-foreground">Invite via link</p>
+        <button type="button" id="layout-invite-regen"
+          class="text-xs text-muted-foreground hover:text-foreground underline hover:no-underline transition-colors">
+          Reset link
+        </button>
+      </div>
+      <div class="relative">
+        <input type="text" id="layout-invite-link-input" readonly
+          class="flex h-9 w-full rounded-lg border border-input bg-muted/30 pe-9 px-3 py-1 text-xs font-mono outline-none text-foreground">
+        <button type="button" id="layout-invite-copy" aria-label="Copy invite link"
+          class="absolute inset-y-0 end-0 flex size-9 items-center justify-center rounded-e-lg text-muted-foreground hover:text-foreground transition-colors">
+          <svg id="layout-copy-icon" class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+          <svg id="layout-check-icon" class="size-3.5 hidden" style="stroke:#22c55e" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="my-8 w-full relative">
+        <div class="backdrop-blur-md text-nowrap p-2 absolute dark:text-white text-xs top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">or</div>
+        <div data-orientation="horizontal" role="none" class="shrink-0 bg-border h-[1px] w-full"></div>
+    </div>
+    
+    <div class="space-y-3">
+      <p class="text-xs font-medium text-foreground">Invite via email</p>
+      <div id="layout-invite-email-list" class="space-y-2"></div>
+      <button type="button" id="layout-invite-add-email"
+        class="text-xs text-muted-foreground underline hover:no-underline hover:text-foreground transition-colors">
+        + Add another
+      </button>
+    </div>
+
+    <div>
+      <button type="button" id="layout-invite-send"
+        class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+        <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        Send invites
+      </button>
+      <p id="layout-invite-status" class="hidden mt-2 text-xs text-center text-muted-foreground"></p>
+    </div>
+
+  </div>
+</dialog>
+<script src="/qr-code-styling.js"></script>
+{% endif %}
 
 {# Global behavior — CSP nonce requires app_script; inline on* handlers are blocked #}
 {% app_script "admin-layout-globals" %}
@@ -649,3 +729,232 @@
   },true);
 })();
 {% end_app_script %}
+
+{% if _ws and _ws.get('is_owner') %}
+{% app_script "layout-invite-members-dialog" %}
+(function(){
+  'use strict';
+  var _slug='{{ _ws["slug"] | e }}';
+  var _logoUrl='{{ (_ws.get("logo_url") or "") | e }}';
+  var _orgInitial='{{ (_ws["name"][:1] if _ws["name"] else "?") | upper | e }}';
+  var modal=document.getElementById('layout-invite-modal');
+  var openBtn=document.getElementById('layout-invite-btn');
+  var closeBtn=document.getElementById('layout-invite-close');
+  var emailList=document.getElementById('layout-invite-email-list');
+  var addEmailBtn=document.getElementById('layout-invite-add-email');
+  var sendBtn=document.getElementById('layout-invite-send');
+  var statusEl=document.getElementById('layout-invite-status');
+  var linkInput=document.getElementById('layout-invite-link-input');
+  var copyBtn=document.getElementById('layout-invite-copy');
+  var copyIcon=document.getElementById('layout-copy-icon');
+  var checkIcon=document.getElementById('layout-check-icon');
+  var regenBtn=document.getElementById('layout-invite-regen');
+  var qrCanvas=document.getElementById('layout-qr-canvas');
+  var _currentUrl='';
+
+  var INPUT_CLS='flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring';
+  var RM_SVG='<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+
+  /* ── generate a small PNG data-URL of the org initial letter ─────────── */
+  function _makeInitialDataUrl(){
+    var c=document.createElement('canvas');
+    c.width=60;c.height=60;
+    var ctx=c.getContext('2d');
+    var dark=document.documentElement.classList.contains('dark');
+    /* rounded-square background */
+    var r2=12,w2=60,h2=60;
+    ctx.fillStyle=dark?'#27272a':'#e4e4e7';
+    ctx.beginPath();
+    ctx.moveTo(r2,0);ctx.lineTo(w2-r2,0);ctx.quadraticCurveTo(w2,0,w2,r2);
+    ctx.lineTo(w2,h2-r2);ctx.quadraticCurveTo(w2,h2,w2-r2,h2);
+    ctx.lineTo(r2,h2);ctx.quadraticCurveTo(0,h2,0,h2-r2);
+    ctx.lineTo(0,r2);ctx.quadraticCurveTo(0,0,r2,0);
+    ctx.closePath();ctx.fill();
+    ctx.fillStyle=dark?'#fafafa':'#18181b';
+    ctx.font='bold 28px system-ui,sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(_orgInitial,30,32);
+    return c.toDataURL('image/png');
+  }
+
+  /* ── render QR using qr-code-styling (Vercel-style) ─────────────────── */
+  function renderQR(url){
+    if(!qrCanvas||!url||typeof QRCodeStyling==='undefined')return;
+    var dark=document.documentElement.classList.contains('dark');
+    var fg=dark?'#fafafa':'#18181b';
+    var bg=dark?'#09090b':'#ffffff';
+    qrCanvas.innerHTML='';
+    /* Use logo URL if available, otherwise generate the org initial as PNG */
+    var centerImg=_logoUrl||_makeInitialDataUrl();
+    var qr=new QRCodeStyling({
+      width:200,height:200,
+      type:'canvas',
+      data:url,
+      qrOptions:{errorCorrectionLevel:'H'},
+      dotsOptions:{color:fg,type:'rounded'},
+      backgroundOptions:{color:bg},
+      cornersSquareOptions:{type:'extra-rounded',color:fg},
+      cornersDotOptions:{color:fg},
+      image:centerImg,
+      imageOptions:{crossOrigin:'anonymous',margin:5,imageSize:0.32,hideBackgroundDots:true},
+    });
+    qr.append(qrCanvas);
+  }
+
+  /* ── state helpers ───────────────────────────────────────────────────── */
+  function getEmails(){
+    var out=[];
+    if(emailList)emailList.querySelectorAll('[data-email-row] input[type="email"]').forEach(function(i){
+      var v=i.value.trim();if(v)out.push(v);
+    });
+    return out;
+  }
+
+  function setStatus(msg,color){
+    if(!statusEl)return;
+    statusEl.textContent=msg;
+    statusEl.style.color=color||'';
+    statusEl.classList.remove('hidden');
+  }
+
+  function setInviteUrl(url){
+    _currentUrl=url||'';
+    if(linkInput)linkInput.value=_currentUrl;
+    renderQR(_currentUrl);
+  }
+
+  function loadInviteLink(){
+    fetch('/my/organizations/'+_slug+'/invite-link-data',{credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(d){if(d.ok)setInviteUrl(d.url);})
+      .catch(function(){});
+  }
+
+  /* ── email list ──────────────────────────────────────────────────────── */
+  function _rowCount(){return emailList?emailList.querySelectorAll('[data-email-row]').length:0;}
+
+  function _updateRemoveBtns(){
+    if(!emailList)return;
+    var show=_rowCount()>1;
+    emailList.querySelectorAll('[data-remove-email]').forEach(function(b){
+      b.classList.toggle('hidden',!show);
+    });
+  }
+
+  function resetEmailList(){
+    if(!emailList)return;
+    emailList.innerHTML='';
+    addEmailInput(true);
+    if(addEmailBtn)addEmailBtn.classList.remove('hidden');
+  }
+
+  function addEmailInput(noFocus){
+    if(!emailList)return;
+    if(_rowCount()>=5){if(addEmailBtn)addEmailBtn.classList.add('hidden');return;}
+
+    var row=document.createElement('div');
+    row.setAttribute('data-email-row','');
+    row.className='relative';
+
+    var inp=document.createElement('input');
+    inp.type='email';inp.autocomplete='off';
+    inp.placeholder='colleague@example.com';
+    inp.className=INPUT_CLS;
+    inp.style.paddingRight='2.25rem';
+    inp.addEventListener('keydown',function(e){
+      if(e.key==='Enter'){e.preventDefault();addEmailInput();}
+    });
+
+    var rmBtn=document.createElement('button');
+    rmBtn.type='button';
+    rmBtn.setAttribute('data-remove-email','');
+    rmBtn.setAttribute('aria-label','Remove');
+    rmBtn.className='absolute inset-y-0 end-0 flex size-9 items-center justify-center text-muted-foreground hover:text-destructive transition-colors hidden';
+    rmBtn.innerHTML=RM_SVG;
+    rmBtn.addEventListener('click',function(){
+      row.remove();
+      _updateRemoveBtns();
+      if(addEmailBtn&&_rowCount()<5)addEmailBtn.classList.remove('hidden');
+    });
+
+    row.appendChild(inp);
+    row.appendChild(rmBtn);
+    emailList.appendChild(row);
+    if(!noFocus)inp.focus();
+    _updateRemoveBtns();
+    if(_rowCount()>=5&&addEmailBtn)addEmailBtn.classList.add('hidden');
+  }
+
+  /* ── modal ───────────────────────────────────────────────────────────── */
+  function openModal(){
+    if(!modal)return;
+    modal.showModal();
+    resetEmailList();
+    if(statusEl)statusEl.classList.add('hidden');
+    loadInviteLink();
+    var first=emailList&&emailList.querySelector('input');
+    if(first)setTimeout(function(){first.focus();},60);
+  }
+
+  function closeModal(){if(modal)modal.close();}
+
+  /* ── event listeners ─────────────────────────────────────────────────── */
+  if(openBtn)openBtn.addEventListener('click',openModal);
+  if(closeBtn)closeBtn.addEventListener('click',closeModal);
+  if(modal)modal.addEventListener('click',function(e){if(e.target===modal)closeModal();});
+  if(addEmailBtn)addEmailBtn.addEventListener('click',function(){addEmailInput();});
+
+  if(sendBtn)sendBtn.addEventListener('click',function(){
+    var emails=getEmails();
+    if(!emails.length){setStatus('Enter at least one email address.','var(--destructive)');return;}
+    sendBtn.disabled=true;
+    setStatus('Sending…','');
+    fetch('/my/organizations/'+_slug+'/invite-batch',{
+      method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({emails:emails}),
+    })
+    .then(function(r){return r.json();})
+    .then(function(d){
+      sendBtn.disabled=false;
+      if(!d.ok){setStatus('Failed to send invitations.','var(--destructive)');return;}
+      var sent=(d.results||[]).filter(function(r){return r.ok&&r.sent;}).length;
+      var link=(d.results||[]).filter(function(r){return r.ok&&!r.sent;}).length;
+      var fail=(d.results||[]).filter(function(r){return!r.ok;}).length;
+      var parts=[];
+      if(sent)parts.push(sent+' invitation'+(sent>1?'s':'')+' sent');
+      if(link)parts.push(link+' link'+(link>1?'s':'')+' created (email unavailable)');
+      if(fail)parts.push(fail+' failed');
+      setStatus(parts.join(' · '),'#22c55e');
+      resetEmailList();
+    })
+    .catch(function(){sendBtn.disabled=false;setStatus('Network error. Please try again.','var(--destructive)');});
+  });
+
+  if(copyBtn)copyBtn.addEventListener('click',function(){
+    if(!_currentUrl)return;
+    navigator.clipboard.writeText(_currentUrl).then(function(){
+      if(copyIcon)copyIcon.classList.add('hidden');
+      if(checkIcon)checkIcon.classList.remove('hidden');
+      setTimeout(function(){
+        if(copyIcon)copyIcon.classList.remove('hidden');
+        if(checkIcon)checkIcon.classList.add('hidden');
+      },1500);
+    }).catch(function(){});
+  });
+
+  if(regenBtn)regenBtn.addEventListener('click',function(){
+    if(regenBtn.disabled)return;
+    regenBtn.disabled=true;
+    regenBtn.textContent='Resetting…';
+    fetch('/my/organizations/'+_slug+'/invite-link/regenerate',{method:'POST',credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        regenBtn.disabled=false;regenBtn.textContent='Reset link';
+        if(d.ok)setInviteUrl(d.url);
+      })
+      .catch(function(){regenBtn.disabled=false;regenBtn.textContent='Reset link';});
+  });
+})();
+{% end_app_script %}
+{% endif %}
