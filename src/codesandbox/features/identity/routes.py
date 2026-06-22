@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 import urllib.parse
 from urllib.parse import urlparse
 
@@ -19,6 +20,7 @@ from codesandbox.web.blueprint import web_bp
 
 from .service import (
     confirm_totp_setup,
+    create_session_for_user,
     disable_2fa,
     generate_totp_setup,
     link_github_account,
@@ -73,16 +75,20 @@ def login_action():
             user_agent=request.headers.get("User-Agent"),
         )
 
-    if not result.ok or not result.token:
+    if not result.ok:
         return redirect(f"/login?error={urllib.parse.quote(result.message)}&mode={mode}", code=303)
 
-    # If 2FA is pending, store token in server-side session and redirect
     if result.requires_2fa:
-        # Clear any leftover OAuth state before storing 2FA state
+        if not result.user_id:
+            return redirect("/login?error=Unable+to+start+two-factor+verification", code=303)
         session.clear()
-        session["_2fa_pending_token"] = result.token
+        session["_2fa_pending_user_id"] = result.user_id
+        session["_2fa_pending_at"] = int(time.time())
         session["_2fa_next"] = next_path
         return redirect("/two-factor", code=303)
+
+    if not result.token:
+        return redirect("/login?error=Unable+to+create+session", code=303)
 
     session.clear()
     response = redirect(next_path, code=303)
@@ -96,7 +102,8 @@ def logout_action():
     token = request.cookies.get(cookie_name)
     if token:
         sign_out(token)
-    session.pop("_2fa_pending_token", None)
+    session.pop("_2fa_pending_user_id", None)
+    session.pop("_2fa_pending_at", None)
     session.pop("_2fa_next", None)
     response = redirect("/login", code=303)
     response.delete_cookie(cookie_name)
@@ -167,28 +174,37 @@ def reset_password_action():
 
 @web_bp.post("/two-factor/verify")
 def two_factor_verify():
-    from codesandbox.shared.session import get_current_session
-    from . import repository
-    pending_token = session.get("_2fa_pending_token")
+    pending_user_id = session.get("_2fa_pending_user_id")
+    pending_at = session.get("_2fa_pending_at")
     next_path = session.pop("_2fa_next", "/dashboard")
     code = request.form.get("code", "").strip().replace(" ", "")
 
-    if not pending_token:
+    if not pending_user_id or not isinstance(pending_at, int):
         return redirect("/login", code=303)
 
-    # Decode user_id from the pending token
-    from .service import hash_token
-    token_hash = hash_token(pending_token)
-    db_session = repository.find_active_session(token_hash)
-    if not db_session:
-        return redirect("/login?error=Session+expired", code=303)
+    if int(time.time()) - pending_at > 300:
+        session.pop("_2fa_pending_user_id", None)
+        session.pop("_2fa_pending_at", None)
+        return redirect("/login?error=Two-factor+verification+expired", code=303)
 
-    if not verify_totp(db_session.user_id, code):
+    if not verify_totp(str(pending_user_id), code):
+        session["_2fa_next"] = next_path
         return redirect("/two-factor?error=Invalid+code", code=303)
 
-    session.pop("_2fa_pending_token", None)
+    token = create_session_for_user(
+        str(pending_user_id),
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+    )
+    if not token:
+        session.pop("_2fa_pending_user_id", None)
+        session.pop("_2fa_pending_at", None)
+        return redirect("/login?error=Unable+to+create+session", code=303)
+
+    session.pop("_2fa_pending_user_id", None)
+    session.pop("_2fa_pending_at", None)
     response = redirect(next_path, code=303)
-    _set_session_cookie(response, pending_token)
+    _set_session_cookie(response, token)
     return response
 
 

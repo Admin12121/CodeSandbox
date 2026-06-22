@@ -1,11 +1,16 @@
 from flask import Blueprint
 from app_router import AppRouter
 
+from codesandbox.web.csrf import install_csrf_protection
+
 web_bp = Blueprint(
     "web",
     __name__,
     template_folder="../templates",
 )
+
+
+install_csrf_protection(web_bp)
 
 TAILWIND_CDN_CSP = (
     "default-src 'self'; "

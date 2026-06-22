@@ -256,6 +256,7 @@
             {% endcall %}
             {% call table.table_cell(class="text-right") %}
               <form method="post" action="/my/organizations/{{ slug }}/leave">
+  {{ csrf_input() }}
                 {% call button.button(type="submit", variant="destructive", size="sm", attrs={"data-cs-confirm": "leave-org"}) %}Leave organization{% endcall %}
               </form>
             {% endcall %}
@@ -269,6 +270,7 @@
             {% endcall %}
             {% call table.table_cell(class="text-right") %}
               <form method="post" action="/my/organizations/{{ slug }}/delete">
+  {{ csrf_input() }}
                 {% call button.button(type="submit", variant="destructive", size="sm", attrs={"data-cs-confirm": "delete-org"}) %}Delete organization{% endcall %}
               </form>
             {% endcall %}

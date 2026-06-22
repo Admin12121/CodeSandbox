@@ -66,6 +66,7 @@
   </div>
 
   <form id="org-wizard-form" method="post" action="/my/organizations/create" enctype="multipart/form-data" novalidate>
+  {{ csrf_input() }}
 
     {# Step 1: Identity #}
     <div data-wizard-panel="1" class="grid gap-6 p-5">

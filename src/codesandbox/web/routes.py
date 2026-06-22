@@ -80,7 +80,7 @@ def reset_password_page():
 @router.page("/two-factor")
 def two_factor():
     from flask import session as flask_session
-    if not flask_session.get("_2fa_pending_token"):
+    if not flask_session.get("_2fa_pending_user_id"):
         return {"_redirect": "/login"}
     return {
         "_meta": {"title": "Two-Factor Auth — CodeSandbox"},
@@ -214,7 +214,7 @@ def platform_organizations():
     org_param = request.args.get("org") or None
     selected_org = None
     if org_param == "new":
-        selected_org = {"id": None, "name": "", "slug": "", "description": "", "website": "", "industry": "", "size": "", "location": "", "contact_email": "", "status": "active", "member_count": 0}
+        selected_org = {"id": None, "name": "", "slug": "", "description": "", "logo_url": "", "website": "", "industry": "", "size": "", "location": "", "contact_email": "", "status": "active", "member_count": 0}
     elif org_param:
         from codesandbox.features.organizations.repository import get_organization, get_member_count
         _org = get_organization(org_param)
@@ -224,6 +224,7 @@ def platform_organizations():
                 "name": _org.name,
                 "slug": _org.slug,
                 "description": _org.description or "",
+                "logo_url": _org.logo_url or "",
                 "website": _org.website or "",
                 "industry": _org.industry or "",
                 "size": _org.size or "",

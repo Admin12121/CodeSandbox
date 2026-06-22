@@ -41,6 +41,7 @@
     {% call tabs_ui.tabs_panel(value="profile", active=(active_tab == "profile")) %}
       <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
         <form method="post" action="/settings/profile">
+  {{ csrf_input() }}
           {% call frame.frame(class="grid gap-4 p-4") %}
             <div class="min-w-0">
               <h2 class="truncate text-sm font-semibold">Profile</h2>
@@ -135,6 +136,7 @@
                 <div class="text-xs text-muted-foreground">End your current session</div>
               </div>
               <form method="post" action="/logout">
+  {{ csrf_input() }}
                 {% call button.button(type="submit", variant="destructive") %}
                   Sign out
                 {% endcall %}
@@ -175,6 +177,7 @@
               </div>
               {% if google_connected %}
                 <form method="post" action="/settings/connected-accounts/google/disconnect">
+  {{ csrf_input() }}
                   {% set _can_disconnect = (has_password is defined and has_password) or ("github" in _cp) %}
                   {% if _can_disconnect %}
                     {% call button.button(type="submit", variant="outline") %}Disconnect{% endcall %}
@@ -207,6 +210,7 @@
               </div>
               {% if github_connected %}
                 <form method="post" action="/settings/connected-accounts/github/disconnect">
+  {{ csrf_input() }}
                   {% set _can_disconnect_gh = (has_password is defined and has_password) or google_connected %}
                   {% if _can_disconnect_gh %}
                     {% call button.button(type="submit", variant="outline") %}Disconnect{% endcall %}

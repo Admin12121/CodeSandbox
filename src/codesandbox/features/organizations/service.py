@@ -51,6 +51,7 @@ def get_platform_organizations(
             "name": org.name,
             "slug": org.slug,
             "description": org.description or "",
+            "logo_url": org.logo_url or "",
             "website": org.website or "",
             "industry": org.industry or "",
             "size": org.size or "",
@@ -73,17 +74,20 @@ def update_organization_details(
     size: str | None = None,
     location: str | None = None,
     contact_email: str | None = None,
+    logo_url: str | None = None,
 ) -> Organization | None:
-    return repository.update_organization(
-        org_id,
-        name=name,
-        description=description,
-        website=_safe_url(website),
-        industry=industry,
-        size=size,
-        location=location,
-        contact_email=contact_email,
-    )
+    kwargs = {
+        "name": name,
+        "description": description,
+        "website": _safe_url(website),
+        "industry": industry,
+        "size": size,
+        "location": location,
+        "contact_email": contact_email,
+    }
+    if logo_url is not None:
+        kwargs["logo_url"] = logo_url
+    return repository.update_organization(org_id, **kwargs)
 
 
 def update_organization_status(org_id: str, status: str) -> Organization | None:

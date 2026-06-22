@@ -75,9 +75,18 @@
             {% for org in organizations %}
               {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/platform/organizations?org=" ~ org.id}) %}
                 {% call table.table_cell() %}
-                  <div class="min-w-0">
-                    <div class="truncate font-medium">{{ org.name }}</div>
-                    <div class="truncate text-xs text-muted-foreground">{{ org.slug }}</div>
+                  <div class="flex min-w-0 items-center gap-3">
+                    {% if org.logo_url %}
+                    <img src="{{ org.logo_url }}" alt="{{ org.name }}" class="size-8 shrink-0 rounded-lg border object-cover">
+                    {% else %}
+                    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-gradient-to-br from-primary/15 to-primary/5 text-xs font-bold text-primary select-none">
+                      {{ org.name[:2] | upper }}
+                    </span>
+                    {% endif %}
+                    <div class="min-w-0">
+                      <div class="truncate font-medium">{{ org.name }}</div>
+                      <div class="truncate text-xs text-muted-foreground">{{ org.slug }}</div>
+                    </div>
                   </div>
                 {% endcall %}
                 {% call table.table_cell() %}
@@ -151,7 +160,11 @@
           <li>
             <a href="/platform/organizations?org={{ org.id }}"
                class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {{ 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' if oid == org.id else 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground' }}">
-              <span class="size-2 shrink-0 rounded-full {{ 'bg-emerald-500' if org.status == 'active' else ('bg-destructive' if org.status == 'suspended' else 'bg-muted-foreground') }}"></span>
+              {% if org.logo_url %}
+              <img src="{{ org.logo_url }}" alt="{{ org.name }}" class="size-5 shrink-0 rounded-md border object-cover">
+              {% else %}
+              <span class="flex size-5 shrink-0 items-center justify-center rounded-md border bg-muted text-[10px] font-semibold text-muted-foreground">{{ org.name[:1] | upper }}</span>
+              {% endif %}
               <span class="truncate">{{ org.name }}</span>
             </a>
           </li>
@@ -165,7 +178,14 @@
     {# Header #}
     <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
       <div class="min-w-0">
-        <div class="truncate text-sm font-semibold">{{ "New Organization" if is_create else selected_org.name }}</div>
+        <div class="flex min-w-0 items-center gap-2">
+          {% if not is_create and selected_org.logo_url %}
+          <img src="{{ selected_org.logo_url }}" alt="{{ selected_org.name }}" class="size-7 shrink-0 rounded-md border object-cover">
+          {% elif not is_create %}
+          <span class="flex size-7 shrink-0 items-center justify-center rounded-md border bg-muted text-xs font-semibold text-muted-foreground">{{ selected_org.name[:1] | upper }}</span>
+          {% endif %}
+          <div class="truncate text-sm font-semibold">{{ "New Organization" if is_create else selected_org.name }}</div>
+        </div>
         {% if not is_create %}
           <div class="truncate text-xs text-muted-foreground">{{ selected_org.member_count }} member{{ "" if selected_org.member_count == 1 else "s" }}</div>
         {% endif %}
@@ -203,7 +223,8 @@
 
         {% if is_create %}
           {# ── Create: direct form inputs ── #}
-          <form id="org-form" method="post" action="/platform/organizations/create">
+          <form id="org-form" method="post" action="/platform/organizations/create" enctype="multipart/form-data">
+  {{ csrf_input() }}
             {% call frame.frame() %}
               {% call table.table(variant="card") %}
                 {% call table.table_header() %}
@@ -213,6 +234,22 @@
                   {% endcall %}
                 {% endcall %}
                 {% call table.table_body() %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Logo{% endcall %}
+                    {% call table.table_cell() %}
+                      <div class="flex items-center gap-3">
+                        <label for="platform-org-logo-create"
+                          class="relative flex size-12 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-input bg-muted transition-colors hover:border-primary/60 hover:bg-primary/5">
+                          <img id="platform-org-logo-create-preview" src="" alt="" class="hidden absolute inset-0 h-full w-full object-cover">
+                          <svg id="platform-org-logo-create-icon" class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </label>
+                        <div class="grid gap-1">
+                          <input type="file" id="platform-org-logo-create" name="logo" accept="image/png,image/jpeg,image/webp" class="sr-only">
+                          <span class="text-xs text-muted-foreground">PNG, JPG, WebP under 2 MB</span>
+                        </div>
+                      </div>
+                    {% endcall %}
+                  {% endcall %}
                   {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Name{% endcall %}
                     {% call table.table_cell() %}{{ input.input(name="name", value="", placeholder="Acme Corp", required=true, attrs={"autocomplete": "off"}) }}{% endcall %}
@@ -259,6 +296,41 @@
 
         {% else %}
           {# ── Edit: inline per-field editing ── #}
+          {% call frame.frame() %}
+            <div class="flex items-center gap-5 p-4">
+              <div class="relative shrink-0">
+                {% if selected_org.logo_url %}
+                <img id="platform-org-logo-preview" src="{{ selected_org.logo_url }}" alt="{{ selected_org.name }}"
+                  class="size-16 rounded-xl border object-cover">
+                <span id="platform-org-logo-initials"
+                  class="hidden size-16 items-center justify-center rounded-xl border bg-gradient-to-br from-primary/20 to-primary/5 text-xl font-bold text-primary select-none">
+                  {{ selected_org.name[:2] | upper }}
+                </span>
+                {% else %}
+                <span id="platform-org-logo-initials"
+                  class="flex size-16 items-center justify-center rounded-xl border bg-gradient-to-br from-primary/20 to-primary/5 text-xl font-bold text-primary select-none">
+                  {{ selected_org.name[:2] | upper }}
+                </span>
+                <img id="platform-org-logo-preview" src="" alt="" class="hidden absolute inset-0 size-16 rounded-xl border object-cover">
+                {% endif %}
+              </div>
+              <div class="grid gap-1.5">
+                <p class="text-sm font-medium">Organization logo</p>
+                <p class="text-xs text-muted-foreground">PNG, JPG, WebP under 2 MB</p>
+                <div class="flex items-center gap-2 mt-0.5">
+                  <label for="platform-org-logo-input"
+                    class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-accent transition-colors">
+                    <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload
+                  </label>
+                  <input type="file" id="platform-org-logo-input" accept="image/png,image/jpeg,image/webp" class="sr-only"
+                    data-upload-url="/platform/organizations/{{ oid }}/upload-logo">
+                  <span id="platform-org-logo-status" class="hidden text-xs text-muted-foreground"></span>
+                </div>
+              </div>
+            </div>
+          {% endcall %}
+
           {% call frame.frame() %}
             {% call table.table(variant="card") %}
               {% call table.table_header() %}
@@ -396,6 +468,7 @@
                     {% call table.table_cell(class="text-right align-middle") %}
                       {% if selected_org.status != st_val %}
                         <form method="post" action="/platform/organizations/{{ oid }}/update-status">
+  {{ csrf_input() }}
                           <input type="hidden" name="status" value="{{ st_val }}">
                           {% call button.button(type="submit", size="sm",
                             variant="destructive-outline" if st_val in ("suspended","rejected") else "outline") %}
@@ -493,6 +566,60 @@
           })();
           {% end_app_script %}
         {% endif %}
+
+        {% app_script "platform-org-images" %}
+        (function(){
+          function bindCreatePreview(){
+            var input=document.getElementById('platform-org-logo-create');
+            if(!input||input.dataset.bound)return;
+            input.dataset.bound='1';
+            input.addEventListener('change',function(){
+              var file=input.files&&input.files[0];
+              if(!file)return;
+              var preview=document.getElementById('platform-org-logo-create-preview');
+              var icon=document.getElementById('platform-org-logo-create-icon');
+              var reader=new FileReader();
+              reader.onload=function(ev){
+                if(preview){preview.src=ev.target.result;preview.classList.remove('hidden');}
+                if(icon)icon.classList.add('hidden');
+              };
+              reader.readAsDataURL(file);
+            });
+          }
+
+          function bindEditUpload(){
+            var input=document.getElementById('platform-org-logo-input');
+            if(!input||input.dataset.bound)return;
+            input.dataset.bound='1';
+            input.addEventListener('change',function(){
+              var file=input.files&&input.files[0];
+              if(!file)return;
+              var status=document.getElementById('platform-org-logo-status');
+              var fd=new FormData();
+              fd.append('logo',file);
+              if(status){status.textContent='Uploading...';status.classList.remove('hidden');}
+              fetch(input.getAttribute('data-upload-url'),{method:'POST',body:fd})
+                .then(function(r){return r.json();})
+                .then(function(body){
+                  if(!body.ok)throw new Error(body.error||'Upload failed.');
+                  var preview=document.getElementById('platform-org-logo-preview');
+                  var initials=document.getElementById('platform-org-logo-initials');
+                  if(preview){preview.src=body.logo_url;preview.classList.remove('hidden');}
+                  if(initials){initials.classList.add('hidden');initials.classList.remove('flex');}
+                  if(status){status.textContent='Saved.';setTimeout(function(){status.classList.add('hidden');},2000);}
+                  input.value='';
+                })
+                .catch(function(err){
+                  if(status){status.textContent=err.message;setTimeout(function(){status.classList.add('hidden');},3000);}
+                  input.value='';
+                });
+            });
+          }
+
+          bindCreatePreview();
+          bindEditUpload();
+        })();
+        {% end_app_script %}
 
       </div>
     </div>

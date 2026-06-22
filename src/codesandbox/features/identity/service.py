@@ -23,6 +23,7 @@ class AuthResult:
     message: str
     token: str | None = None
     requires_2fa: bool = False
+    user_id: str | None = None
 
 
 def hash_token(token: str) -> str:
@@ -102,25 +103,44 @@ def sign_in(
         )
         return AuthResult(False, "Invalid email or password.")
 
+    if user.two_factor_enabled:
+        return AuthResult(True, "2FA required.", requires_2fa=True, user_id=user.id)
+
+    token = create_session_for_user(
+        user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    return AuthResult(True, "Signed in.", token=token)
+
+
+def create_session_for_user(
+    user_id: str,
+    *,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> str | None:
+    user = repository.find_user_by_id(user_id)
+    if not user or user.deleted_at is not None or user.status == "banned":
+        return None
+
     settings = get_settings()
-    token = secrets.token_urlsafe(48)
+    raw_token = secrets.token_urlsafe(48)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
     repository.create_session(
         user_id=user.id,
-        token_hash=hash_token(token),
+        token_hash=hash_token(raw_token),
         expires_at=expires_at,
         ip_address=ip_address,
         user_agent=user_agent,
     )
     repository.update_user(user.id, last_login_at=datetime.now(timezone.utc))
     repository.record_login_attempt(
-        email=email,
+        email=user.email,
         ip_address=ip_address,
         succeeded=True,
     )
-    if user.two_factor_enabled:
-        return AuthResult(True, "2FA required.", token=token, requires_2fa=True)
-    return AuthResult(True, "Signed in.", token=token)
+    return raw_token
 
 
 def sign_out(token: str) -> None:

@@ -174,6 +174,7 @@
                     {% if is_owner and member.user_id != user.id %}
                       <div class="my-1 h-px bg-border"></div>
                       <form method="post" action="/my/organizations/{{ slug }}/remove-member/{{ member.id }}">
+  {{ csrf_input() }}
                         <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10 transition-colors">
                           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/><line x1="17" x2="22" y1="14" y2="14"/></svg>
                           Remove member
@@ -221,6 +222,7 @@
     <div class="grid gap-4 px-5 py-5">
       <p class="text-sm text-muted-foreground">Send an invitation by email. The recipient will receive a link to join <strong>{{ org.name }}</strong>.</p>
       <form method="post" action="/my/organizations/{{ slug }}/invite" class="grid gap-4">
+  {{ csrf_input() }}
         <div class="grid gap-1.5">
           <label for="invite-email" class="text-sm font-medium">Email address</label>
           <input type="email" id="invite-email" name="email" required

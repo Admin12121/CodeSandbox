@@ -14,6 +14,10 @@ _ADMIN_ROLES = ("system_admin", "system_staff")
 def _save_logo(file_storage) -> str | None:
     return upload_image_from_filestorage(file_storage, prefix="orgs")
 
+
+def _has_upload(file_storage) -> bool:
+    return bool(file_storage and getattr(file_storage, "filename", ""))
+
 from .service import (
     accept_org_invitation,
     assign_role_to_org_member,
@@ -48,7 +52,25 @@ def create_org_action():
     description = request.form.get("description", "").strip() or None
     if not name:
         return redirect("/platform/organizations?org=new", code=303)
+    logo_file = request.files.get("logo")
+    logo_url = _save_logo(logo_file) if _has_upload(logo_file) else None
+    if _has_upload(logo_file) and logo_url is None:
+        return redirect(
+            f"/platform/organizations?org=new&error={urllib.parse.quote('Invalid logo. Use PNG, JPG, or WebP under 2 MB.')}",
+            code=303,
+        )
     org = create_organization(name=name, description=description)
+    update_organization_details(
+        org.id,
+        name=name,
+        description=description,
+        website=request.form.get("website", "").strip() or None,
+        industry=request.form.get("industry", "").strip() or None,
+        size=request.form.get("size", "").strip() or None,
+        location=request.form.get("location", "").strip() or None,
+        contact_email=request.form.get("contact_email", "").strip() or None,
+        logo_url=logo_url,
+    )
     return redirect(f"/platform/organizations?org={org.id}", code=303)
 
 
@@ -115,6 +137,22 @@ def platform_update_org_field_action(org_id: str):
     return jsonify({"ok": True})
 
 
+@web_bp.post("/platform/organizations/<org_id>/upload-logo")
+def platform_upload_org_logo_action(org_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    from .repository import get_organization, update_organization
+    org = get_organization(org_id)
+    if org is None:
+        return jsonify({"ok": False, "error": "Organization not found."}), 404
+    logo_url = _save_logo(request.files.get("logo"))
+    if logo_url is None:
+        return jsonify({"ok": False, "error": "Invalid file. Use PNG, JPG, or WebP under 2 MB."}), 400
+    update_organization(org_id, logo_url=logo_url)
+    return jsonify({"ok": True, "logo_url": logo_url})
+
+
 # ── User-facing actions ───────────────────────────────────────────────────────
 
 
@@ -126,7 +164,13 @@ def user_create_org_action():
     name = request.form.get("name", "").strip()
     if not name:
         return redirect(f"/my/organizations?mode=create&error={urllib.parse.quote('Organization name is required.')}", code=303)
-    logo_url = _save_logo(request.files.get("logo"))
+    logo_file = request.files.get("logo")
+    logo_url = _save_logo(logo_file) if _has_upload(logo_file) else None
+    if _has_upload(logo_file) and logo_url is None:
+        return redirect(
+            f"/my/organizations?mode=create&error={urllib.parse.quote('Invalid logo. Use PNG, JPG, or WebP under 2 MB.')}",
+            code=303,
+        )
     org = create_user_organization(
         name=name,
         description=request.form.get("description", "").strip() or None,

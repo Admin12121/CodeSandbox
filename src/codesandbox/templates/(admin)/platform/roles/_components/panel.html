@@ -101,6 +101,7 @@
                         Edit role
                       </a>
                       <form method="post" action="/platform/roles/{{ role.id }}/duplicate">
+  {{ csrf_input() }}
                         <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
                           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                           Duplicate role
@@ -109,6 +110,7 @@
                       <div class="my-1 h-px bg-border"></div>
                       {% if role.is_mutable %}
                         <form method="post" action="/platform/roles/{{ role.id }}/delete">
+  {{ csrf_input() }}
                           <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
                             <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                             Delete role
@@ -232,6 +234,7 @@
           <form id="role-display-form" method="post"
                 action="{{ '/platform/roles/create' if is_create else '/platform/roles/' ~ rid ~ '/update' }}"
                 class="grid gap-5 p-4">
+  {{ csrf_input() }}
             {% if not selected_role.is_mutable %}
               <div class="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                 {{ lock_icon() }} This system role is read-only.
@@ -288,6 +291,7 @@
                           </div>
                           {% if selected_role.is_mutable %}
                             <form method="post" action="/platform/roles/{{ rid }}/permission" data-cs-autosubmit>
+  {{ csrf_input() }}
                               <input type="hidden" name="key" value="{{ perm.key }}">
                               <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
                               <input type="hidden" name="tab" value="permissions">
@@ -323,6 +327,7 @@
                       </div>
                       {% if pkey and selected_role.is_mutable and not is_create %}
                         <form method="post" action="/platform/roles/{{ rid }}/permission" data-cs-autosubmit>
+  {{ csrf_input() }}
                           <input type="hidden" name="key" value="{{ pkey }}">
                           <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
                           <input type="hidden" name="tab" value="sidebar">
@@ -349,6 +354,7 @@
             {% else %}
               {% if available_members %}
                 <form method="post" action="/platform/roles/{{ rid }}/members/add" class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+  {{ csrf_input() }}
                   {% call field.field() %}
                     {{ field.field_label("Add staff member", for_id="add-member") }}
                     {% call sel.select(name="user_id", value="") %}
@@ -379,6 +385,7 @@
                       </div>
                       {{ badge.badge(member.status.title(), variant="outline") }}
                       <form method="post" action="/platform/roles/{{ rid }}/members/{{ member.id }}/remove">
+  {{ csrf_input() }}
                         {% call button.button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ member.name}) %}
                           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                         {% endcall %}

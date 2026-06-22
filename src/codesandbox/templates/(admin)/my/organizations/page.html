@@ -299,7 +299,7 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', function(){
+  function initWizard(){
     var nb = q('#wizard-next');
     var bb = q('#wizard-back');
     if(nb) nb.addEventListener('click', goNext);
@@ -331,7 +331,13 @@
       };
       reader.readAsDataURL(file);
     });
-  });
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initWizard, {once:true});
+  } else {
+    initWizard();
+  }
 })();
 {% end_app_script %}
 
@@ -341,7 +347,7 @@
 {% app_script "join-org" %}
 (function(){
   function q(s){ return document.querySelector(s); }
-  document.addEventListener('DOMContentLoaded',function(){
+  function initJoinForm(){
     var btn = q('#join-btn');
     if(!btn) return;
     btn.addEventListener('click', function(){
@@ -354,7 +360,12 @@
       if(m) token = m[1];
       window.location.href = '/my/organizations/join/' + encodeURIComponent(token);
     });
-  });
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initJoinForm, {once:true});
+  } else {
+    initJoinForm();
+  }
 })();
 {% end_app_script %}
 

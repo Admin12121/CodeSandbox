@@ -75,6 +75,7 @@
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
                     <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role.id }}/delete">
+  {{ csrf_input() }}
                       {% call button.button(type="submit", variant="ghost", size="icon-xs",
                         class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
                         attrs={"aria-label": "Delete " ~ role.name}) %}
@@ -200,6 +201,7 @@
         <form id="role-display-form" method="post"
               action="{{ '/my/organizations/' ~ slug ~ '/roles/create' if is_create else '/my/organizations/' ~ slug ~ '/roles/' ~ role_id ~ '/update' }}"
               class="grid gap-5 p-4">
+  {{ csrf_input() }}
           <div class="grid gap-4">
             <div class="grid gap-2 sm:grid-cols-2 sm:gap-4">
               {% call field.field() %}
@@ -230,6 +232,7 @@
               {% call button.button(type="submit") %}{{ "Create role" if is_create else "Save changes" }}{% endcall %}
               {% if not is_create %}
                 <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/delete" style="display:contents;">
+  {{ csrf_input() }}
                   {% call button.button(type="submit", variant="destructive-ghost") %}Delete role{% endcall %}
                 </form>
               {% endif %}
@@ -264,6 +267,7 @@
                         </div>
                         {% if is_owner %}
                           <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/permission" data-cs-autosubmit>
+  {{ csrf_input() }}
                             <input type="hidden" name="key" value="{{ perm.key }}">
                             <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
                             {{ sw.switch(checked=checked, attrs={"aria-label": "Toggle " ~ perm.label}) }}
@@ -292,6 +296,7 @@
             {% if is_owner and available_members %}
               <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/add"
                     class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+  {{ csrf_input() }}
                 {% call field.field() %}
                   {{ field.field_label("Add member to role") }}
                   {% call sel.select(name="member_id", value="") %}
@@ -325,6 +330,7 @@
                     {% endif %}
                     {% if is_owner %}
                       <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/{{ member.id }}/remove">
+  {{ csrf_input() }}
                         {% call button.button(type="submit", variant="ghost", size="icon-xs",
                           class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
                           attrs={"aria-label": "Remove " ~ member.name}) %}

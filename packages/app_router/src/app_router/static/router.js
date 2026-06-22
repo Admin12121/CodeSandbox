@@ -160,7 +160,7 @@ async function loadInlineScripts(scripts) {
   for (const item of scripts) {
     if (!item?.key || !item?.code) continue;
     const selector = `script[data-app-router-inline-script="${CSS.escape(item.key)}"]`;
-    if (document.querySelector(selector)) continue;
+    document.querySelector(selector)?.remove();
 
     await new Promise((resolve, reject) => {
       const script = document.createElement("script");

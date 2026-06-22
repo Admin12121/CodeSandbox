@@ -867,7 +867,7 @@ class AppRouter:
             resource = files(_package_name()).joinpath("static/router.js")
             with as_file(resource) as path:
                 response = send_file(path, mimetype="text/javascript; charset=utf-8")
-            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            response.headers["Cache-Control"] = "no-store"
             response.headers["X-Content-Type-Options"] = "nosniff"
             return response
 

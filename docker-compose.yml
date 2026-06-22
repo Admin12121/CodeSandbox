@@ -23,6 +23,7 @@ services:
       - /bin/sh
       - -c
       - |
+        uv run nexorm makemigrations
         uv run nexorm migrate
         uv run python seed.py
         exec uv run flask run --host 0.0.0.0 --port 5000 --debug
@@ -43,6 +44,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     restart: unless-stopped
 
