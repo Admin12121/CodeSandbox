@@ -264,6 +264,24 @@ nexorm --backend postgresql --database appdb --host localhost --user app --passw
 nexorm --url mysql://app:secret@localhost:3306/appdb migrate
 ```
 
+Or configure NexORM once in `pyproject.toml`:
+
+```toml
+[tool.nexorm]
+models = "myproject.models"
+database_url_env = "DATABASE_URL"
+```
+
+Then run commands without repeating the project settings:
+
+```bash
+nexorm makemigrations
+nexorm migrate
+nexorm showmigrations
+```
+
+CLI options still override config values when passed explicitly.
+
 ## Build
 
 ```bash

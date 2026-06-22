@@ -28,3 +28,7 @@ members = [
 [tool.uv.sources]
 app-router = { workspace = true, editable = true }
 nexorm = { workspace = true, editable = true }
+
+[tool.nexorm]
+models = "codesandbox.models"
+database_url_env = "DATABASE_URL"

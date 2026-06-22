@@ -10,9 +10,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/ ./packages/
 
-# Install all dependencies into the project virtual-env (.venv).
+# Install dependencies into a container-local virtualenv outside /app, so the
+# bind-mounted project directory never uses or hides the host .venv.
 # --no-install-project: don't install the top-level package yet (source is
 # bind-mounted at runtime).
+ENV UV_PROJECT_ENVIRONMENT=/opt/codesandbox/.venv
 RUN --network=host uv sync --frozen --no-install-project
 
 ENV PYTHONPATH=/app/src
