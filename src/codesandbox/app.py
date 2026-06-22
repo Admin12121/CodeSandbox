@@ -43,6 +43,14 @@ def create_app() -> Flask:
     from codesandbox.features.organizations import routes as _org_routes  # noqa: F401
 
     app.register_blueprint(web_bp)
+    app.jinja_env.auto_reload = True
+
+    # In debug mode, disable the Jinja2 LRU cache so every request reloads
+    # templates from disk. This makes template edits visible immediately without
+    # a process restart, fixing the mtime-resolution issue on Docker overlayfs.
+    if app.debug:
+        app.jinja_env.cache = None  # type: ignore[assignment]
+
     return app
 
 

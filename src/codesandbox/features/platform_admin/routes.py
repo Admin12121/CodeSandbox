@@ -2,12 +2,10 @@ from __future__ import annotations
 
 from urllib.parse import quote
 
-from flask import redirect, request
+from flask import jsonify, redirect, request
 
-from codesandbox.shared.session import get_current_session, require_platform_role
+from codesandbox.shared.session import require_platform_role
 from codesandbox.web.blueprint import web_bp
-
-_ADMIN_ROLES = ("system_admin", "system_staff")
 
 from .service import (
     add_role_member,
@@ -16,13 +14,18 @@ from .service import (
     duplicate_platform_role,
     remove_role_member,
     save_staff_member,
+    search_platform_role_member_candidates,
     toggle_role_permission,
     update_platform_role,
     update_platform_user,
 )
 
+_ADMIN_ROLES = ("system_admin", "system_staff")
 
-def _roles_redirect(role_id: str | None = None, tab: str = "display", error: str | None = None):
+
+def _roles_redirect(
+    role_id: str | None = None, tab: str = "display", error: str | None = None
+):
     url = "/platform/roles"
     params = []
     if role_id:
@@ -110,6 +113,30 @@ def toggle_permission_action(role_id: str):
     return _roles_redirect(role_id, tab, error)
 
 
+@web_bp.get("/platform/roles/<role_id>/members/search")
+def search_role_members_action(role_id: str):
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return jsonify({"ok": False, "items": []}), 401
+    query = request.args.get("q", "")
+    members = search_platform_role_member_candidates(role_id, query=query, limit=10)
+    return jsonify(
+        {
+            "ok": True,
+            "items": [
+                {
+                    "id": member["id"],
+                    "name": member["name"],
+                    "email": member["email"],
+                    "status": member["status"],
+                    "platform_role": member["platform_role"],
+                }
+                for member in members
+            ],
+        }
+    )
+
+
 @web_bp.post("/platform/roles/<role_id>/members/add")
 def add_role_member_action(role_id: str):
     cs, redir = require_platform_role(*_ADMIN_ROLES)
@@ -138,7 +165,7 @@ def save_staff_action():
     if redir:
         return redirect(redir.url, code=303)
     member_id = request.form.get("member_id") or None
-    role_ids = [k[len("role_"):] for k in request.form if k.startswith("role_")]
+    role_ids = [k[len("role_") :] for k in request.form if k.startswith("role_")]
     saved_id, error = save_staff_member(
         member_id=member_id,
         name=request.form.get("name", ""),
@@ -149,5 +176,7 @@ def save_staff_action():
     )
     if error:
         target = member_id or "new"
-        return redirect(f"/platform/staff?member={target}&error={quote(error)}", code=303)
+        return redirect(
+            f"/platform/staff?member={target}&error={quote(error)}", code=303
+        )
     return redirect(f"/platform/staff?member={saved_id}", code=303)

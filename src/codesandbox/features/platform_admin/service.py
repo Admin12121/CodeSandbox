@@ -249,6 +249,24 @@ def get_platform_staff() -> list[dict]:
     return out
 
 
+def search_platform_role_member_candidates(role_id: str, query: str = "", limit: int = 10) -> list[dict]:
+    role_member_ids = {u.id for u in repository.get_role_members(role_id)}
+    q = (query or "").strip().lower()
+    matches: list[dict] = []
+
+    for user in get_platform_staff():
+        if user["id"] in role_member_ids:
+            continue
+        haystack = f"{user['name']} {user['email']}".lower()
+        if q and q not in haystack:
+            continue
+        matches.append(user)
+        if len(matches) >= limit:
+            break
+
+    return matches
+
+
 def save_staff_member(
     *,
     member_id: str | None,

@@ -8,6 +8,7 @@
 {% import "components/ui/textarea.html" as textarea %}
 {% import "components/ui/switch.html" as sw %}
 {% import "components/ui/select.html" as sel %}
+{% import "components/ui/delete-dialog.html" as del_dlg %}
 
 {% macro role_dot(color) -%}
 <span aria-hidden="true" class="size-3 shrink-0 rounded-full" style="background:{{ color }};"></span>
@@ -74,14 +75,19 @@
               {% if is_owner %}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
-                    <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role.id }}/delete">
-  {{ csrf_input() }}
-                      {% call button.button(type="submit", variant="ghost", size="icon-xs",
+                    {% call del_dlg.delete_dialog_trigger("del-org-role-" ~ role.id) %}
+                      {% call button.button(type="button", variant="ghost", size="icon-xs",
                         class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
-                        attrs={"aria-label": "Delete " ~ role.name}) %}
+                        attrs={
+                          "aria-label": "Delete " ~ role.name,
+                          "data-dialog-trigger": "",
+                          "data-target": "#del-org-role-" ~ role.id,
+                          "aria-controls": "del-org-role-" ~ role.id,
+                          "aria-expanded": "false"
+                        }) %}
                         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                       {% endcall %}
-                    </form>
+                    {% endcall %}
                   </div>
                 {% endcall %}
               {% endif %}
@@ -91,6 +97,18 @@
       {% endcall %}
     {% endcall %}
   {% endcall %}
+
+  {% if is_owner %}
+    {% for role in visible_roles %}
+      {{ del_dlg.delete_dialog(
+        id="del-org-role-" ~ role.id,
+        name=role.name,
+        description='Deleting "' ~ role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
+        action="/my/organizations/" ~ slug ~ "/roles/" ~ role.id ~ "/delete",
+        submit_label="Delete role"
+      ) }}
+    {% endfor %}
+  {% endif %}
 
 </div>
 {% endmacro %}
@@ -102,7 +120,7 @@
 {% macro roles_editor(org, selected_role, is_create, role_id, editor_tab, org_permissions, role_members, available_members, is_owner, error=none) %}
 {% set slug = org.slug %}
 
-<div class="flex min-h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
+<div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
 
   {# Left mini-sidebar: role list (owner excluded) #}
   <div class="flex w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
@@ -231,10 +249,14 @@
             <div class="flex items-center gap-3">
               {% call button.button(type="submit") %}{{ "Create role" if is_create else "Save changes" }}{% endcall %}
               {% if not is_create %}
-                <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/delete" style="display:contents;">
-  {{ csrf_input() }}
-                  {% call button.button(type="submit", variant="destructive-ghost") %}Delete role{% endcall %}
-                </form>
+                {% call del_dlg.delete_dialog_trigger("del-org-role-editor-" ~ role_id) %}
+                  {% call button.button(type="button", variant="destructive-ghost", attrs={
+                    "data-dialog-trigger": "",
+                    "data-target": "#del-org-role-editor-" ~ role_id,
+                    "aria-controls": "del-org-role-editor-" ~ role_id,
+                    "aria-expanded": "false"
+                  }) %}Delete role{% endcall %}
+                {% endcall %}
               {% endif %}
             </div>
           {% endif %}
@@ -349,4 +371,14 @@
     </div>
   </div>
 </div>
+
+{% if is_owner and not is_create %}
+  {{ del_dlg.delete_dialog(
+    id="del-org-role-editor-" ~ role_id,
+    name=selected_role.name,
+    description='Deleting "' ~ selected_role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
+    action="/my/organizations/" ~ slug ~ "/roles/" ~ role_id ~ "/delete",
+    submit_label="Delete role"
+  ) }}
+{% endif %}
 {% endmacro %}

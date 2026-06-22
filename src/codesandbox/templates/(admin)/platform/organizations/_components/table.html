@@ -129,7 +129,7 @@
 {% macro org_editor(selected_org, organizations, error) %}
 {% set is_create = selected_org.id is none %}
 {% set oid = selected_org.id %}
-<div class="flex min-h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
+<div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
 
   {# Left sidebar: org list #}
   <div class="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
@@ -172,13 +172,10 @@
       <div class="min-w-0">
         <div class="flex min-w-0 items-center gap-2">
           {% if not is_create %}
-          {{ media_avatar.image_avatar(selected_org.name, selected_org.logo_url, size="sm", class="font-semibold", bind_key="org:" ~ selected_org.id) }}
+            {{ media_avatar.image_avatar(selected_org.name, selected_org.logo_url, size="sm", class="font-semibold", bind_key="org:" ~ selected_org.id) }}
           {% endif %}
           <div class="truncate text-sm font-semibold">{{ "New Organization" if is_create else selected_org.name }}</div>
         </div>
-        {% if not is_create %}
-          <div class="truncate text-xs text-muted-foreground">{{ selected_org.member_count }} member{{ "" if selected_org.member_count == 1 else "s" }}</div>
-        {% endif %}
       </div>
       {% if is_create %}
         {% call button.button(type="submit", size="icon-xs", attrs={"form": "org-form", "aria-label": "Save"}) %}
@@ -290,7 +287,7 @@
                 entity_name=selected_org.name,
                 preview_url=selected_org.logo_url,
                 upload_url="/platform/organizations/" ~ oid ~ "/upload-logo",
-                label="Organization logo",
+                label=selected_org.name,
                 description="PNG, JPG, WebP under 2 MB",
                 bind_key="org:" ~ selected_org.id
               ) }}
@@ -406,45 +403,48 @@
           {% endcall %}
 
           {# ── Status ── #}
+          {% set org_status_options = [
+            {"value": "active", "label": "Active", "description": "Operational — members can access the workspace."},
+            {"value": "inactive", "label": "Inactive", "description": "Hidden from members, data preserved."},
+            {"value": "pending", "label": "Pending", "description": "Awaiting admin approval before going active."},
+            {"value": "rejected", "label": "Rejected", "description": "Request was denied."},
+            {"value": "suspended", "label": "Suspended", "description": "Access blocked. Use for policy violations."},
+          ] %}
+          {% set org_status_match = org_status_options | selectattr('value', 'equalto', selected_org.status) | list %}
           {% call frame.frame() %}
             {% call table.table(variant="card") %}
               {% call table.table_header() %}
                 {% call table.table_row() %}
                   {{ table.table_head("Status", class="w-36") }}
-                  {{ table.table_head("Description") }}
-                  {{ table.table_head("", class="w-36 text-right") }}
+                  {{ table.table_head("Current state") }}
+                  {{ table.table_head("Change status", class="w-56 text-right") }}
                 {% endcall %}
               {% endcall %}
               {% call table.table_body() %}
-                {% for st_val, st_label, st_desc in [
-                  ("active",    "Active",    "Operational — members can access the workspace."),
-                  ("inactive",  "Inactive",  "Hidden from members, data preserved."),
-                  ("pending",   "Pending",   "Awaiting admin approval before going active."),
-                  ("rejected",  "Rejected",  "Request was denied."),
-                  ("suspended", "Suspended", "Access blocked. Use for policy violations."),
-                ] %}
-                  {% call table.table_row() %}
-                    {% call table.table_cell(class="align-middle") %}
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm font-medium">{{ st_label }}</span>
-                        {% if selected_org.status == st_val %}{{ badge.badge("Current", variant="outline") }}{% endif %}
-                      </div>
-                    {% endcall %}
-                    {% call table.table_cell(class="text-xs text-muted-foreground align-middle") %}{{ st_desc }}{% endcall %}
-                    {% call table.table_cell(class="text-right align-middle") %}
-                      {% if selected_org.status != st_val %}
-                        <form method="post" action="/platform/organizations/{{ oid }}/update-status">
-  {{ csrf_input() }}
-                          <input type="hidden" name="status" value="{{ st_val }}">
-                          {% call button.button(type="submit", size="sm",
-                            variant="destructive-outline" if st_val in ("suspended","rejected") else "outline") %}
-                            Set {{ st_label | lower }}
-                          {% endcall %}
-                        </form>
-                      {% endif %}
-                    {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="align-middle") %}
+                    {% if selected_org.status == "active" %}
+                      {{ badge.badge("Active", variant="outline") }}
+                    {% elif selected_org.status in ("suspended", "rejected") %}
+                      {{ badge.badge(org_status_match[0].label if org_status_match else selected_org.status|capitalize, variant="destructive") }}
+                    {% else %}
+                      {{ badge.badge(org_status_match[0].label if org_status_match else selected_org.status|capitalize, variant="secondary") }}
+                    {% endif %}
                   {% endcall %}
-                {% endfor %}
+                  {% call table.table_cell(class="text-xs text-muted-foreground align-middle whitespace-normal") %}
+                    {{ org_status_match[0].description if org_status_match else "Choose a status for this organization." }}
+                  {% endcall %}
+                  {% call table.table_cell(class="align-middle text-right") %}
+                    <form method="post" action="/platform/organizations/{{ oid }}/update-status" data-cs-autosubmit>
+  {{ csrf_input() }}
+                      <select name="status" class="h-8 w-48 rounded-lg border border-input bg-background px-2.5 py-1 text-sm text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        {% for opt in org_status_options %}
+                          <option value="{{ opt.value }}" {% if opt.value == selected_org.status %}selected{% endif %}>{{ opt.label }}</option>
+                        {% endfor %}
+                      </select>
+                    </form>
+                  {% endcall %}
+                {% endcall %}
               {% endcall %}
             {% endcall %}
           {% endcall %}

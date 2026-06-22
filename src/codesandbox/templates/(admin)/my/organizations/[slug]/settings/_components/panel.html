@@ -3,6 +3,7 @@
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/table.html" as table %}
 {% import "components/media/upload.html" as media_upload %}
+{% import "components/ui/delete-dialog.html" as del_dlg %}
 
 
 {% macro settings_panel(org, is_owner) %}
@@ -46,7 +47,7 @@
         entity_name=org.name,
         preview_url=org.logo_url,
         upload_url="/my/organizations/" ~ slug ~ "/upload-logo",
-        label="Organization logo",
+        label=org.name,
         description="PNG, JPG, WebP under 2 MB",
         editable=is_owner,
         bind_key="org:" ~ org.id
@@ -249,13 +250,17 @@
           {% call table.table_row() %}
             {% call table.table_cell() %}
               <div class="text-sm font-medium">Delete organization</div>
-              <div class="text-xs text-muted-foreground mt-0.5">Permanently delete <strong>{{ org.name }}</strong> and all its data. This cannot be undone.</div>
+              <div class="text-xs text-muted-foreground mt-0.5">Permanently delete <strong>{{ org.name }}</strong> and all associated data. This cannot be undone.</div>
             {% endcall %}
             {% call table.table_cell(class="text-right") %}
-              <form method="post" action="/my/organizations/{{ slug }}/delete">
-  {{ csrf_input() }}
-                {% call button.button(type="submit", variant="destructive", size="sm", attrs={"data-cs-confirm": "delete-org"}) %}Delete organization{% endcall %}
-              </form>
+              {% call del_dlg.delete_dialog_trigger("del-org-" ~ slug) %}
+                {% call button.button(type="button", variant="destructive", size="sm", attrs={
+                  "data-dialog-trigger": "",
+                  "data-target": "#del-org-" ~ slug,
+                  "aria-controls": "del-org-" ~ slug,
+                  "aria-expanded": "false"
+                }) %}Delete organization{% endcall %}
+              {% endcall %}
             {% endcall %}
           {% endcall %}
         {% endif %}
@@ -270,6 +275,15 @@
   </div>
 
 </div>
+
+{% if is_owner %}
+  {{ del_dlg.delete_dialog(
+    id="del-org-" ~ slug,
+    name=org.name,
+    description='This will permanently delete the "' ~ org.name ~ '" organization, remove all members, and erase all associated data.',
+    action="/my/organizations/" ~ slug ~ "/delete"
+  ) }}
+{% endif %}
 
 {% app_script "org-settings" %}
 (function(){
@@ -304,8 +318,7 @@
 
   var ORG_NAME = '{{ org.name | replace("'", "\\'") }}';
   var confirmMsgs = {
-    'leave-org':  'Are you sure you want to leave ' + ORG_NAME + '? You will lose access immediately.',
-    'delete-org': 'Permanently delete "' + ORG_NAME + '"? This cannot be undone and all data will be lost.'
+    'leave-org': 'Are you sure you want to leave ' + ORG_NAME + '? You will lose access immediately.'
   };
 
   document.addEventListener('click', function(e){
@@ -319,7 +332,7 @@
     if(cancelBtn){ exitEdit(cancelBtn.closest('[data-editable-row]')); return; }
 
     var confirmBtn = e.target.closest('[data-cs-confirm]');
-    if(confirmBtn){
+    if(confirmBtn && !confirmBtn.matches('[data-dialog-trigger], [data-slot="dialog-trigger"]')){
       var key = confirmBtn.getAttribute('data-cs-confirm');
       if(!confirm(confirmMsgs[key] || 'Are you sure?')){ e.preventDefault(); e.stopPropagation(); }
     }
