@@ -62,8 +62,10 @@ DEFAULT_ASSET_MAX_AGE = 31_536_000
 PARTIAL_HEADER = "X-Flask-Router"
 CURRENT_PATH_HEADER = "X-Flask-Current-Path"
 CURRENT_TREE_HEADER = "X-Flask-Current-Tree"
+CURRENT_LAYOUT_STATE_HEADER = "X-Flask-Current-Layout-State"
 CLIENT_STATE_PATH_META = "app-router-path"
 CLIENT_STATE_TREE_META = "app-router-tree"
+CLIENT_STATE_LAYOUT_META = "app-router-layout-state"
 CLIENT_SCRIPT_NONCE_META = "app-router-script-nonce"
 APP_SCRIPT_G_KEY = "_app_router_inline_scripts"
 APP_SCRIPT_SEEN_G_KEY = "_app_router_inline_script_keys"
@@ -460,6 +462,7 @@ class AppRouter:
             return self._redirect_response(redirect_result)
 
         meta = _metadata_from_data(data)
+        layout_state = _layout_state_from_data(data)
         cache_enabled = bool(data.get("_cache", False))
         ttl = int(data.get("_ttl", 0) or 0)
         context = self._template_context(data)
@@ -467,7 +470,15 @@ class AppRouter:
         _reset_app_scripts()
 
         if self._is_partial_request():
-            return self._partial_response(route, template_name, layouts, context, meta, cache_enabled)
+            return self._partial_response(
+                route,
+                template_name,
+                layouts,
+                context,
+                meta,
+                layout_state,
+                cache_enabled,
+            )
 
         bundle = self._render_full(route, template_name, layouts, context)
         html = self._apply_document_features(
@@ -475,6 +486,7 @@ class AppRouter:
             meta,
             layouts,
             request.full_path.rstrip("?"),
+            layout_state,
             _collected_app_scripts(),
         )
         response = make_response(html)
@@ -501,6 +513,7 @@ class AppRouter:
         layouts: list[LayoutSpec],
         context: dict[str, Any],
         meta: dict[str, str],
+        layout_state: str,
         cache_enabled: bool,
     ) -> Response:
         current_route = self._current_route_from_headers()
@@ -515,6 +528,8 @@ class AppRouter:
         next_tree = self._layout_tree(layouts)
         if client_tree != current_tree:
             return self._reload_json()
+        if request.headers.get(CURRENT_LAYOUT_STATE_HEADER, "") != layout_state:
+            return self._reload_json()
 
         boundary = _patch_boundary(current_tree, next_tree)
         if boundary not in next_tree:
@@ -527,6 +542,7 @@ class AppRouter:
             "boundary": boundary,
             "html": bundle.html,
             "tree": next_tree,
+            "layoutState": layout_state,
             "meta": meta,
             "cache": cache_enabled,
             "scripts": bundle.scripts,
@@ -537,6 +553,7 @@ class AppRouter:
         response.headers["Cache-Control"] = "no-store"
         response.headers["Vary"] = (
             f"{self.partial_header}, {CURRENT_PATH_HEADER}, {CURRENT_TREE_HEADER}"
+            f", {CURRENT_LAYOUT_STATE_HEADER}"
         )
         return response
 
@@ -811,10 +828,11 @@ class AppRouter:
         meta: Mapping[str, str],
         layouts: Sequence[LayoutSpec],
         path: str,
+        layout_state: str,
         inline_scripts: Sequence[InlineScript],
     ) -> str:
         html = _inject_or_replace_metadata(html, meta)
-        html = _inject_or_replace_router_state(html, path, self._layout_tree(layouts))
+        html = _inject_or_replace_router_state(html, path, self._layout_tree(layouts), layout_state)
         nonce = _ensure_app_script_nonce() if self.csp else None
         if nonce:
             html = _replace_or_inject_meta(html, CLIENT_SCRIPT_NONCE_META, nonce)
@@ -984,6 +1002,15 @@ def _metadata_from_data(data: Mapping[str, Any]) -> dict[str, str]:
     return meta
 
 
+def _layout_state_from_data(data: Mapping[str, Any]) -> str:
+    raw = data.get("_layout_state")
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+    return json.dumps(raw, sort_keys=True, separators=(",", ":"), default=str)
+
+
 def _patch_boundary(current_tree: Sequence[str], next_tree: Sequence[str]) -> str:
     common: list[str] = []
     for current, next_item in zip(current_tree, next_tree, strict=False):
@@ -1036,9 +1063,15 @@ def _inject_or_replace_metadata(html: str, meta: Mapping[str, str]) -> str:
     return html
 
 
-def _inject_or_replace_router_state(html: str, path: str, tree: Sequence[str]) -> str:
+def _inject_or_replace_router_state(
+    html: str,
+    path: str,
+    tree: Sequence[str],
+    layout_state: str,
+) -> str:
     html = _replace_or_inject_meta(html, CLIENT_STATE_PATH_META, path)
     html = _replace_or_inject_meta(html, CLIENT_STATE_TREE_META, ",".join(tree))
+    html = _replace_or_inject_meta(html, CLIENT_STATE_LAYOUT_META, layout_state)
     return html
 
 

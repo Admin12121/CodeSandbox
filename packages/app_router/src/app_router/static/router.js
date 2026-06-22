@@ -1,22 +1,27 @@
 const PARTIAL_HEADER = "X-Flask-Router";
 const CURRENT_PATH_HEADER = "X-Flask-Current-Path";
 const CURRENT_TREE_HEADER = "X-Flask-Current-Tree";
+const CURRENT_LAYOUT_STATE_HEADER = "X-Flask-Current-Layout-State";
 const STATE_PATH_META = 'meta[name="app-router-path"]';
 const STATE_TREE_META = 'meta[name="app-router-tree"]';
+const STATE_LAYOUT_META = 'meta[name="app-router-layout-state"]';
 const SCRIPT_NONCE_META = 'meta[name="app-router-script-nonce"]';
 
 function state() {
   const path = document.querySelector(STATE_PATH_META)?.getAttribute("content");
   const tree = document.querySelector(STATE_TREE_META)?.getAttribute("content");
+  const layoutState = document.querySelector(STATE_LAYOUT_META)?.getAttribute("content");
   return {
     path: path || `${window.location.pathname}${window.location.search}`,
     tree: tree ? tree.split(",").filter(Boolean) : ["root"],
+    layoutState: layoutState || "",
   };
 }
 
-function setState(path, tree) {
+function setState(path, tree, layoutState = "") {
   upsertMeta("app-router-path", path);
   upsertMeta("app-router-tree", tree.join(","));
+  upsertMeta("app-router-layout-state", layoutState);
 }
 
 function upsertMeta(name, content) {
@@ -53,6 +58,7 @@ async function navigate(url, { push = true } = {}) {
         [PARTIAL_HEADER]: "partial",
         [CURRENT_PATH_HEADER]: current.path,
         [CURRENT_TREE_HEADER]: current.tree.join(","),
+        [CURRENT_LAYOUT_STATE_HEADER]: current.layoutState,
         Accept: "application/json",
       },
       credentials: "same-origin",
@@ -95,7 +101,7 @@ async function navigate(url, { push = true } = {}) {
   await loadScripts(payload.scripts || []);
   await loadInlineScripts(payload.inlineScripts || []);
   updateMetadata(payload.meta || {});
-  setState(payload.url || url, payload.tree || ["root"]);
+  setState(payload.url || url, payload.tree || ["root"], payload.layoutState || "");
   dispatchRouterEvent("app-router:patch", payload);
 
   if (push) {

@@ -1,0 +1,81 @@
+{% app_script "codesandbox.media.runtime" %}
+(function(){
+  'use strict';
+  if(window.__codesandboxMediaRuntimeInstalled)return;
+  window.__codesandboxMediaRuntimeInstalled=true;
+
+  function setStatus(root,msg,hideDelay){
+    var status=root.querySelector('[data-media-status]');
+    if(!status)return;
+    status.textContent=msg;
+    status.classList.remove('hidden');
+    if(hideDelay){
+      setTimeout(function(){status.classList.add('hidden');},hideDelay);
+    }
+  }
+
+  function showPreview(root,url){
+    var preview=root.querySelector('[data-media-preview]');
+    var fallback=root.querySelector('[data-media-fallback]');
+    if(preview&&url){
+      preview.src=url;
+      preview.classList.remove('hidden');
+    }
+    if(fallback&&url){
+      fallback.classList.add('hidden');
+      fallback.classList.remove('flex');
+    }
+  }
+
+  function updateBoundMedia(key,url){
+    if(!key||!url)return;
+    document.querySelectorAll('[data-media-bind]').forEach(function(root){
+      if(root.getAttribute('data-media-bind')!==key)return;
+      showPreview(root,url);
+    });
+  }
+
+  function localPreview(root,file){
+    var reader=new FileReader();
+    reader.onload=function(ev){showPreview(root,ev.target.result);};
+    reader.readAsDataURL(file);
+  }
+
+  document.addEventListener('change',function(e){
+    var input=e.target.closest('[data-media-upload-input]');
+    if(!input)return;
+    var root=input.closest('[data-media-upload]');
+    if(!root)return;
+    var file=input.files&&input.files[0];
+    if(!file)return;
+    var uploadUrl=input.getAttribute('data-upload-url')||root.getAttribute('data-upload-url')||'';
+
+    if(!uploadUrl){
+      localPreview(root,file);
+      return;
+    }
+
+    var fd=new FormData();
+    fd.append(input.getAttribute('name')||'logo',file);
+    setStatus(root,'Uploading...');
+    fetch(uploadUrl,{method:'POST',body:fd})
+      .then(function(r){return r.json();})
+      .then(function(body){
+        if(!body.ok)throw new Error(body.error||'Upload failed.');
+        var url=body.logo_url||body.url;
+        showPreview(root,url);
+        updateBoundMedia(body.media_key||root.getAttribute('data-media-bind')||'',url);
+        setStatus(root,'Saved.',2000);
+        input.value='';
+        root.dispatchEvent(new CustomEvent('codesandbox:media-uploaded',{
+          bubbles:true,
+          detail:body
+        }));
+      })
+      .catch(function(err){
+        setStatus(root,err.message,3000);
+        input.value='';
+      });
+  });
+})();
+{% end_app_script %}

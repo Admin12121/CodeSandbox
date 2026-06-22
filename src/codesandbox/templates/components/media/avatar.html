@@ -1,0 +1,24 @@
+{% macro initials(name) -%}
+{{ (name or "?")[:2] | upper }}
+{%- endmacro %}
+
+{% macro image_avatar(name="", src="", size="md", class="", attrs={}, bind_key="") -%}
+{% set sizes = {
+  "xs": "size-5 rounded-md text-[10px]",
+  "sm": "size-7 rounded-md text-xs",
+  "md": "size-8 rounded-lg text-xs",
+  "lg": "size-12 rounded-xl text-base",
+  "xl": "size-16 rounded-xl text-xl",
+} %}
+{% set size_class = sizes.get(size, size) %}
+<span
+  class="{{ cn('relative inline-flex shrink-0 overflow-hidden border bg-gradient-to-br from-primary/20 to-primary/5 align-middle font-bold text-primary select-none', size_class, class) }}"
+  {% if bind_key %}data-media-avatar data-media-bind="{{ bind_key }}" data-media-name="{{ name }}"{% endif %}
+  {{ html_attrs(**attrs) }}>
+  <img data-media-preview src="{{ src if src else '' }}" alt="{{ name }}"
+    class="{{ cn('absolute inset-0 h-full w-full object-cover', 'hidden' if not src else '') }}">
+  <span data-media-fallback class="{{ cn('h-full w-full items-center justify-center', 'hidden' if src else 'flex') }}">
+    {{ initials(name) }}
+  </span>
+</span>
+{%- endmacro %}

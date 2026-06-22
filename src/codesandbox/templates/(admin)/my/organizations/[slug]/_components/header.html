@@ -1,4 +1,5 @@
 {% import "components/ui/badge.html" as badge %}
+{% import "components/media/avatar.html" as media_avatar %}
 
 {% macro org_header(org, info=none, error=none, show_profile=true) %}
 {% set slug = org.slug %}
@@ -19,13 +20,7 @@
 
   {% if show_profile %}
   <div class="flex flex-wrap items-center gap-4 rounded-xl border bg-card px-5 py-4">
-    {% if org.logo_url %}
-      <img src="{{ org.logo_url }}" alt="{{ org.name }}" class="size-14 shrink-0 rounded-xl border object-cover">
-    {% else %}
-      <span class="flex size-14 shrink-0 items-center justify-center rounded-xl border bg-gradient-to-br from-primary/20 to-primary/5 text-xl font-bold text-primary select-none">
-        {{ org.name[:2] | upper }}
-      </span>
-    {% endif %}
+    {{ media_avatar.image_avatar(org.name, org.logo_url, size="size-14 rounded-xl text-xl", bind_key="org:" ~ org.id) }}
     <div class="flex-1 min-w-0">
       <div class="flex flex-wrap items-center gap-2">
         <h1 class="text-base font-semibold leading-tight">{{ org.name }}</h1>

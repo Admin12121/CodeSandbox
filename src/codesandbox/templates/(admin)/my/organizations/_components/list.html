@@ -2,6 +2,7 @@
 {% import "components/ui/button.html" as button %}
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/frame.html" as frame %}
+{% import "components/media/avatar.html" as media_avatar %}
 
 {% macro org_list(organizations, user_owns_org) %}
 <div class="flex flex-col gap-4 p-4 md:p-6">
@@ -74,13 +75,7 @@
             {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/my/organizations/" ~ org.slug}) %}
               {% call table.table_cell() %}
                 <div class="flex items-center gap-3">
-                  {% if org.logo_url %}
-                  <img src="{{ org.logo_url }}" alt="{{ org.name }}" class="size-8 shrink-0 rounded-lg border object-cover">
-                  {% else %}
-                  <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-gradient-to-br from-primary/15 to-primary/5 text-xs font-bold text-primary select-none">
-                    {{ org.name[:2] | upper }}
-                  </span>
-                  {% endif %}
+                  {{ media_avatar.image_avatar(org.name, org.logo_url, size="md", bind_key="org:" ~ org.id) }}
                   <div class="min-w-0">
                     <div class="truncate font-medium">{{ org.name }}</div>
                     <div class="truncate text-xs text-muted-foreground">

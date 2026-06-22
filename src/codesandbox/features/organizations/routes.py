@@ -150,7 +150,7 @@ def platform_upload_org_logo_action(org_id: str):
     if logo_url is None:
         return jsonify({"ok": False, "error": "Invalid file. Use PNG, JPG, or WebP under 2 MB."}), 400
     update_organization(org_id, logo_url=logo_url)
-    return jsonify({"ok": True, "logo_url": logo_url})
+    return jsonify({"ok": True, "logo_url": logo_url, "url": logo_url, "media_key": f"org:{org_id}", "entity_id": org_id})
 
 
 # ── User-facing actions ───────────────────────────────────────────────────────
@@ -248,7 +248,7 @@ def user_upload_org_logo_action(slug: str):
     if logo_url is None:
         return jsonify({"ok": False, "error": "Invalid file. Use PNG, JPG, or WebP under 2 MB."}), 400
     update_organization(org_data["id"], logo_url=logo_url)
-    return jsonify({"ok": True, "logo_url": logo_url})
+    return jsonify({"ok": True, "logo_url": logo_url, "url": logo_url, "media_key": f"org:{org_data['id']}", "entity_id": org_data["id"]})
 
 
 @web_bp.post("/my/organizations/<slug>/update")

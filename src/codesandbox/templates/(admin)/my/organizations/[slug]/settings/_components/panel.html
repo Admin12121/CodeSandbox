@@ -2,6 +2,7 @@
 {% import "components/ui/button.html" as button %}
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/table.html" as table %}
+{% import "components/media/upload.html" as media_upload %}
 
 
 {% macro settings_panel(org, is_owner) %}
@@ -39,35 +40,17 @@
 
   {# ── Logo ── #}
   {% call frame.frame() %}
-    <div class="flex items-center gap-5 p-4">
-      <div class="relative shrink-0">
-        {% if org.logo_url %}
-        <img id="settings-logo-preview" src="{{ org.logo_url }}" alt="{{ org.name }}"
-          class="size-16 rounded-xl border object-cover">
-        {% else %}
-        <span id="settings-logo-initials"
-          class="flex size-16 items-center justify-center rounded-xl border bg-gradient-to-br from-primary/20 to-primary/5 text-xl font-bold text-primary select-none">
-          {{ org.name[:2] | upper }}
-        </span>
-        <img id="settings-logo-preview" src="" alt="" class="hidden size-16 rounded-xl border object-cover absolute inset-0">
-        {% endif %}
-      </div>
-      <div class="grid gap-1.5">
-        <p class="text-sm font-medium">Organization logo</p>
-        <p class="text-xs text-muted-foreground">PNG, JPG, WebP · max 2 MB</p>
-        {% if is_owner %}
-        <div class="flex items-center gap-2 mt-0.5">
-          <label for="settings-logo-input"
-            class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-accent transition-colors">
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Upload
-          </label>
-          <input type="file" id="settings-logo-input" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="sr-only"
-            data-upload-url="/my/organizations/{{ slug }}/upload-logo">
-          <span id="settings-logo-status" class="text-xs text-muted-foreground hidden"></span>
-        </div>
-        {% endif %}
-      </div>
+    <div class="p-4">
+      {{ media_upload.image_upload(
+        id="settings-logo",
+        entity_name=org.name,
+        preview_url=org.logo_url,
+        upload_url="/my/organizations/" ~ slug ~ "/upload-logo",
+        label="Organization logo",
+        description="PNG, JPG, WebP under 2 MB",
+        editable=is_owner,
+        bind_key="org:" ~ org.id
+      ) }}
     </div>
   {% endcall %}
 
@@ -434,33 +417,6 @@
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  /* Logo upload */
-  var logoInput = document.getElementById('settings-logo-input');
-  if(logoInput){
-    logoInput.addEventListener('change', function(){
-      var file = logoInput.files && logoInput.files[0];
-      if(!file) return;
-      var status = document.getElementById('settings-logo-status');
-      var fd = new FormData();
-      fd.append('logo', file);
-      if(status){ status.textContent = 'Uploading…'; status.classList.remove('hidden'); }
-      fetch(logoInput.getAttribute('data-upload-url'), {method:'POST', body:fd})
-        .then(function(r){ return r.json(); })
-        .then(function(body){
-          if(!body.ok) throw new Error(body.error || 'Upload failed.');
-          var preview = document.getElementById('settings-logo-preview');
-          var initials = document.getElementById('settings-logo-initials');
-          if(preview){ preview.src = body.logo_url; preview.classList.remove('hidden'); }
-          if(initials) initials.classList.add('hidden');
-          if(status){ status.textContent = 'Saved.'; setTimeout(function(){ status.classList.add('hidden'); }, 2000); }
-          logoInput.value = '';
-        })
-        .catch(function(err){
-          if(status){ status.textContent = err.message; setTimeout(function(){ status.classList.add('hidden'); }, 3000); }
-          logoInput.value = '';
-        });
-    });
-  }
 })();
 {% end_app_script %}
 

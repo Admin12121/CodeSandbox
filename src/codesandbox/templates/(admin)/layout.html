@@ -1,4 +1,6 @@
 {% import "components/ui/kbd.html" as kbd %}
+{% import "components/media/qr-code.html" as media_qr %}
+{% import "components/media/avatar.html" as media_avatar %}
 
 {# ── Icon macro keyed by href ─────────────────────────────────────────────── #}
 {% macro nav_icon(href) -%}
@@ -56,15 +58,11 @@
       {% if user['platform_role'] == 'user' %}
       {%- set _ws_btn = active_workspace -%}
       {%- set _ws_btn_name = _ws_btn['name'] if _ws_btn else (user['name'] + "'s Space") -%}
-      {%- set _ws_btn_initial = (_ws_btn_name[:1] or '?') | upper -%}
       {%- set _ws_btn_logo = _ws_btn['logo_url'] if (_ws_btn and _ws_btn['logo_url']) else '' -%}
+      {%- set _ws_btn_bind = ('org:' ~ _ws_btn['id']) if _ws_btn else '' -%}
       <button type="button" id="ws-trigger" data-cs-menu="ws-menu" data-cs-menu-dir="down-left"
         class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 hover:bg-sidebar-accent transition-colors">
-        {% if _ws_btn_logo %}
-        <img src="{{ _ws_btn_logo }}" alt="{{ _ws_btn_name }}" class="flex size-7 shrink-0 rounded-md object-cover border border-sidebar-border">
-        {% else %}
-        <span class="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold select-none">{{ _ws_btn_initial }}</span>
-        {% endif %}
+        {{ media_avatar.image_avatar(_ws_btn_name, _ws_btn_logo, size="sm", class="bg-primary text-primary-foreground", bind_key=_ws_btn_bind) }}
         <span class="min-w-0 flex-1 truncate text-sm font-semibold text-left group-data-[state=collapsed]:hidden">{{ _ws_btn_name }}</span>
         <svg class="size-4 shrink-0 text-muted-foreground group-data-[state=collapsed]:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
       </button>
@@ -219,19 +217,15 @@
 {%- set _ws = active_workspace -%}
 {%- set _ws_name = _ws['name'] if _ws else (user['name'] + "'s Space") -%}
 {%- set _ws_member_count = _ws['member_count'] if _ws else 1 -%}
-{%- set _ws_initial = (_ws_name[:1] or '?') | upper -%}
 {%- set _ws_logo = _ws['logo_url'] if (_ws and _ws['logo_url']) else '' -%}
+{%- set _ws_bind = ('org:' ~ _ws['id']) if _ws else '' -%}
 <div id="ws-menu" role="menu"
   class="hidden fixed z-[200] w-72 rounded-xl border bg-popover text-sm text-popover-foreground shadow-xl overflow-hidden">
 
   {# ── Active workspace header ─────────────────────────────────────────── #}
   <div class="p-3 border-b border-border">
     <div class="flex items-start gap-3 mb-2.5">
-      {% if _ws_logo %}
-      <img src="{{ _ws_logo }}" alt="{{ _ws_name }}" class="size-9 shrink-0 rounded-lg object-cover border border-border">
-      {% else %}
-      <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-base select-none">{{ _ws_initial }}</span>
-      {% endif %}
+      {{ media_avatar.image_avatar(_ws_name, _ws_logo, size="size-9 rounded-lg text-base", class="bg-primary text-primary-foreground", bind_key=_ws_bind) }}
       <div class="min-w-0 flex-1 pt-0.5">
         <p class="font-semibold text-sm leading-tight truncate">{{ _ws_name }}</p>
         <p class="text-xs text-muted-foreground mt-0.5">Free Plan · {{ _ws_member_count }} member{{ 's' if _ws_member_count != 1 else '' }}</p>
@@ -280,11 +274,7 @@
     {% for org in workspace_list %}
     <a href="/my/organizations/{{ org['slug'] }}" data-router-reload="true"
        class="flex items-center gap-2.5 px-3 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">
-      {% if org['logo_url'] %}
-      <img src="{{ org['logo_url'] }}" alt="{{ org['name'] }}" class="size-6 shrink-0 rounded-md object-cover border border-border">
-      {% else %}
-      <span class="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold select-none">{{ (org['name'][:1] or '?') | upper }}</span>
-      {% endif %}
+      {{ media_avatar.image_avatar(org['name'], org['logo_url'], size="size-6 rounded-md text-xs", class="bg-muted text-muted-foreground", bind_key="org:" ~ org['id']) }}
       <span class="flex-1 text-sm truncate">{{ org['name'] }}</span>
       {% if org['status'] == 'pending' %}
       <span class="text-xs text-muted-foreground shrink-0 italic">Pending</span>
@@ -388,6 +378,7 @@
 
 {# Include UI runtime (tabs, dialogs, etc.) for all admin pages #}
 {% include "components/ui/_runtime.html" %}
+{% include "components/media-runtime.html" %}
 
 {# ── Invite members dialog (global, shown from sidebar) ─────────────────── #}
 {% if _ws and _ws.get('is_owner') %}
@@ -414,7 +405,7 @@
   <div class="px-5 pt-5 pb-6 space-y-5">
 
     <div class="flex flex-col items-center gap-3">
-      <div id="layout-qr-canvas" class="flex size-56 items-center justify-center rounded-2xl overflow-hidden bg-white dark:bg-zinc-950 p-3"></div>
+      {{ media_qr.qr_box("layout-qr-canvas") }}
     </div>
 
     <div class="my-8 w-full relative">
@@ -466,8 +457,7 @@
 
   </div>
 </dialog>
-<script src="/qrcode.min.js"></script>
-<script src="/qr-code-styling.js"></script>
+{{ media_qr.qr_assets() }}
 {% endif %}
 
 {# Global behavior — CSP nonce requires app_script; inline on* handlers are blocked #}
@@ -739,7 +729,7 @@
   'use strict';
   var _slug='{{ _ws["slug"] | e }}';
   var _logoUrl='{{ (_ws.get("logo_url") or "") | e }}';
-  var _orgInitial='{{ (_ws["name"][:1] if _ws["name"] else "?") | upper | e }}';
+  var _mediaKey='org:{{ _ws["id"] | e }}';
   var modal=document.getElementById('layout-invite-modal');
   var openBtn=document.getElementById('layout-invite-btn');
   var closeBtn=document.getElementById('layout-invite-close');
@@ -757,28 +747,6 @@
 
   var INPUT_CLS='flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring';
   var RM_SVG='<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
-
-  /* ── generate a small PNG data-URL of the org initial letter ─────────── */
-  function _makeInitialDataUrl(){
-    var c=document.createElement('canvas');
-    c.width=60;c.height=60;
-    var ctx=c.getContext('2d');
-    var dark=document.documentElement.classList.contains('dark');
-    /* rounded-square background */
-    var r2=12,w2=60,h2=60;
-    ctx.fillStyle=dark?'#27272a':'#e4e4e7';
-    ctx.beginPath();
-    ctx.moveTo(r2,0);ctx.lineTo(w2-r2,0);ctx.quadraticCurveTo(w2,0,w2,r2);
-    ctx.lineTo(w2,h2-r2);ctx.quadraticCurveTo(w2,h2,w2-r2,h2);
-    ctx.lineTo(r2,h2);ctx.quadraticCurveTo(0,h2,0,h2-r2);
-    ctx.lineTo(0,r2);ctx.quadraticCurveTo(0,0,r2,0);
-    ctx.closePath();ctx.fill();
-    ctx.fillStyle=dark?'#fafafa':'#18181b';
-    ctx.font='bold 28px system-ui,sans-serif';
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(_orgInitial,30,32);
-    return c.toDataURL('image/png');
-  }
 
   /* ── render QR using qr-code-styling (Vercel-style) ─────────────────── */
   function renderQR(url){
@@ -815,10 +783,9 @@
       return;
     }
 
-    /* Use logo URL if available, otherwise generate the org initial as PNG */
-    var centerImg=_logoUrl||_makeInitialDataUrl();
+    var centerImg=(_logoUrl||'').trim();
     try{
-      var qr=new QRCodeStyling({
+      var options={
         width:200,height:200,
         type:'canvas',
         data:url,
@@ -827,9 +794,12 @@
         backgroundOptions:{color:bg},
         cornersSquareOptions:{type:'extra-rounded',color:fg},
         cornersDotOptions:{color:fg},
-        image:centerImg,
-        imageOptions:{crossOrigin:'anonymous',margin:5,imageSize:0.32,hideBackgroundDots:true},
-      });
+      };
+      if(centerImg){
+        options.image=centerImg;
+        options.imageOptions={crossOrigin:'anonymous',margin:5,imageSize:0.32,hideBackgroundDots:true};
+      }
+      var qr=new QRCodeStyling(options);
       qr.append(qrCanvas);
     }catch(e){
       renderFallback();
@@ -864,6 +834,13 @@
       .then(function(d){if(d.ok)setInviteUrl(d.url);})
       .catch(function(){});
   }
+
+  document.addEventListener('codesandbox:media-uploaded',function(e){
+    var detail=e.detail||{};
+    if(detail.media_key!==_mediaKey)return;
+    _logoUrl=(detail.logo_url||detail.url||'').trim();
+    if(_currentUrl)renderQR(_currentUrl);
+  });
 
   /* ── email list ──────────────────────────────────────────────────────── */
   function _rowCount(){return emailList?emailList.querySelectorAll('[data-email-row]').length:0;}

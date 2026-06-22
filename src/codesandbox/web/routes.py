@@ -667,7 +667,15 @@ def _user_ctx(user) -> dict:
 def _workspaces_ctx(user, active_workspace=None) -> dict:
     """Workspace switcher context. Returns None values for admin/staff users."""
     if user.platform_role in ("system_admin", "system_staff"):
-        return {"workspace_list": None, "active_workspace": None}
+        return {
+            "workspace_list": None,
+            "active_workspace": None,
+            "_layout_state": {
+                "role": user.platform_role,
+                "active_workspace": None,
+                "workspaces": [],
+            },
+        }
     from flask import g, session as flask_session
     if not hasattr(g, "_workspace_list"):
         from codesandbox.features.organizations.service import get_user_org_list
@@ -682,4 +690,23 @@ def _workspaces_ctx(user, active_workspace=None) -> dict:
     return {
         "workspace_list": workspace_list,
         "active_workspace": active_workspace,
+        "_layout_state": {
+            "role": user.platform_role,
+            "active_workspace": _workspace_state_item(active_workspace),
+            "workspaces": [_workspace_state_item(workspace) for workspace in workspace_list],
+        },
+    }
+
+
+def _workspace_state_item(workspace) -> dict | None:
+    if not workspace:
+        return None
+    return {
+        "id": workspace.get("id"),
+        "slug": workspace.get("slug"),
+        "name": workspace.get("name"),
+        "logo_url": workspace.get("logo_url") or "",
+        "status": workspace.get("status"),
+        "member_count": workspace.get("member_count"),
+        "is_owner": bool(workspace.get("is_owner")),
     }
