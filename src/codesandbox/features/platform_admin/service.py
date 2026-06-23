@@ -141,8 +141,6 @@ def update_platform_role(
     role = repository.get_role(role_id)
     if not role:
         return "Role not found."
-    if role.is_system:
-        return "System roles are read-only."
     if name is not None:
         name = name.strip()
         if not name:
@@ -181,7 +179,7 @@ def duplicate_platform_role(role_id: str) -> tuple[str | None, str | None]:
 
 def delete_platform_role(role_id: str) -> str | None:
     if not repository.delete_role(role_id):
-        return "System roles cannot be deleted."
+        return "Role not found."
     return None
 
 
@@ -189,8 +187,6 @@ def toggle_role_permission(role_id: str, permission_key: str, enabled: bool) -> 
     role = repository.get_role(role_id)
     if not role:
         return "Role not found."
-    if role.is_system:
-        return "System roles are read-only."
     perms = {p.key: p for p in repository.list_permissions()}
     target = perms.get(permission_key)
     if not target:

@@ -363,6 +363,17 @@ def platform_roles():
     member_ids = {m["id"] for m in (selected_role["members"] if selected_role else [])}
     available_members = [m for m in staff if m["id"] not in member_ids]
 
+    # Members-tab pagination
+    members_page_size = 20
+    members_page = max(1, int(request.args.get("mpage", "1") or "1"))
+    all_members = selected_role["members"] if selected_role else []
+    members_total = len(all_members)
+    members_total_pages = max(1, math.ceil(members_total / members_page_size))
+    members_page = min(members_page, members_total_pages)
+    paged_members = all_members[(members_page - 1) * members_page_size : members_page * members_page_size]
+    if selected_role:
+        selected_role = {**selected_role, "members": paged_members}
+
     return {
         "_meta": {"title": "Staff Roles — CodeSandbox"},
         "user": _user_ctx(user),
@@ -382,6 +393,10 @@ def platform_roles():
         "total": total_roles,
         "total_pages": total_pages_roles,
         "available_members": available_members,
+        "members_page": members_page,
+        "members_page_size": members_page_size,
+        "members_total": members_total,
+        "members_total_pages": members_total_pages,
         "error": request.args.get("error"),
     }
 
@@ -607,6 +622,14 @@ def my_organization_roles(slug: str):
             in_role_ids = {m["id"] for m in role_members}
             available_members = [m for m in org["members"] if m["id"] not in in_role_ids]
 
+    # Members-tab pagination
+    org_members_page_size = 20
+    org_members_page = max(1, int(request.args.get("mpage", "1") or "1"))
+    org_members_total = len(role_members)
+    org_members_total_pages = max(1, math.ceil(org_members_total / org_members_page_size))
+    org_members_page = min(org_members_page, org_members_total_pages)
+    paged_role_members = role_members[(org_members_page - 1) * org_members_page_size : org_members_page * org_members_page_size]
+
     return {
         "_meta": {"title": f"Roles — {org['name']}"},
         "user": _user_ctx(user),
@@ -618,8 +641,12 @@ def my_organization_roles(slug: str):
         "role_id": role_id,
         "editor_tab": editor_tab,
         "org_permissions": org_permissions,
-        "role_members": role_members,
+        "role_members": paged_role_members,
         "available_members": available_members,
+        "org_members_page": org_members_page,
+        "org_members_page_size": org_members_page_size,
+        "org_members_total": org_members_total,
+        "org_members_total_pages": org_members_total_pages,
         "info": request.args.get("info"),
         "error": request.args.get("error"),
         **_workspaces_ctx(user, active_workspace=org),

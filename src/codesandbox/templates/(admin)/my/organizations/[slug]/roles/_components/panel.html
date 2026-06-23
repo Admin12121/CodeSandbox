@@ -1,5 +1,6 @@
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/button.html" as button %}
+{% import "components/ui/dialog.html" as dlg %}
 {% import "components/ui/frame.html" as frame %}
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/input.html" as input %}
@@ -7,7 +8,7 @@
 {% import "components/ui/field.html" as field %}
 {% import "components/ui/textarea.html" as textarea %}
 {% import "components/ui/switch.html" as sw %}
-{% import "components/ui/select.html" as sel %}
+{% import "components/ui/combobox.html" as cb %}
 {% import "components/ui/delete-dialog.html" as del_dlg %}
 
 {% macro role_dot(color) -%}
@@ -75,18 +76,10 @@
               {% if is_owner %}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
-                    {% call del_dlg.delete_dialog_trigger("del-org-role-" ~ role.id) %}
-                      {% call button.button(type="button", variant="ghost", size="icon-xs",
-                        class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
-                        attrs={
-                          "aria-label": "Delete " ~ role.name,
-                          "data-dialog-trigger": "",
-                          "data-target": "#del-org-role-" ~ role.id,
-                          "aria-controls": "del-org-role-" ~ role.id,
-                          "aria-expanded": "false"
-                        }) %}
-                        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                      {% endcall %}
+                    {% call dlg.dialog_trigger(target="#del-org-role-" ~ role.id,
+                      class="relative inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring sm:size-5",
+                      attrs={"aria-label": "Delete " ~ role.name}) %}
+                      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     {% endcall %}
                   </div>
                 {% endcall %}
@@ -117,7 +110,7 @@
 {# ══════════════════════════════════════════════════════════
    EDITOR VIEW
    ══════════════════════════════════════════════════════════ #}
-{% macro roles_editor(org, selected_role, is_create, role_id, editor_tab, org_permissions, role_members, available_members, is_owner, error=none) %}
+{% macro roles_editor(org, selected_role, is_create, role_id, editor_tab, org_permissions, role_members, available_members, is_owner, error=none, org_members_page=1, org_members_page_size=20, org_members_total=0, org_members_total_pages=1) %}
 {% set slug = org.slug %}
 
 <div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
@@ -201,7 +194,7 @@
         {% for t, lbl in [
           ("display", "Display"),
           ("permissions", "Permissions"),
-          ("members", "Members (" ~ (role_members | length) ~ ")")
+          ("members", "Members (" ~ org_members_total ~ ")")
         ] %}
           <a href="{{ tab_base }}{{ t }}"
              class="relative flex h-9 shrink-0 grow items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-sm font-medium transition-colors sm:h-8
@@ -249,13 +242,9 @@
             <div class="flex items-center gap-3">
               {% call button.button(type="submit") %}{{ "Create role" if is_create else "Save changes" }}{% endcall %}
               {% if not is_create %}
-                {% call del_dlg.delete_dialog_trigger("del-org-role-editor-" ~ role_id) %}
-                  {% call button.button(type="button", variant="destructive-ghost", attrs={
-                    "data-dialog-trigger": "",
-                    "data-target": "#del-org-role-editor-" ~ role_id,
-                    "aria-controls": "del-org-role-editor-" ~ role_id,
-                    "aria-expanded": "false"
-                  }) %}Delete role{% endcall %}
+                {% call dlg.dialog_trigger(target="#del-org-role-editor-" ~ role_id,
+                  class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-transparent bg-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-destructive outline-none transition-shadow hover:bg-destructive/8 focus-visible:ring-2 focus-visible:ring-ring sm:h-8") %}
+                  Delete role
                 {% endcall %}
               {% endif %}
             </div>
@@ -315,54 +304,100 @@
               Save the role first, then add members.
             </div>
           {% else %}
-            {% if is_owner and available_members %}
+            {% if is_owner %}
               <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/add"
                     class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
   {{ csrf_input() }}
                 {% call field.field() %}
                   {{ field.field_label("Add member to role") }}
-                  {% call sel.select(name="member_id", value="") %}
-                    {% call sel.select_trigger(target="add-org-member-popup") %}
-                      {{ sel.select_value("Select member…") }}
-                      <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                  {% call cb.combobox(attrs={"data-org-role-member-combobox": "", "data-search-url": "/my/organizations/" ~ slug ~ "/roles/" ~ role_id ~ "/members/search"}) %}
+                    <input type="hidden" name="member_id" data-org-role-member-value>
+                    {{ cb.combobox_input(
+                        placeholder="Search members by name or email…",
+                        attrs={
+                          "type": "search",
+                          "autocomplete": "off",
+                          "spellcheck": "false",
+                          "data-org-role-member-input": ""
+                        }
+                    ) }}
+                    {% call cb.combobox_popup(class="absolute left-0 right-0 top-full mt-1", attrs={"id": "add-org-member-popup", "data-org-role-member-results": ""}) %}
+                      {{ cb.combobox_empty("Type to search members.", attrs={"data-org-role-member-empty": ""}) }}
                     {% endcall %}
-                    {% call sel.select_popup(attrs={"id": "add-org-member-popup"}) %}
-                      {% for m in available_members %}
-                        {% call sel.select_item(value=m.id|string) %}{{ m.name }} — {{ m.email }}{% endcall %}
-                      {% endfor %}
-                    {% endcall %}
+                    {{ cb.combobox_status(attrs={"data-org-role-member-status": ""}) }}
                   {% endcall %}
                 {% endcall %}
-                {% call button.button(type="submit") %}Add to role{% endcall %}
+                {% call button.button(type="submit", attrs={"disabled": "", "data-org-role-member-submit": ""}) %}Add to role{% endcall %}
               </form>
             {% endif %}
-            <div class="divide-y rounded-lg border">
-              {% if not role_members %}
-                <div class="px-4 py-8 text-center text-sm text-muted-foreground">No members assigned to this role yet.</div>
-              {% else %}
-                {% for member in role_members %}
-                  <div class="flex items-center gap-3 px-3 py-2.5">
-                    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold uppercase select-none">{{ (member.name or "?")[:2] }}</span>
-                    <div class="min-w-0 flex-1">
-                      <div class="truncate text-sm font-medium">{{ member.name }}</div>
-                      <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
-                    </div>
-                    {% if member.joined_at %}
-                      <span class="text-xs text-muted-foreground shrink-0">{{ member.joined_at.strftime("%b %d, %Y") if member.joined_at else "" }}</span>
-                    {% endif %}
-                    {% if is_owner %}
-                      <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/{{ member.id }}/remove">
-  {{ csrf_input() }}
-                        {% call button.button(type="submit", variant="ghost", size="icon-xs",
-                          class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
-                          attrs={"aria-label": "Remove " ~ member.name}) %}
-                          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            <div class="grid gap-3">
+              <form method="get" action="/my/organizations/{{ slug }}/roles" class="w-full sm:max-w-xs">
+                <input type="hidden" name="role" value="{{ role_id }}">
+                <input type="hidden" name="tab" value="members">
+                {% call ig.input_group() %}
+                  {{ ig.input_group_input(placeholder="Filter members…", attrs={"type": "search", "autocomplete": "off", "data-org-members-search": "", "aria-label": "Filter members"}) }}
+                  {% call ig.input_group_addon() %}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  {% endcall %}
+                {% endcall %}
+              </form>
+              {% call frame.frame() %}
+                {% call table.table(variant="card") %}
+                  {% call table.table_header() %}
+                    {% call table.table_row() %}
+                      {{ table.table_head("Member — " ~ org_members_total) }}
+                      {{ table.table_head("Email") }}
+                      {{ table.table_head("Joined", class="w-32") }}
+                      {% if is_owner %}{{ table.table_head("", class="w-10") }}{% endif %}
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_body() %}
+                    {% if not role_members %}
+                      {% call table.table_row() %}
+                        {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "4"}) %}No members assigned to this role yet.{% endcall %}
+                      {% endcall %}
+                    {% else %}
+                      {% for member in role_members %}
+                        {% call table.table_row(attrs={"data-org-member-row": ""}) %}
+                          {% call table.table_cell() %}
+                            <div class="flex items-center gap-3">
+                              <span class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold uppercase select-none">{{ (member.name or "?")[:2] }}</span>
+                              <span class="font-medium">{{ member.name }}</span>
+                            </div>
+                          {% endcall %}
+                          {% call table.table_cell() %}
+                            <span class="text-sm text-muted-foreground">{{ member.email }}</span>
+                          {% endcall %}
+                          {% call table.table_cell() %}
+                            <span class="text-xs text-muted-foreground">{{ member.joined_at.strftime("%b %d, %Y") if member.joined_at else "—" }}</span>
+                          {% endcall %}
+                          {% if is_owner %}
+                            {% call table.table_cell() %}
+                              <div class="flex justify-end">
+                                <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/{{ member.id }}/remove">
+{{ csrf_input() }}
+                                  {% call button.button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ member.name}) %}
+                                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                                  {% endcall %}
+                                </form>
+                              </div>
+                            {% endcall %}
+                          {% endif %}
                         {% endcall %}
-                      </form>
+                      {% endfor %}
                     {% endif %}
-                  </div>
-                {% endfor %}
-              {% endif %}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+              {% import "components/ui/table-pagination.html" as tp %}
+              {{ tp.table_pagination(
+                current_page=org_members_page,
+                total_pages=org_members_total_pages,
+                total_items=org_members_total,
+                page_size=org_members_page_size,
+                base_url="/my/organizations/" ~ slug ~ "/roles?role=" ~ role_id ~ "&tab=members",
+                page_param="mpage"
+              ) }}
             </div>
           {% endif %}
         </div>
@@ -381,4 +416,140 @@
     submit_label="Delete role"
   ) }}
 {% endif %}
+
+{% app_script "org-members-search" %}
+(function () {
+  function init(input) {
+    if (input._omSearch) return;
+    input._omSearch = true;
+    input.addEventListener('input', function () {
+      var q = input.value.toLowerCase().trim();
+      document.querySelectorAll('[data-org-member-row]').forEach(function (row) {
+        row.hidden = q.length > 0 && !row.textContent.toLowerCase().includes(q);
+      });
+    });
+  }
+  function scan() {
+    var el = document.querySelector('[data-org-members-search]');
+    if (el) init(el);
+  }
+  scan();
+  window.addEventListener('app-router:patch', scan);
+})();
+{% end_app_script %}
+
+{% app_script "org-role-member-combobox" %}
+(function () {
+  function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
+  }
+
+  function initCombobox(root) {
+    if (root._orgRoleMemberCombobox) return;
+    root._orgRoleMemberCombobox = true;
+
+    var input = root.querySelector('[data-org-role-member-input]');
+    var hidden = root.querySelector('[data-org-role-member-value]');
+    var results = root.querySelector('[data-org-role-member-results]');
+    var status = root.querySelector('[data-org-role-member-status]');
+    var submit = root.closest('form') && root.closest('form').querySelector('[data-org-role-member-submit]');
+    var searchUrl = root.dataset.searchUrl;
+    var timer = null;
+    var controller = null;
+
+    if (!input || !hidden || !results || !searchUrl) return;
+
+    function setSubmitEnabled(enabled) {
+      if (submit) submit.disabled = !enabled;
+    }
+
+    function showMessage(message) {
+      results.innerHTML = '<div class="py-6 text-center text-sm text-muted-foreground" data-slot="combobox-empty" data-org-role-member-empty>' + escapeHtml(message) + '</div>';
+      results.hidden = false;
+      results.classList.remove('hidden');
+      if (status) status.textContent = message;
+    }
+
+    function closeResults() {
+      results.hidden = true;
+      results.classList.add('hidden');
+    }
+
+    function render(items) {
+      if (!items.length) {
+        showMessage('No members found.');
+        return;
+      }
+
+      results.innerHTML = items.map(function (item) {
+        var label = (item.name || 'Unnamed') + ' — ' + item.email;
+        return '<div class="relative flex cursor-pointer select-none flex-col rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground" data-slot="combobox-item" data-value="' + escapeHtml(item.id) + '" data-label="' + escapeHtml(label) + '">' +
+          '<span class="font-medium">' + escapeHtml(item.name || 'Unnamed') + '</span>' +
+          '<span class="text-xs text-muted-foreground">' + escapeHtml(item.email) + '</span>' +
+        '</div>';
+      }).join('');
+      results.hidden = false;
+      results.classList.remove('hidden');
+      if (status) status.textContent = items.length + ' result' + (items.length === 1 ? '' : 's');
+    }
+
+    function search() {
+      var query = input.value.trim();
+      hidden.value = '';
+      setSubmitEnabled(false);
+
+      if (query.length < 2) {
+        showMessage('Type at least 2 characters to search.');
+        return;
+      }
+
+      if (controller) controller.abort();
+      controller = new AbortController();
+      showMessage('Searching…');
+
+      fetch(searchUrl + '?q=' + encodeURIComponent(query), {
+        credentials: 'same-origin',
+        signal: controller.signal
+      })
+        .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
+        .then(function (body) { render(body.items || []); })
+        .catch(function (error) {
+          if (error && error.name === 'AbortError') return;
+          showMessage('Could not search members.');
+        });
+    }
+
+    input.addEventListener('input', function () {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(search, 250);
+    });
+
+    input.addEventListener('focus', function () {
+      if (input.value.trim().length >= 2) search();
+    });
+
+    results.addEventListener('click', function (event) {
+      var item = event.target.closest('[data-slot="combobox-item"]');
+      if (!item) return;
+      hidden.value = item.dataset.value || '';
+      input.value = item.dataset.label || item.textContent.trim();
+      setSubmitEnabled(Boolean(hidden.value));
+      closeResults();
+    });
+
+    document.addEventListener('click', function (event) {
+      if (!root.contains(event.target)) closeResults();
+    });
+  }
+
+  function scan() {
+    document.querySelectorAll('[data-org-role-member-combobox]').forEach(initCombobox);
+  }
+
+  scan();
+  window.addEventListener('app-router:patch', scan);
+})();
+{% end_app_script %}
 {% endmacro %}

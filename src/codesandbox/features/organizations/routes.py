@@ -587,6 +587,28 @@ def user_org_role_add_member_action(slug: str, role_id: str):
     return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=members", code=303)
 
 
+@web_bp.get("/my/organizations/<slug>/roles/<role_id>/members/search")
+def user_org_role_member_search(slug: str, role_id: str):
+    from flask import jsonify
+    session, redir = require_session()
+    if redir:
+        return jsonify({"items": []}), 401
+    q = request.args.get("q", "").strip().lower()
+    from .service import get_org_for_user, get_role_members_for_org
+    org_data = get_org_for_user(slug, session.user.id)
+    if org_data is None:
+        return jsonify({"items": []})
+    role_members = get_role_members_for_org(org_data["id"], role_id)
+    in_role_ids = {m["id"] for m in role_members}
+    results = [
+        {"id": m["id"], "name": m["name"], "email": m["email"]}
+        for m in org_data["members"]
+        if m["id"] not in in_role_ids
+        and (not q or q in (m["name"] or "").lower() or q in (m["email"] or "").lower())
+    ]
+    return jsonify({"items": results[:20]})
+
+
 @web_bp.post("/my/organizations/<slug>/roles/<role_id>/members/<member_id>/remove")
 def user_org_role_remove_member_action(slug: str, role_id: str, member_id: str):
     session, redir = require_session()

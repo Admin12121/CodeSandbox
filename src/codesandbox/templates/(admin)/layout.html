@@ -176,7 +176,11 @@
       </div>
     </header>
 
-    <main class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+    <main class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden relative">
+        <div
+          style="background-image: url(/noise.webp);"
+          class="pointer-events-none absolute inset-0 bg-[size:180px] bg-repeat opacity-[0.035] dark:opacity-[0.012]"
+        ></div>
       {{ children|safe }}
     </main>
 

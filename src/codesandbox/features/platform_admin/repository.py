@@ -45,7 +45,7 @@ def create_role(
 
 def delete_role(role_id: str) -> bool:
     role = get_role(role_id)
-    if not role or role.is_system:
+    if not role:
         return False
     role.delete()
     return True
@@ -151,19 +151,12 @@ def seed_default_permissions() -> None:
 
 
 def seed_default_roles() -> None:
-    system_admin = get_role_by_name("system_admin")
-    if not system_admin:
-        create_role(
-            name="system_admin",
-            color="#ef4444",
-            description="Full platform access",
-            is_system=True,
-        )
-    system_staff = get_role_by_name("system_staff")
-    if not system_staff:
-        create_role(
-            name="system_staff",
-            color="#f59e0b",
-            description="Platform staff access",
-            is_system=True,
-        )
+    # Fix any pre-existing locked roles so they become fully editable
+    for role in PlatformRole.objects.filter(is_system=True).all():
+        role.is_system = False
+        role.save()
+
+    if not get_role_by_name("system_admin"):
+        create_role(name="system_admin", color="#ef4444", description="Full platform access")
+    if not get_role_by_name("system_staff"):
+        create_role(name="system_staff", color="#f59e0b", description="Platform staff access")

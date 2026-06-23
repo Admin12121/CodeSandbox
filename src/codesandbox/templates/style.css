@@ -691,6 +691,7 @@
 
   [data-slot="switch"] {
     background-color: var(--input);
+    box-shadow: 0 0 0 1.5px var(--border);
     transition:
       background-color 150ms ease,
       box-shadow 150ms ease;
@@ -699,11 +700,17 @@
   [data-slot="switch"]:has(input:checked),
   [data-slot="switch"][data-state="checked"] {
     background-color: var(--primary);
+    box-shadow: 0 0 0 1.5px var(--primary);
+  }
+
+  [data-slot="switch"] [data-slot="switch-thumb"] {
+    transform: translateX(2px);
+    transition: transform 150ms ease;
   }
 
   [data-slot="switch"]:has(input:checked) [data-slot="switch-thumb"],
   [data-slot="switch"][data-state="checked"] [data-slot="switch-thumb"] {
-    transform: translateX(calc(var(--thumb-size) - 4px));
+    transform: translateX(15px);
   }
 
   [data-slot="progress-track"],

@@ -124,14 +124,15 @@ def add_member(org_id: str, user_id: str) -> OrganizationMember:
         user_id=user_id,
     )
     member.save()
-    owner_role = OrganizationRole.objects.filter(org_id=org_id, name="owner").first()
-    if owner_role:
-        mr = OrganizationMemberRole(
-            id=str(uuid.uuid4()),
-            member_id=member.id,
-            role_id=owner_role.id,
-        )
-        mr.save()
+    for role_name in ("owner", "admin"):
+        role = OrganizationRole.objects.filter(org_id=org_id, name=role_name).first()
+        if role:
+            mr = OrganizationMemberRole(
+                id=str(uuid.uuid4()),
+                member_id=member.id,
+                role_id=role.id,
+            )
+            mr.save()
     return member
 
 
@@ -177,10 +178,16 @@ def list_org_roles(org_id: str) -> list[OrganizationRole]:
 
 
 def seed_org_roles(org_id: str) -> None:
+    # Fix any pre-existing locked non-owner roles so they become editable
+    for role in OrganizationRole.objects.filter(org_id=org_id, is_system=True).all():
+        if role.name != "owner":
+            role.is_system = False
+            role.save()
+
     defaults = [
         ("owner", "#ef4444", True),
-        ("admin", "#f59e0b", True),
-        ("member", "#6366f1", True),
+        ("admin", "#f59e0b", False),
+        ("member", "#6366f1", False),
     ]
     for name, color, is_system in defaults:
         if not OrganizationRole.objects.filter(org_id=org_id, name=name).first():
@@ -269,12 +276,12 @@ def update_org_role(
     color: str,
     description: str | None = None,
 ) -> bool:
-    """Update a custom (non-system) role. Returns False if system role or not found."""
+    """Update a role. Returns False if it is the protected owner role or not found."""
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False
-    if role.is_system:
+    if role.name == "owner":
         return False
     role.name = name.strip()
     role.color = color or "#6366f1"
@@ -284,12 +291,12 @@ def update_org_role(
 
 
 def delete_org_role(role_id: str) -> bool:
-    """Delete a custom (non-system) role. Returns False if system role."""
+    """Delete a role. Returns False if it is the protected owner role or not found."""
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False
-    if role.is_system:
+    if role.name == "owner":
         return False
     for rp in OrganizationRolePermission.objects.filter(role_id=role_id).all():
         rp.delete()

@@ -452,8 +452,8 @@ def update_org_custom_role(
         return False, "Role not found."
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
-    if role.is_system:
-        return False, "System roles cannot be edited."
+    if role.name == "owner":
+        return False, "The owner role cannot be edited."
     existing = OrganizationRole.objects.filter(org_id=org.id, name=name).first()
     if existing and str(existing.id) != str(role_id):
         return False, f'A role named "{name}" already exists.'
@@ -486,8 +486,8 @@ def delete_org_custom_role(
         return False, "Role not found."
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
-    if role.is_system:
-        return False, "System roles cannot be deleted."
+    if role.name == "owner":
+        return False, "The owner role cannot be deleted."
     repository.delete_org_role(role_id)
     return True, ""
 
