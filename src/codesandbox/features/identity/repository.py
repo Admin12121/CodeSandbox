@@ -232,6 +232,22 @@ def delete_auth_account_by_provider(user_id: str, provider: str) -> None:
         acc.delete()
 
 
+def list_user_sessions(user_id: str) -> list[Session]:
+    try:
+        return Session.objects.filter(user_id=user_id).order_by("-created_at").all()
+    except Exception:
+        return []
+
+
+def delete_session_by_id(session_id: str) -> None:
+    try:
+        s = Session.objects.filter(id=session_id).first()
+        if s:
+            s.delete()
+    except Exception:
+        pass
+
+
 def list_users(
     *,
     search: str | None = None,

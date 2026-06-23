@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import urllib.parse
 from urllib.parse import quote
 
 from flask import jsonify, redirect, request
@@ -45,8 +46,70 @@ def update_user_action(user_id: str):
         return redirect(redir.url, code=303)
     platform_role = request.form.get("platform_role") or None
     status = request.form.get("status") or None
-    update_platform_user(user_id, platform_role=platform_role, status=status)
+    name = request.form.get("name", "").strip() or None
+    phone = request.form.get("phone", "").strip() or None
+
+    if name is not None or phone is not None:
+        from codesandbox.features.identity import repository as id_repo
+        updates: dict = {}
+        if name:
+            updates["name"] = name
+        if phone is not None:
+            updates["phone"] = phone or None
+        if updates:
+            id_repo.update_user(user_id, **updates)
+
+    if platform_role or status:
+        update_platform_user(user_id, platform_role=platform_role, status=status)
+
+    from_page = request.form.get("from") or ""
+    if from_page == "detail":
+        from codesandbox.features.identity import repository as id_repo
+        target = id_repo.find_user_by_id(user_id)
+        if target:
+            return redirect(f"/platform/users/{urllib.parse.quote(target.email)}?info=User+updated.", code=303)
     return redirect("/platform/users", code=303)
+
+
+@web_bp.post("/platform/users/<user_id>/update-field")
+def platform_update_user_field_action(user_id: str):
+    from flask import jsonify
+    from codesandbox.features.identity import repository as id_repo
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    field = str(data.get("field", "")).strip()
+    value = str(data.get("value", "")).strip() or None
+    allowed = {"name", "phone", "platform_role", "status"}
+    if field not in allowed:
+        return jsonify({"ok": False, "error": "Invalid field."}), 400
+    if field == "name" and not value:
+        return jsonify({"ok": False, "error": "Name is required."}), 400
+    if field == "platform_role" and value not in ("user", "system_staff", "system_admin"):
+        return jsonify({"ok": False, "error": "Invalid role."}), 400
+    if field == "status" and value not in ("active", "inactive", "banned"):
+        return jsonify({"ok": False, "error": "Invalid status."}), 400
+    if field in ("platform_role", "status"):
+        update_platform_user(user_id, **{field: value})
+    else:
+        id_repo.update_user(user_id, **{field: value})
+    return jsonify({"ok": True})
+
+
+@web_bp.post("/platform/users/<user_id>/upload-avatar")
+def platform_upload_user_avatar_action(user_id: str):
+    from flask import jsonify
+    from codesandbox.features.identity import repository as id_repo
+    from codesandbox.shared.storage import upload_image_from_filestorage
+    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    avatar_url = upload_image_from_filestorage(request.files.get("logo"), prefix="avatars")
+    if avatar_url is None:
+        return jsonify({"ok": False, "error": "Invalid file. Use PNG, JPG, or WebP under 2 MB."}), 400
+    id_repo.update_user(user_id, avatar_url=avatar_url)
+    return jsonify({"ok": True, "url": avatar_url, "media_key": f"user:{user_id}"})
 
 
 # ── Roles ─────────────────────────────────────────────────────────────────────

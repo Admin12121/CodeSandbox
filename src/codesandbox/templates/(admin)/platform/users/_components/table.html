@@ -88,9 +88,9 @@
             {% for u in users %}
               {% call table.table_row() %}
                 {% call table.table_cell() %}
-                  <div class="min-w-0">
-                    <div class="truncate font-medium">{{ u.name }}</div>
-                  </div>
+                  <a href="/platform/users/{{ u.email | urlencode }}" class="min-w-0 block group">
+                    <div class="truncate font-medium group-hover:underline underline-offset-4">{{ u.name }}</div>
+                  </a>
                 {% endcall %}
                 {% call table.table_cell(class="text-sm text-muted-foreground") %}
                   {{ u.platform_role.replace('_', ' ').title() if u.platform_role else 'User' }}

@@ -1,10 +1,32 @@
 {% import "components/ui/tabs.html" as tabs_ui %}
 {% import "components/ui/frame.html" as frame %}
-{% import "components/ui/field.html" as field %}
-{% import "components/ui/input.html" as input %}
 {% import "components/ui/button.html" as button %}
 {% import "components/ui/badge.html" as badge %}
+{% import "components/ui/table.html" as table %}
+{% import "components/media/upload.html" as media_upload %}
+{% import "components/ui/dialog.html" as dlg_ui %}
+{% import "components/media/qr-code.html" as media_qr %}
+{{ media_qr.qr_assets() }}
 
+{% macro _edit_actions() %}
+<div class="flex justify-end gap-1">
+  <div data-view>
+    {% call button.button(type="button", variant="ghost", size="icon-xs", attrs={"data-start-edit": "", "aria-label": "Edit"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
+    {% endcall %}
+  </div>
+  <div data-edit hidden class="flex gap-1">
+    {% call button.button(type="button", variant="ghost", size="icon-xs", attrs={"data-save-edit": "", "aria-label": "Save"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    {% endcall %}
+    {% call button.button(type="button", variant="ghost", size="icon-xs", attrs={"data-cancel-edit": "", "aria-label": "Cancel"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    {% endcall %}
+  </div>
+</div>
+{% endmacro %}
+
+{% set su = settings_user %}
 {% set active_tab = request.args.get('tab', 'profile') %}
 
 <div class="grid gap-4 p-2">
@@ -24,68 +46,186 @@
 
   <div class="flex min-w-0 items-center justify-between gap-3">
     <div class="min-w-0">
-      <p class="truncate text-sm text-muted-foreground">
-        Profile, sign-in, and account controls.
-      </p>
+      <h1 class="truncate text-lg font-semibold">Account Settings</h1>
+      <p class="truncate text-sm text-muted-foreground">Profile, sign-in, recovery, and active device controls.</p>
     </div>
-    {{ badge.badge(user.role_label, variant="outline") }}
+    {{ badge.badge(su.role_label, variant="outline") }}
   </div>
 
   {% call tabs_ui.tabs(class="grid gap-4") %}
-    {% call tabs_ui.tabs_list(class="w-fit") %}
+    {% call tabs_ui.tabs_list(class="w-full justify-start overflow-x-auto") %}
       {{ tabs_ui.tabs_tab("Profile", value="profile", active=(active_tab == "profile")) }}
       {{ tabs_ui.tabs_tab("Security", value="security", active=(active_tab == "security")) }}
+      {{ tabs_ui.tabs_tab("Sessions (" ~ (sessions | length) ~ ")", value="sessions", active=(active_tab == "sessions")) }}
     {% endcall %}
 
     {# ── Profile tab ── #}
     {% call tabs_ui.tabs_panel(value="profile", active=(active_tab == "profile")) %}
-      <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
-        <form method="post" action="/settings/profile">
-  {{ csrf_input() }}
-          {% call frame.frame(class="grid gap-4 p-4") %}
-            <div class="min-w-0">
-              <h2 class="truncate text-sm font-semibold">Profile</h2>
-              <p class="truncate text-sm text-muted-foreground">
-                Update your name and contact details.
-              </p>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-              {% call field.field() %}
-                {{ field.field_label("Name", for_id="profile-name") }}
-                {{ input.input(name="name", value=user.name, required=true, attrs={"id": "profile-name", "autocomplete": "name"}) }}
-              {% endcall %}
-              {% call field.field() %}
-                {{ field.field_label("Email", for_id="profile-email") }}
-                {{ input.input(type="email", value=user.email, attrs={"id": "profile-email", "disabled": "disabled"}) }}
-                {% call field.field_description() %}Email cannot be changed.{% endcall %}
-              {% endcall %}
-            </div>
-            <div class="flex justify-end">
-              {% call button.button(type="submit", attrs={"disabled": "disabled", "title": "Profile editing coming soon"}) %}
-                Save profile
-              {% endcall %}
+      <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)]">
+
+        {# Left: avatar + editable profile table #}
+        <div class="grid content-start gap-4">
+
+          {# Avatar upload #}
+          {% call frame.frame() %}
+            <div class="p-4">
+              {{ media_upload.image_upload(
+                id="settings-avatar",
+                entity_name=su.name,
+                preview_url=su.avatar_url,
+                upload_url="/settings/upload-avatar",
+                label=su.name,
+                description="PNG, JPG, WebP under 2 MB",
+                editable=true,
+                bind_key="user:" ~ su.id
+              ) }}
             </div>
           {% endcall %}
-        </form>
 
+          {# Editable profile table #}
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Profile details", class="w-44") }}
+                  {{ table.table_head("Value") }}
+                  {{ table.table_head("", class="w-24 text-right") }}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+
+                {# Name — editable #}
+                {% call table.table_row(attrs={"data-editable-row": "name"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle") %}Name{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view>{{ su.name or "—" }}</span>
+                    <input data-edit hidden data-edit-input type="text" value="{{ su.name or '' }}"
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {# Email — read-only #}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Email{% endcall %}
+                  {% call table.table_cell() %}
+                    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span>{{ su.email }}</span>
+                      {% if su.email_verified %}
+                        <svg class="size-4 shrink-0 text-emerald-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Verified"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                      {% else %}
+                        <form method="post" action="/resend-verification" class="inline">
+                          {{ csrf_input() }}
+                          <button type="submit" class="text-xs underline underline-offset-4 text-primary hover:text-primary/80">Verify email</button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  {% endcall %}
+                  {% call table.table_cell() %}{% endcall %}
+                {% endcall %}
+
+                {# Phone — editable #}
+                {% call table.table_row(attrs={"data-editable-row": "phone"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle") %}Phone{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view>{{ su.phone or "—" }}</span>
+                    <input data-edit hidden data-edit-input type="tel" value="{{ su.phone or '' }}"
+                      placeholder="+1 555 000 0000"
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+                {% endcall %}
+
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+
+        </div>
+
+        {# Right: account activity + linked accounts #}
         <div class="grid content-start gap-4">
-          {% call frame.frame(class="grid gap-4 p-4") %}
-            <div class="min-w-0">
-              <h2 class="truncate text-sm font-semibold">Account Activity</h2>
-              <p class="truncate text-sm text-muted-foreground">
-                Role and current status.
-              </p>
+
+          {# Dev-mode verify URL banner #}
+          {% if dev_url is defined and dev_url %}
+            <div class="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm dark:border-amber-800 dark:bg-amber-950">
+              <span class="font-medium text-amber-800 dark:text-amber-300">Dev mode — no email service. Click to verify:</span>
+              <a href="{{ dev_url }}" class="break-all text-xs text-primary underline underline-offset-4">{{ dev_url }}</a>
             </div>
-            <div class="grid gap-3 text-sm">
-              <div class="grid gap-1">
-                <span class="text-muted-foreground">Role</span>
-                <span>{{ badge.badge(user.role_label, variant="secondary") }}</span>
-              </div>
-              <div class="grid gap-1">
-                <span class="text-muted-foreground">Account status</span>
-                <span class="font-medium capitalize">{{ user.status or "—" }}</span>
-              </div>
-            </div>
+          {% endif %}
+
+          {# Account Activity table #}
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Account activity", class="w-32") }}
+                  {{ table.table_head("") }}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Last login{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    {% if su.last_login_at %}{{ su.last_login_at.strftime("%b %d, %Y %H:%M UTC") }}{% else %}Never{% endif %}
+                  {% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Updated{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    {% if su.updated_at %}{{ su.updated_at.strftime("%b %d, %Y %H:%M UTC") }}{% else %}—{% endif %}
+                  {% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Two-factor{% endcall %}
+                  {% call table.table_cell() %}
+                    <div class="flex flex-wrap gap-1">
+                      {{ badge.badge("Enabled" if totp_enabled else "Not enabled", variant=("success" if totp_enabled else "outline")) }}
+                      {% if totp_enabled and totp_verified %}{{ badge.badge("Verified", variant="outline") }}{% endif %}
+                    </div>
+                  {% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Created{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    {% if su.created_at %}{{ su.created_at.strftime("%b %d, %Y") }}{% else %}—{% endif %}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+
+          {# Linked accounts table #}
+          {% set _accounts = auth_accounts if auth_accounts is defined else [] %}
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Linked accounts — " ~ _accounts | length) }}
+                  {{ table.table_head("Added") }}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+                {% if not _accounts %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="h-20 text-center text-muted-foreground", attrs={"colspan": "2"}) %}No linked accounts.{% endcall %}
+                  {% endcall %}
+                {% else %}
+                  {% for acct in _accounts %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell() %}
+                      <div class="min-w-0">
+                        <div class="truncate font-medium">{{ acct.provider.title() }}</div>
+                        <div class="truncate text-xs text-muted-foreground">{{ acct.account_id }}</div>
+                      </div>
+                    {% endcall %}
+                    {% call table.table_cell(class="text-sm text-muted-foreground whitespace-nowrap") %}
+                      {% if acct.created_at %}{{ acct.created_at.strftime("%b %d, %Y") }}{% else %}—{% endif %}
+                    {% endcall %}
+                  {% endcall %}
+                  {% endfor %}
+                {% endif %}
+              {% endcall %}
+            {% endcall %}
           {% endcall %}
         </div>
       </div>
@@ -95,141 +235,721 @@
     {% call tabs_ui.tabs_panel(value="security", active=(active_tab == "security")) %}
       <div class="grid gap-4">
 
-        {% call frame.frame(class="grid gap-4 p-4") %}
-          <div class="min-w-0">
-            <h2 class="truncate text-sm font-semibold">Security</h2>
-            <p class="truncate text-sm text-muted-foreground">
-              Password and account access controls.
-            </p>
-          </div>
-          <div class="grid divide-y rounded-xl border">
-            <div class="flex items-center justify-between gap-4 p-4">
-              <div class="min-w-0">
-                <div class="text-sm font-medium">Password</div>
-                <div class="text-xs text-muted-foreground">
-                  {% if has_password is defined and has_password %}Password set{% else %}No password — sign in via social accounts{% endif %}
-                </div>
-              </div>
-              {% call button.button(type="button", variant="outline", attrs={"disabled": "disabled", "title": "Coming soon"}) %}
-                Change password
+        {# Security actions table #}
+        {% call frame.frame() %}
+          {% call table.table(variant="card") %}
+            {% call table.table_header() %}
+              {% call table.table_row() %}
+                {{ table.table_head("Security", class="w-48") }}
+                {{ table.table_head("Status") }}
+                {{ table.table_head("", class="w-40 text-right") }}
               {% endcall %}
-            </div>
-            <div class="flex items-center justify-between gap-4 p-4">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2 text-sm font-medium">
+            {% endcall %}
+            {% call table.table_body() %}
+
+              {# Password #}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="font-medium text-sm") %}
+                  Password
+                  <div class="text-xs font-normal text-muted-foreground">Protect account with a password</div>
+                {% endcall %}
+                {% call table.table_cell() %}
+                  {{ badge.badge("Set" if has_password else "Not set", variant=("outline" if has_password else "secondary")) }}
+                {% endcall %}
+                {% call table.table_cell(class="text-right") %}
+                  {% call button.button(type="button", size="sm", variant="outline", attrs={"data-dialog-trigger": "", "data-target": "#dlg-change-password"}) %}
+                    {{ "Change" if has_password else "Set password" }}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+
+              {# Passkey #}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="font-medium text-sm") %}
+                  Passkey
+                  <div class="text-xs font-normal text-muted-foreground">Sign in with fingerprint, face, or device PIN</div>
+                {% endcall %}
+                {% call table.table_cell() %}
+                  <span id="passkey-status" class="text-xs text-muted-foreground">Checking…</span>
+                {% endcall %}
+                {% call table.table_cell(class="text-right") %}
+                  <div id="passkey-actions" class="flex justify-end gap-2">
+                    <button id="passkey-add-btn" hidden type="button"
+                      class="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent transition-colors">
+                      Add passkey
+                    </button>
+                    <button id="passkey-other-btn" hidden type="button"
+                      data-dialog-trigger data-target="#dlg-passkey-other"
+                      class="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent transition-colors">
+                      Use another device
+                    </button>
+                  </div>
+                {% endcall %}
+              {% endcall %}
+
+              {# 2FA #}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="font-medium text-sm") %}
                   Two-factor authentication
+                  <div class="text-xs font-normal text-muted-foreground">TOTP authenticator app</div>
+                {% endcall %}
+                {% call table.table_cell() %}
+                  {% if totp_enabled %}{{ badge.badge("Enabled", variant="success") }}
+                  {% else %}{{ badge.badge("Not enabled", variant="secondary") }}{% endif %}
+                {% endcall %}
+                {% call table.table_cell(class="text-right flex justify-end gap-2") %}
                   {% if totp_enabled %}
-                    {{ badge.badge("Enabled", variant="outline") }}
+                    <form method="post" action="/settings/2fa/disable" class="inline">{{ csrf_input() }}
+                      {% call button.button(type="submit", size="sm", variant="outline") %}Disable{% endcall %}
+                    </form>
+                  {% else %}
+                    {% call button.button(type="button", size="sm", variant="outline", attrs={"data-open-dialog": "dlg-2fa-setup"}) %}Set up 2FA{% endcall %}
                   {% endif %}
-                </div>
-                <div class="text-xs text-muted-foreground">Add an extra layer of security to your account</div>
-              </div>
-              <a href="/settings/2fa">
-                {% call button.button(type="button", variant="outline") %}
-                  {{ "Manage 2FA" if totp_enabled else "Set up 2FA" }}
                 {% endcall %}
-              </a>
-            </div>
-            <div class="flex items-center justify-between gap-4 p-4">
-              <div class="min-w-0">
-                <div class="text-sm font-medium">Sign out</div>
-                <div class="text-xs text-muted-foreground">End your current session</div>
-              </div>
-              <form method="post" action="/logout">
-  {{ csrf_input() }}
-                {% call button.button(type="submit", variant="destructive") %}
+              {% endcall %}
+
+              {# Sign out #}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="font-medium text-sm") %}
                   Sign out
+                  <div class="text-xs font-normal text-muted-foreground">End current session on this device</div>
                 {% endcall %}
-              </form>
-            </div>
-          </div>
+                {% call table.table_cell() %}{% endcall %}
+                {% call table.table_cell(class="text-right") %}
+                  <form method="post" action="/logout">{{ csrf_input() }}
+                    {% call button.button(type="submit", size="sm", variant="destructive") %}Sign out{% endcall %}
+                  </form>
+                {% endcall %}
+              {% endcall %}
+
+            {% endcall %}
+          {% endcall %}
         {% endcall %}
 
-        {# ── Connected accounts ── #}
+        {# Connected accounts table #}
         {% set _cp = connected_providers if connected_providers is defined else [] %}
-        {% call frame.frame(class="grid gap-4 p-4") %}
-          <div class="min-w-0">
-            <h2 class="truncate text-sm font-semibold">Connected Accounts</h2>
-            <p class="truncate text-sm text-muted-foreground">
-              Link Google or GitHub for one-click sign-in. If your email matches an existing account it will be linked automatically.
-            </p>
-          </div>
-          <div class="grid divide-y rounded-xl border">
+        {% call frame.frame() %}
+          {% call table.table(variant="card") %}
+            {% call table.table_header() %}
+              {% call table.table_row() %}
+                {{ table.table_head("Connected accounts") }}
+                {{ table.table_head("Status", class="w-28") }}
+                {{ table.table_head("", class="w-32 text-right") }}
+              {% endcall %}
+            {% endcall %}
+            {% call table.table_body() %}
 
-            {# ── Google ── #}
-            {% set google_connected = "google" in _cp %}
-            <div class="flex items-center justify-between gap-4 p-4">
-              <div class="flex items-center gap-3 min-w-0">
-                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background">
-                  <svg class="size-4" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                  </svg>
-                </span>
-                <div class="min-w-0">
-                  <div class="text-sm font-medium">Google</div>
-                  <div class="text-xs text-muted-foreground">
-                    {% if google_connected %}Connected{% else %}Not connected{% endif %}
+              {# Google #}
+              {% set google_connected = "google" in _cp %}
+              {% call table.table_row() %}
+                {% call table.table_cell() %}
+                  <div class="flex items-center gap-3">
+                    <span class="flex size-7 shrink-0 items-center justify-center rounded-md border bg-background">
+                      <svg class="size-3.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+                    </span>
+                    <span class="text-sm font-medium">Google</span>
                   </div>
-                </div>
-              </div>
-              {% if google_connected %}
-                <form method="post" action="/settings/connected-accounts/google/disconnect">
-  {{ csrf_input() }}
-                  {% set _can_disconnect = (has_password is defined and has_password) or ("github" in _cp) %}
-                  {% if _can_disconnect %}
-                    {% call button.button(type="submit", variant="outline") %}Disconnect{% endcall %}
+                {% endcall %}
+                {% call table.table_cell() %}
+                  {{ badge.badge("Connected" if google_connected else "Not connected", variant=("success" if google_connected else "secondary")) }}
+                {% endcall %}
+                {% call table.table_cell(class="text-right") %}
+                  {% if google_connected %}
+                    {% set _can = has_password or ("github" in _cp) %}
+                    <form method="post" action="/settings/connected-accounts/google/disconnect">{{ csrf_input() }}
+                      {% call button.button(type="submit", size="sm", variant="outline", attrs={"disabled": "" if not _can else none, "title": "Cannot disconnect only sign-in method" if not _can else none}) %}Disconnect{% endcall %}
+                    </form>
                   {% else %}
-                    {% call button.button(type="button", variant="outline", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
+                    <a href="/auth/google/connect">{% call button.button(type="button", size="sm", variant="outline") %}Connect{% endcall %}</a>
                   {% endif %}
-                </form>
-              {% else %}
-                <a href="/auth/google/connect">
-                  {% call button.button(type="button", variant="outline") %}Connect{% endcall %}
-                </a>
-              {% endif %}
-            </div>
+                {% endcall %}
+              {% endcall %}
 
-            {# ── GitHub ── #}
-            {% set github_connected = "github" in _cp %}
-            <div class="flex items-center justify-between gap-4 p-4">
-              <div class="flex items-center gap-3 min-w-0">
-                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background">
-                  <svg class="size-4" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/>
-                  </svg>
-                </span>
-                <div class="min-w-0">
-                  <div class="text-sm font-medium">GitHub</div>
-                  <div class="text-xs text-muted-foreground">
-                    {% if github_connected %}Connected{% else %}Not connected{% endif %}
+              {# GitHub #}
+              {% set github_connected = "github" in _cp %}
+              {% call table.table_row() %}
+                {% call table.table_cell() %}
+                  <div class="flex items-center gap-3">
+                    <span class="flex size-7 shrink-0 items-center justify-center rounded-md border bg-background">
+                      <svg class="size-3.5" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+                    </span>
+                    <span class="text-sm font-medium">GitHub</span>
                   </div>
-                </div>
-              </div>
-              {% if github_connected %}
-                <form method="post" action="/settings/connected-accounts/github/disconnect">
-  {{ csrf_input() }}
-                  {% set _can_disconnect_gh = (has_password is defined and has_password) or google_connected %}
-                  {% if _can_disconnect_gh %}
-                    {% call button.button(type="submit", variant="outline") %}Disconnect{% endcall %}
+                {% endcall %}
+                {% call table.table_cell() %}
+                  {{ badge.badge("Connected" if github_connected else "Not connected", variant=("success" if github_connected else "secondary")) }}
+                {% endcall %}
+                {% call table.table_cell(class="text-right") %}
+                  {% if github_connected %}
+                    {% set _can_gh = has_password or google_connected %}
+                    <form method="post" action="/settings/connected-accounts/github/disconnect">{{ csrf_input() }}
+                      {% call button.button(type="submit", size="sm", variant="outline", attrs={"disabled": "" if not _can_gh else none}) %}Disconnect{% endcall %}
+                    </form>
                   {% else %}
-                    {% call button.button(type="button", variant="outline", attrs={"disabled": "disabled", "title": "Cannot disconnect your only sign-in method"}) %}Disconnect{% endcall %}
+                    <a href="/auth/github/connect">{% call button.button(type="button", size="sm", variant="outline") %}Connect{% endcall %}</a>
                   {% endif %}
-                </form>
-              {% else %}
-                <a href="/auth/github/connect">
-                  {% call button.button(type="button", variant="outline") %}Connect{% endcall %}
-                </a>
-              {% endif %}
-            </div>
+                {% endcall %}
+              {% endcall %}
 
-          </div>
+            {% endcall %}
+          {% endcall %}
         {% endcall %}
 
       </div>
     {% endcall %}
 
+    {# ── Sessions tab ── #}
+    {% call tabs_ui.tabs_panel(value="sessions", active=(active_tab == "sessions")) %}
+      {% call frame.frame() %}
+        {% call table.table(variant="card") %}
+          {% call table.table_header() %}
+            {% call table.table_row() %}
+              {{ table.table_head("Logged devices — " ~ sessions_total) }}
+              {{ table.table_head("IP address", class="w-36") }}
+              {{ table.table_head("Created", class="w-36") }}
+              {{ table.table_head("Expires", class="w-36") }}
+              {{ table.table_head("Status", class="w-28") }}
+              {{ table.table_head("", class="w-24 text-right") }}
+            {% endcall %}
+          {% endcall %}
+          {% call table.table_body() %}
+            {% if not sessions %}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="h-24 text-center text-muted-foreground", attrs={"colspan": "6"}) %}No active sessions found.{% endcall %}
+              {% endcall %}
+            {% else %}
+              {% for s in sessions %}
+              {% call table.table_row() %}
+                {% call table.table_cell() %}
+                  <div class="flex min-w-0 items-center gap-2">
+                    <svg class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                    <div class="min-w-0">
+                      <div class="truncate text-sm font-medium">
+                        {% if "Firefox" in (s.user_agent or "") %}Firefox
+                        {% elif "Edg/" in (s.user_agent or "") %}Microsoft Edge
+                        {% elif "Chrome" in (s.user_agent or "") %}Chrome
+                        {% elif "Safari" in (s.user_agent or "") %}Safari
+                        {% elif s.user_agent %}{{ s.user_agent[:40] }}{% if s.user_agent | length > 40 %}…{% endif %}
+                        {% else %}Unknown device{% endif %}
+                      </div>
+                      <div class="truncate text-xs text-muted-foreground font-mono">{{ s.id[:16] }}…</div>
+                    </div>
+                  </div>
+                {% endcall %}
+                {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ s.ip_address }}{% endcall %}
+                {% call table.table_cell(class="text-sm text-muted-foreground whitespace-nowrap") %}
+                  {% if s.created_at %}{{ s.created_at.strftime("%b %d, %Y") }}{% else %}—{% endif %}
+                {% endcall %}
+                {% call table.table_cell(class="text-sm text-muted-foreground whitespace-nowrap") %}
+                  {% if s.expires_at %}{{ s.expires_at.strftime("%b %d, %Y") }}{% else %}—{% endif %}
+                {% endcall %}
+                {% call table.table_cell() %}
+                  <div class="flex flex-wrap gap-1">
+                    {% if s.is_current %}{{ badge.badge("Current", variant="success") }}{% endif %}
+                    {{ badge.badge("Expired" if s.is_expired else "Active", variant=("secondary" if s.is_expired else "outline")) }}
+                  </div>
+                {% endcall %}
+                {% call table.table_cell(class="text-right") %}
+                  <form method="post" action="/settings/sessions/{{ s.id }}/revoke" class="flex justify-end">
+                    {{ csrf_input() }}
+                    {% call button.button(type="submit", size="sm", variant="outline", attrs={"disabled": "" if s.is_current or s.is_expired else none}) %}Revoke{% endcall %}
+                  </form>
+                {% endcall %}
+              {% endcall %}
+              {% endfor %}
+            {% endif %}
+          {% endcall %}
+        {% endcall %}
+        {# Pagination #}
+        {% if sessions_total_pages > 1 %}
+          <div class="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
+            <span>{{ sessions_total }} session{{ "s" if sessions_total != 1 else "" }} · page {{ sessions_page }} of {{ sessions_total_pages }}</span>
+            <div class="flex gap-2">
+              {% if sessions_page > 1 %}
+                <a href="?tab=sessions&spage={{ sessions_page - 1 }}" class="inline-flex h-7 items-center rounded-md border px-2.5 text-xs hover:bg-accent transition-colors">Previous</a>
+              {% endif %}
+              {% if sessions_page < sessions_total_pages %}
+                <a href="?tab=sessions&spage={{ sessions_page + 1 }}" class="inline-flex h-7 items-center rounded-md border px-2.5 text-xs hover:bg-accent transition-colors">Next</a>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+
   {% endcall %}
 </div>
+
+{# ── Change Password Dialog ── #}
+{% call dlg_ui.dialog(attrs={"id": "dlg-change-password"}) %}
+  {% call dlg_ui.dialog_close() %}
+    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  {% endcall %}
+  <div class="border-b px-6 py-4">
+    {% call dlg_ui.dialog_header() %}
+      {{ dlg_ui.dialog_title("Change password" if has_password else "Set password") }}
+      {{ dlg_ui.dialog_description("Update your account password. You'll stay logged in on this device.") }}
+    {% endcall %}
+  </div>
+  {% call dlg_ui.dialog_panel(class="px-6 py-5") %}
+    {% if has_password %}
+    <div class="grid gap-1.5">
+      <label class="text-sm font-medium" for="cp-current">Current password</label>
+      <input id="cp-current" name="current_password" type="password" autocomplete="current-password"
+        class="flex h-9 w-full rounded-md border bg-background px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring/50" placeholder="••••••••">
+    </div>
+    {% endif %}
+    <div class="grid gap-1.5">
+      <label class="text-sm font-medium" for="cp-new">New password</label>
+      <input id="cp-new" name="new_password" type="password" autocomplete="new-password"
+        class="flex h-9 w-full rounded-md border bg-background px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring/50" placeholder="Min. 8 characters">
+    </div>
+    <div class="grid gap-1.5">
+      <label class="text-sm font-medium" for="cp-confirm">Confirm password</label>
+      <input id="cp-confirm" name="confirm_password" type="password" autocomplete="new-password"
+        class="flex h-9 w-full rounded-md border bg-background px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring/50" placeholder="Repeat new password">
+    </div>
+    <p id="cp-error" hidden class="text-xs text-destructive"></p>
+  {% endcall %}
+  <div class="border-t px-6 py-4">
+    {% call dlg_ui.dialog_footer() %}
+      {{ dlg_ui.dialog_cancel("Cancel") }}
+      <button id="cp-submit" type="button"
+        class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 disabled:opacity-50 sm:h-8">
+        Save password
+      </button>
+    {% endcall %}
+  </div>
+{% endcall %}
+
+{# ── 2FA Setup Dialog ── #}
+{% call dlg_ui.dialog(attrs={"id": "dlg-2fa-setup"}) %}
+  {% call dlg_ui.dialog_close() %}
+    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  {% endcall %}
+
+  {# Step 1 — scan QR #}
+  <div id="dlg-2fa-step1">
+    <div class="border-b px-6 py-4">
+      {% call dlg_ui.dialog_header() %}
+        {{ dlg_ui.dialog_title("Set up two-factor authentication") }}
+        {{ dlg_ui.dialog_description("Scan the QR code with Google Authenticator, Authy, or any TOTP app.") }}
+      {% endcall %}
+    </div>
+    {% call dlg_ui.dialog_panel(class="px-6 py-5 items-center") %}
+      <div class="flex justify-center">
+        {{ media_qr.qr_box("dlg-2fa-qr-canvas") }}
+      </div>
+      <div class="grid gap-1.5">
+        <p class="text-xs text-muted-foreground text-center">Or enter the key manually:</p>
+        <code id="dlg-2fa-secret" class="block rounded-md border bg-muted px-3 py-2 text-center text-sm font-mono tracking-widest break-all select-all"></code>
+      </div>
+      <p id="dlg-2fa-step1-error" hidden class="text-xs text-destructive"></p>
+    {% endcall %}
+    <div class="border-t px-6 py-4">
+      {% call dlg_ui.dialog_footer() %}
+        {{ dlg_ui.dialog_cancel("Cancel") }}
+        <button id="dlg-2fa-next" type="button" disabled
+          class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 disabled:opacity-50 sm:h-8">
+          Next
+        </button>
+      {% endcall %}
+    </div>
+  </div>
+
+  {# Step 2 — enter code #}
+  <div id="dlg-2fa-step2" hidden>
+    <div class="border-b px-6 py-4">
+      {% call dlg_ui.dialog_header() %}
+        {{ dlg_ui.dialog_title("Enter verification code") }}
+        {{ dlg_ui.dialog_description("Enter the 6-digit code from your authenticator app to confirm setup.") }}
+      {% endcall %}
+    </div>
+    {% call dlg_ui.dialog_panel(class="px-6 py-5") %}
+      <div class="grid gap-1.5">
+        <label class="text-sm font-medium" for="dlg-2fa-code">Verification code</label>
+        <input id="dlg-2fa-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"
+          class="flex h-9 w-full rounded-md border bg-background px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring/50 tracking-widest text-center" placeholder="000000">
+      </div>
+      <p id="dlg-2fa-step2-error" hidden class="text-xs text-destructive"></p>
+    {% endcall %}
+    <div class="border-t px-6 py-4">
+      {% call dlg_ui.dialog_footer() %}
+        <button id="dlg-2fa-back" type="button"
+          class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-input bg-popover px-4 text-sm font-medium text-foreground shadow-xs/5 outline-none transition-shadow hover:bg-accent/50 sm:h-8">
+          Back
+        </button>
+        <button id="dlg-2fa-confirm" type="button"
+          class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 disabled:opacity-50 sm:h-8">
+          Confirm
+        </button>
+      {% endcall %}
+    </div>
+  </div>
+
+  {# Step 3 — backup codes #}
+  <div id="dlg-2fa-step3" hidden>
+    <div class="border-b px-6 py-4">
+      {% call dlg_ui.dialog_header() %}
+        <div class="flex items-center gap-2 text-green-600 dark:text-green-400">
+          <svg class="size-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          {{ dlg_ui.dialog_title("2FA enabled!") }}
+        </div>
+        {{ dlg_ui.dialog_description("Save these backup codes somewhere safe. Each can be used once if you lose your authenticator.") }}
+      {% endcall %}
+    </div>
+    {% call dlg_ui.dialog_panel(class="px-6 py-5") %}
+      <div id="dlg-2fa-backup-codes" class="rounded-md border bg-muted p-3 font-mono text-sm grid grid-cols-2 gap-1"></div>
+    {% endcall %}
+    <div class="border-t px-6 py-4">
+      {% call dlg_ui.dialog_footer() %}
+        <button id="dlg-2fa-done" type="button" data-slot="dialog-close"
+          class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 sm:h-8">
+          Done
+        </button>
+      {% endcall %}
+    </div>
+  </div>
+{% endcall %}
+
+{# ── Passkey cross-device Dialog ── #}
+{% call dlg_ui.dialog(attrs={"id": "dlg-passkey-other"}) %}
+  {% call dlg_ui.dialog_close() %}
+    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  {% endcall %}
+  {% call dlg_ui.dialog_panel(class="px-6 py-8 text-center") %}
+    <div class="flex justify-center mb-4">
+      <svg class="size-14 text-muted-foreground/60" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="5" y="2" width="14" height="20" rx="2"/>
+        <path d="M12 18h.01"/>
+        <path d="M8 7h8M8 11h4"/>
+      </svg>
+    </div>
+    {{ dlg_ui.dialog_title("Use another device") }}
+    <p class="mt-2 text-sm text-muted-foreground">Your device doesn't support passkeys, but you can create one on your phone or tablet.</p>
+  {% endcall %}
+  <div class="border-t px-6 py-4">
+    {% call dlg_ui.dialog_footer() %}
+      {{ dlg_ui.dialog_cancel("Cancel") }}
+      <button id="passkey-cross-device-btn" type="button"
+        class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 sm:h-8">
+        Use another device
+      </button>
+    {% endcall %}
+  </div>
+{% endcall %}
+
+<div id="settings-field-error" hidden
+  class="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
+  <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span id="settings-field-error-msg"></span>
+</div>
+
+{% app_script "settings-security" %}
+(function(){
+  // runtime (_runtime.html) handles: dialog open via data-slot="dialog-trigger" / data-dialog-trigger,
+  // close via data-slot="dialog-close", Escape key. We only handle custom logic here.
+
+  // ── Open dialogs for buttons using data-open-dialog (non-runtime pattern) ──
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest('[data-open-dialog]');
+    if(!btn) return;
+    var dlg = document.getElementById(btn.getAttribute('data-open-dialog'));
+    if(dlg && !dlg.open) dlg.showModal();
+  });
+
+  // ── Reset dialogs on close ────────────────────────────────────────
+  var dlgPw = document.getElementById('dlg-change-password');
+  if(dlgPw) dlgPw.addEventListener('close', function(){
+    ['cp-current','cp-new','cp-confirm'].forEach(function(id){
+      var el = document.getElementById(id); if(el) el.value = '';
+    });
+    var err = document.getElementById('cp-error');
+    if(err){ err.hidden = true; err.textContent = ''; }
+    var btn = document.getElementById('cp-submit');
+    if(btn){ btn.disabled = false; btn.textContent = 'Save password'; }
+  });
+
+  var dlg2fa = document.getElementById('dlg-2fa-setup');
+  if(dlg2fa) dlg2fa.addEventListener('close', function(){ reset2faDialog(); });
+
+  // ── Passkey detection ──────────────────────────────────────────
+  var passkeyStatus = document.getElementById('passkey-status');
+  var passkeyAddBtn = document.getElementById('passkey-add-btn');
+  var passkeyOtherBtn = document.getElementById('passkey-other-btn');
+
+  function showPasskeyBtn(platform){
+    if(platform){
+      if(passkeyStatus) passkeyStatus.textContent = 'Available on this device';
+      if(passkeyAddBtn) passkeyAddBtn.hidden = false;
+      if(passkeyOtherBtn) passkeyOtherBtn.hidden = false;
+    } else {
+      if(passkeyStatus) passkeyStatus.textContent = 'Not available on this device';
+      if(passkeyOtherBtn) passkeyOtherBtn.hidden = false;
+    }
+  }
+
+  if(window.PublicKeyCredential){
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+      .then(showPasskeyBtn)
+      .catch(function(){ showPasskeyBtn(false); });
+  } else {
+    if(passkeyStatus) passkeyStatus.textContent = 'Not supported in this browser';
+    if(passkeyOtherBtn) passkeyOtherBtn.hidden = false;
+  }
+
+  function triggerWebAuthn(attachment){
+    alert('Passkey registration coming soon (WebAuthn backend pending).');
+  }
+
+  if(passkeyAddBtn) passkeyAddBtn.addEventListener('click', function(){ triggerWebAuthn('platform'); });
+
+  var crossDeviceBtn = document.getElementById('passkey-cross-device-btn');
+  if(crossDeviceBtn) crossDeviceBtn.addEventListener('click', function(){ triggerWebAuthn('cross-platform'); });
+
+  // ── Change password ────────────────────────────────────────────
+  var cpSubmit = document.getElementById('cp-submit');
+  if(cpSubmit){
+    cpSubmit.addEventListener('click', function(){
+      var current = (document.getElementById('cp-current') || {value:''}).value;
+      var newPw = (document.getElementById('cp-new') || {value:''}).value;
+      var confirm = (document.getElementById('cp-confirm') || {value:''}).value;
+      var errEl = document.getElementById('cp-error');
+
+      function showErr(msg){ if(errEl){ errEl.textContent = msg; errEl.hidden = false; } }
+
+      if(newPw.length < 8){ showErr('Password must be at least 8 characters.'); return; }
+      if(newPw !== confirm){ showErr('Passwords do not match.'); return; }
+
+      cpSubmit.disabled = true; cpSubmit.textContent = 'Saving…';
+      if(errEl) errEl.hidden = true;
+
+      fetch('/settings/change-password', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({current_password: current, new_password: newPw, confirm_password: confirm})
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(body){
+        if(!body.ok){ showErr(body.error || 'Failed.'); cpSubmit.disabled = false; cpSubmit.textContent = 'Save password'; return; }
+        if(dlgPw) dlgPw.close();
+        window.location.reload();
+      })
+      .catch(function(){ showErr('Network error.'); cpSubmit.disabled = false; cpSubmit.textContent = 'Save password'; });
+    });
+  }
+
+  // ── 2FA dialog ─────────────────────────────────────────────────
+  function reset2faDialog(){
+    showStep(1);
+    var codeInput = document.getElementById('dlg-2fa-code');
+    if(codeInput) codeInput.value = '';
+    var nextBtn = document.getElementById('dlg-2fa-next');
+    if(nextBtn){ nextBtn.disabled = true; nextBtn.textContent = 'Next'; }
+    ['dlg-2fa-step1-error','dlg-2fa-step2-error'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el){ el.hidden = true; el.textContent = ''; }
+    });
+    var canvas = document.getElementById('dlg-2fa-qr-canvas');
+    if(canvas) canvas.innerHTML = '';
+    var secretEl = document.getElementById('dlg-2fa-secret');
+    if(secretEl) secretEl.textContent = '';
+  }
+
+  function showStep(n){
+    [1,2,3].forEach(function(i){
+      var el = document.getElementById('dlg-2fa-step' + i);
+      if(el) el.hidden = (i !== n);
+    });
+  }
+
+  function show2faErr(step, msg){
+    var el = document.getElementById('dlg-2fa-step' + step + '-error');
+    if(el){ el.textContent = msg; el.hidden = false; }
+  }
+
+  function render2faQR(uri, fallbackUrl){
+    var canvas = document.getElementById('dlg-2fa-qr-canvas');
+    if(!canvas) return;
+    canvas.innerHTML = '';
+    var dark = document.documentElement.classList.contains('dark');
+    var fg = dark ? '#fafafa' : '#18181b';
+    var bg = dark ? '#09090b' : '#ffffff';
+    if(uri && typeof QRCodeStyling !== 'undefined'){
+      try{
+        var qr = new QRCodeStyling({
+          width:200, height:200, type:'canvas', data:uri,
+          qrOptions:{errorCorrectionLevel:'H'},
+          dotsOptions:{color:fg, type:'rounded'},
+          backgroundOptions:{color:bg},
+          cornersSquareOptions:{type:'extra-rounded', color:fg},
+          cornersDotOptions:{color:fg}
+        });
+        qr.append(canvas);
+        return;
+      }catch(e){}
+    }
+    if(uri && typeof QRCode !== 'undefined'){
+      try{ new QRCode(canvas,{text:uri,width:200,height:200,colorDark:fg,colorLight:bg,correctLevel:QRCode.CorrectLevel.H}); return; }catch(e){}
+    }
+    if(fallbackUrl){
+      var img = document.createElement('img');
+      img.src = fallbackUrl;
+      img.alt = 'QR code';
+      img.style.cssText = 'width:200px;height:200px;border-radius:8px';
+      canvas.appendChild(img);
+      return;
+    }
+    canvas.textContent = 'QR unavailable';
+  }
+
+  // Fetch setup data when the 2FA dialog trigger is clicked
+  var tfa2Trigger = document.querySelector('[data-open-dialog="dlg-2fa-setup"]');
+  if(tfa2Trigger){
+    tfa2Trigger.addEventListener('click', function(){
+      var nextBtn = document.getElementById('dlg-2fa-next');
+      fetch('/settings/2fa/setup-json', {method: 'POST'})
+      .then(function(r){ return r.json(); })
+      .then(function(body){
+        if(!body.ok){ show2faErr(1, body.error || 'Failed to start setup.'); return; }
+        render2faQR(body.uri);
+        var secretEl = document.getElementById('dlg-2fa-secret');
+        if(secretEl) secretEl.textContent = body.secret;
+        if(nextBtn){ nextBtn.disabled = false; }
+      })
+      .catch(function(){ show2faErr(1, 'Network error. Please try again.'); });
+    });
+  }
+
+  var nextBtn = document.getElementById('dlg-2fa-next');
+  if(nextBtn) nextBtn.addEventListener('click', function(){
+    showStep(2);
+    var inp = document.getElementById('dlg-2fa-code');
+    if(inp) inp.focus();
+  });
+
+  var backBtn = document.getElementById('dlg-2fa-back');
+  if(backBtn) backBtn.addEventListener('click', function(){ showStep(1); });
+
+  var confirmBtn = document.getElementById('dlg-2fa-confirm');
+  if(confirmBtn){
+    confirmBtn.addEventListener('click', function(){
+      var code = (document.getElementById('dlg-2fa-code') || {value:''}).value.trim();
+      if(code.length !== 6){ show2faErr(2, 'Enter the 6-digit code.'); return; }
+      confirmBtn.disabled = true; confirmBtn.textContent = 'Verifying…';
+      var err2 = document.getElementById('dlg-2fa-step2-error');
+      if(err2) err2.hidden = true;
+
+      fetch('/settings/2fa/confirm-json', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code: code})
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(body){
+        confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm';
+        if(!body.ok){ show2faErr(2, body.error || 'Invalid code.'); return; }
+        var codesEl = document.getElementById('dlg-2fa-backup-codes');
+        if(codesEl && body.backup_codes){
+          codesEl.innerHTML = body.backup_codes.map(function(c){
+            return '<span>' + c + '</span>';
+          }).join('');
+        }
+        showStep(3);
+      })
+      .catch(function(){ confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm'; show2faErr(2, 'Network error.'); });
+    });
+  }
+
+  var doneBtn = document.getElementById('dlg-2fa-done');
+  if(doneBtn) doneBtn.addEventListener('click', function(){ window.location.reload(); });
+
+  document.addEventListener('keydown', function(e){
+    if(e.key !== 'Enter') return;
+    var step2 = document.getElementById('dlg-2fa-step2');
+    if(step2 && !step2.hidden && confirmBtn && !confirmBtn.disabled) confirmBtn.click();
+  });
+})();
+{% end_app_script %}
+
+{% app_script "settings-profile" %}
+(function(){
+  var editingRow = null;
+
+  document.addEventListener('click', function(e){
+    var startBtn = e.target.closest('[data-start-edit]');
+    if(startBtn){ enterEdit(startBtn.closest('[data-editable-row]')); return; }
+    var saveBtn = e.target.closest('[data-save-edit]');
+    if(saveBtn){ saveEdit(saveBtn.closest('[data-editable-row]')); return; }
+    var cancelBtn = e.target.closest('[data-cancel-edit]');
+    if(cancelBtn){ exitEdit(cancelBtn.closest('[data-editable-row]')); return; }
+  });
+
+  document.addEventListener('keydown', function(e){
+    if(!editingRow) return;
+    if(e.key === 'Escape'){ e.preventDefault(); exitEdit(editingRow); return; }
+    var inp = editingRow.querySelector('[data-edit-input]');
+    if(e.key === 'Enter' && inp && inp.tagName !== 'TEXTAREA'){ e.preventDefault(); saveEdit(editingRow); }
+  });
+
+  function enterEdit(row){
+    if(editingRow && editingRow !== row) exitEdit(editingRow);
+    editingRow = row;
+    row.querySelectorAll('[data-view]').forEach(function(el){ el.hidden = true; });
+    row.querySelectorAll('[data-edit]').forEach(function(el){ el.hidden = false; });
+    var inp = row.querySelector('[data-edit-input]');
+    if(inp){ inp.focus(); if(inp.select) inp.select(); }
+    setAllPencilsDisabled(true, row);
+  }
+
+  function exitEdit(row){
+    row.querySelectorAll('[data-view]').forEach(function(el){ el.hidden = false; });
+    row.querySelectorAll('[data-edit]').forEach(function(el){ el.hidden = true; });
+    editingRow = null;
+    setAllPencilsDisabled(false, null);
+  }
+
+  function setAllPencilsDisabled(disabled, exceptRow){
+    document.querySelectorAll('[data-start-edit]').forEach(function(btn){
+      if(btn.closest('[data-editable-row]') !== exceptRow) btn.disabled = disabled;
+    });
+  }
+
+  function saveEdit(row){
+    var field = row.getAttribute('data-editable-row');
+    var inp = row.querySelector('[data-edit-input]');
+    var value = inp ? inp.value.trim() : '';
+    var saveBtn = row.querySelector('[data-save-edit]');
+    if(saveBtn) saveBtn.disabled = true;
+
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.content : '';
+
+    fetch('/settings/update-field', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+      body: JSON.stringify({field: field, value: value})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(body){
+      if(!body.ok) throw new Error(body.error || 'Update failed.');
+      var viewEl = row.querySelector('[data-view]');
+      if(viewEl) viewEl.textContent = value || '—';
+      exitEdit(row);
+    })
+    .catch(function(err){
+      showError(err.message);
+      if(saveBtn) saveBtn.disabled = false;
+    });
+  }
+
+  function showError(msg){
+    var toast = document.getElementById('settings-field-error');
+    var msgEl = document.getElementById('settings-field-error-msg');
+    if(!toast) return;
+    msgEl.textContent = msg;
+    toast.hidden = false;
+    setTimeout(function(){ toast.hidden = true; }, 4000);
+  }
+})();
+{% end_app_script %}

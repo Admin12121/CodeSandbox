@@ -8,8 +8,8 @@ from botocore.client import Config
 
 from codesandbox.config import get_settings
 
-_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
-_EXTS = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp"}
+_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/avif", "image/gif"}
+_EXTS = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp", "image/avif": "avif", "image/gif": "gif"}
 _MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 
 _s3_lock = threading.Lock()

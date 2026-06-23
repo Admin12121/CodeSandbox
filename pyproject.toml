@@ -16,7 +16,7 @@ dependencies = [
     "requests>=2.34.2",
     "boto3>=1.34",
     "cryptography>=42.0",
-    "qrcode>=7.4",
+    "qrcode[pil]>=7.4",
 ]
 
 [tool.uv.workspace]

@@ -1,0 +1,412 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/media/upload.html" as media_upload %}
+
+{% macro _edit_actions() %}
+<div class="flex justify-end gap-1">
+  <div data-view>
+    {% call button.button(type="button", variant="ghost", size="icon-xs", attrs={"data-start-edit": "", "aria-label": "Edit"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
+    {% endcall %}
+  </div>
+  <div data-edit hidden class="flex gap-1">
+    {% call button.button(type="button", variant="ghost", size="icon-xs", attrs={"data-save-edit": "", "aria-label": "Save"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    {% endcall %}
+    {% call button.button(type="button", variant="ghost", size="icon-xs", attrs={"data-cancel-edit": "", "aria-label": "Cancel"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    {% endcall %}
+  </div>
+</div>
+{% endmacro %}
+
+{% set tu = target_user %}
+{% set update_url = "/platform/users/" ~ tu.id ~ "/update-field" %}
+
+<div class="grid gap-4 p-2">
+
+  {% if info is defined and info %}
+    <div class="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/8 px-3 py-2.5 text-sm text-primary">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+      {{ info }}
+    </div>
+  {% endif %}
+  {% if error is defined and error %}
+    <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+      <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {{ error }}
+    </div>
+  {% endif %}
+
+  {# Page header #}
+  <div class="flex min-w-0 items-center justify-between gap-3">
+    <div class="flex min-w-0 items-center gap-3">
+      <a href="/platform/users" class="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground transition-colors hover:text-foreground">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+      </a>
+      <div class="min-w-0">
+        <h1 class="truncate text-lg font-semibold">{{ tu.name }}</h1>
+        <p class="truncate text-sm text-muted-foreground">{{ tu.email }}</p>
+      </div>
+    </div>
+    <div class="flex shrink-0 flex-wrap justify-end gap-2">
+      {{ badge.badge(tu.role_label, variant="outline") }}
+      {% if tu.status == "banned" %}{{ badge.badge("Banned", variant="destructive") }}
+      {% elif tu.status == "active" %}{{ badge.badge("Active", variant="success") }}
+      {% else %}{{ badge.badge("Inactive", variant="secondary") }}{% endif %}
+      {% if tu.email_verified %}{{ badge.badge("Verified", variant="success") }}
+      {% else %}{{ badge.badge("Unverified", variant="secondary") }}{% endif %}
+    </div>
+  </div>
+
+  {# Two-column layout: details left, orgs right #}
+  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
+
+    {# ── Left: avatar + editable details table ── #}
+    <div class="grid content-start gap-4">
+
+      {# Avatar #}
+      {% call frame.frame() %}
+        <div class="p-4">
+          {{ media_upload.image_upload(
+            id="platform-user-avatar",
+            entity_name=tu.name,
+            preview_url=tu.avatar_url,
+            upload_url="/platform/users/" ~ tu.id ~ "/upload-avatar",
+            label=tu.name,
+            description="PNG, JPG, WebP under 2 MB",
+            editable=true,
+            bind_key="user:" ~ tu.id
+          ) }}
+        </div>
+      {% endcall %}
+
+      {# Editable details table #}
+      {% call frame.frame() %}
+        {% call table.table(variant="card") %}
+          {% call table.table_header() %}
+            {% call table.table_row() %}
+              {{ table.table_head("User details", class="w-40") }}
+              {{ table.table_head("Value") }}
+              {{ table.table_head("", class="w-24 text-right") }}
+            {% endcall %}
+          {% endcall %}
+          {% call table.table_body() %}
+
+            {# ID — read-only #}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="font-medium text-sm") %}User ID{% endcall %}
+              {% call table.table_cell(class="font-mono text-xs text-muted-foreground break-all") %}{{ tu.id }}{% endcall %}
+              {% call table.table_cell() %}{% endcall %}
+            {% endcall %}
+
+            {# Name — editable #}
+            {% call table.table_row(attrs={"data-editable-row": "name"}) %}
+              {% call table.table_cell(class="font-medium text-sm align-middle") %}Name{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                <span data-view>{{ tu.name or "—" }}</span>
+                <input data-edit hidden data-edit-input type="text" value="{{ tu.name or '' }}"
+                  class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {% endcall %}
+              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+            {% endcall %}
+
+            {# Email — read-only #}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="font-medium text-sm") %}Email{% endcall %}
+              {% call table.table_cell() %}
+                <div class="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>{{ tu.email }}</span>
+                  {% if tu.email_verified %}
+                    <svg class="size-4 shrink-0 text-emerald-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Verified"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                  {% else %}
+                    {{ badge.badge("Unverified", variant="secondary") }}
+                  {% endif %}
+                </div>
+              {% endcall %}
+              {% call table.table_cell() %}{% endcall %}
+            {% endcall %}
+
+            {# Phone — editable #}
+            {% call table.table_row(attrs={"data-editable-row": "phone"}) %}
+              {% call table.table_cell(class="font-medium text-sm align-middle") %}Phone{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                <span data-view>{{ tu.phone or "—" }}</span>
+                <input data-edit hidden data-edit-input type="tel" value="{{ tu.phone or '' }}"
+                  placeholder="+1 555 000 0000"
+                  class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              {% endcall %}
+              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+            {% endcall %}
+
+            {# Platform Role — editable select #}
+            {% call table.table_row(attrs={"data-editable-row": "platform_role"}) %}
+              {% call table.table_cell(class="font-medium text-sm align-middle") %}Platform role{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                <span data-view>{{ tu.role_label }}</span>
+                <select data-edit hidden data-edit-input
+                  class="h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <option value="user" {% if tu.platform_role == "user" %}selected{% endif %}>User</option>
+                  <option value="system_staff" {% if tu.platform_role == "system_staff" %}selected{% endif %}>App Staff</option>
+                  <option value="system_admin" {% if tu.platform_role == "system_admin" %}selected{% endif %}>System Admin</option>
+                </select>
+              {% endcall %}
+              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+            {% endcall %}
+
+            {# Status — editable select #}
+            {% call table.table_row(attrs={"data-editable-row": "status"}) %}
+              {% call table.table_cell(class="font-medium text-sm align-middle") %}Status{% endcall %}
+              {% call table.table_cell() %}
+                <div data-view>
+                  {% if tu.status == "banned" %}{{ badge.badge("Banned", variant="destructive") }}
+                  {% elif tu.status == "active" %}{{ badge.badge("Active", variant="success") }}
+                  {% else %}{{ badge.badge("Inactive", variant="secondary") }}{% endif %}
+                </div>
+                <select data-edit hidden data-edit-input
+                  class="h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <option value="active" {% if tu.status == "active" %}selected{% endif %}>Active</option>
+                  <option value="inactive" {% if tu.status == "inactive" %}selected{% endif %}>Inactive</option>
+                  <option value="banned" {% if tu.status == "banned" %}selected{% endif %}>Banned</option>
+                </select>
+              {% endcall %}
+              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+            {% endcall %}
+
+            {# Two-factor — read-only #}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="font-medium text-sm") %}Two-factor{% endcall %}
+              {% call table.table_cell() %}
+                <div class="flex flex-wrap gap-1">
+                  {% if totp.enabled %}
+                    {{ badge.badge("Enabled", variant="success") }}
+                    {% if totp.verified %}{{ badge.badge("Verified", variant="outline") }}{% endif %}
+                  {% else %}
+                    <span class="text-sm text-muted-foreground">Not enabled</span>
+                  {% endif %}
+                </div>
+              {% endcall %}
+              {% call table.table_cell() %}{% endcall %}
+            {% endcall %}
+
+            {# Password — read-only #}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="font-medium text-sm") %}Password{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ "Set" if tu.has_password else "Not set" }}{% endcall %}
+              {% call table.table_cell() %}{% endcall %}
+            {% endcall %}
+
+            {# Auth accounts — read-only #}
+            {% if auth_accounts %}
+              {% for acct in auth_accounts %}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="font-medium text-sm") %}{{ acct.provider.title() }}{% endcall %}
+                {% call table.table_cell(class="font-mono text-xs text-muted-foreground") %}{{ acct.account_id }}{% endcall %}
+                {% call table.table_cell() %}{% endcall %}
+              {% endcall %}
+              {% endfor %}
+            {% endif %}
+
+            {# Created — read-only #}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="font-medium text-sm") %}Created{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                {% if tu.created_at %}{{ tu.created_at.strftime("%b %d, %Y %H:%M UTC") }}{% else %}—{% endif %}
+              {% endcall %}
+              {% call table.table_cell() %}{% endcall %}
+            {% endcall %}
+
+            {# Last login — read-only #}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="font-medium text-sm") %}Last login{% endcall %}
+              {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                {% if tu.last_login_at %}{{ tu.last_login_at.strftime("%b %d, %Y %H:%M UTC") }}{% else %}Never{% endif %}
+              {% endcall %}
+              {% call table.table_cell() %}{% endcall %}
+            {% endcall %}
+
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+
+    </div>
+
+    {# ── Right: org membership tables ── #}
+    <div class="grid content-start gap-4">
+
+      {% if owned_orgs %}
+      {% call frame.frame() %}
+        {% call table.table(variant="card") %}
+          {% call table.table_header() %}
+            {% call table.table_row() %}
+              {{ table.table_head("Owned organizations — " ~ owned_orgs | length) }}
+              {{ table.table_head("Status", class="w-28") }}
+              {{ table.table_head("Members", class="w-20 text-right") }}
+            {% endcall %}
+          {% endcall %}
+          {% call table.table_body() %}
+            {% for org in owned_orgs %}
+            {% call table.table_row() %}
+              {% call table.table_cell() %}
+                <a href="/platform/organizations?org={{ org.id }}" class="block min-w-0 hover:underline">
+                  <div class="truncate font-medium">{{ org.name }}</div>
+                  <div class="truncate text-xs text-muted-foreground">/{{ org.slug }}</div>
+                </a>
+              {% endcall %}
+              {% call table.table_cell() %}
+                {% if org.status == "active" %}{{ badge.badge("Active", variant="success") }}
+                {% elif org.status == "suspended" %}{{ badge.badge("Suspended", variant="destructive") }}
+                {% else %}{{ badge.badge(org.status.title(), variant="secondary") }}{% endif %}
+              {% endcall %}
+              {% call table.table_cell(class="text-right text-sm text-muted-foreground") %}{{ org.member_count }}{% endcall %}
+            {% endcall %}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+      {% endif %}
+
+      {% if member_orgs %}
+      {% call frame.frame() %}
+        {% call table.table(variant="card") %}
+          {% call table.table_header() %}
+            {% call table.table_row() %}
+              {{ table.table_head("Member organizations — " ~ member_orgs | length) }}
+              {{ table.table_head("Status", class="w-28") }}
+              {{ table.table_head("Members", class="w-20 text-right") }}
+            {% endcall %}
+          {% endcall %}
+          {% call table.table_body() %}
+            {% for org in member_orgs %}
+            {% call table.table_row() %}
+              {% call table.table_cell() %}
+                <a href="/platform/organizations?org={{ org.id }}" class="block min-w-0 hover:underline">
+                  <div class="truncate font-medium">{{ org.name }}</div>
+                  <div class="truncate text-xs text-muted-foreground">/{{ org.slug }}</div>
+                </a>
+              {% endcall %}
+              {% call table.table_cell() %}
+                {% if org.status == "active" %}{{ badge.badge("Active", variant="success") }}
+                {% elif org.status == "suspended" %}{{ badge.badge("Suspended", variant="destructive") }}
+                {% else %}{{ badge.badge(org.status.title(), variant="secondary") }}{% endif %}
+              {% endcall %}
+              {% call table.table_cell(class="text-right text-sm text-muted-foreground") %}{{ org.member_count }}{% endcall %}
+            {% endcall %}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+      {% endif %}
+
+      {% if not owned_orgs and not member_orgs %}
+      {% call frame.frame(class="p-4") %}
+        <div class="flex items-center gap-3 text-sm text-muted-foreground">
+          <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>
+          Not a member of any organization.
+        </div>
+      {% endcall %}
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+<div id="platform-user-field-error" hidden
+  class="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
+  <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  <span id="platform-user-field-error-msg"></span>
+</div>
+
+{% app_script "platform-user-detail" %}
+(function(){
+  var UPDATE_URL = {{ update_url | tojson }};
+  var editingRow = null;
+
+  document.addEventListener('click', function(e){
+    var startBtn = e.target.closest('[data-start-edit]');
+    if(startBtn){ enterEdit(startBtn.closest('[data-editable-row]')); return; }
+    var saveBtn = e.target.closest('[data-save-edit]');
+    if(saveBtn){ saveEdit(saveBtn.closest('[data-editable-row]')); return; }
+    var cancelBtn = e.target.closest('[data-cancel-edit]');
+    if(cancelBtn){ exitEdit(cancelBtn.closest('[data-editable-row]')); return; }
+  });
+
+  document.addEventListener('keydown', function(e){
+    if(!editingRow) return;
+    if(e.key === 'Escape'){ e.preventDefault(); exitEdit(editingRow); return; }
+    var inp = editingRow.querySelector('[data-edit-input]');
+    if(e.key === 'Enter' && inp && inp.tagName !== 'TEXTAREA' && inp.tagName !== 'SELECT'){
+      e.preventDefault(); saveEdit(editingRow);
+    }
+  });
+
+  function enterEdit(row){
+    if(editingRow && editingRow !== row) exitEdit(editingRow);
+    editingRow = row;
+    row.querySelectorAll('[data-view]').forEach(function(el){ el.hidden = true; });
+    row.querySelectorAll('[data-edit]').forEach(function(el){ el.hidden = false; });
+    var inp = row.querySelector('[data-edit-input]');
+    if(inp){ inp.focus(); if(inp.select && inp.tagName === 'INPUT') inp.select(); }
+    setAllPencilsDisabled(true, row);
+  }
+
+  function exitEdit(row){
+    row.querySelectorAll('[data-view]').forEach(function(el){ el.hidden = false; });
+    row.querySelectorAll('[data-edit]').forEach(function(el){ el.hidden = true; });
+    editingRow = null;
+    setAllPencilsDisabled(false, null);
+  }
+
+  function setAllPencilsDisabled(disabled, exceptRow){
+    document.querySelectorAll('[data-start-edit]').forEach(function(btn){
+      if(btn.closest('[data-editable-row]') !== exceptRow) btn.disabled = disabled;
+    });
+  }
+
+  function saveEdit(row){
+    var field = row.getAttribute('data-editable-row');
+    var inp = row.querySelector('[data-edit-input]');
+    var value = inp ? inp.value.trim() : '';
+    var saveBtn = row.querySelector('[data-save-edit]');
+    if(saveBtn) saveBtn.disabled = true;
+
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.content : '';
+
+    fetch(UPDATE_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+      body: JSON.stringify({field: field, value: value})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(body){
+      if(!body.ok) throw new Error(body.error || 'Update failed.');
+      var viewEl = row.querySelector('[data-view]');
+      if(viewEl && inp) {
+        if(inp.tagName === 'SELECT'){
+          var opt = inp.options[inp.selectedIndex];
+          viewEl.textContent = opt ? opt.textContent : value;
+        } else {
+          viewEl.textContent = value || '—';
+        }
+      }
+      exitEdit(row);
+    })
+    .catch(function(err){
+      showError(err.message);
+      if(saveBtn) saveBtn.disabled = false;
+    });
+  }
+
+  function showError(msg){
+    var toast = document.getElementById('platform-user-field-error');
+    var msgEl = document.getElementById('platform-user-field-error-msg');
+    if(!toast) return;
+    msgEl.textContent = msg;
+    toast.hidden = false;
+    setTimeout(function(){ toast.hidden = true; }, 4000);
+  }
+})();
+{% end_app_script %}

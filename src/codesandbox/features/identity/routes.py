@@ -18,6 +18,7 @@ def _safe_next(next_path: str, default: str = "/dashboard") -> str:
 from codesandbox.config import get_settings
 from codesandbox.web.blueprint import web_bp
 
+from . import repository
 from .service import (
     confirm_totp_setup,
     create_session_for_user,
@@ -127,6 +128,7 @@ def verify_email_page():
 def resend_verification():
     from codesandbox.shared.session import get_current_session
     from codesandbox.shared.email import send_email_verification
+    from urllib.parse import quote as _quote
     cs = get_current_session()
     if cs and not cs.user.email_verified:
         settings = get_settings()
@@ -135,6 +137,9 @@ def resend_verification():
         sent = send_email_verification(to=cs.user.email, verify_url=verify_url)
         if sent:
             return redirect("/settings?info=Verification+email+sent.+Check+your+inbox.", code=303)
+        # No email service configured — surface the link directly (dev mode)
+        if not settings.resend_api_key:
+            return redirect(f"/settings?dev_url={_quote(verify_url)}&info=No+email+service+configured.+Use+the+link+below.", code=303)
         return redirect("/settings?error=Failed+to+send+verification+email.+Please+try+again+later.", code=303)
     return redirect("/settings", code=303)
 
@@ -217,10 +222,30 @@ def totp_setup_action():
     if redir:
         return redirect(redir.url, code=303)
     data = generate_totp_setup(cs.user.id, cs.user.email)
-    # Store secret in server-side session — never expose in URL/logs
     session["_2fa_setup_secret"] = data["secret"]
     session["_2fa_setup_uri"] = data["uri"]
     return redirect("/settings/2fa?setup=1", code=303)
+
+
+@web_bp.post("/settings/2fa/setup-json")
+def totp_setup_json_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = generate_totp_setup(cs.user.id, cs.user.email)
+    session["_2fa_setup_secret"] = data["secret"]
+    session["_2fa_setup_uri"] = data["uri"]
+    try:
+        import base64, io, qrcode
+        img = qrcode.make(data["uri"])
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        qr_data = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        qr_data = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={urllib.parse.quote(data['uri'])}"
+    return jsonify({"ok": True, "secret": data["secret"], "uri": data["uri"], "qr_url": qr_data})
 
 
 @web_bp.post("/settings/2fa/confirm")
@@ -232,12 +257,29 @@ def totp_confirm_action():
     code = request.form.get("code", "").strip()
     result = confirm_totp_setup(cs.user.id, code)
     if result.ok:
-        # Store backup codes in session for one-time display, then clear
         session["_2fa_backup_codes"] = result.token or ""
         session.pop("_2fa_setup_secret", None)
         session.pop("_2fa_setup_uri", None)
         return redirect("/settings/2fa?enabled=1", code=303)
     return redirect(f"/settings/2fa?error={urllib.parse.quote(result.message)}", code=303)
+
+
+@web_bp.post("/settings/2fa/confirm-json")
+def totp_confirm_json_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    code = str(data.get("code", "")).strip()
+    result = confirm_totp_setup(cs.user.id, code)
+    if result.ok:
+        codes = (result.token or "").split(",") if result.token else []
+        session.pop("_2fa_setup_secret", None)
+        session.pop("_2fa_setup_uri", None)
+        return jsonify({"ok": True, "backup_codes": codes})
+    return jsonify({"ok": False, "error": result.message})
 
 
 @web_bp.post("/settings/2fa/disable")
@@ -247,7 +289,33 @@ def totp_disable_action():
     if redir:
         return redirect(redir.url, code=303)
     disable_2fa(cs.user.id)
-    return redirect("/settings?info=Two-factor+authentication+disabled.", code=303)
+    return redirect("/settings?tab=security&info=Two-factor+authentication+disabled.", code=303)
+
+
+@web_bp.post("/settings/change-password")
+def change_password_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    from werkzeug.security import check_password_hash, generate_password_hash
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    current = str(data.get("current_password", "")).strip()
+    new_pw = str(data.get("new_password", "")).strip()
+    confirm = str(data.get("confirm_password", "")).strip()
+    if not new_pw or len(new_pw) < 8:
+        return jsonify({"ok": False, "error": "Password must be at least 8 characters."}), 400
+    if new_pw != confirm:
+        return jsonify({"ok": False, "error": "Passwords do not match."}), 400
+    if cs.user.password_hash:
+        if not current:
+            return jsonify({"ok": False, "error": "Current password is required."}), 400
+        if not check_password_hash(cs.user.password_hash, current):
+            return jsonify({"ok": False, "error": "Current password is incorrect."}), 400
+    pw_hash = generate_password_hash(new_pw)
+    repository.update_user(cs.user.id, password_hash=pw_hash)
+    return jsonify({"ok": True})
 
 
 # ── GitHub OAuth ──────────────────────────────────────────────────────────────
@@ -425,6 +493,69 @@ def github_connect_callback():
     if not result.ok:
         return redirect(f"/settings?tab=security&error={urllib.parse.quote(result.message)}", code=303)
     return redirect("/settings?tab=security&info=GitHub+account+connected.", code=303)
+
+
+@web_bp.post("/settings/profile")
+def update_profile_action():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    name = request.form.get("name", "").strip()
+    phone = request.form.get("phone", "").strip() or None
+    if not name:
+        return redirect("/settings?error=Name+cannot+be+empty.", code=303)
+    repository.update_user(cs.user.id, name=name, phone=phone)
+    return redirect("/settings?info=Profile+updated+successfully.", code=303)
+
+
+@web_bp.post("/settings/update-field")
+def settings_update_field_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    field = str(data.get("field", "")).strip()
+    value = str(data.get("value", "")).strip() or None
+    allowed = {"name", "phone"}
+    if field not in allowed:
+        return jsonify({"ok": False, "error": "Invalid field."}), 400
+    if field == "name" and not value:
+        return jsonify({"ok": False, "error": "Name is required."}), 400
+    repository.update_user(cs.user.id, **{field: value})
+    return jsonify({"ok": True})
+
+
+@web_bp.post("/settings/upload-avatar")
+def settings_upload_avatar_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    from codesandbox.shared.storage import upload_image_from_filestorage
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    avatar_url = upload_image_from_filestorage(request.files.get("logo"), prefix="avatars")
+    if avatar_url is None:
+        return jsonify({"ok": False, "error": "Invalid file. Use PNG, JPG, or WebP under 2 MB."}), 400
+    repository.update_user(cs.user.id, avatar_url=avatar_url)
+    return jsonify({"ok": True, "url": avatar_url, "media_key": f"user:{cs.user.id}"})
+
+
+@web_bp.post("/settings/sessions/<session_id>/revoke")
+def revoke_session_action(session_id: str):
+    from codesandbox.shared.session import require_session, get_current_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    current = get_current_session()
+    if current:
+        current_obj = repository.find_active_session(current.token_hash)
+        if current_obj and str(current_obj.id) == session_id:
+            return redirect("/settings?tab=sessions&error=Use+Sign+Out+to+end+your+current+session.", code=303)
+    repository.delete_session_by_id(session_id)
+    return redirect("/settings?tab=sessions&info=Session+revoked.", code=303)
 
 
 @web_bp.post("/settings/connected-accounts/<provider>/disconnect")

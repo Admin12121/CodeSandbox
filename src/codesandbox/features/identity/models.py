@@ -28,6 +28,7 @@ class User(Model):
     email_verified = BooleanField(default=False)
     two_factor_enabled = BooleanField(default=False)
     phone = StringField(max_length=30, nullable=True)
+    avatar_url = StringField(max_length=512, nullable=True)
     last_login_at = DateTimeField(nullable=True)
     created_at = DateTimeField(default=_now)
     updated_at = DateTimeField(nullable=True)
