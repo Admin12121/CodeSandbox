@@ -16,6 +16,7 @@ def _safe_next(next_path: str, default: str = "/dashboard") -> str:
     return next_path or default
 
 from codesandbox.config import get_settings
+from codesandbox.shared.limiter import limiter
 from codesandbox.web.blueprint import web_bp
 
 from . import repository
@@ -53,6 +54,7 @@ def _set_session_cookie(response, token: str) -> None:
 
 
 @web_bp.post("/login")
+@limiter.limit("10 per minute")
 def login_action():
     mode = request.form.get("mode", "signin")
     email = request.form.get("email", "").strip()
@@ -125,6 +127,7 @@ def verify_email_page():
 
 
 @web_bp.post("/resend-verification")
+@limiter.limit("5 per hour")
 def resend_verification():
     from codesandbox.shared.session import get_current_session
     from codesandbox.shared.email import send_email_verification
@@ -147,6 +150,7 @@ def resend_verification():
 # ── Password reset ────────────────────────────────────────────────────────────
 
 @web_bp.post("/forgot-password")
+@limiter.limit("5 per hour")
 def forgot_password_action():
     from codesandbox.shared.email import send_password_reset
     email = request.form.get("email", "").strip()
@@ -163,6 +167,7 @@ def forgot_password_action():
 
 
 @web_bp.post("/reset-password")
+@limiter.limit("10 per hour")
 def reset_password_action():
     token = request.form.get("token", "")
     password = request.form.get("password", "")
@@ -178,6 +183,7 @@ def reset_password_action():
 # ── 2FA verification at login ─────────────────────────────────────────────────
 
 @web_bp.post("/two-factor/verify")
+@limiter.limit("10 per minute")
 def two_factor_verify():
     pending_user_id = session.get("_2fa_pending_user_id")
     pending_at = session.get("_2fa_pending_at")
@@ -265,6 +271,7 @@ def totp_confirm_action():
 
 
 @web_bp.post("/settings/2fa/confirm-json")
+@limiter.limit("10 per minute")
 def totp_confirm_json_action():
     from flask import jsonify
     from codesandbox.shared.session import require_session
@@ -293,6 +300,7 @@ def totp_disable_action():
 
 
 @web_bp.post("/settings/change-password")
+@limiter.limit("5 per minute")
 def change_password_action():
     from flask import jsonify
     from codesandbox.shared.session import require_session
@@ -549,6 +557,9 @@ def revoke_session_action(session_id: str):
     cs, redir = require_session()
     if redir:
         return redirect(redir.url, code=303)
+    target = repository.find_session_by_id(session_id)
+    if target is None or str(target.user_id) != str(cs.user.id):
+        return redirect("/settings?tab=sessions&error=Session+not+found.", code=303)
     current = get_current_session()
     if current:
         current_obj = repository.find_active_session(current.token_hash)

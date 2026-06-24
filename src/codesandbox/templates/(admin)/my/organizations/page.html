@@ -355,10 +355,20 @@
       if(!inp) return;
       var raw = inp.value.trim();
       if(!raw) { inp.focus(); return; }
-      var token = raw;
-      var m = raw.match(/\/join\/([^/?#]+)/);
-      if(m) token = m[1];
-      window.location.href = '/my/organizations/join/' + encodeURIComponent(token);
+      // Handle full URL with /join/code/<code>
+      var mCode = raw.match(/\/join\/code\/([^/?#]+)/);
+      if(mCode){
+        window.location.href = '/my/organizations/join/code/' + encodeURIComponent(mCode[1]);
+        return;
+      }
+      // Handle full URL with /join/<token> (email invite)
+      var mToken = raw.match(/\/join\/([^/?#]+)/);
+      if(mToken){
+        window.location.href = '/my/organizations/join/' + encodeURIComponent(mToken[1]);
+        return;
+      }
+      // Plain paste — try invite code route first
+      window.location.href = '/my/organizations/join/code/' + encodeURIComponent(raw);
     });
   }
   if(document.readyState === 'loading'){

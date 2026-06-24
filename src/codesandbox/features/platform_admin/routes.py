@@ -22,6 +22,7 @@ from .service import (
 )
 
 _ADMIN_ROLES = ("system_admin", "system_staff")
+_SUPER_ADMIN_ONLY = ("system_admin",)
 
 
 def _roles_redirect(
@@ -39,6 +40,20 @@ def _roles_redirect(
     return redirect(url, code=303)
 
 
+def _guard_user_mutation(cs, user_id: str, new_platform_role: str | None = None):
+    """Return an error string if the requesting staff lacks permission, else None."""
+    from codesandbox.features.identity import repository as id_repo
+    if cs.user.platform_role == "system_admin":
+        return None
+    # system_staff restrictions:
+    target = id_repo.find_user_by_id(user_id)
+    if target and target.platform_role == "system_admin":
+        return "Staff cannot modify system admin accounts."
+    if new_platform_role == "system_admin":
+        return "Staff cannot promote users to system admin."
+    return None
+
+
 @web_bp.post("/platform/users/<user_id>/update")
 def update_user_action(user_id: str):
     cs, redir = require_platform_role(*_ADMIN_ROLES)
@@ -48,6 +63,10 @@ def update_user_action(user_id: str):
     status = request.form.get("status") or None
     name = request.form.get("name", "").strip() or None
     phone = request.form.get("phone", "").strip() or None
+
+    err = _guard_user_mutation(cs, user_id, new_platform_role=platform_role)
+    if err:
+        return redirect(f"/platform/users?error={urllib.parse.quote(err)}", code=303)
 
     if name is not None or phone is not None:
         from codesandbox.features.identity import repository as id_repo
@@ -90,6 +109,9 @@ def platform_update_user_field_action(user_id: str):
         return jsonify({"ok": False, "error": "Invalid role."}), 400
     if field == "status" and value not in ("active", "inactive", "banned"):
         return jsonify({"ok": False, "error": "Invalid status."}), 400
+    err = _guard_user_mutation(cs, user_id, new_platform_role=value if field == "platform_role" else None)
+    if err:
+        return jsonify({"ok": False, "error": err}), 403
     if field in ("platform_role", "status"):
         update_platform_user(user_id, **{field: value})
     else:
@@ -117,7 +139,7 @@ def platform_upload_user_avatar_action(user_id: str):
 
 @web_bp.post("/platform/roles/create")
 def create_role_action():
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     result, error = create_platform_role(
@@ -132,7 +154,7 @@ def create_role_action():
 
 @web_bp.post("/platform/roles/<role_id>/update")
 def update_role_action(role_id: str):
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     error = update_platform_role(
@@ -146,7 +168,7 @@ def update_role_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/duplicate")
 def duplicate_role_action(role_id: str):
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     new_id, error = duplicate_platform_role(role_id)
@@ -157,7 +179,7 @@ def duplicate_role_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/delete")
 def delete_role_action(role_id: str):
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     error = delete_platform_role(role_id)
@@ -166,7 +188,7 @@ def delete_role_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/permission")
 def toggle_permission_action(role_id: str):
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     key = request.form.get("key", "")
@@ -178,9 +200,9 @@ def toggle_permission_action(role_id: str):
 
 @web_bp.get("/platform/roles/<role_id>/members/search")
 def search_role_members_action(role_id: str):
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
-        return jsonify({"ok": False, "items": []}), 401
+        return jsonify({"ok": False, "items": []}), 403
     query = request.args.get("q", "")
     members = search_platform_role_member_candidates(role_id, query=query, limit=10)
     return jsonify(
@@ -202,7 +224,7 @@ def search_role_members_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/members/add")
 def add_role_member_action(role_id: str):
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     user_id = request.form.get("user_id", "")
@@ -212,7 +234,7 @@ def add_role_member_action(role_id: str):
 
 @web_bp.post("/platform/roles/<role_id>/members/<user_id>/remove")
 def remove_role_member_action(role_id: str, user_id: str):
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     remove_role_member(role_id, user_id)
@@ -224,7 +246,7 @@ def remove_role_member_action(role_id: str, user_id: str):
 
 @web_bp.post("/platform/staff/save")
 def save_staff_action():
-    cs, redir = require_platform_role(*_ADMIN_ROLES)
+    cs, redir = require_platform_role(*_SUPER_ADMIN_ONLY)
     if redir:
         return redirect(redir.url, code=303)
     member_id = request.form.get("member_id") or None

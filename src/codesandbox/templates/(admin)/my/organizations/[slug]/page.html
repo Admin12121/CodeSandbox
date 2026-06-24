@@ -14,12 +14,22 @@
   <div class="grid gap-5 p-3 pt-4">
 
     {# ── Quick actions ── #}
+    {% set _quick_actions = [] %}
+    {% if org.can_manage_members or org.can_invite %}
+      {% set _quick_actions = _quick_actions + [("/my/organizations/" ~ slug ~ "/members",  "Members",  "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "View and manage members")] %}
+    {% endif %}
+    {% if is_owner %}
+      {% set _quick_actions = _quick_actions + [("/my/organizations/" ~ slug ~ "/roles", "Roles", "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "Manage roles and permissions")] %}
+    {% endif %}
+    {% if org.can_edit_settings %}
+      {% set _quick_actions = _quick_actions + [("/my/organizations/" ~ slug ~ "/settings", "Settings", "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "Edit organization settings")] %}
+    {% endif %}
+    {% if org.can_invite %}
+      {% set _quick_actions = _quick_actions + [("/my/organizations/" ~ slug ~ "/members", "Invite", "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", "Add members via email")] %}
+    {% endif %}
+    {% if _quick_actions %}
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {% for href, label, icon_path, desc in [
-        ("/my/organizations/" ~ slug ~ "/members",  "Members",  "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "View and manage members"),
-        ("/my/organizations/" ~ slug ~ "/roles",    "Roles",    "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", "Manage roles and permissions"),
-        ("/my/organizations/" ~ slug ~ "/settings", "Settings", "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z", "Edit organization settings"),
-      ] %}
+      {% for href, label, icon_path, desc in _quick_actions %}
         <a href="{{ href }}" class="flex items-start gap-3 rounded-xl border bg-card p-4 hover:bg-accent transition-colors group">
           <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 transition-colors">
             <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ icon_path }}"/></svg>
@@ -30,18 +40,8 @@
           </div>
         </a>
       {% endfor %}
-      {% if is_owner %}
-        <a href="/my/organizations/{{ slug }}/members" class="flex items-start gap-3 rounded-xl border bg-card p-4 hover:bg-accent transition-colors group">
-          <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 transition-colors">
-            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          </span>
-          <div class="min-w-0">
-            <div class="text-sm font-semibold">Invite</div>
-            <div class="text-xs text-muted-foreground mt-0.5">Add members via email</div>
-          </div>
-        </a>
-      {% endif %}
     </div>
+    {% endif %}
 
     {# ── Overview stats ── #}
     {% call frame.frame() %}

@@ -664,6 +664,8 @@ def my_organization_members(slug: str):
     org = _load_org_or_redirect(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
+    if not org["can_manage_members"] and not org["can_invite"]:
+        return {"_redirect": f"/my/organizations/{slug}"}
     _set_active_workspace(org)
 
     search = request.args.get("search", "").strip()
@@ -717,6 +719,8 @@ def my_organization_roles(slug: str):
     org = _load_org_or_redirect(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
+    if not org["is_owner"]:
+        return {"_redirect": f"/my/organizations/{slug}"}
     _set_active_workspace(org)
 
     from codesandbox.features.organizations.repository import (
@@ -796,6 +800,8 @@ def my_organization_settings(slug: str):
     org = _load_org_or_redirect(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
+    if not org["can_edit_settings"]:
+        return {"_redirect": f"/my/organizations/{slug}"}
     _set_active_workspace(org)
 
     return {

@@ -239,6 +239,13 @@ def list_user_sessions(user_id: str) -> list[Session]:
         return []
 
 
+def find_session_by_id(session_id: str) -> Session | None:
+    try:
+        return Session.objects.filter(id=session_id).first()
+    except Exception:
+        return None
+
+
 def delete_session_by_id(session_id: str) -> None:
     try:
         s = Session.objects.filter(id=session_id).first()

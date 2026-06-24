@@ -7,6 +7,7 @@ from flask import Flask
 
 from codesandbox.config import get_settings
 from codesandbox.infrastructure.nexorm import configure_db
+from codesandbox.shared.limiter import init_limiter
 from codesandbox.web.blueprint import web_bp
 
 _WEAK_KEYS = {"dev-secret-change-in-production", "secret", "changeme", ""}
@@ -43,6 +44,7 @@ def create_app() -> Flask:
     from codesandbox.features.organizations import routes as _org_routes  # noqa: F401
 
     app.register_blueprint(web_bp)
+    init_limiter(app, settings.redis_url)
     app.jinja_env.auto_reload = True
 
     # In debug mode, disable the Jinja2 LRU cache so every request reloads

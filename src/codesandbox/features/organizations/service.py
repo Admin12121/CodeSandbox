@@ -114,6 +114,8 @@ def get_user_org_list(user_id: str) -> list[dict]:
     result = []
     for org in orgs:
         member_count = repository.get_member_count(org.id)
+        is_owner = repository.is_org_owner(org.id, user_id)
+        member_permissions = [] if is_owner else repository.get_member_permissions(org.id, user_id)
         result.append({
             "id": org.id,
             "name": org.name,
@@ -129,6 +131,10 @@ def get_user_org_list(user_id: str) -> list[dict]:
             "member_count": member_count,
             "created_at": org.created_at,
             "created_by": org.created_by,
+            "is_owner": is_owner,
+            "can_invite": is_owner or "org.members.invite" in member_permissions,
+            "can_edit_settings": is_owner or "org.settings.edit" in member_permissions,
+            "can_manage_members": is_owner or "org.members.remove" in member_permissions,
         })
     return result
 
@@ -184,6 +190,8 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
             is_owner = True
             break
 
+    member_permissions = [] if is_owner else repository.get_member_permissions(org.id, user_id)
+
     # Count owners
     owner_count = sum(1 for m in members if "owner" in m["roles"])
 
@@ -219,6 +227,10 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
         "is_owner": is_owner,
         "owner_count": owner_count,
         "roles": roles_list,
+        "member_permissions": member_permissions,
+        "can_invite": is_owner or "org.members.invite" in member_permissions,
+        "can_edit_settings": is_owner or "org.settings.edit" in member_permissions,
+        "can_manage_members": is_owner or "org.members.remove" in member_permissions,
     }
 
 
@@ -236,6 +248,9 @@ def get_org_invite_link_data(slug: str, user_id: str) -> dict | None:
         return None
     if repository.get_member(org.id, user_id) is None:
         return None
+    is_owner = repository.is_org_owner(org.id, user_id)
+    if not is_owner and "org.members.invite" not in repository.get_member_permissions(org.id, user_id):
+        return None
     code = repository.get_or_create_org_invite_code(org.id)
     from codesandbox.config import get_settings
     url = f"{get_settings().app_url}/my/organizations/join/code/{code}"
@@ -246,16 +261,10 @@ def regenerate_org_invite_link(slug: str, user_id: str) -> dict | None:
     org = repository.get_organization_by_slug(slug)
     if org is None:
         return None
-    member = repository.get_member(org.id, user_id)
-    if member is None:
+    if repository.get_member(org.id, user_id) is None:
         return None
-    from .models import OrganizationMemberRole, OrganizationRole
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
-        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    )
-    if not is_owner:
+    is_owner = repository.is_org_owner(org.id, user_id)
+    if not is_owner and "org.members.invite" not in repository.get_member_permissions(org.id, user_id):
         return None
     code = repository.regenerate_org_invite_code(org.id)
     from codesandbox.config import get_settings
@@ -335,25 +344,14 @@ def remove_org_member(
     member_id: str,
     requesting_user_id: str,
 ) -> tuple[bool, str]:
-    """Remove a member. Checks requesting user is owner and not removing self."""
+    """Remove a member. Requires owner status or the org.members.remove permission."""
     requester_member = repository.get_member(org_id, requesting_user_id)
     if requester_member is None:
         return False, "You are not a member of this organization."
 
-    # Check requester is owner
-    from .models import OrganizationMemberRole, OrganizationRole
-    req_roles = OrganizationMemberRole.objects.filter(member_id=requester_member.id).all()
-    is_owner = False
-    for mr in req_roles:
-        try:
-            role = OrganizationRole.objects.get(id=mr.role_id)
-            if role.name == "owner":
-                is_owner = True
-                break
-        except Exception:
-            pass
-    if not is_owner:
-        return False, "Only owners can remove members."
+    is_owner = repository.is_org_owner(org_id, requesting_user_id)
+    if not is_owner and "org.members.remove" not in repository.get_member_permissions(org_id, requesting_user_id):
+        return False, "You don't have permission to remove members."
 
     # Prevent removing self
     from .models import OrganizationMember
@@ -364,6 +362,8 @@ def remove_org_member(
         return False, "Member not found."
     if target.user_id == requesting_user_id:
         return False, "You cannot remove yourself. Use 'Leave organization' instead."
+    if not is_owner and repository.is_org_owner(org_id, target.user_id):
+        return False, "Only owners can remove an owner."
 
     repository.delete_member(member_id)
     return True, ""

@@ -44,14 +44,6 @@
     </div>
   {% endif %}
 
-  <div class="flex min-w-0 items-center justify-between gap-3">
-    <div class="min-w-0">
-      <h1 class="truncate text-lg font-semibold">Account Settings</h1>
-      <p class="truncate text-sm text-muted-foreground">Profile, sign-in, recovery, and active device controls.</p>
-    </div>
-    {{ badge.badge(su.role_label, variant="outline") }}
-  </div>
-
   {% call tabs_ui.tabs(class="grid gap-4") %}
     {% call tabs_ui.tabs_list(class="w-full justify-start overflow-x-auto") %}
       {{ tabs_ui.tabs_tab("Profile", value="profile", active=(active_tab == "profile")) }}
@@ -699,7 +691,8 @@
   }
 
   function triggerWebAuthn(attachment){
-    alert('Passkey registration coming soon (WebAuthn backend pending).');
+    var dlg = document.getElementById('dlg-passkey-other');
+    if(dlg && dlg.open) dlg.close();
   }
 
   if(passkeyAddBtn) passkeyAddBtn.addEventListener('click', function(){ triggerWebAuthn('platform'); });
@@ -812,7 +805,7 @@
       .then(function(r){ return r.json(); })
       .then(function(body){
         if(!body.ok){ show2faErr(1, body.error || 'Failed to start setup.'); return; }
-        render2faQR(body.uri);
+        render2faQR(body.uri, body.qr_url);
         var secretEl = document.getElementById('dlg-2fa-secret');
         if(secretEl) secretEl.textContent = body.secret;
         if(nextBtn){ nextBtn.disabled = false; }

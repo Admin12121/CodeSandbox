@@ -1,4 +1,8 @@
 {% import "components/ui/kbd.html" as kbd %}
+{% import "components/ui/button.html" as btn %}
+{% import "components/ui/input-group.html" as inp_grp %}
+{% import "components/ui/alert-dialog.html" as ad %}
+{% import "components/ui/dialog.html" as dlg %}
 {% import "components/media/qr-code.html" as media_qr %}
 {% import "components/media/avatar.html" as media_avatar %}
 
@@ -92,12 +96,18 @@
           <ul class="m-0 flex w-full flex-col gap-0.5 p-0 list-none">
             <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'], "label": "Overview", "icon": "_org_overview",
               "active": _op == ("/my/organizations/" ~ _ows['slug'])}) }}</li>
+            {% if _ows.get('can_manage_members') or _ows.get('can_invite') %}
             <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "/members", "label": "Members", "icon": "_org_members",
               "active": _op.startswith("/my/organizations/" ~ _ows['slug'] ~ "/members")}) }}</li>
+            {% endif %}
+            {% if _ows.get('is_owner') %}
             <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "/roles", "label": "Roles", "icon": "_org_roles",
               "active": _op.startswith("/my/organizations/" ~ _ows['slug'] ~ "/roles")}) }}</li>
+            {% endif %}
+            {% if _ows.get('can_edit_settings') %}
             <li>{{ nav_link({"href": "/my/organizations/" ~ _ows['slug'] ~ "/settings", "label": "Settings", "icon": "_org_settings",
               "active": _op.startswith("/my/organizations/" ~ _ows['slug'] ~ "/settings")}) }}</li>
+            {% endif %}
           </ul>
         </div>
       {% endif %}
@@ -209,10 +219,10 @@
   <div class="my-1 h-px bg-border"></div>
   <form method="post" action="/logout">
   {{ csrf_input() }}
-    <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-destructive hover:bg-destructive/10 transition-colors">
+    {% call btn.button(type="submit", variant="ghost", size="sm", class="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10") %}
       <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       Log out
-    </button>
+    {% endcall %}
   </form>
 </div>
 
@@ -236,25 +246,28 @@
       </div>
     </div>
     {% if _ws %}
-      {% if _ws.get('is_owner') %}
+      {% if _ws.get('can_edit_settings') or _ws.get('can_invite') %}
       <div class="flex gap-1.5">
-        <a href="/my/organizations/{{ _ws['slug'] }}"
+        {% if _ws.get('can_edit_settings') %}
+        <a href="/my/organizations/{{ _ws['slug'] }}/settings"
            class="flex flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
           <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           Settings
         </a>
-        <button type="button" id="layout-invite-btn" data-invite-slug="{{ _ws['slug'] }}"
-           class="flex flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
+        {% endif %}
+        {% if _ws.get('can_invite') %}
+        {% call btn.button(variant="outline", size="xs", class="flex-1", attrs={"id": "layout-invite-btn", "data-invite-slug": _ws['slug']}) %}
           <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Invite members
-        </button>
+        {% endcall %}
+        {% endif %}
       </div>
-      {% else %}
-      <a href="/my/organizations/{{ _ws['slug'] }}"
-         class="flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs font-medium hover:bg-accent transition-colors">
-        <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg>
-        View workspace
-      </a>
+      {% endif %}
+      {% if not _ws.get('is_owner') %}
+      {% call btn.button(variant="destructive-outline", size="xs", class="w-full" ~ (" mt-1.5" if (_ws.get('can_edit_settings') or _ws.get('can_invite')) else ""), attrs={"data-dialog-trigger": "", "data-target": "leave-org-" ~ _ws['slug']}) %}
+        <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Leave organization
+      {% endcall %}
       {% endif %}
     {% endif %}
   </div>
@@ -304,6 +317,26 @@
     </a>
   </div>
 </div>
+{% endif %}
+
+{# Leave org confirmation dialog — rendered outside ws-menu to avoid stacking context issues #}
+{% if user['platform_role'] == 'user' and active_workspace and not active_workspace.get('is_owner') %}
+{%- set _leave_ws = active_workspace -%}
+{% call ad.alert_dialog(attrs={"id": "leave-org-" ~ _leave_ws['slug']}) %}
+  <div class="p-6 space-y-5">
+    {% call ad.alert_dialog_header() %}
+      {{ ad.alert_dialog_title(text="Leave organization?") }}
+      {{ ad.alert_dialog_description(text="You will lose access to "" ~ _leave_ws['name'] ~ "". This action cannot be undone.") }}
+    {% endcall %}
+    {% call ad.alert_dialog_footer() %}
+      {{ dlg.dialog_cancel(text="Cancel") }}
+      <form method="post" action="/my/organizations/{{ _leave_ws['slug'] }}/leave">
+        {{ csrf_input() }}
+        {% call btn.button(type="submit", variant="destructive") %}Leave{% endcall %}
+      </form>
+    {% endcall %}
+  </div>
+{% endcall %}
 {% endif %}
 
 {# Command palette (Ctrl+J / Search) #}
@@ -385,7 +418,7 @@
 {% include "components/media-runtime.html" %}
 
 {# ── Invite members dialog (global, shown from sidebar) ─────────────────── #}
-{% if _ws and _ws.get('is_owner') %}
+{% if _ws and _ws.get('can_invite') %}
 <dialog id="layout-invite-modal"
   style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);margin:0;width:min(calc(100vw - 2rem),28rem);max-height:90vh;overflow-y:auto"
   class="rounded-xl border bg-background p-0 shadow-xl backdrop:bg-black/50 backdrop:backdrop-blur-sm">
@@ -399,11 +432,9 @@
       <p class="text-sm font-semibold leading-snug dark:text-white">Invite team members</p>
       <p class="mt-0.5 text-xs text-muted-foreground">Add teammates to <strong class="font-medium text-foreground">{{ _ws['name'] }}</strong>.</p>
     </div>
-    <button type="button" id="layout-invite-close"
-      class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-      aria-label="Close dialog">
+    {% call btn.button(variant="ghost", size="icon-xs", attrs={"id": "layout-invite-close", "aria-label": "Close dialog"}) %}
       <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-    </button>
+    {% endcall %}
   </div>
 
   <div class="px-5 pt-5 pb-6 space-y-5">
@@ -420,20 +451,17 @@
     <div class="space-y-2">
       <div class="flex items-center justify-between">
         <p class="text-xs font-medium text-foreground">Invite via link</p>
-        <button type="button" id="layout-invite-regen"
-          class="text-xs text-muted-foreground hover:text-foreground underline hover:no-underline transition-colors">
-          Reset link
-        </button>
+        {% call btn.button(variant="link", size="xs", class="px-0 text-muted-foreground", attrs={"id": "layout-invite-regen"}) %}Reset link{% endcall %}
       </div>
-      <div class="relative">
-        <input type="text" id="layout-invite-link-input" readonly
-          class="flex h-9 w-full rounded-lg border border-input bg-muted/30 pe-9 px-3 py-1 text-xs font-mono outline-none text-foreground">
-        <button type="button" id="layout-invite-copy" aria-label="Copy invite link"
-          class="absolute inset-y-0 end-0 flex size-9 items-center justify-center rounded-e-lg text-muted-foreground hover:text-foreground transition-colors">
-          <svg id="layout-copy-icon" class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-          <svg id="layout-check-icon" class="size-3.5 hidden" style="stroke:#22c55e" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-        </button>
-      </div>
+      {% call inp_grp.input_group(class="bg-muted/30") %}
+        {{ inp_grp.input_group_input(class="text-xs font-mono", attrs={"id": "layout-invite-link-input", "readonly": True}) }}
+        {% call inp_grp.input_group_addon(class="px-1") %}
+          {% call btn.button(variant="ghost", size="icon-sm", class="border-0 shadow-none", attrs={"id": "layout-invite-copy", "aria-label": "Copy invite link"}) %}
+            <svg id="layout-copy-icon" class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+            <svg id="layout-check-icon" class="size-3.5 hidden" style="stroke:#22c55e" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
     </div>
 
     <div class="my-8 w-full relative">
@@ -444,18 +472,14 @@
     <div class="space-y-3">
       <p class="text-xs font-medium text-foreground">Invite via email</p>
       <div id="layout-invite-email-list" class="space-y-2"></div>
-      <button type="button" id="layout-invite-add-email"
-        class="text-xs text-muted-foreground underline hover:no-underline hover:text-foreground transition-colors">
-        + Add another
-      </button>
+      {% call btn.button(variant="link", size="xs", class="px-0 text-muted-foreground", attrs={"id": "layout-invite-add-email"}) %}+ Add another{% endcall %}
     </div>
 
     <div>
-      <button type="button" id="layout-invite-send"
-        class="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+      {% call btn.button(variant="default", class="w-full", attrs={"id": "layout-invite-send"}) %}
         <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
         Send invites
-      </button>
+      {% endcall %}
       <p id="layout-invite-status" class="hidden mt-2 text-xs text-center text-muted-foreground"></p>
     </div>
 
@@ -727,7 +751,7 @@
 })();
 {% end_app_script %}
 
-{% if _ws and _ws.get('is_owner') %}
+{% if _ws and _ws.get('can_invite') %}
 {% app_script "layout-invite-members-dialog" %}
 (function(){
   'use strict';

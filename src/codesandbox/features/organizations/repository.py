@@ -124,15 +124,6 @@ def add_member(org_id: str, user_id: str) -> OrganizationMember:
         user_id=user_id,
     )
     member.save()
-    for role_name in ("owner", "admin"):
-        role = OrganizationRole.objects.filter(org_id=org_id, name=role_name).first()
-        if role:
-            mr = OrganizationMemberRole(
-                id=str(uuid.uuid4()),
-                member_id=member.id,
-                role_id=role.id,
-            )
-            mr.save()
     return member
 
 
@@ -400,7 +391,13 @@ def provision_org_database(org_id: str) -> OrganizationDatabase | None:
     if org is None:
         return None
 
-    db_name = f"cyberrange_org_{org.slug.replace('-', '_')}"
+    raw_db_name = f"cyberrange_org_{org.slug.replace('-', '_')}"
+    import re as _re_db
+    if not _re_db.match(r'^[a-z0-9_]{1,80}$', raw_db_name):
+        import logging as _log
+        _log.getLogger(__name__).error("Refusing to provision DB: unsafe name %r", raw_db_name)
+        return None
+    db_name = raw_db_name
 
     if existing is None:
         existing = OrganizationDatabase(
@@ -541,6 +538,35 @@ def set_org_role_permission(role_id: str, permission_key: str, enabled: bool) ->
     elif not enabled and existing:
         existing.delete()
     return True
+
+
+def is_org_owner(org_id: str, user_id: str) -> bool:
+    """Return True if user holds the 'owner' role in this org."""
+    member = get_member(org_id, user_id)
+    if not member:
+        return False
+    mrs = OrganizationMemberRole.objects.filter(member_id=member.id).all()
+    for mr in mrs:
+        try:
+            role = OrganizationRole.objects.get(id=mr.role_id)
+            if role.name == "owner":
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def get_member_permissions(org_id: str, user_id: str) -> list[str]:
+    """Return all permission keys the user has via their org roles."""
+    member = get_member(org_id, user_id)
+    if not member:
+        return []
+    mrs = OrganizationMemberRole.objects.filter(member_id=member.id).all()
+    keys: set[str] = set()
+    for mr in mrs:
+        for key in get_permissions_for_org_role(mr.role_id):
+            keys.add(key)
+    return list(keys)
 
 
 def get_role_members(org_id: str, role_id: str) -> list[dict]:

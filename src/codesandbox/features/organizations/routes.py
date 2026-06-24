@@ -293,8 +293,8 @@ def user_invite_org_action(slug: str):
     org_data = get_org_for_user(slug, session.user.id)
     if org_data is None:
         return redirect("/my/organizations", code=303)
-    if not org_data["is_owner"]:
-        err = urllib.parse.quote("Only owners can invite members.")
+    if not org_data["can_invite"]:
+        err = urllib.parse.quote("You don't have permission to invite members.")
         return redirect(f"/my/organizations/{slug}/members?error={err}", code=303)
     email = request.form.get("email", "").strip()
     if not email:
@@ -365,6 +365,10 @@ def user_org_invite_link_data(slug: str):
     session, redir = require_session()
     if redir:
         return jsonify({"ok": False}), 401
+    from .service import get_org_for_user
+    org_data = get_org_for_user(slug, session.user.id)
+    if org_data is None or not org_data["can_invite"]:
+        return jsonify({"ok": False}), 403
     data = get_org_invite_link_data(slug, session.user.id)
     if data is None:
         return jsonify({"ok": False}), 403
@@ -387,6 +391,10 @@ def user_org_invite_batch(slug: str):
     session, redir = require_session()
     if redir:
         return jsonify({"ok": False}), 401
+    from .service import get_org_for_user
+    org_data = get_org_for_user(slug, session.user.id)
+    if org_data is None or not org_data["can_invite"]:
+        return jsonify({"ok": False, "error": "Not authorized"}), 403
     body = request.get_json(silent=True) or {}
     emails = body.get("emails", [])
     if not isinstance(emails, list):
@@ -596,8 +604,8 @@ def user_org_role_member_search(slug: str, role_id: str):
     q = request.args.get("q", "").strip().lower()
     from .service import get_org_for_user, get_role_members_for_org
     org_data = get_org_for_user(slug, session.user.id)
-    if org_data is None:
-        return jsonify({"items": []})
+    if org_data is None or not org_data["is_owner"]:
+        return jsonify({"items": []}), 403
     role_members = get_role_members_for_org(org_data["id"], role_id)
     in_role_ids = {m["id"] for m in role_members}
     results = [
