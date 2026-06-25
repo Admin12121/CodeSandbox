@@ -62,3 +62,36 @@ def dashboard():
         "metrics": metrics,
         **_workspaces_ctx(user),
     }
+
+@router.page("/laboratory/sandbox")
+def sandbox():
+    session, redirect = require_session()
+    if redirect:
+        return redirect
+    user = session.user
+    nav = build_nav("/laboratory/sandbox", user)
+
+    try:
+        _, user_count = identity_repo.list_users()
+    except Exception:
+        user_count = 0
+    try:
+        _, org_count = org_repo.list_organizations()
+    except Exception:
+        org_count = 0
+
+    metrics = [
+        {"label": "Total Users",       "value": str(user_count), "change": "Platform accounts"},
+        {"label": "Organizations",      "value": str(org_count),  "change": "Active tenants"},
+        {"label": "Running Sandboxes",  "value": "0",             "change": "Runtime worker pending"},
+        {"label": "Open Cases",         "value": "0",             "change": "Case workflow pending"},
+    ]
+    return {
+        "_meta": {"title": "Dashboard — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": "Dashboard",
+        "page_description": "Platform overview — users, orgs, runtime, cases",
+        "metrics": metrics,
+        **_workspaces_ctx(user),
+    }

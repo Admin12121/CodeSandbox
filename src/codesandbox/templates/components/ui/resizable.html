@@ -1,0 +1,221 @@
+{#
+  resizable_panel_group(orientation="horizontal", class="", attrs={})
+  resizable_panel(default_size=None, min_size=10, max_size=100, class="", attrs={})
+  resizable_handle(with_handle=false, orientation="vertical", class="", attrs={})
+
+  orientation on the group: "horizontal" (panels side by side) or "vertical" (panels stacked)
+  orientation on the handle: the visual line direction — "vertical" for a horizontal group,
+  "horizontal" for a vertical group. JS corrects this automatically on init.
+#}
+
+{% macro resizable_panel_group(orientation="horizontal", class="", attrs={}) -%}
+<div
+  data-slot="resizable-panel-group"
+  data-orientation="{{ orientation }}"
+  aria-orientation="{{ orientation }}"
+  class="{{ cn('flex h-full w-full aria-[orientation=vertical]:flex-col', class) }}"
+  {{ html_attrs(**attrs) }}
+>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+
+{% macro resizable_panel(default_size=none, min_size=10, max_size=100, class="", attrs={}) -%}
+{% set size = default_size if default_size is not none else 1 %}
+<div
+  data-slot="resizable-panel"
+  {% if default_size is not none %}data-default-size="{{ default_size }}"{% endif %}
+  data-min-size="{{ min_size }}"
+  data-max-size="{{ max_size }}"
+  style="flex-grow: {{ size }}; flex-shrink: 1; flex-basis: 0%; overflow: auto;"
+  class="{{ cn('', class) }}"
+  {{ html_attrs(**attrs) }}
+>{% if caller is defined %}{{ caller() }}{% endif %}</div>
+{%- endmacro %}
+
+
+{% macro resizable_handle(with_handle=false, orientation="vertical", class="", attrs={}) -%}
+<div
+  data-slot="resizable-handle"
+  role="separator"
+  tabindex="0"
+  aria-orientation="{{ orientation }}"
+  class="{{ cn(
+    'relative flex w-px shrink-0 items-center justify-center bg-border outline-none',
+    'after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2',
+    'focus-visible:ring-1 focus-visible:ring-ring',
+    'cursor-col-resize aria-[orientation=horizontal]:cursor-row-resize',
+    'aria-[orientation=horizontal]:h-px aria-[orientation=horizontal]:w-full',
+    'aria-[orientation=horizontal]:after:left-0 aria-[orientation=horizontal]:after:h-1 aria-[orientation=horizontal]:after:w-full',
+    'aria-[orientation=horizontal]:after:translate-x-0 aria-[orientation=horizontal]:after:-translate-y-1/2',
+    'data-[state=dragging]:bg-ring data-[state=dragging]:after:bg-ring/0',
+    class
+  ) }}"
+  {{ html_attrs(**attrs) }}
+>{% if with_handle %}<div class="z-10 flex h-6 w-1 shrink-0 rounded-lg bg-border [[aria-orientation=horizontal]>&]:h-1 [[aria-orientation=horizontal]>&]:w-6"></div>{% endif %}</div>
+{%- endmacro %}
+
+
+{% app_script "codesandbox.ui.resizable" %}
+(function () {
+  function panelsOf(group) {
+    return Array.from(group.children).filter(function (el) { return el.dataset.slot === 'resizable-panel'; });
+  }
+  function handlesOf(group) {
+    return Array.from(group.children).filter(function (el) { return el.dataset.slot === 'resizable-handle'; });
+  }
+  function getSize(panel) {
+    var v = parseFloat(panel.style.flexGrow);
+    return isNaN(v) ? 1 : v;
+  }
+  function setSize(panel, size) {
+    panel.style.flexGrow = size;
+    panel.style.flexShrink = 1;
+    panel.style.flexBasis = '0%';
+  }
+  function panelBefore(group, handle) {
+    var siblings = Array.from(group.children);
+    var idx = siblings.indexOf(handle);
+    var before = siblings.slice(0, idx).filter(function (el) { return el.dataset.slot === 'resizable-panel'; });
+    return before[before.length - 1];
+  }
+  function panelAfter(group, handle) {
+    var siblings = Array.from(group.children);
+    var idx = siblings.indexOf(handle);
+    var after = siblings.slice(idx + 1).filter(function (el) { return el.dataset.slot === 'resizable-panel'; });
+    return after[0];
+  }
+
+  function initGroup(group) {
+    if (group._resizeInit) return;
+    group._resizeInit = true;
+
+    var isVertical = group.dataset.orientation === 'vertical';
+    var handleOrientation = isVertical ? 'horizontal' : 'vertical';
+
+    handlesOf(group).forEach(function (handle) {
+      handle.setAttribute('aria-orientation', handleOrientation);
+
+      function resizeBy(deltaPct) {
+        var before = panelBefore(group, handle);
+        var after = panelAfter(group, handle);
+        if (!before || !after) return;
+
+        var total = getSize(before) + getSize(after);
+        var minBefore = parseFloat(before.dataset.minSize || '0');
+        var maxBefore = parseFloat(before.dataset.maxSize || '100');
+        var minAfter = parseFloat(after.dataset.minSize || '0');
+        var maxAfter = parseFloat(after.dataset.maxSize || '100');
+
+        var beforeSize = getSize(before) + deltaPct;
+        beforeSize = Math.max(minBefore, Math.min(maxBefore, beforeSize));
+        var afterSize = total - beforeSize;
+        if (afterSize < minAfter) {
+          afterSize = minAfter;
+          beforeSize = total - afterSize;
+        }
+        if (afterSize > maxAfter) {
+          afterSize = maxAfter;
+          beforeSize = total - afterSize;
+        }
+
+        setSize(before, beforeSize);
+        setSize(after, afterSize);
+      }
+
+      handle.addEventListener('keydown', function (e) {
+        var step = 2;
+        var delta = 0;
+        if (isVertical) {
+          if (e.key === 'ArrowUp') delta = -step;
+          else if (e.key === 'ArrowDown') delta = step;
+        } else {
+          if (e.key === 'ArrowLeft') delta = -step;
+          else if (e.key === 'ArrowRight') delta = step;
+        }
+        if (!delta) return;
+        e.preventDefault();
+        resizeBy(delta);
+      });
+
+      function startDrag(startX, startY) {
+        var before = panelBefore(group, handle);
+        var after = panelAfter(group, handle);
+        if (!before || !after) return null;
+
+        var groupSize = isVertical ? group.offsetHeight : group.offsetWidth;
+        var total = getSize(before) + getSize(after);
+        var startBeforeSize = getSize(before);
+
+        handle.dataset.state = 'dragging';
+        var prevUserSelect = document.body.style.userSelect;
+        var prevCursor = document.body.style.cursor;
+        document.body.style.userSelect = 'none';
+        document.body.style.cursor = isVertical ? 'row-resize' : 'col-resize';
+
+        return {
+          move: function (x, y) {
+            var deltaPx = isVertical ? (y - startY) : (x - startX);
+            var deltaPct = groupSize > 0 ? (deltaPx / groupSize) * total : 0;
+
+            var minBefore = parseFloat(before.dataset.minSize || '0');
+            var maxBefore = parseFloat(before.dataset.maxSize || '100');
+            var minAfter = parseFloat(after.dataset.minSize || '0');
+            var maxAfter = parseFloat(after.dataset.maxSize || '100');
+
+            var beforeSize = Math.max(minBefore, Math.min(maxBefore, startBeforeSize + deltaPct));
+            var afterSize = total - beforeSize;
+            if (afterSize < minAfter) { afterSize = minAfter; beforeSize = total - afterSize; }
+            if (afterSize > maxAfter) { afterSize = maxAfter; beforeSize = total - afterSize; }
+
+            setSize(before, beforeSize);
+            setSize(after, afterSize);
+          },
+          end: function () {
+            handle.dataset.state = '';
+            document.body.style.userSelect = prevUserSelect;
+            document.body.style.cursor = prevCursor;
+          },
+        };
+      }
+
+      handle.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        var drag = startDrag(e.clientX, e.clientY);
+        if (!drag) return;
+
+        function onMove(ev) { drag.move(ev.clientX, ev.clientY); }
+        function onUp() {
+          drag.end();
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+        }
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+
+      handle.addEventListener('touchstart', function (e) {
+        var touch = e.touches[0];
+        var drag = startDrag(touch.clientX, touch.clientY);
+        if (!drag) return;
+        e.preventDefault();
+
+        function onMove(ev) { var t = ev.touches[0]; drag.move(t.clientX, t.clientY); }
+        function onEnd() {
+          drag.end();
+          document.removeEventListener('touchmove', onMove);
+          document.removeEventListener('touchend', onEnd);
+        }
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
+      }, { passive: false });
+    });
+  }
+
+  function scanResizable() {
+    document.querySelectorAll('[data-slot="resizable-panel-group"]').forEach(initGroup);
+  }
+
+  scanResizable();
+  window.addEventListener('app-router:patch', scanResizable);
+})();
+{% end_app_script %}

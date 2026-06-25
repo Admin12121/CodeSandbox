@@ -1,0 +1,6 @@
+{% app_script "time" %}
+setInterval(() =>
+  document.getElementById("time").textContent =
+    new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+1000);
+{% end_app_script %}

@@ -1,1 +1,3 @@
-{% macro separator(orientation="horizontal", decorative=true, class="", attrs={}) -%}<div class="{{ cn('shrink-0 bg-border', 'h-px w-full' if orientation == 'horizontal' else 'h-full w-px', class) }}" data-slot="separator" data-orientation="{{ orientation }}" {% if decorative %}role="none"{% else %}role="separator"{% endif %} {{ html_attrs(**attrs) }}></div>{%- endmacro %}
+{% macro separator(orientation="horizontal", decorative=true, class="", attrs={}) -%}
+    <div class="{{ cn('shrink-0 bg-border', 'h-px w-full' if orientation == 'horizontal' else 'h-full w-px', class) }}" data-slot="separator" data-orientation="{{ orientation }}" {% if decorative %}role="none"{% else %}role="separator"{% endif %} {{ html_attrs(**attrs) }}></div>
+{%- endmacro %}
