@@ -13,3 +13,5 @@ db.*
 
 # Runtime-uploaded local media
 src/codesandbox/templates/public/orgs/
+
+docs/notes/*

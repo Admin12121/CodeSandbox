@@ -40,8 +40,11 @@ def create_app() -> Flask:
 
     from codesandbox.web import routes as _web_routes  # noqa: F401
     from codesandbox.features.identity import routes as _identity_routes  # noqa: F401
+    from codesandbox.features.identity import pages as _identity_pages  # noqa: F401
     from codesandbox.features.platform_admin import routes as _platform_admin_routes  # noqa: F401
+    from codesandbox.features.platform_admin import pages as _platform_pages  # noqa: F401
     from codesandbox.features.organizations import routes as _org_routes  # noqa: F401
+    from codesandbox.features.organizations import pages as _org_pages  # noqa: F401
 
     app.register_blueprint(web_bp)
     init_limiter(app, settings.redis_url)

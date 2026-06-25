@@ -510,7 +510,14 @@ def _split_sql_statements(sql: str) -> list[str]:
 
 def ensure_org_permissions_seeded() -> None:
     from codesandbox.shared.permissions import get_registered_org_permissions
-    for key, label, group in get_registered_org_permissions():
+    registered = {key: (label, group) for key, label, group in get_registered_org_permissions()}
+
+    for perm in OrganizationPermission.objects.all():
+        if perm.key not in registered:
+            OrganizationRolePermission.objects.filter(permission_id=perm.id).delete()
+            perm.delete()
+
+    for key, (label, group) in registered.items():
         if not OrganizationPermission.objects.filter(key=key).first():
             p = OrganizationPermission(
                 id=str(uuid.uuid4()), key=key, label=label, group=group,

@@ -129,7 +129,14 @@ def get_role_members(role_id: str) -> list[User]:
 
 def seed_default_permissions() -> None:
     from codesandbox.shared.permissions import get_registered_platform_permissions
-    for key, label, group in get_registered_platform_permissions():
+    registered = {key: (label, group) for key, label, group in get_registered_platform_permissions()}
+
+    for perm in PlatformPermission.objects.all():
+        if perm.key not in registered:
+            PlatformRolePermission.objects.filter(permission_id=perm.id).delete()
+            perm.delete()
+
+    for key, (label, group) in registered.items():
         if not PlatformPermission.objects.filter(key=key).first():
             perm = PlatformPermission(
                 id=str(uuid.uuid4()),
