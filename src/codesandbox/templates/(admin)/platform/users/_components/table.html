@@ -7,7 +7,7 @@
 {% import "components/ui/table-pagination.html" as tp %}
 {% import "components/ui/delete-dialog.html" as del_dlg %}
 
-{% macro users_table(users, total, page, total_pages, search, role_filter, status_filter, page_size=25) %}
+{% macro users_table(users, total, page, total_pages, search, role_filter, status_filter, page_size=25, can_manage=True) %}
   {% set role_options = [
     {"value": "all", "label": "All roles"},
     {"value": "user", "label": "User"},
@@ -76,13 +76,13 @@
             {{ table.table_head("Status", class="w-40") }}
             {{ table.table_head("Email") }}
             {{ table.table_head("Last login", class="w-44") }}
-            {{ table.table_head("Actions", class="w-36 text-right") }}
+            {% if can_manage %}{{ table.table_head("Actions", class="w-36 text-right") }}{% endif %}
           {% endcall %}
         {% endcall %}
         {% call table.table_body() %}
           {% if not users %}
             {% call table.table_row() %}
-              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "6"}) %}No users found.{% endcall %}
+              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "6" if can_manage else "5"}) %}No users found.{% endcall %}
             {% endcall %}
           {% else %}
             {% for u in users %}
@@ -117,6 +117,7 @@
                 {% call table.table_cell(class="text-sm text-muted-foreground") %}
                   {% if u.last_login_at %}{{ u.last_login_at.strftime("%b %d, %Y") }}{% else %}Never{% endif %}
                 {% endcall %}
+                {% if can_manage %}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
                     {% call button.button(variant="ghost", size="icon-xs", class="shrink-0 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": "um-" ~ u.id, "aria-label": "User actions"}) %}
@@ -149,6 +150,7 @@
                     </div>
                   </div>
                 {% endcall %}
+                {% endif %}
               {% endcall %}
             {% endfor %}
           {% endif %}
@@ -157,6 +159,7 @@
     {% endcall %}
 
     {# Ban dialogs — rendered outside the table/menu to avoid invalid HTML nesting #}
+    {% if can_manage %}
     {% for u in users %}
       {{ del_dlg.delete_dialog(
         id="ban-user-" ~ u.id,
@@ -168,6 +171,7 @@
         submit_label="Ban user"
       ) }}
     {% endfor %}
+    {% endif %}
 
     {# Pagination #}
     {{ tp.table_pagination(

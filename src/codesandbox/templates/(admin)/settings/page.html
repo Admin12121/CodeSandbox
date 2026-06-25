@@ -6,6 +6,7 @@
 {% import "components/media/upload.html" as media_upload %}
 {% import "components/ui/dialog.html" as dlg_ui %}
 {% import "components/media/qr-code.html" as media_qr %}
+{% import "components/ui/otp-field.html" as otp_ui %}
 {{ media_qr.qr_assets() }}
 
 {% macro _edit_actions() %}
@@ -557,13 +558,22 @@
         {{ dlg_ui.dialog_description("Enter the 6-digit code from your authenticator app to confirm setup.") }}
       {% endcall %}
     </div>
-    {% call dlg_ui.dialog_panel(class="px-6 py-5") %}
-      <div class="grid gap-1.5">
-        <label class="text-sm font-medium" for="dlg-2fa-code">Verification code</label>
-        <input id="dlg-2fa-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"
-          class="flex h-9 w-full rounded-md border bg-background px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring/50 tracking-widest text-center" placeholder="000000">
+    {% call dlg_ui.dialog_panel(class="px-6 py-5 items-center") %}
+      <div class="grid gap-2">
+        <label class="text-sm font-medium text-center">Verification code</label>
+        <div class="flex justify-center">
+          {% call otp_ui.otp_field(attrs={"data-otp-root": "", "id": "dlg-2fa-otp-root"}) %}
+            {{ otp_ui.otp_field_input(attrs={"id": "dlg-2fa-otp-0", "data-otp-idx": "0", "autocomplete": "one-time-code"}) }}
+            {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "1"}) }}
+            {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "2"}) }}
+            {{ otp_ui.otp_field_separator() }}
+            {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "3"}) }}
+            {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "4"}) }}
+            {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "5"}) }}
+          {% endcall %}
+        </div>
       </div>
-      <p id="dlg-2fa-step2-error" hidden class="text-xs text-destructive"></p>
+      <p id="dlg-2fa-step2-error" hidden class="text-xs text-destructive text-center"></p>
     {% endcall %}
     <div class="border-t px-6 py-4">
       {% call dlg_ui.dialog_footer() %}
@@ -690,9 +700,74 @@
     if(passkeyOtherBtn) passkeyOtherBtn.hidden = false;
   }
 
+  function base64urlToBuffer(b64url){
+    var b64 = b64url.replace(/-/g,'+').replace(/_/g,'/');
+    var pad = b64.length % 4 === 0 ? 0 : 4 - (b64.length % 4);
+    b64 = b64 + '===='.slice(0, pad);
+    var bin = atob(b64);
+    var arr = new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+    return arr.buffer;
+  }
+
+  function bufferToBase64url(buf){
+    var arr = new Uint8Array(buf);
+    var bin = '';
+    for(var i=0;i<arr.length;i++) bin += String.fromCharCode(arr[i]);
+    return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  }
+
   function triggerWebAuthn(attachment){
     var dlg = document.getElementById('dlg-passkey-other');
     if(dlg && dlg.open) dlg.close();
+
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    var csrfToken = csrfMeta ? csrfMeta.content : '';
+    var body = attachment ? JSON.stringify({attachment: attachment}) : '{}';
+
+    fetch('/settings/passkeys/register/begin', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+      body: body
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(!data.ok) throw new Error(data.error || 'Registration failed.');
+      var opts = data.options;
+      opts.challenge = base64urlToBuffer(opts.challenge);
+      opts.user.id = base64urlToBuffer(opts.user.id);
+      if(opts.excludeCredentials){
+        opts.excludeCredentials = opts.excludeCredentials.map(function(c){
+          c.id = base64urlToBuffer(c.id); return c;
+        });
+      }
+      return navigator.credentials.create({publicKey: opts})
+        .then(function(cred){
+          var credJson = JSON.stringify({
+            id: cred.id,
+            rawId: bufferToBase64url(cred.rawId),
+            type: cred.type,
+            response: {
+              clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
+              attestationObject: bufferToBase64url(cred.response.attestationObject)
+            }
+          });
+          return fetch('/settings/passkeys/register/complete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+            body: JSON.stringify({credential: credJson})
+          }).then(function(r){ return r.json(); });
+        });
+    })
+    .then(function(result){
+      if(!result.ok) throw new Error(result.error || 'Passkey save failed.');
+      if(passkeyStatus) passkeyStatus.textContent = 'Passkey added';
+      window.location.reload();
+    })
+    .catch(function(err){
+      if(err && err.name === 'NotAllowedError') return;
+      alert('Passkey registration failed: ' + (err.message || err));
+    });
   }
 
   if(passkeyAddBtn) passkeyAddBtn.addEventListener('click', function(){ triggerWebAuthn('platform'); });
@@ -735,8 +810,8 @@
   // ── 2FA dialog ─────────────────────────────────────────────────
   function reset2faDialog(){
     showStep(1);
-    var codeInput = document.getElementById('dlg-2fa-code');
-    if(codeInput) codeInput.value = '';
+    var otpRoot = document.getElementById('dlg-2fa-otp-root');
+    if(otpRoot) otpRoot.querySelectorAll('[data-otp-idx]').forEach(function(i){ i.value = ''; });
     var nextBtn = document.getElementById('dlg-2fa-next');
     if(nextBtn){ nextBtn.disabled = true; nextBtn.textContent = 'Next'; }
     ['dlg-2fa-step1-error','dlg-2fa-step2-error'].forEach(function(id){
@@ -771,8 +846,8 @@
     if(uri && typeof QRCodeStyling !== 'undefined'){
       try{
         var qr = new QRCodeStyling({
-          width:200, height:200, type:'canvas', data:uri,
-          qrOptions:{errorCorrectionLevel:'H'},
+          width:240, height:240, type:'canvas', data:uri,
+          qrOptions:{errorCorrectionLevel:'M'},
           dotsOptions:{color:fg, type:'rounded'},
           backgroundOptions:{color:bg},
           cornersSquareOptions:{type:'extra-rounded', color:fg},
@@ -783,13 +858,13 @@
       }catch(e){}
     }
     if(uri && typeof QRCode !== 'undefined'){
-      try{ new QRCode(canvas,{text:uri,width:200,height:200,colorDark:fg,colorLight:bg,correctLevel:QRCode.CorrectLevel.H}); return; }catch(e){}
+      try{ new QRCode(canvas,{text:uri,width:240,height:240,colorDark:fg,colorLight:bg,correctLevel:QRCode.CorrectLevel.M}); return; }catch(e){}
     }
     if(fallbackUrl){
       var img = document.createElement('img');
       img.src = fallbackUrl;
       img.alt = 'QR code';
-      img.style.cssText = 'width:200px;height:200px;border-radius:8px';
+      img.style.cssText = 'width:240px;height:240px;border-radius:8px';
       canvas.appendChild(img);
       return;
     }
@@ -817,8 +892,8 @@
   var nextBtn = document.getElementById('dlg-2fa-next');
   if(nextBtn) nextBtn.addEventListener('click', function(){
     showStep(2);
-    var inp = document.getElementById('dlg-2fa-code');
-    if(inp) inp.focus();
+    var first = document.getElementById('dlg-2fa-otp-0');
+    if(first) first.focus();
   });
 
   var backBtn = document.getElementById('dlg-2fa-back');
@@ -827,7 +902,10 @@
   var confirmBtn = document.getElementById('dlg-2fa-confirm');
   if(confirmBtn){
     confirmBtn.addEventListener('click', function(){
-      var code = (document.getElementById('dlg-2fa-code') || {value:''}).value.trim();
+      var otpRoot = document.getElementById('dlg-2fa-otp-root');
+      var code = otpRoot
+        ? Array.from(otpRoot.querySelectorAll('[data-otp-idx]')).map(function(i){ return i.value; }).join('')
+        : '';
       if(code.length !== 6){ show2faErr(2, 'Enter the 6-digit code.'); return; }
       confirmBtn.disabled = true; confirmBtn.textContent = 'Verifying…';
       var err2 = document.getElementById('dlg-2fa-step2-error');
@@ -860,7 +938,8 @@
   document.addEventListener('keydown', function(e){
     if(e.key !== 'Enter') return;
     var step2 = document.getElementById('dlg-2fa-step2');
-    if(step2 && !step2.hidden && confirmBtn && !confirmBtn.disabled) confirmBtn.click();
+    var focusedInOtp = e.target && e.target.hasAttribute && e.target.hasAttribute('data-otp-idx');
+    if(step2 && !step2.hidden && confirmBtn && !confirmBtn.disabled && !focusedInOtp) confirmBtn.click();
   });
 })();
 {% end_app_script %}

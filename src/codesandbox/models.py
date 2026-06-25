@@ -1,4 +1,4 @@
-from codesandbox.features.identity.models import ApiKey, LoginAttempt, Session, User
+from codesandbox.features.identity.models import ApiKey, LoginAttempt, Session, User, UserPasskey
 from codesandbox.features.organizations.models import (
     Organization,
     OrganizationDatabase,
@@ -21,6 +21,7 @@ __all__ = [
     "Session",
     "ApiKey",
     "LoginAttempt",
+    "UserPasskey",
     "PlatformRole",
     "PlatformPermission",
     "PlatformRolePermission",
@@ -37,3 +38,5 @@ __all__ = [
 
 # Auth extensions — imported here so NexORM registers them for migrations
 from codesandbox.features.identity.models import AuthAccount, TwoFactorMethod, VerificationToken  # noqa: F401
+# Passkey model registered for migrations
+from codesandbox.features.identity.models import UserPasskey as _UserPasskey  # noqa: F401

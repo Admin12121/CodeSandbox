@@ -71,7 +71,6 @@ def create_organization(
     created_by: str | None = None,
 ) -> Organization:
     base_slug = _slugify(name)
-    # Pre-check slug availability, then rely on unique constraint + retry for safety
     counter = 1
     slug = base_slug
     while get_organization_by_slug(slug):
@@ -85,6 +84,7 @@ def create_organization(
             slug=candidate,
             description=description,
             created_by=created_by,
+            owner_id=created_by,
         )
         try:
             org.save()
@@ -93,7 +93,7 @@ def create_organization(
             if attempt == 4:
                 raise
             continue
-    seed_org_roles(org.id)  # roles must exist before add_member tries to assign owner
+    seed_org_roles(org.id)
     if created_by:
         add_member(org_id=org.id, user_id=created_by)
     return org
@@ -169,27 +169,25 @@ def list_org_roles(org_id: str) -> list[OrganizationRole]:
 
 
 def seed_org_roles(org_id: str) -> None:
-    # Fix any pre-existing locked non-owner roles so they become editable
-    for role in OrganizationRole.objects.filter(org_id=org_id, is_system=True).all():
-        if role.name != "owner":
-            role.is_system = False
-            role.save()
-
     defaults = [
-        ("owner", "#ef4444", True),
-        ("admin", "#f59e0b", False),
-        ("member", "#6366f1", False),
+        ("admin",  "#f59e0b", False, 80),
+        ("member", "#6366f1", False, 10),
     ]
-    for name, color, is_system in defaults:
-        if not OrganizationRole.objects.filter(org_id=org_id, name=name).first():
+    for name, color, is_system, position in defaults:
+        existing = OrganizationRole.objects.filter(org_id=org_id, name=name).first()
+        if not existing:
             role = OrganizationRole(
                 id=str(uuid.uuid4()),
                 org_id=org_id,
                 name=name,
                 color=color,
                 is_system=is_system,
+                position=position,
             )
             role.save()
+        elif existing.position == 0:
+            existing.position = position
+            existing.save()
 
 
 # ── User-facing repository functions ─────────────────────────────────────────
@@ -207,9 +205,10 @@ def get_user_organizations(user_id: str) -> list[Organization]:
 
 
 def get_members_with_info(org_id: str) -> list[dict]:
-    """Return members with user name/email and their role names."""
+    """Return members with user info, roles, and owner flag."""
     from codesandbox.features.identity import repository as identity_repo
-
+    org = get_organization(org_id)
+    owner_id = str(org.owner_id) if org and org.owner_id else None
     members = OrganizationMember.objects.filter(org_id=org_id).all()
     result = []
     for m in members:
@@ -217,27 +216,29 @@ def get_members_with_info(org_id: str) -> list[dict]:
         if user is None:
             continue
         member_roles = OrganizationMemberRole.objects.filter(member_id=m.id).all()
-        role_names = []
-        role_colors = []
-        role_ids = []
+        role_names: list[str] = []
+        role_colors: list[str] = []
+        role_ids: list[str] = []
         for mr in member_roles:
-            role = None
             try:
                 role = OrganizationRole.objects.get(id=mr.role_id)
-            except Exception:
-                pass
-            if role:
+                if role.name == "owner":
+                    continue  # exclude legacy owner role from display
                 role_names.append(role.name)
                 role_colors.append(role.color)
                 role_ids.append(role.id)
+            except Exception:
+                pass
         result.append({
             "id": m.id,
             "user_id": m.user_id,
             "name": user.name,
             "email": user.email,
+            "avatar_url": getattr(user, "avatar_url", None),
             "roles": role_names,
             "role_colors": role_colors,
             "role_ids": role_ids,
+            "is_owner": str(m.user_id) == owner_id,
             "joined_at": m.joined_at,
         })
     return result
@@ -248,6 +249,7 @@ def create_org_role(
     name: str,
     color: str,
     description: str | None = None,
+    position: int = 1,
 ) -> OrganizationRole:
     role = OrganizationRole(
         id=str(uuid.uuid4()),
@@ -256,6 +258,7 @@ def create_org_role(
         color=color or "#6366f1",
         description=description,
         is_system=False,
+        position=position,
     )
     role.save()
     return role
@@ -266,28 +269,29 @@ def update_org_role(
     name: str,
     color: str,
     description: str | None = None,
+    position: int | None = None,
 ) -> bool:
-    """Update a role. Returns False if it is the protected owner role or not found."""
+    """Update a role. Returns False if not found."""
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False
-    if role.name == "owner":
-        return False
     role.name = name.strip()
     role.color = color or "#6366f1"
     role.description = description
+    if position is not None:
+        role.position = position
     role.save()
     return True
 
 
 def delete_org_role(role_id: str) -> bool:
-    """Delete a role. Returns False if it is the protected owner role or not found."""
+    """Delete a role. Returns False if is_system=True or not found (rule 6)."""
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False
-    if role.name == "owner":
+    if role.is_system:
         return False
     for rp in OrganizationRolePermission.objects.filter(role_id=role_id).all():
         rp.delete()
@@ -347,19 +351,26 @@ def get_org_by_invite_code(code: str) -> Organization | None:
 
 
 def ensure_creator_is_owner(org_id: str, user_id: str) -> None:
-    """Repair orgs created before the seed-before-add-member fix."""
-    if not OrganizationRole.objects.filter(org_id=org_id, name="owner").first():
-        seed_org_roles(org_id)
-    owner_role = OrganizationRole.objects.filter(org_id=org_id, name="owner").first()
-    if not owner_role:
+    """Backfill owner_id for orgs that existed before this field was added."""
+    org = get_organization(org_id)
+    if not org or org.owner_id:
         return
-    member = get_member(org_id, user_id)
-    if not member:
-        member = OrganizationMember(id=str(uuid.uuid4()), org_id=org_id, user_id=user_id)
-        member.save()
-    if not OrganizationMemberRole.objects.filter(member_id=member.id, role_id=owner_role.id).first():
-        mr = OrganizationMemberRole(id=str(uuid.uuid4()), member_id=member.id, role_id=owner_role.id)
-        mr.save()
+    # Try to find existing holder of the legacy 'owner' role first
+    legacy_owner_role = OrganizationRole.objects.filter(org_id=org_id, name="owner").first()
+    if legacy_owner_role:
+        mr = OrganizationMemberRole.objects.filter(role_id=legacy_owner_role.id).first()
+        if mr:
+            try:
+                member = OrganizationMember.objects.get(id=mr.member_id)
+                update_organization(org_id, owner_id=member.user_id)
+                return
+            except Exception:
+                pass
+    # Fall back to created_by / the calling user
+    if not get_member(org_id, user_id):
+        m = OrganizationMember(id=str(uuid.uuid4()), org_id=org_id, user_id=user_id)
+        m.save()
+    update_organization(org_id, owner_id=user_id)
 
 
 def delete_member(member_id: str) -> None:
@@ -541,19 +552,11 @@ def set_org_role_permission(role_id: str, permission_key: str, enabled: bool) ->
 
 
 def is_org_owner(org_id: str, user_id: str) -> bool:
-    """Return True if user holds the 'owner' role in this org."""
-    member = get_member(org_id, user_id)
-    if not member:
+    """Return True if the user is the current owner of the org."""
+    org = get_organization(org_id)
+    if not org:
         return False
-    mrs = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    for mr in mrs:
-        try:
-            role = OrganizationRole.objects.get(id=mr.role_id)
-            if role.name == "owner":
-                return True
-        except Exception:
-            pass
-    return False
+    return bool(org.owner_id) and str(org.owner_id) == str(user_id)
 
 
 def get_member_permissions(org_id: str, user_id: str) -> list[str]:
@@ -567,6 +570,48 @@ def get_member_permissions(org_id: str, user_id: str) -> list[str]:
         for key in get_permissions_for_org_role(mr.role_id):
             keys.add(key)
     return list(keys)
+
+
+def get_member_highest_position(org_id: str, user_id: str) -> int:
+    """Return the highest role position for a member. Owner returns sys.maxsize."""
+    import sys
+    if is_org_owner(org_id, user_id):
+        return sys.maxsize
+    member = get_member(org_id, user_id)
+    if not member:
+        return 0
+    mrs = OrganizationMemberRole.objects.filter(member_id=member.id).all()
+    positions: list[int] = []
+    for mr in mrs:
+        try:
+            role = OrganizationRole.objects.get(id=mr.role_id)
+            positions.append(role.position)
+        except Exception:
+            pass
+    return max(positions) if positions else 0
+
+
+def can_actor_manage_role(org_id: str, actor_id: str, role_id: str) -> bool:
+    """True if actor's highest position is strictly greater than the target role's position."""
+    if is_org_owner(org_id, actor_id):
+        return True
+    try:
+        role = OrganizationRole.objects.get(id=role_id)
+    except Exception:
+        return False
+    return get_member_highest_position(org_id, actor_id) > role.position
+
+
+def transfer_ownership(org_id: str, current_owner_id: str, new_owner_id: str) -> tuple[bool, str]:
+    """Transfer org ownership. new_owner_id must already be a member."""
+    if not is_org_owner(org_id, current_owner_id):
+        return False, "You are not the owner of this organization."
+    if str(current_owner_id) == str(new_owner_id):
+        return False, "You are already the owner."
+    if not get_member(org_id, new_owner_id):
+        return False, "New owner must be a current member of the organization."
+    update_organization(org_id, owner_id=new_owner_id)
+    return True, ""
 
 
 def get_role_members(org_id: str, role_id: str) -> list[dict]:

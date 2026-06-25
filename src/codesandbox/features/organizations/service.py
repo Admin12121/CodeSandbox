@@ -8,7 +8,6 @@ from .models import Organization, OrganizationInvitation, OrganizationMemberRole
 
 
 def _safe_url(url: str | None) -> str | None:
-    """Reject URLs with non-http(s) schemes to prevent javascript:/data: injection."""
     if not url:
         return url
     parsed = urlparse(url)
@@ -76,7 +75,7 @@ def update_organization_details(
     contact_email: str | None = None,
     logo_url: str | None = None,
 ) -> Organization | None:
-    kwargs = {
+    kwargs: dict = {
         "name": name,
         "description": description,
         "website": _safe_url(website),
@@ -96,7 +95,6 @@ def update_organization_status(org_id: str, status: str) -> Organization | None:
         return None
     org = repository.update_organization(org_id, status=status)
     if status == "active" and org is not None:
-        # Provision per-org database if not already ready
         existing = repository.get_org_database(org_id)
         if existing is None or existing.status not in ("ready", "provisioning"):
             import threading
@@ -109,7 +107,6 @@ def update_organization_status(org_id: str, status: str) -> Organization | None:
 
 
 def get_user_org_list(user_id: str) -> list[dict]:
-    """Return all orgs the user belongs to, enriched with member_count."""
     orgs = repository.get_user_organizations(user_id)
     result = []
     for org in orgs:
@@ -151,7 +148,6 @@ def create_user_organization(
     logo_url: str | None = None,
     created_by: str,
 ) -> Organization:
-    """Create an org with pending status for the given user."""
     org = repository.create_organization(
         name=name,
         description=description,
@@ -175,29 +171,25 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
     org = repository.get_organization_by_slug(slug)
     if org is None:
         return None
-    if org.created_by == user_id:
-        repository.ensure_creator_is_owner(org.id, user_id)
+    # Backfill owner_id for pre-existing orgs
+    if not org.owner_id:
+        repository.ensure_creator_is_owner(org.id, str(org.created_by) if org.created_by else user_id)
+        org = repository.get_organization(org.id)
+    if not org:
+        return None
     member = repository.get_member(org.id, user_id)
     if member is None:
         return None
 
     members = repository.get_members_with_info(org.id)
-
-    # Determine if requesting user is owner
-    is_owner = False
-    for m in members:
-        if m["user_id"] == user_id and "owner" in m["roles"]:
-            is_owner = True
-            break
-
+    is_owner = repository.is_org_owner(org.id, user_id)
     member_permissions = [] if is_owner else repository.get_member_permissions(org.id, user_id)
-
-    # Count owners
-    owner_count = sum(1 for m in members if "owner" in m["roles"])
 
     roles = repository.list_org_roles(org.id)
     roles_list = []
     for r in roles:
+        if r.name == "owner":
+            continue  # exclude legacy owner role from listing
         cnt = OrganizationMemberRole.objects.filter(role_id=r.id).count()
         roles_list.append({
             "id": r.id,
@@ -205,9 +197,12 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
             "color": r.color or "#6366f1",
             "description": r.description or "",
             "is_system": bool(r.is_system),
+            "position": r.position,
             "member_count": cnt,
             "permission_keys": repository.get_permissions_for_org_role(r.id),
         })
+
+    actor_highest_position = repository.get_member_highest_position(org.id, user_id)
 
     return {
         "id": org.id,
@@ -222,15 +217,18 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
         "logo_url": org.logo_url or "",
         "status": org.status,
         "created_at": org.created_at,
+        "owner_id": org.owner_id,
         "members": members,
         "member_count": len(members),
         "is_owner": is_owner,
-        "owner_count": owner_count,
         "roles": roles_list,
         "member_permissions": member_permissions,
+        "actor_highest_position": actor_highest_position,
         "can_invite": is_owner or "org.members.invite" in member_permissions,
         "can_edit_settings": is_owner or "org.settings.edit" in member_permissions,
         "can_manage_members": is_owner or "org.members.remove" in member_permissions,
+        "can_manage_roles": is_owner or "org.roles.manage" in member_permissions,
+        "can_assign_roles": is_owner or "org.roles.assign" in member_permissions,
     }
 
 
@@ -320,7 +318,6 @@ def join_by_invite_code(code: str, user_id: str) -> tuple[bool, str]:
 
 
 def accept_org_invitation(token: str, user_id: str) -> tuple[bool, str]:
-    """Accept an invitation. Returns (True, org_id) or (False, error_msg)."""
     invitation = repository.find_invitation_by_token(token)
     if invitation is None:
         return False, "Invitation not found."
@@ -344,7 +341,6 @@ def remove_org_member(
     member_id: str,
     requesting_user_id: str,
 ) -> tuple[bool, str]:
-    """Remove a member. Requires owner status or the org.members.remove permission."""
     requester_member = repository.get_member(org_id, requesting_user_id)
     if requester_member is None:
         return False, "You are not a member of this organization."
@@ -353,42 +349,44 @@ def remove_org_member(
     if not is_owner and "org.members.remove" not in repository.get_member_permissions(org_id, requesting_user_id):
         return False, "You don't have permission to remove members."
 
-    # Prevent removing self
     from .models import OrganizationMember
+    from nexorm.exceptions import DoesNotExist
     try:
-        from nexorm.exceptions import DoesNotExist
         target = OrganizationMember.objects.get(id=member_id)
     except Exception:
         return False, "Member not found."
-    if target.user_id == requesting_user_id:
+
+    # Rule 8: member must belong to this org
+    if str(target.org_id) != str(org_id):
+        return False, "Member not found."
+
+    # Rule 5: cannot remove the owner
+    if repository.is_org_owner(org_id, target.user_id):
+        return False, "Cannot remove the organization owner."
+
+    if str(target.user_id) == requesting_user_id:
         return False, "You cannot remove yourself. Use 'Leave organization' instead."
-    if not is_owner and repository.is_org_owner(org_id, target.user_id):
-        return False, "Only owners can remove an owner."
 
     repository.delete_member(member_id)
     return True, ""
 
 
 def delete_user_organization(slug: str, user_id: str) -> tuple[bool, str]:
-    """Delete an org entirely. Only owners may do this."""
     org = repository.get_organization_by_slug(slug)
     if org is None:
         return False, "Organization not found."
-    member = repository.get_member(org.id, user_id)
-    if member is None:
-        return False, "You are not a member of this organization."
-    from .models import OrganizationMemberRole, OrganizationRole
-    user_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None and
-        OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in user_roles
-    )
-    if not is_owner:
-        return False, "Only owners can delete an organization."
+    if not repository.is_org_owner(org.id, user_id):
+        return False, "Only the owner can delete this organization."
     org_name = org.name
     repository.delete_organization(org.id)
     return True, org_name
+
+
+def transfer_org_ownership(slug: str, requesting_user_id: str, new_owner_id: str) -> tuple[bool, str]:
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return False, "Organization not found."
+    return repository.transfer_ownership(org.id, requesting_user_id, new_owner_id)
 
 
 def create_org_custom_role(
@@ -404,20 +402,19 @@ def create_org_custom_role(
     member = repository.get_member(org.id, requesting_user_id)
     if member is None:
         return False, "Not a member."
-    user_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
-        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in user_roles
-    )
-    if not is_owner:
-        return False, "Only owners can create roles."
+
+    is_owner = repository.is_org_owner(org.id, requesting_user_id)
+    if not is_owner and "org.roles.manage" not in repository.get_member_permissions(org.id, requesting_user_id):
+        return False, "You don't have permission to create roles."
+
     name = name.strip()
     if not name:
         return False, "Role name is required."
     if OrganizationRole.objects.filter(org_id=org.id, name=name).first():
         return False, f'A role named "{name}" already exists.'
-    repository.create_org_role(org.id, name, color, description)
+
+    # New roles default to position=1 (below all standard roles)
+    repository.create_org_role(org.id, name, color, description, position=1)
     return True, ""
 
 
@@ -435,28 +432,31 @@ def update_org_custom_role(
     member = repository.get_member(org.id, requesting_user_id)
     if member is None:
         return False, "Not a member."
-    user_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
-        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in user_roles
-    )
-    if not is_owner:
-        return False, "Only owners can update roles."
-    name = name.strip()
-    if not name:
-        return False, "Role name is required."
+
+    is_owner = repository.is_org_owner(org.id, requesting_user_id)
+    if not is_owner and "org.roles.manage" not in repository.get_member_permissions(org.id, requesting_user_id):
+        return False, "You don't have permission to update roles."
+
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False, "Role not found."
+
+    # Rule 8: role must belong to this org
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
-    if role.name == "owner":
-        return False, "The owner role cannot be edited."
+
+    # Rule 2: cannot edit role >= own highest position
+    if not repository.can_actor_manage_role(org.id, requesting_user_id, role_id):
+        return False, "You cannot edit a role equal to or higher than your own position."
+
+    name = name.strip()
+    if not name:
+        return False, "Role name is required."
     existing = OrganizationRole.objects.filter(org_id=org.id, name=name).first()
     if existing and str(existing.id) != str(role_id):
         return False, f'A role named "{name}" already exists.'
+
     repository.update_org_role(role_id, name, color, description)
     return True, ""
 
@@ -472,22 +472,28 @@ def delete_org_custom_role(
     member = repository.get_member(org.id, requesting_user_id)
     if member is None:
         return False, "Not a member."
-    user_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
-        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in user_roles
-    )
-    if not is_owner:
-        return False, "Only owners can delete roles."
+
+    is_owner = repository.is_org_owner(org.id, requesting_user_id)
+    if not is_owner and "org.roles.manage" not in repository.get_member_permissions(org.id, requesting_user_id):
+        return False, "You don't have permission to delete roles."
+
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False, "Role not found."
+
+    # Rule 8: role must belong to this org
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
-    if role.name == "owner":
-        return False, "The owner role cannot be deleted."
+
+    # Rule 6: cannot delete system role
+    if role.is_system:
+        return False, "System roles cannot be deleted."
+
+    # Rule 2: cannot delete role >= own highest position
+    if not repository.can_actor_manage_role(org.id, requesting_user_id, role_id):
+        return False, "You cannot delete a role equal to or higher than your own position."
+
     repository.delete_org_role(role_id)
     return True, ""
 
@@ -504,27 +510,37 @@ def assign_role_to_org_member(
     requester = repository.get_member(org.id, requesting_user_id)
     if requester is None:
         return False, "Not a member."
-    req_roles = OrganizationMemberRole.objects.filter(member_id=requester.id).all()
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
-        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in req_roles
-    )
-    if not is_owner:
-        return False, "Only owners can assign roles."
+
+    is_owner = repository.is_org_owner(org.id, requesting_user_id)
+    if not is_owner and "org.roles.assign" not in repository.get_member_permissions(org.id, requesting_user_id):
+        return False, "You don't have permission to assign roles."
+
+    # Rule 8: verify member and role belong to this org
+    from .models import OrganizationMember
     try:
-        from .models import OrganizationMember
         target = OrganizationMember.objects.get(id=member_id)
     except Exception:
         return False, "Member not found."
     if str(target.org_id) != str(org.id):
         return False, "Member not found."
+
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False, "Role not found."
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
+
+    if not is_owner:
+        actor_pos = repository.get_member_highest_position(org.id, requesting_user_id)
+        # Rule 1: cannot assign role >= own highest position
+        if role.position >= actor_pos:
+            return False, "You cannot assign a role equal to or higher than your own position."
+        # Rule 7: cannot self-assign a role that raises own position
+        if str(target.user_id) == requesting_user_id:
+            if role.position >= actor_pos:
+                return False, "You cannot assign yourself a role equal to or higher than your current position."
+
     repository.assign_role_to_member(member_id, role_id)
     return True, ""
 
@@ -541,43 +557,33 @@ def remove_role_from_org_member(
     requester = repository.get_member(org.id, requesting_user_id)
     if requester is None:
         return False, "Not a member."
-    req_roles = OrganizationMemberRole.objects.filter(member_id=requester.id).all()
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
-        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in req_roles
-    )
-    if not is_owner:
-        return False, "Only owners can remove roles."
+
+    is_owner = repository.is_org_owner(org.id, requesting_user_id)
+    if not is_owner and "org.roles.assign" not in repository.get_member_permissions(org.id, requesting_user_id):
+        return False, "You don't have permission to remove roles."
+
+    # Rule 8: verify member and role belong to this org
+    from .models import OrganizationMember
     try:
-        from .models import OrganizationMember
         target = OrganizationMember.objects.get(id=member_id)
     except Exception:
         return False, "Member not found."
     if str(target.org_id) != str(org.id):
         return False, "Member not found."
+
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False, "Role not found."
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
-    # Prevent removing owner role if this is the last owner
-    if role.name == "owner":
-        all_members = repository.list_members(org.id)
-        owner_count = 0
-        for m in all_members:
-            m_roles = OrganizationMemberRole.objects.filter(member_id=m.id).all()
-            for mr in m_roles:
-                try:
-                    r = OrganizationRole.objects.get(id=mr.role_id)
-                    if r.name == "owner":
-                        owner_count += 1
-                        break
-                except Exception:
-                    pass
-        if owner_count <= 1:
-            return False, "Cannot remove the last owner's owner role."
+
+    # Rule 1: cannot remove a role that is >= own position (unless owner)
+    if not is_owner:
+        actor_pos = repository.get_member_highest_position(org.id, requesting_user_id)
+        if role.position >= actor_pos:
+            return False, "You cannot remove a role equal to or higher than your own position."
+
     repository.remove_role_from_member(member_id, role_id)
     return True, ""
 
@@ -589,26 +595,43 @@ def toggle_org_role_permission(
     enabled: bool,
     requesting_user_id: str,
 ) -> tuple[bool, str]:
+    from codesandbox.shared.permissions import get_registered_org_permissions
     org = repository.get_organization_by_slug(slug)
     if org is None:
         return False, "Organization not found."
     member = repository.get_member(org.id, requesting_user_id)
     if member is None:
         return False, "Not a member."
-    req_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    is_owner = any(
-        OrganizationRole.objects.filter(id=mr.role_id).first() is not None
-        and OrganizationRole.objects.filter(id=mr.role_id).first().name == "owner"
-        for mr in req_roles
-    )
-    if not is_owner:
-        return False, "Only owners can manage role permissions."
+
+    is_owner = repository.is_org_owner(org.id, requesting_user_id)
+    if not is_owner and "org.roles.manage" not in repository.get_member_permissions(org.id, requesting_user_id):
+        return False, "You don't have permission to manage role permissions."
+
+    # Validate permission key is registered (prevents injection)
+    registered_keys = {k for k, _, _ in get_registered_org_permissions()}
+    if permission_key not in registered_keys:
+        return False, "Invalid permission key."
+
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
         return False, "Role not found."
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
+
+    # Rule 2: cannot manage role >= own position
+    if not repository.can_actor_manage_role(org.id, requesting_user_id, role_id):
+        return False, "You cannot manage a role equal to or higher than your own position."
+
+    if enabled and not is_owner:
+        # Rule 3: cannot grant a permission you don't hold
+        actor_perms = repository.get_member_permissions(org.id, requesting_user_id)
+        if permission_key not in actor_perms:
+            return False, "You cannot grant a permission you don't hold."
+        # Rule 4: org.roles.manage can only be granted by owner
+        if permission_key == "org.roles.manage":
+            return False, "Only the owner can grant the roles management permission."
+
     repository.set_org_role_permission(role_id, permission_key, enabled)
     return True, ""
 
@@ -618,39 +641,10 @@ def get_role_members_for_org(org_id: str, role_id: str) -> list[dict]:
 
 
 def leave_org(org_id: str, user_id: str) -> tuple[bool, str]:
-    """Leave an org. Prevents last owner from leaving."""
     member = repository.get_member(org_id, user_id)
     if member is None:
         return False, "You are not a member of this organization."
-
-    from .models import OrganizationMemberRole, OrganizationRole
-    user_roles = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-    is_owner = False
-    for mr in user_roles:
-        try:
-            role = OrganizationRole.objects.get(id=mr.role_id)
-            if role.name == "owner":
-                is_owner = True
-                break
-        except Exception:
-            pass
-
-    if is_owner:
-        # Count total owners
-        all_members = repository.list_members(org_id)
-        owner_count = 0
-        for m in all_members:
-            m_roles = OrganizationMemberRole.objects.filter(member_id=m.id).all()
-            for mr in m_roles:
-                try:
-                    role = OrganizationRole.objects.get(id=mr.role_id)
-                    if role.name == "owner":
-                        owner_count += 1
-                        break
-                except Exception:
-                    pass
-        if owner_count <= 1:
-            return False, "You are the last owner. Transfer ownership before leaving."
-
+    if repository.is_org_owner(org_id, user_id):
+        return False, "You are the owner. Transfer ownership before leaving."
     repository.delete_member(member.id)
     return True, ""

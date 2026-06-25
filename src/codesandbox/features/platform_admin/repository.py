@@ -128,18 +128,8 @@ def get_role_members(role_id: str) -> list[User]:
 
 
 def seed_default_permissions() -> None:
-    defaults = [
-        ("platform.users.read", "View platform users", "users"),
-        ("platform.users.manage", "Manage platform users", "users"),
-        ("platform.staff.read", "View application staff", "staff"),
-        ("platform.staff.manage", "Manage application staff", "staff"),
-        ("platform.roles.read", "View platform roles", "roles"),
-        ("platform.roles.manage", "Manage platform roles", "roles"),
-        ("platform.organizations.read", "View organizations", "organizations"),
-        ("platform.organizations.manage", "Manage organizations", "organizations"),
-        ("platform.pricing.manage", "Manage pricing plans", "billing"),
-    ]
-    for key, label, group in defaults:
+    from codesandbox.shared.permissions import get_registered_platform_permissions
+    for key, label, group in get_registered_platform_permissions():
         if not PlatformPermission.objects.filter(key=key).first():
             perm = PlatformPermission(
                 id=str(uuid.uuid4()),

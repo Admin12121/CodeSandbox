@@ -342,7 +342,7 @@
 {% end_app_script %}
 
 {% elif show_join %}
-{{ join_ui.join_form() }}
+{{ join_ui.join_form(user_owns_org=user_owns_org) }}
 
 {% app_script "join-org" %}
 (function(){

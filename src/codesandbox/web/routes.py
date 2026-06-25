@@ -13,6 +13,7 @@ from codesandbox.features.platform_admin.service import (
 )
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.shared.session import build_nav, format_role_label, require_session, require_platform_role
+from codesandbox.shared.permissions import has_platform_permission, has_any_platform_permission
 from codesandbox.web.blueprint import router, web_bp
 
 _TEMPLATES_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../templates"))
@@ -137,6 +138,12 @@ def platform_users():
     if redirect:
         return redirect
     user = session.user
+    if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.users.read"):
+        return {"_redirect": "/dashboard"}
+    can_edit = has_platform_permission(user, "platform.users.edit")
+    can_change_status = has_platform_permission(user, "platform.users.status")
+    can_change_roles = has_platform_permission(user, "platform.users.roles")
+    can_manage = can_edit or can_change_status or can_change_roles
     nav = build_nav("/platform/users", user)
 
     search = request.args.get("search", "").strip()
@@ -184,6 +191,10 @@ def platform_users():
         "search": search,
         "role_filter": role,
         "status_filter": status,
+        "can_manage": can_manage,
+        "can_edit": can_edit,
+        "can_change_status": can_change_status,
+        "can_change_roles": can_change_roles,
     }
 
 
@@ -196,6 +207,12 @@ def platform_user_detail(username: str):
     if redirect:
         return redirect
     current_user = session.user
+    if current_user.platform_role == "system_staff" and not has_platform_permission(current_user, "platform.users.read"):
+        return {"_redirect": "/dashboard"}
+    can_edit = has_platform_permission(current_user, "platform.users.edit")
+    can_change_status = has_platform_permission(current_user, "platform.users.status")
+    can_change_roles = has_platform_permission(current_user, "platform.users.roles")
+    can_manage = can_edit or can_change_status or can_change_roles
     nav = build_nav("/platform/users", current_user)
 
     target_user = identity_repo.find_user_by_email(username) or identity_repo.find_user_by_id(username)
@@ -249,6 +266,10 @@ def platform_user_detail(username: str):
         "member_orgs": member_orgs,
         "error": request.args.get("error"),
         "info": request.args.get("info"),
+        "can_manage": can_manage,
+        "can_edit": can_edit,
+        "can_change_status": can_change_status,
+        "can_change_roles": can_change_roles,
     }
 
 
@@ -327,6 +348,9 @@ def platform_staff():
     if redirect:
         return redirect
     user = session.user
+    if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.staff.read"):
+        return {"_redirect": "/dashboard"}
+    is_super_admin = user.platform_role == "system_admin"
     nav = build_nav("/platform/staff", user)
     staff = get_platform_staff()
     rbac = get_platform_rbac()
@@ -376,6 +400,7 @@ def platform_staff():
         "total": total_staff,
         "total_pages": total_pages_staff,
         "error": request.args.get("error"),
+        "is_super_admin": is_super_admin,
     }
 
 
@@ -601,6 +626,9 @@ def my_organizations():
     organizations = get_user_org_list(user.id)
     user_owns_org = any(o.get("created_by") == user.id for o in organizations)
 
+    if user_owns_org and request.args.get("mode") == "create":
+        return {"_redirect": "/my/organizations"}
+
     return {
         "_meta": {"title": "My Organizations — CodeSandbox"},
         "user": _user_ctx(user),
@@ -664,8 +692,6 @@ def my_organization_members(slug: str):
     org = _load_org_or_redirect(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
-    if not org["can_manage_members"] and not org["can_invite"]:
-        return {"_redirect": f"/my/organizations/{slug}"}
     _set_active_workspace(org)
 
     search = request.args.get("search", "").strip()
@@ -703,6 +729,10 @@ def my_organization_members(slug: str):
         "search": search,
         "role_filter": role_filter,
         "invite_link": invite_link,
+        "is_owner": org["is_owner"],
+        "can_invite": org["can_invite"],
+        "can_manage_members": org["can_manage_members"],
+        "can_assign_roles": org["can_assign_roles"],
         "info": request.args.get("info"),
         "error": request.args.get("error"),
         **_workspaces_ctx(user, active_workspace=org),
@@ -719,7 +749,7 @@ def my_organization_roles(slug: str):
     org = _load_org_or_redirect(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
-    if not org["is_owner"]:
+    if not org["is_owner"] and not org["can_manage_roles"] and not org["can_assign_roles"]:
         return {"_redirect": f"/my/organizations/{slug}"}
     _set_active_workspace(org)
 
@@ -853,13 +883,16 @@ def _workspaces_ctx(user, active_workspace=None) -> dict:
             active_workspace = next(
                 (w for w in workspace_list if w["slug"] == persisted_slug), None
             )
+    user_owns_org = any(w.get("created_by") == user.id for w in workspace_list)
     return {
         "workspace_list": workspace_list,
         "active_workspace": active_workspace,
+        "user_owns_org": user_owns_org,
         "_layout_state": {
             "role": user.platform_role,
             "active_workspace": _workspace_state_item(active_workspace),
             "workspaces": [_workspace_state_item(workspace) for workspace in workspace_list],
+            "user_owns_org": user_owns_org,
         },
     }
 

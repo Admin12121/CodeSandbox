@@ -26,6 +26,7 @@ class Organization(Model):
     status = StringField(max_length=20, default="active")
     invite_code = StringField(max_length=20, nullable=True)
     created_by = ForeignKey(to=User, on_delete="SET NULL", nullable=True)
+    owner_id = StringField(max_length=36, nullable=True)
     created_at = DateTimeField(default=_now)
     updated_at = DateTimeField(nullable=True)
 

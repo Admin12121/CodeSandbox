@@ -5,7 +5,8 @@
     selected_member=selected_member,
     staff=staff,
     roles=roles,
-    error=error
+    error=error,
+    is_super_admin=is_super_admin
   ) }}
 {% else %}
   {{ staff_tpl.staff_list(
@@ -16,6 +17,7 @@
     page=page,
     page_size=page_size,
     total=total,
-    total_pages=total_pages
+    total_pages=total_pages,
+    is_super_admin=is_super_admin
   ) }}
 {% endif %}

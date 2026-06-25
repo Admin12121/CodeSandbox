@@ -3,7 +3,7 @@
 {% import "components/ui/input.html" as input %}
 {% import "components/ui/button.html" as button %}
 
-{% macro join_form() %}
+{% macro join_form(user_owns_org=False) %}
 <div class="flex min-h-[70vh] items-center justify-center p-6">
   {% call frame.frame(class="w-full max-w-md p-6") %}
     <div class="mx-auto max-w-md grid gap-5">
@@ -27,11 +27,13 @@
         {% endcall %}
       </div>
 
+      {% if not user_owns_org %}
       <p class="text-center text-xs text-muted-foreground">
         Don't have an invite?
         <a href="/my/organizations?mode=create" class="text-primary hover:underline">Create your own organization</a>
         instead.
       </p>
+      {% endif %}
     </div>
   {% endcall %}
 </div>

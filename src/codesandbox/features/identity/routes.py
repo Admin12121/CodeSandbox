@@ -25,8 +25,11 @@ from .service import (
     create_session_for_user,
     disable_2fa,
     generate_totp_setup,
+    get_user_passkeys,
     link_github_account,
     link_google_account,
+    passkey_register_begin,
+    passkey_register_complete,
     request_email_verification,
     request_password_reset,
     reset_password,
@@ -567,6 +570,69 @@ def revoke_session_action(session_id: str):
             return redirect("/settings?tab=sessions&error=Use+Sign+Out+to+end+your+current+session.", code=303)
     repository.delete_session_by_id(session_id)
     return redirect("/settings?tab=sessions&info=Session+revoked.", code=303)
+
+
+@web_bp.get("/settings/passkeys")
+def list_passkeys_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    passkeys = get_user_passkeys(cs.user.id)
+    return jsonify({"ok": True, "passkeys": passkeys})
+
+
+@web_bp.post("/settings/passkeys/register/begin")
+@limiter.limit("10 per minute")
+def passkey_register_begin_action():
+    from flask import jsonify, session as flask_session
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    attachment = data.get("attachment") or None
+    result = passkey_register_begin(cs.user.id, attachment=attachment)
+    if not result:
+        return jsonify({"ok": False, "error": "Unable to start passkey registration."}), 500
+    flask_session["_passkey_challenge"] = result["challenge"]
+    return jsonify({"ok": True, "options": result["options"]})
+
+
+@web_bp.post("/settings/passkeys/register/complete")
+@limiter.limit("10 per minute")
+def passkey_register_complete_action():
+    from flask import jsonify, session as flask_session
+    from codesandbox.shared.session import require_session
+    import json
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    challenge_b64 = flask_session.pop("_passkey_challenge", None)
+    if not challenge_b64:
+        return jsonify({"ok": False, "error": "No pending registration. Please start again."}), 400
+    data = request.get_json(silent=True) or {}
+    credential_json = json.dumps(data.get("credential", {}))
+    passkey_name = str(data.get("name", "")).strip() or None
+    result = passkey_register_complete(cs.user.id, challenge_b64, credential_json, passkey_name)
+    if not result.ok:
+        return jsonify({"ok": False, "error": result.message}), 400
+    return jsonify({"ok": True, "message": result.message})
+
+
+@web_bp.post("/settings/passkeys/<passkey_id>/delete")
+def delete_passkey_action(passkey_id: str):
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    from . import repository
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    deleted = repository.delete_passkey(passkey_id, cs.user.id)
+    if not deleted:
+        return jsonify({"ok": False, "error": "Passkey not found."}), 404
+    return jsonify({"ok": True})
 
 
 @web_bp.post("/settings/connected-accounts/<provider>/disconnect")

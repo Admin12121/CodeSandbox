@@ -12,6 +12,8 @@
     role_members=role_members,
     available_members=available_members,
     is_owner=org.is_owner,
+    can_manage_roles=org.can_manage_roles,
+    can_assign_roles=org.can_assign_roles,
     error=error,
     org_members_page=org_members_page,
     org_members_page_size=org_members_page_size,
@@ -21,6 +23,6 @@
 {% else %}
   <div class="grid gap-0">
     {{ org_ui.org_header(org, show_profile=false, info=info, error=error) }}
-    {{ roles_ui.roles_list(org=org, is_owner=org.is_owner) }}
+    {{ roles_ui.roles_list(org=org, is_owner=org.is_owner, can_manage_roles=org.can_manage_roles) }}
   </div>
 {% endif %}

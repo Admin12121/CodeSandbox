@@ -6,6 +6,7 @@ from nexorm.fields import (
     BooleanField,
     DateTimeField,
     ForeignKey,
+    IntegerField,
     StringField,
     TextField,
     UUIDField,
@@ -118,3 +119,18 @@ class TwoFactorMethod(Model):
 
     class Meta:
         table_name = "two_factor_methods"
+
+
+class UserPasskey(Model):
+    id = UUIDField(primary_key=True, default=uuid7)
+    user_id = ForeignKey(to=User, on_delete="CASCADE")
+    credential_id = StringField(max_length=512, unique=True)
+    public_key = TextField()
+    sign_count = IntegerField(default=0)
+    aaguid = StringField(max_length=36, nullable=True)
+    name = StringField(max_length=100, nullable=True)
+    created_at = DateTimeField(default=_now)
+    last_used_at = DateTimeField(nullable=True)
+
+    class Meta:
+        table_name = "user_passkeys"

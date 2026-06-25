@@ -308,6 +308,125 @@ def disable_2fa(user_id: str) -> None:
     repository.update_user(user_id, two_factor_enabled=False)
 
 
+# ── Passkeys (WebAuthn) ────────────────────────────────────────────────────────
+
+def _get_rp_config() -> tuple[str, str]:
+    """Returns (rp_id, origin) derived from APP_URL."""
+    from urllib.parse import urlparse
+    parsed = urlparse(get_settings().app_url)
+    rp_id = parsed.hostname or "localhost"
+    port = parsed.port
+    if port and port not in (80, 443):
+        origin = f"{parsed.scheme}://{parsed.hostname}:{port}"
+    else:
+        origin = f"{parsed.scheme}://{parsed.hostname}"
+    return rp_id, origin
+
+
+def passkey_register_begin(user_id: str, attachment: str | None = None) -> dict:
+    """Generate WebAuthn registration options. Returns JSON-serializable dict."""
+    from webauthn import generate_registration_options, options_to_json
+    from webauthn.helpers.structs import (
+        AuthenticatorAttachment,
+        ResidentKeyRequirement,
+        UserVerificationRequirement,
+    )
+    from webauthn.helpers import bytes_to_base64url
+    import json
+
+    user = repository.find_user_by_id(user_id)
+    if not user:
+        return {}
+
+    rp_id, _ = _get_rp_config()
+    existing = repository.get_user_passkeys(user_id)
+    from webauthn.helpers import base64url_to_bytes
+    exclude_credentials = []
+    for pk in existing:
+        try:
+            exclude_credentials.append({"type": "public-key", "id": base64url_to_bytes(pk.credential_id)})
+        except Exception:
+            pass
+
+    auth_attach = None
+    if attachment == "platform":
+        auth_attach = AuthenticatorAttachment.PLATFORM
+    elif attachment == "cross-platform":
+        auth_attach = AuthenticatorAttachment.CROSS_PLATFORM
+
+    options = generate_registration_options(
+        rp_id=rp_id,
+        rp_name="CodeSandbox",
+        user_id=user_id.encode("utf-8"),
+        user_name=user.email,
+        user_display_name=user.name,
+        exclude_credentials=exclude_credentials,
+        authenticator_attachment=auth_attach,
+        resident_key_requirement=ResidentKeyRequirement.REQUIRED,
+        user_verification=UserVerificationRequirement.PREFERRED,
+    )
+
+    challenge_b64 = bytes_to_base64url(options.challenge)
+    options_json = json.loads(options_to_json(options))
+    return {"challenge": challenge_b64, "options": options_json}
+
+
+def passkey_register_complete(user_id: str, challenge_b64: str, credential_json: str, passkey_name: str | None = None) -> AuthResult:
+    """Verify WebAuthn registration response and save the passkey."""
+    from webauthn import verify_registration_response
+    from webauthn.helpers.structs import RegistrationCredential
+    from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
+    import json
+
+    rp_id, origin = _get_rp_config()
+
+    try:
+        challenge_bytes = base64url_to_bytes(challenge_b64)
+        credential = RegistrationCredential.parse_raw(credential_json)
+        verification = verify_registration_response(
+            credential=credential,
+            expected_challenge=challenge_bytes,
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+            require_user_verification=False,
+        )
+    except Exception as exc:
+        return AuthResult(False, f"Passkey registration failed: {exc}")
+
+    credential_id = bytes_to_base64url(verification.credential_id)
+    public_key = bytes_to_base64url(verification.credential_public_key)
+    sign_count = verification.sign_count
+    aaguid = str(verification.aaguid) if getattr(verification, "aaguid", None) else None
+
+    existing = repository.find_passkey_by_credential_id(credential_id)
+    if existing:
+        return AuthResult(False, "This passkey is already registered.")
+
+    name = passkey_name or "Passkey"
+    repository.create_passkey(
+        user_id=user_id,
+        credential_id=credential_id,
+        public_key=public_key,
+        sign_count=sign_count,
+        aaguid=aaguid,
+        name=name,
+    )
+    return AuthResult(True, "Passkey registered successfully.")
+
+
+def get_user_passkeys(user_id: str) -> list[dict]:
+    passkeys = repository.get_user_passkeys(user_id)
+    return [
+        {
+            "id": str(pk.id),
+            "name": pk.name or "Passkey",
+            "created_at": pk.created_at.isoformat() if pk.created_at else None,
+            "last_used_at": pk.last_used_at.isoformat() if pk.last_used_at else None,
+        }
+        for pk in passkeys
+    ]
+
+
 # ── Social account linking ─────────────────────────────────────────────────────
 
 def link_google_account(user_id: str, code: str, redirect_uri: str) -> AuthResult:

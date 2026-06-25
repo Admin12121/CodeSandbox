@@ -19,7 +19,7 @@
 {# ══════════════════════════════════════════════════════════
    LIST VIEW
    ══════════════════════════════════════════════════════════ #}
-{% macro roles_list(org, is_owner) %}
+{% macro roles_list(org, is_owner, can_manage_roles=false) %}
 {% set slug = org.slug %}
 {% set visible_roles = org.roles | rejectattr("name", "equalto", "owner") | list %}
 
@@ -35,7 +35,7 @@
       {% endcall %}
     </form>
     <div class="hidden lg:block"></div>
-    {% if is_owner %}
+    {% if can_manage_roles %}
       {% call button.button(attrs={"data-cs-href": "/my/organizations/" ~ slug ~ "/roles?role=new"}, type="button", size="icon") %}
         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
       {% endcall %}
@@ -48,7 +48,7 @@
         {% call table.table_row() %}
           {{ table.table_head("Role — " ~ visible_roles | length) }}
           {{ table.table_head("Members", class="w-32") }}
-          {% if is_owner %}{{ table.table_head("Actions", class="w-10") }}{% endif %}
+          {% if can_manage_roles %}{{ table.table_head("Actions", class="w-10") }}{% endif %}
         {% endcall %}
       {% endcall %}
       {% call table.table_body() %}
@@ -65,6 +65,7 @@
                 <div class="flex min-w-0 items-center gap-3">
                   {{ role_dot(role.color) }}
                   <span class="truncate font-medium">{{ role.name | capitalize }}</span>
+                  {% if role.is_system %}<span class="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">system</span>{% endif %}
                 </div>
               {% endcall %}
               {% call table.table_cell() %}
@@ -73,14 +74,16 @@
                   <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
                 </div>
               {% endcall %}
-              {% if is_owner %}
+              {% if can_manage_roles %}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
-                    {% call dlg.dialog_trigger(target="#del-org-role-" ~ role.id,
-                      class="relative inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring sm:size-5",
-                      attrs={"aria-label": "Delete " ~ role.name}) %}
-                      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                    {% endcall %}
+                    {% if not role.is_system %}
+                      {% call dlg.dialog_trigger(target="#del-org-role-" ~ role.id,
+                        class="relative inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring sm:size-5",
+                        attrs={"aria-label": "Delete " ~ role.name}) %}
+                        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      {% endcall %}
+                    {% endif %}
                   </div>
                 {% endcall %}
               {% endif %}
@@ -91,15 +94,17 @@
     {% endcall %}
   {% endcall %}
 
-  {% if is_owner %}
+  {% if can_manage_roles %}
     {% for role in visible_roles %}
-      {{ del_dlg.delete_dialog(
-        id="del-org-role-" ~ role.id,
-        name=role.name,
-        description='Deleting "' ~ role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
-        action="/my/organizations/" ~ slug ~ "/roles/" ~ role.id ~ "/delete",
-        submit_label="Delete role"
-      ) }}
+      {% if not role.is_system %}
+        {{ del_dlg.delete_dialog(
+          id="del-org-role-" ~ role.id,
+          name=role.name,
+          description='Deleting "' ~ role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
+          action="/my/organizations/" ~ slug ~ "/roles/" ~ role.id ~ "/delete",
+          submit_label="Delete role"
+        ) }}
+      {% endif %}
     {% endfor %}
   {% endif %}
 
@@ -110,7 +115,7 @@
 {# ══════════════════════════════════════════════════════════
    EDITOR VIEW
    ══════════════════════════════════════════════════════════ #}
-{% macro roles_editor(org, selected_role, is_create, role_id, editor_tab, org_permissions, role_members, available_members, is_owner, error=none, org_members_page=1, org_members_page_size=20, org_members_total=0, org_members_total_pages=1) %}
+{% macro roles_editor(org, selected_role, is_create, role_id, editor_tab, org_permissions, role_members, available_members, is_owner, can_manage_roles=false, can_assign_roles=false, error=none, org_members_page=1, org_members_page_size=20, org_members_total=0, org_members_total_pages=1) %}
 {% set slug = org.slug %}
 
 <div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
@@ -122,7 +127,7 @@
          class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
       </a>
-      {% if is_owner %}
+      {% if can_manage_roles %}
         <a href="/my/organizations/{{ slug }}/roles?role=new" aria-label="Create role"
            class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
@@ -171,7 +176,7 @@
           {% if is_create %}Create role{% else %}{{ selected_role.name | capitalize }}{% endif %}
         </div>
       </div>
-      {% if is_owner %}
+      {% if can_manage_roles %}
         {% call button.button(type="submit", size="icon-xs", attrs={"form": "role-display-form", "aria-label": "Save role"}) %}
           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
         {% endcall %}
@@ -219,13 +224,13 @@
                 {{ field.field_label("Role name", for_id="role-name") }}
                 {{ input.input(name="name", value=(selected_role.name if not is_create else ""),
                   placeholder="e.g. Moderator", required=true,
-                  attrs={"id": "role-name"} if is_owner else {"id": "role-name", "disabled": true}) }}
+                  attrs={"id": "role-name"} if can_manage_roles else {"id": "role-name", "disabled": true}) }}
               {% endcall %}
               {% call field.field() %}
                 {{ field.field_label("Color", for_id="role-color") }}
                 <div class="flex items-center gap-2">
                   <input type="color" name="color" id="role-color" value="{{ selected_role.color }}"
-                    {% if not is_owner %}disabled{% endif %}
+                    {% if not can_manage_roles %}disabled{% endif %}
                     class="h-8.5 w-16 cursor-pointer rounded-lg border border-input bg-background p-1 sm:h-7.5">
                   <span class="text-sm text-muted-foreground tabular-nums">{{ selected_role.color }}</span>
                 </div>
@@ -235,13 +240,13 @@
               {{ field.field_label("Description", for_id="role-desc") }}
               {{ textarea.textarea(name="description", value=selected_role.description,
                 placeholder="What can members with this role do?",
-                attrs={"id": "role-desc"} if is_owner else {"id": "role-desc", "disabled": true}) }}
+                attrs={"id": "role-desc"} if can_manage_roles else {"id": "role-desc", "disabled": true}) }}
             {% endcall %}
           </div>
-          {% if is_owner %}
+          {% if can_manage_roles %}
             <div class="flex items-center gap-3">
               {% call button.button(type="submit") %}{{ "Create role" if is_create else "Save changes" }}{% endcall %}
-              {% if not is_create %}
+              {% if not is_create and not selected_role.is_system %}
                 {% call dlg.dialog_trigger(target="#del-org-role-editor-" ~ role_id,
                   class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-transparent bg-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-destructive outline-none transition-shadow hover:bg-destructive/8 focus-visible:ring-2 focus-visible:ring-ring sm:h-8") %}
                   Delete role
@@ -276,7 +281,7 @@
                           <div class="truncate text-sm font-semibold">{{ perm.label }}</div>
                           <p class="mt-1 text-sm text-muted-foreground"><code class="text-xs">{{ perm.key }}</code></p>
                         </div>
-                        {% if is_owner %}
+                        {% if can_manage_roles %}
                           <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/permission" data-cs-autosubmit>
   {{ csrf_input() }}
                             <input type="hidden" name="key" value="{{ perm.key }}">
@@ -304,7 +309,7 @@
               Save the role first, then add members.
             </div>
           {% else %}
-            {% if is_owner %}
+            {% if can_assign_roles %}
               <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/add"
                     class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
   {{ csrf_input() }}
@@ -348,7 +353,7 @@
                       {{ table.table_head("Member — " ~ org_members_total) }}
                       {{ table.table_head("Email") }}
                       {{ table.table_head("Joined", class="w-32") }}
-                      {% if is_owner %}{{ table.table_head("", class="w-10") }}{% endif %}
+                      {% if can_assign_roles %}{{ table.table_head("", class="w-10") }}{% endif %}
                     {% endcall %}
                   {% endcall %}
                   {% call table.table_body() %}
@@ -371,7 +376,7 @@
                           {% call table.table_cell() %}
                             <span class="text-xs text-muted-foreground">{{ member.joined_at.strftime("%b %d, %Y") if member.joined_at else "—" }}</span>
                           {% endcall %}
-                          {% if is_owner %}
+                          {% if can_assign_roles %}
                             {% call table.table_cell() %}
                               <div class="flex justify-end">
                                 <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/{{ member.id }}/remove">
@@ -407,7 +412,7 @@
   </div>
 </div>
 
-{% if is_owner and not is_create %}
+{% if can_manage_roles and not is_create and not selected_role.is_system %}
   {{ del_dlg.delete_dialog(
     id="del-org-role-editor-" ~ role_id,
     name=selected_role.name,

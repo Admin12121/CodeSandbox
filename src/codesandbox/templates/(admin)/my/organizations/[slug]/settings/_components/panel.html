@@ -4,10 +4,14 @@
 {% import "components/ui/table.html" as table %}
 {% import "components/media/upload.html" as media_upload %}
 {% import "components/ui/delete-dialog.html" as del_dlg %}
+{% import "components/ui/dialog.html" as dlg %}
 
 
 {% macro settings_panel(org, is_owner) %}
 {% set slug = org.slug %}
+{% set owner_members_list = org.members | selectattr("is_owner") | list %}
+{% set owner_member = owner_members_list[0] if owner_members_list else none %}
+{% set non_owner_members = org.members | rejectattr("is_owner") | list %}
 
 {% set industry_opts = [
   {"value": "Technology",    "label": "Technology"},
@@ -217,6 +221,11 @@
           {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ org.created_at.strftime("%b %d, %Y") if org.created_at else "—" }}{% endcall %}
           {% call table.table_cell() %}{% endcall %}
         {% endcall %}
+        {% call table.table_row() %}
+          {% call table.table_cell(class="font-medium text-sm") %}Owner{% endcall %}
+          {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ owner_member.name if owner_member else "—" }}{% endcall %}
+          {% call table.table_cell() %}{% endcall %}
+        {% endcall %}
       {% endcall %}
     {% endcall %}
   {% endcall %}
@@ -247,6 +256,20 @@
           {% endcall %}
         {% endif %}
         {% if is_owner %}
+          {% call table.table_row() %}
+            {% call table.table_cell() %}
+              <div class="text-sm font-medium">Transfer ownership</div>
+              <div class="text-xs text-muted-foreground mt-0.5">Transfer ownership of <strong>{{ org.name }}</strong> to another member. You will become a regular member.</div>
+            {% endcall %}
+            {% call table.table_cell(class="text-right") %}
+              {% call button.button(type="button", variant="outline", size="sm", attrs={
+                "data-dialog-trigger": "",
+                "data-target": "#transfer-owner-" ~ slug,
+                "aria-controls": "transfer-owner-" ~ slug,
+                "aria-expanded": "false"
+              }) %}Transfer ownership{% endcall %}
+            {% endcall %}
+          {% endcall %}
           {% call table.table_row() %}
             {% call table.table_cell() %}
               <div class="text-sm font-medium">Delete organization</div>
@@ -283,6 +306,50 @@
     description='This will permanently delete the "' ~ org.name ~ '" organization, remove all members, and erase all associated data.',
     action="/my/organizations/" ~ slug ~ "/delete"
   ) }}
+{% endif %}
+
+{% if is_owner %}
+  {% call dlg.dialog(attrs={"id": "transfer-owner-" ~ slug}) %}
+    <div class="flex flex-col gap-6 p-6">
+      <div class="flex flex-col items-center gap-2">
+        <div aria-hidden="true" class="flex size-9 shrink-0 items-center justify-center rounded-full border border-border">
+          <svg class="opacity-80" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        {% call dlg.dialog_header() %}
+          {% call dlg.dialog_title(class="sm:text-center") %}Transfer ownership{% endcall %}
+          {% call dlg.dialog_description(class="sm:text-center") %}
+            Select a member to become the new owner of <strong class="text-foreground">{{ org.name }}</strong>. You will remain a member but lose owner privileges.
+          {% endcall %}
+        {% endcall %}
+      </div>
+      <div class="grid gap-3">
+        <label for="transfer-owner-select-{{ slug }}" class="text-sm font-medium">New owner</label>
+        {% if non_owner_members %}
+          <select id="transfer-owner-select-{{ slug }}"
+            class="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <option value="">Select a member…</option>
+            {% for member in non_owner_members %}
+              <option value="{{ member.user_id }}">{{ member.name }} ({{ member.email }})</option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <p class="text-sm text-muted-foreground">There are no other members to transfer ownership to.</p>
+        {% endif %}
+        <p id="transfer-owner-error-{{ slug }}" hidden class="text-sm text-destructive"></p>
+      </div>
+      {% call dlg.dialog_footer() %}
+        {{ dlg.dialog_cancel(class="flex-1 lg:h-10") }}
+        {% if non_owner_members %}
+          {% call button.button(type="button", variant="destructive", class="flex-1 lg:h-10", attrs={
+            "id": "transfer-owner-submit-" ~ slug,
+            "disabled": ""
+          }) %}Transfer ownership{% endcall %}
+        {% endif %}
+      {% endcall %}
+    </div>
+  {% endcall %}
 {% endif %}
 
 {% app_script "org-settings" %}
@@ -429,6 +496,44 @@
   function esc(s){
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+
+  // Transfer ownership dialog
+  (function(){
+    var select = document.getElementById('transfer-owner-select-{{ slug }}');
+    var submitBtn = document.getElementById('transfer-owner-submit-{{ slug }}');
+    var errorEl = document.getElementById('transfer-owner-error-{{ slug }}');
+    if(!select || !submitBtn) return;
+
+    select.addEventListener('change', function(){
+      submitBtn.disabled = !select.value;
+    });
+
+    submitBtn.addEventListener('click', function(){
+      var newOwnerId = select.value;
+      if(!newOwnerId) return;
+      submitBtn.disabled = true;
+      if(errorEl) errorEl.hidden = true;
+
+      fetch('/my/organizations/{{ slug }}/transfer-ownership', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({new_owner_id: newOwnerId})
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(body){
+        if(!body.ok){
+          if(errorEl){ errorEl.textContent = body.error || 'Transfer failed.'; errorEl.hidden = false; }
+          submitBtn.disabled = false;
+          return;
+        }
+        window.location.reload();
+      })
+      .catch(function(){
+        if(errorEl){ errorEl.textContent = 'An unexpected error occurred.'; errorEl.hidden = false; }
+        submitBtn.disabled = false;
+      });
+    });
+  })();
 
 })();
 {% end_app_script %}

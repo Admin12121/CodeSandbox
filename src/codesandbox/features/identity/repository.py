@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from nexorm.exceptions import DoesNotExist
 
-from .models import ApiKey, AuthAccount, LoginAttempt, Session, TwoFactorMethod, User, VerificationToken
+from .models import ApiKey, AuthAccount, LoginAttempt, Session, TwoFactorMethod, User, UserPasskey, VerificationToken
 
 
 def find_user_by_email(email: str) -> User | None:
@@ -253,6 +253,66 @@ def delete_session_by_id(session_id: str) -> None:
             s.delete()
     except Exception:
         pass
+
+
+# ── Passkeys ──────────────────────────────────────────────────────────────────
+
+def get_user_passkeys(user_id: str) -> list[UserPasskey]:
+    try:
+        return UserPasskey.objects.filter(user_id=user_id).order_by("-created_at").all()
+    except Exception:
+        return []
+
+
+def find_passkey_by_credential_id(credential_id: str) -> UserPasskey | None:
+    try:
+        return UserPasskey.objects.filter(credential_id=credential_id).first()
+    except Exception:
+        return None
+
+
+def find_passkey_by_id(passkey_id: str) -> UserPasskey | None:
+    try:
+        return UserPasskey.objects.filter(id=passkey_id).first()
+    except Exception:
+        return None
+
+
+def create_passkey(
+    *,
+    user_id: str,
+    credential_id: str,
+    public_key: str,
+    sign_count: int,
+    aaguid: str | None = None,
+    name: str | None = None,
+) -> UserPasskey:
+    pk = UserPasskey(
+        user_id=user_id,
+        credential_id=credential_id,
+        public_key=public_key,
+        sign_count=sign_count,
+        aaguid=aaguid,
+        name=name,
+    )
+    pk.save()
+    return pk
+
+
+def update_passkey_sign_count(passkey_id: str, sign_count: int) -> None:
+    pk = find_passkey_by_id(passkey_id)
+    if pk:
+        pk.sign_count = sign_count
+        pk.last_used_at = datetime.now(timezone.utc)
+        pk.save()
+
+
+def delete_passkey(passkey_id: str, user_id: str) -> bool:
+    pk = find_passkey_by_id(passkey_id)
+    if pk and str(pk.user_id) == str(user_id):
+        pk.delete()
+        return True
+    return False
 
 
 def list_users(

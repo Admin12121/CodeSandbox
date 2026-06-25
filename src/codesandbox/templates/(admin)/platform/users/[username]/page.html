@@ -77,7 +77,7 @@
             upload_url="/platform/users/" ~ tu.id ~ "/upload-avatar",
             label=tu.name,
             description="PNG, JPG, WebP under 2 MB",
-            editable=true,
+            editable=can_manage,
             bind_key="user:" ~ tu.id
           ) }}
         </div>
@@ -103,14 +103,16 @@
             {% endcall %}
 
             {# Name — editable #}
-            {% call table.table_row(attrs={"data-editable-row": "name"}) %}
+            {% call table.table_row(attrs={"data-editable-row": "name"} if can_manage else {}) %}
               {% call table.table_cell(class="font-medium text-sm align-middle") %}Name{% endcall %}
               {% call table.table_cell(class="text-sm text-muted-foreground") %}
                 <span data-view>{{ tu.name or "—" }}</span>
+                {% if can_manage %}
                 <input data-edit hidden data-edit-input type="text" value="{{ tu.name or '' }}"
                   class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {% endif %}
               {% endcall %}
-              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+              {% call table.table_cell(class="text-right") %}{% if can_manage %}{{ _edit_actions() }}{% endif %}{% endcall %}
             {% endcall %}
 
             {# Email — read-only #}
@@ -130,34 +132,38 @@
             {% endcall %}
 
             {# Phone — editable #}
-            {% call table.table_row(attrs={"data-editable-row": "phone"}) %}
+            {% call table.table_row(attrs={"data-editable-row": "phone"} if can_manage else {}) %}
               {% call table.table_cell(class="font-medium text-sm align-middle") %}Phone{% endcall %}
               {% call table.table_cell(class="text-sm text-muted-foreground") %}
                 <span data-view>{{ tu.phone or "—" }}</span>
+                {% if can_manage %}
                 <input data-edit hidden data-edit-input type="tel" value="{{ tu.phone or '' }}"
                   placeholder="+1 555 000 0000"
                   class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {% endif %}
               {% endcall %}
-              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+              {% call table.table_cell(class="text-right") %}{% if can_manage %}{{ _edit_actions() }}{% endif %}{% endcall %}
             {% endcall %}
 
             {# Platform Role — editable select #}
-            {% call table.table_row(attrs={"data-editable-row": "platform_role"}) %}
+            {% call table.table_row(attrs={"data-editable-row": "platform_role"} if can_manage else {}) %}
               {% call table.table_cell(class="font-medium text-sm align-middle") %}Platform role{% endcall %}
               {% call table.table_cell(class="text-sm text-muted-foreground") %}
                 <span data-view>{{ tu.role_label }}</span>
+                {% if can_manage %}
                 <select data-edit hidden data-edit-input
                   class="h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <option value="user" {% if tu.platform_role == "user" %}selected{% endif %}>User</option>
                   <option value="system_staff" {% if tu.platform_role == "system_staff" %}selected{% endif %}>App Staff</option>
                   <option value="system_admin" {% if tu.platform_role == "system_admin" %}selected{% endif %}>System Admin</option>
                 </select>
+                {% endif %}
               {% endcall %}
-              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+              {% call table.table_cell(class="text-right") %}{% if can_manage %}{{ _edit_actions() }}{% endif %}{% endcall %}
             {% endcall %}
 
             {# Status — editable select #}
-            {% call table.table_row(attrs={"data-editable-row": "status"}) %}
+            {% call table.table_row(attrs={"data-editable-row": "status"} if can_manage else {}) %}
               {% call table.table_cell(class="font-medium text-sm align-middle") %}Status{% endcall %}
               {% call table.table_cell() %}
                 <div data-view>
@@ -165,14 +171,16 @@
                   {% elif tu.status == "active" %}{{ badge.badge("Active", variant="success") }}
                   {% else %}{{ badge.badge("Inactive", variant="secondary") }}{% endif %}
                 </div>
+                {% if can_manage %}
                 <select data-edit hidden data-edit-input
                   class="h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <option value="active" {% if tu.status == "active" %}selected{% endif %}>Active</option>
                   <option value="inactive" {% if tu.status == "inactive" %}selected{% endif %}>Inactive</option>
                   <option value="banned" {% if tu.status == "banned" %}selected{% endif %}>Banned</option>
                 </select>
+                {% endif %}
               {% endcall %}
-              {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
+              {% call table.table_cell(class="text-right") %}{% if can_manage %}{{ _edit_actions() }}{% endif %}{% endcall %}
             {% endcall %}
 
             {# Two-factor — read-only #}
