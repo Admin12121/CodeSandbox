@@ -171,7 +171,7 @@ def request_email_verification(user_id: str, email: str) -> str:
 
 def verify_email(token: str) -> AuthResult:
     vt = repository.find_verification_token(hash_token(token))
-    if not vt:
+    if not vt or vt.purpose != "email_verify":
         return AuthResult(False, "Invalid or expired verification link.")
     now = datetime.now(timezone.utc)
     exp = vt.expires_at
@@ -210,7 +210,7 @@ def reset_password(token: str, new_password: str) -> AuthResult:
     if len(new_password) < 8:
         return AuthResult(False, "Password must be at least 8 characters.")
     vt = repository.find_verification_token(hash_token(token))
-    if not vt:
+    if not vt or vt.purpose != "password_reset":
         return AuthResult(False, "Invalid or expired reset link.")
     now = datetime.now(timezone.utc)
     exp = vt.expires_at
