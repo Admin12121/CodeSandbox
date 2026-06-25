@@ -4,26 +4,89 @@
 {% include "(admin)/laboratory/sandbox/_components/time.html" %}
 
 {% macro nav_icon(name="", class="") -%}
- {%- if name == "panel-left" -%} <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left-icon lucide-panel-left"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
- {%- elif name == "spark" -%} <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-sparkles-icon lucide-sparkles"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>
- {%- elif name == "terminal" -%} <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-terminal-icon lucide-square-terminal"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>
- {%- elif name == "users" -%} <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-round-icon lucide-users-round"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
- {%- elif name == "notepad" -%} <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-notepad-text-icon lucide-notepad-text"><path d="M8 2v4"/><path d="M12 2v4"/><path d="M16 2v4"/><rect width="16" height="18" x="4" y="4" rx="2"/><path d="M8 10h6"/><path d="M8 14h8"/><path d="M8 18h5"/></svg>
- {%- else -%} 
- {%- endif -%}
+  {%- if name == "panel-left" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+  {%- elif name == "spark" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>
+  {%- elif name == "terminal" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+  {%- elif name == "users" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
+  {%- elif name == "notepad" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v4"/><path d="M12 2v4"/><path d="M16 2v4"/><rect width="16" height="18" x="4" y="4" rx="2"/><path d="M8 10h6"/><path d="M8 14h8"/><path d="M8 18h5"/></svg>
+  {%- elif name == "plus" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+  {%- elif name == "x" -%}
+    <svg class="{{ cn('size-3 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  {%- elif name == "play" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+  {%- elif name == "square" -%}
+    <svg class="{{ cn('size-3 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+  {%- elif name == "refresh" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/></svg>
+  {%- elif name == "search" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+  {%- elif name == "settings" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1.82V22a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 20a1.65 1.65 0 0 0-1.82-.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1.82-.33H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4 9a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6A1.65 1.65 0 0 0 10.33 2H14a1.65 1.65 0 0 0 .33 2A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.24.32.5.6.6 1h.09a2 2 0 1 1 0 4H20a1.65 1.65 0 0 0-.6 1Z"/></svg>
+  {%- elif name == "folder" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-icon lucide-folder"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+  {%- elif name == "add" -%}
+    <svg class="{{ cn('size-3.5 shrink-0', class) }}" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-icon lucide-plus"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+  {%- endif -%}
 {%- endmacro %}
 
-<div class="h-[calc(100vh-4.85rem)]">
+<style>
+.editor-tab .tab-close,
+.terminal-tab .terminal-tab-close {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.editor-tab:hover .tab-close,
+.terminal-tab:hover .terminal-tab-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.editor-tab.active-tab,
+.terminal-tab.active-terminal,
+.right-mode.active-right {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.ai-message-code {
+  scrollbar-width: thin;
+}
+</style>
+
+<div id="sandbox-ui" class="h-[calc(100vh-4.85rem)]">
 
     {% call resizable.resizable_panel_group(orientation="horizontal", class="rounded-xl") %}
 
-      {% call resizable.resizable_panel(default_size=20, min_size=15, max_size=25, class="h-full") %}
-          <div class="text-sm font-medium text-muted-foreground">Files</div>
-          <ul class="mt-3 space-y-1 text-sm">
-            <li class="rounded-md px-2 py-1 hover:bg-accent">main.py</li>
-            <li class="rounded-md px-2 py-1 hover:bg-accent">requirements.txt</li>
-            <li class="rounded-md px-2 py-1 hover:bg-accent">README.md</li>
-          </ul>
+      {% call resizable.resizable_panel(default_size=20, min_size=15, max_size=25, class="h-full", attrs={"data-panel": "left"}) %}
+      <div data-left-mode="files" class="h-[calc(100%-2rem)] overflow-auto p-2 text-xs">
+        <div class="space-y-1">
+          <div class="cursor-pointer flex items-center gap-1 rounded px-2 py-1 hover:bg-accent">{{ nav_icon("folder", class="size-3") }} docker / nginx</div>
+          <div class="cursor-pointer flex items-center gap-1 rounded px-2 py-1 hover:bg-accent">{{ nav_icon("folder", class="size-3") }} docs</div>
+          <div class="cursor-pointer flex items-center gap-1 rounded px-2 py-1 hover:bg-accent">{{ nav_icon("folder", class="size-3") }} migrations</div>
+          <div class="cursor-pointer flex items-center gap-1 rounded px-2 py-1 hover:bg-accent">{{ nav_icon("folder", class="size-3") }} packages</div>
+          <div class="cursor-pointer flex items-center gap-1 rounded px-2 py-1 hover:bg-accent">{{ nav_icon("folder", class="size-3") }} src</div>
+
+          <div class="rounded px-2 py-1 text-muted-foreground hover:bg-accent">.env</div>
+          <div class="rounded px-2 py-1 hover:bg-accent">.env.example</div>
+          <div class="rounded px-2 py-1 hover:bg-accent">.gitignore</div>
+          <div data-open-file=".python-version" class="cursor-pointer rounded bg-accent px-2 py-1 text-accent-foreground">.python-version</div>
+          <div data-open-file="docker-compose.yml" class="cursor-pointer rounded px-2 py-1 hover:bg-accent">docker-compose.yml</div>
+          <div data-open-file="Dockerfile.dev" class="cursor-pointer rounded px-2 py-1 hover:bg-accent">Dockerfile.dev</div>
+          <div data-open-file="main.py" class="cursor-pointer rounded px-2 py-1 hover:bg-accent">main.py</div>
+          <div data-open-file="pyproject.toml" class="cursor-pointer rounded px-2 py-1 hover:bg-accent">pyproject.toml</div>
+          <div data-open-file="README.md" class="cursor-pointer rounded px-2 py-1 hover:bg-accent">README.md</div>
+          <div data-open-file="seed.py" class="cursor-pointer rounded px-2 py-1 hover:bg-accent">seed.py</div>
+          <div class="rounded px-2 py-1 text-muted-foreground hover:bg-accent">uv.lock</div>
+        </div>
+      </div>
       {% endcall %}
 
       {{ resizable.resizable_handle(with_handle=true) }}
@@ -31,46 +94,302 @@
       {% call resizable.resizable_panel(default_size=55, min_size=30) %}
           {% call resizable.resizable_panel_group(orientation="vertical") %}
             {% call resizable.resizable_panel(default_size=70, min_size=20) %}
-              <div class="h-full p-3">
-                <div class="text-sm font-medium text-muted-foreground">Editor</div>
-                <pre class="mt-3 rounded-md bg-muted p-3 text-xs"><code>print("hello from CodeSandbox")</code></pre>
+            <div class="flex h-8 shrink-0 items-center justify-between border-b bg-background">
+              <div class="flex h-full items-center">
+                <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">←</button>
+                <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">→</button>
+      
+                <div id="editor-tabs" class="flex h-full items-center">
+                  <button data-tab=".python-version" class="editor-tab active-tab group flex h-full items-center gap-2 border-r px-4 text-xs italic">
+                    <span>.python-version</span>
+                    <span class="tab-close rounded p-0.5 hover:bg-background/60">
+                      {{ nav_icon("x") }}
+                    </span>
+                  </button>
+                
+                  <button data-tab="main.py" class="editor-tab group hidden h-full items-center gap-2 border-r px-4 text-xs">
+                    <span>main.py</span>
+                    <span class="tab-close rounded p-0.5 hover:bg-background/60">
+                      {{ nav_icon("x") }}
+                    </span>
+                  </button>
+                
+                  <button data-tab="README.md" class="editor-tab group hidden h-full items-center gap-2 border-r px-4 text-xs">
+                    <span>README.md</span>
+                    <span class="tab-close rounded p-0.5 hover:bg-background/60">
+                      {{ nav_icon("x") }}
+                    </span>
+                  </button>
+                </div>
               </div>
+      
+              <div class="flex h-full items-center gap-1 px-2 text-muted-foreground border-l">
+                <button class="p-1 cursor-pointer">{{ nav_icon("add") }}</button>
+              </div>
+            </div>
+            <!-- EDITOR TOOLBAR -->
+            <div class="flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs text-muted-foreground">
+              <span id="current-file-title">.python-version</span>
+              <div class="flex items-center gap-3">
+                <button class="hover:text-accent-foreground">{{ nav_icon("search") }}</button>
+              </div>
+            </div>
+  
+            <!-- EDITOR CONTENT -->
+            <div class="min-h-0 flex-1 overflow-auto bg-background font-mono text-xs">
+              <div data-editor-file=".python-version" class="editor-pane">
+                <div class="flex border-b bg-muted/20">
+                  <div class="w-16 select-none border-r py-1 px-2 text-right text-muted-foreground">1</div>
+                  <pre class="px-5 py-1"><code>3.12</code></pre>
+                </div>
+                <div class="flex">
+                  <div class="w-16 select-none border-r py-1 px-2 text-right text-muted-foreground">2</div>
+                  <pre class="px-5 py-1"><code></code></pre>
+                </div>
+              </div>
+  
+              <div data-editor-file="main.py" class="editor-pane hidden">
+                <div class="flex border-b bg-muted/20">
+                  <div class="w-16 select-none border-r py-1 px-2 text-right text-muted-foreground">1</div>
+                  <pre class="px-5 py-1"><code>print("hello from CodeSandbox")</code></pre>
+                </div>
+                <div class="flex">
+                  <div class="w-16 select-none border-r py-1 px-2 text-right text-muted-foreground">2</div>
+                  <pre class="px-5 py-1"><code></code></pre>
+                </div>
+              </div>
+  
+              <div data-editor-file="README.md" class="editor-pane hidden">
+                <div class="flex border-b bg-muted/20">
+                  <div class="w-16 select-none border-r py-1 px-2 text-right text-muted-foreground">1</div>
+                  <pre class="px-5 py-1"><code># CodeSandbox</code></pre>
+                </div>
+                <div class="flex border-b">
+                  <div class="w-16 select-none border-r py-1 px-2 text-right text-muted-foreground">2</div>
+                  <pre class="px-5 py-1"><code>Web based isolated sandbox workspace.</code></pre>
+                </div>
+              </div>
+            </div>
             {% endcall %}
 
             {{ resizable.resizable_handle(with_handle=true, orientation="horizontal") }}
 
-            {% call resizable.resizable_panel(default_size=30, min_size=15) %}
-              <div class="h-full overflow-auto p-3">
-                <div class="text-sm font-medium text-muted-foreground">Terminal</div>
-                <pre class="mt-3 text-xs text-muted-foreground">$ python main.py hello from CodeSandbox</pre>
-              </div>
+            {% call resizable.resizable_panel(default_size=30, min_size=15, attrs={"data-panel": "terminal"}) %}
+            <div class="flex h-8 items-center justify-between border-b text-xs">
+                <div class="flex h-full items-center">
+                  <button data-terminal-tab="bash" class="terminal-tab active-terminal group flex h-full items-center gap-2 border-r px-4">
+                    <span>bash</span>
+                    <span class="terminal-tab-close rounded p-0.5 hover:bg-background/60">
+                      {{ nav_icon("x") }}
+                    </span>
+                  </button>
+                
+                  <button data-terminal-tab="python" class="terminal-tab group flex h-full items-center gap-2 border-r px-4 text-muted-foreground hover:text-accent-foreground">
+                    <span>python</span>
+                    <span class="terminal-tab-close rounded p-0.5 hover:bg-background/60">
+                      {{ nav_icon("x") }}
+                    </span>
+                  </button>
+                
+                  <button data-terminal-tab="logs" class="terminal-tab group flex h-full items-center gap-2 border-r px-4 text-muted-foreground hover:text-accent-foreground">
+                    <span>logs</span>
+                    <span class="terminal-tab-close rounded p-0.5 hover:bg-background/60">
+                      {{ nav_icon("x") }}
+                    </span>
+                  </button>
+                </div>
+           
+                         <div class="flex items-center gap-2 px-2 text-muted-foreground border-l">
+                           <button class="hover:text-accent-foreground">{{ nav_icon("plus") }}</button>
+                         </div>
+                       </div> <div class="h-[calc(100%-2rem)] overflow-auto p-3 font-mono text-xs">
+                                    <pre data-terminal-pane="bash" class="terminal-pane text-muted-foreground">$ python main.py
+                      hello from CodeSandbox</pre>
+                      
+                                    <pre data-terminal-pane="python" class="terminal-pane hidden text-muted-foreground">Python 3.12.0
+                      >>> print("ready")
+                      ready</pre>
+                      
+                                    <pre data-terminal-pane="logs" class="terminal-pane hidden text-muted-foreground">[sandbox] status=running
+                      [network] mode=isolated
+                      [resource] cpu=0% ram=128MB</pre>
+                                  </div>
+                       
             {% endcall %}
         {% endcall %}
       {% endcall %}
 
       {{ resizable.resizable_handle(with_handle=true) }}
 
-      {% call resizable.resizable_panel(default_size=35, min_size=25, max_size=40) %}
-          <div class="text-sm font-medium text-muted-foreground">Preview</div>
-          <div class="mt-3 text-sm text-muted-foreground">No output yet — run the sandbox to see a live preview.</div>
+      {% call resizable.resizable_panel(default_size=35, min_size=25, max_size=40, attrs={"data-panel": "right"}) %}
+      
+      
+                <div class="h-full overflow-auto  text-sm">
+                    <div data-right-pane="notes" class="right-pane p-3">
+                      <div class="mx-auto max-w-[620px] space-y-4 px-2 py-3 text-sm">
+                        <input
+                          class="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground"
+                          value="Untitled Investigation"
+                          placeholder="Untitled"
+                        >
+
+                        <div class="space-y-3">
+                          <div class="group rounded-md px-2 py-1 hover:bg-muted/30">
+                            <p class="mt-1 leading-relaxed text-muted-foreground">
+                              Write case notes, observations, commands, indicators, and manual analysis here.
+                            </p>
+                          </div>
+                    
+                          <div class="group rounded-md border bg-muted/20 p-3">
+                            <div class="text-xs font-medium text-muted-foreground">Findings</div>
+                            <ul class="mt-2 space-y-2 text-muted-foreground">
+                              <li class="flex gap-2"><span>☐</span><span>Review uploaded binary metadata</span></li>
+                              <li class="flex gap-2"><span>☐</span><span>Check strings, imports, entropy, and sections</span></li>
+                              <li class="flex gap-2"><span>☐</span><span>Record network indicators and suspicious behavior</span></li>
+                            </ul>
+                          </div>
+                    
+                          <div class="rounded-md border-l-2 border-yellow-500 bg-yellow-500/10 p-3 text-xs text-muted-foreground">
+                            <div class="font-medium text-yellow-500">Reminder</div>
+                            <div class="mt-1">All notes are static UI for now. Later this can become a Notion-style block editor.</div>
+                          </div>
+                    
+                          <div class="rounded-md border bg-muted/20 p-3 font-mono text-xs text-muted-foreground">
+                            $ ./decompile sample.exe<br>
+                            output: disassembly.asm, pseudocode.c, strings.txt
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+      
+                    <div data-right-pane="ai" class="right-pane hidden h-full">
+                      <div class="flex h-full flex-col bg-background">
+                    
+                        <div class="flex h-8 shrink-0 items-center justify-between border-b px-2">
+                          <div class="flex items-center gap-2 text-sm font-medium">
+                            <span>New Claude Agent Thread</span>
+                          </div>
+                    
+                          <div class="flex items-center gap-3 text-muted-foreground">
+                            <button class="hover:text-accent-foreground">
+                              {{ nav_icon("plus") }}
+                            </button>
+                            <button class="text-xs hover:text-accent-foreground">•••</button>
+                          </div>
+                        </div>
+                    
+                        <div class="flex min-h-0 flex-1 flex-col">
+                          <textarea
+                            class="h-full w-full resize-none bg-transparent px-3 py-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground"
+                            placeholder="Message Claude Agent — @ to include context, / for commands"
+                          ></textarea>
+                        </div>
+                    
+                        <div class="shrink-0 border-t bg-background">
+                          <textarea class="h-24 w-full resize-none bg-transparent px-3 py-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground"></textarea>
+                          <div class="flex h-12 items-center justify-between px-3 text-xs text-muted-foreground">
+                    
+                            <div class="flex items-center gap-3">
+                              <button class="hover:text-accent-foreground">
+                                {{ nav_icon("plus") }}
+                              </button>
+                              <button class="hover:text-accent-foreground">
+                                ◉
+                              </button>
+                            </div>
+                    
+                            <div class="flex items-center gap-4">
+                              <div class="flex items-center gap-1">
+                                <span class="size-3 rounded-full border-2 border-muted-foreground"></span>
+                                <button class="hover:text-accent-foreground">
+                                  Accept Edits⌄
+                                </button>
+                              </div>
+                    
+                              <button class="hover:text-accent-foreground">
+                                Default (recommended)⌄
+                              </button>
+                    
+                              <button class="hover:text-accent-foreground">
+                                Default⌄
+                              </button>
+                    
+                              <button class="rounded-md bg-muted px-2 py-1 text-muted-foreground hover:text-accent-foreground">
+                                ➤
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                    
+                      </div>
+                    </div>
+      
+                  <div data-right-pane="preview" class="right-pane hidden">
+                    <div class="text-xs font-medium text-muted-foreground">Preview</div>
+                    <div class="mt-3 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                      No output yet — run the sandbox to see live preview.
+                    </div>
+                  </div>
+      
+                  <div data-right-pane="report" class="right-pane hidden">
+                    <div class="text-xs font-medium text-muted-foreground">Report</div>
+                    <div class="mt-3 space-y-2 text-xs text-muted-foreground">
+                      <div class="rounded-md border p-2">Status: Draft</div>
+                      <div class="rounded-md border p-2">Findings: 0</div>
+                      <div class="rounded-md border p-2">Artifacts: 0</div>
+                    </div>
+                  </div>
+                </div>
       {% endcall %}
 
     {% endcall %}
 
-  <div class="text-muted-foreground w-full h-[25px] flex items-center justify-between gap-1 bg-sidebar p-0.5 px-1 border-t">
-      <span class="flex gap-1 h-full items-center">
-        {{ nav_icon(name="panel-left", class="hover:text-accent-foreground cursor-pointer ease-in-out duration-200") }}
+    <div class="flex h-[25px] items-center justify-between border-t bg-sidebar px-1 text-[10px] text-muted-foreground">
+  
+      <div class="flex h-full items-center gap-1">
+        <button data-toggle-panel="left" class="status-btn active-status rounded px-1 hover:text-accent-foreground">
+          {{ nav_icon("panel-left") }}
+        </button>
+  
         {{ sep.separator(orientation="vertical") }}
-        {{ nav_icon(name="users", class="hover:text-accent-foreground cursor-pointer ease-in-out duration-200") }}
-      </span>
-      <span class="flex gap-1 h-full items-center">
-        <span id="time" class="text-[9px]"></span>
+  
+        <button data-toggle-users class="status-btn rounded px-1 hover:text-accent-foreground">
+          {{ nav_icon("users") }}
+        </button>
+  
         {{ sep.separator(orientation="vertical") }}
-        {{ nav_icon(name="terminal", class="hover:text-accent-foreground cursor-pointer ease-in-out duration-200") }}
+  
+        <span class="px-1">Sandbox: <span class="text-green-500">Running</span></span>
+        <span class="px-1">Python 3.12</span>
+        <span class="px-1">Network: Isolated</span>
+      </div>
+  
+      <div class="flex h-full items-center gap-1">
+        <span class="px-1">Ln 1, Col 1</span>
+        <span class="px-1">Spaces: 4</span>
+        <span class="px-1">UTF-8</span>
+  
         {{ sep.separator(orientation="vertical") }}
-        {{ nav_icon(name="notepad", class="hover:text-accent-foreground cursor-pointer ease-in-out duration-200") }}
+  
+        <span id="sandbox-time" class="px-1">00:00</span>
+  
         {{ sep.separator(orientation="vertical") }}
-        {{ nav_icon(name="spark", class="hover:text-accent-foreground cursor-pointer ease-in-out duration-200") }}
-      </span>
-  </div>
+  
+        <button data-toggle-panel="terminal" class="status-btn active-status rounded px-1 hover:text-accent-foreground">
+          {{ nav_icon("terminal") }}
+        </button>
+  
+        {{ sep.separator(orientation="vertical") }}
+  
+        <button data-toggle-right="notes" class="status-btn active-status rounded px-1 hover:text-accent-foreground">
+          {{ nav_icon("notepad") }}
+        </button>
+  
+        {{ sep.separator(orientation="vertical") }}
+  
+        <button data-toggle-right="ai" class="status-btn rounded px-1 hover:text-accent-foreground">
+          {{ nav_icon("spark") }}
+        </button>
+      </div>
+    </div>
 </div>

@@ -1,6 +1,344 @@
-{% app_script "time" %}
-setInterval(() =>
-  document.getElementById("time").textContent =
-    new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-1000);
+{% app_script "codesandbox.ui.shell" %}
+(function () {
+  function initSandboxShell() {
+    var root = document.getElementById("sandbox-ui");
+    if (!root || root.dataset.shellReady === "1") return;
+    root.dataset.shellReady = "1";
+
+    function q(sel) {
+      return root.querySelector(sel);
+    }
+
+    function qa(sel) {
+      return Array.from(root.querySelectorAll(sel));
+    }
+
+    function show(el) {
+      if (el) el.classList.remove("hidden");
+    }
+
+    function hide(el) {
+      if (el) el.classList.add("hidden");
+    }
+
+    function isHidden(el) {
+      return !el || el.classList.contains("hidden");
+    }
+
+    function panelByName(name) {
+      return q('[data-panel="' + name + '"]');
+    }
+
+    function siblingHandle(panel, side) {
+      if (!panel || !panel.parentElement) return null;
+
+      var siblings = Array.from(panel.parentElement.children);
+      var index = siblings.indexOf(panel);
+
+      if (side === "before") {
+        var before = siblings[index - 1];
+        return before && before.dataset.slot === "resizable-handle" ? before : null;
+      }
+
+      if (side === "after") {
+        var after = siblings[index + 1];
+        return after && after.dataset.slot === "resizable-handle" ? after : null;
+      }
+
+      return null;
+    }
+
+    function syncPanelHandle(panel, visible) {
+      if (!panel) return;
+
+      var before = siblingHandle(panel, "before");
+      var after = siblingHandle(panel, "after");
+
+      if (panel.dataset.panel === "left") {
+        visible ? show(after) : hide(after);
+      }
+
+      if (panel.dataset.panel === "right") {
+        visible ? show(before) : hide(before);
+      }
+
+      if (panel.dataset.panel === "terminal") {
+        visible ? show(before) : hide(before);
+      }
+    }
+
+    function setStatusButtonActive(selector, active) {
+      qa(selector).forEach(function (btn) {
+        btn.classList.toggle("active-status", active);
+        btn.classList.toggle("text-accent-foreground", active);
+        btn.classList.toggle("text-muted-foreground", !active);
+      });
+    }
+
+    function togglePanel(name) {
+      var panel = panelByName(name);
+      if (!panel) return;
+
+      var willShow = isHidden(panel);
+
+      willShow ? show(panel) : hide(panel);
+      syncPanelHandle(panel, willShow);
+      setStatusButtonActive('[data-toggle-panel="' + name + '"]', willShow);
+
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function openLeftMode(mode) {
+      var left = panelByName("left");
+      show(left);
+      syncPanelHandle(left, true);
+      setStatusButtonActive('[data-toggle-panel="left"]', true);
+
+      qa("[data-left-mode]").forEach(function (pane) {
+        pane.classList.toggle("hidden", pane.dataset.leftMode !== mode);
+      });
+    }
+
+    function openRight(mode) {
+      var right = panelByName("right");
+      show(right);
+      syncPanelHandle(right, true);
+
+      qa(".right-mode").forEach(function (btn) {
+        var active = btn.dataset.rightMode === mode;
+        btn.classList.toggle("active-right", active);
+        btn.classList.toggle("bg-accent", active);
+        btn.classList.toggle("text-accent-foreground", active);
+        btn.classList.toggle("text-muted-foreground", !active);
+      });
+
+      qa(".right-pane").forEach(function (pane) {
+        pane.classList.toggle("hidden", pane.dataset.rightPane !== mode);
+      });
+
+      qa("[data-toggle-right]").forEach(function (btn) {
+        var active = btn.dataset.toggleRight === mode;
+        btn.classList.toggle("active-status", active);
+        btn.classList.toggle("text-accent-foreground", active);
+        btn.classList.toggle("text-muted-foreground", !active);
+      });
+
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function toggleRight(mode) {
+      var right = panelByName("right");
+      var activePane = q('[data-right-pane="' + mode + '"]');
+      var sameModeVisible = right && !isHidden(right) && activePane && !isHidden(activePane);
+
+      if (sameModeVisible) {
+        hide(right);
+        syncPanelHandle(right, false);
+        setStatusButtonActive("[data-toggle-right]", false);
+        window.dispatchEvent(new Event("resize"));
+        return;
+      }
+
+      openRight(mode);
+    }
+
+    function findEditorPane(file) {
+      return qa("[data-editor-file]").find(function (pane) {
+        return pane.dataset.editorFile === file;
+      });
+    }
+
+    function findEditorTab(file) {
+      return qa("[data-tab]").find(function (tab) {
+        return tab.dataset.tab === file;
+      });
+    }
+
+    function openFile(file) {
+      var pane = findEditorPane(file);
+
+      if (!pane) {
+        file = ".python-version";
+        pane = findEditorPane(file);
+      }
+
+      qa(".editor-pane").forEach(function (el) {
+        el.classList.toggle("hidden", el.dataset.editorFile !== file);
+      });
+
+      var tab = findEditorTab(file);
+      if (tab) {
+        tab.classList.remove("hidden");
+        tab.classList.add("flex");
+      }
+
+      qa(".editor-tab").forEach(function (el) {
+        var active = el.dataset.tab === file;
+        el.classList.toggle("active-tab", active);
+        el.classList.toggle("bg-accent", active);
+        el.classList.toggle("text-accent-foreground", active);
+        el.classList.toggle("text-muted-foreground", !active);
+      });
+
+      qa("[data-open-file]").forEach(function (el) {
+        var active = el.dataset.openFile === file;
+        el.classList.toggle("bg-accent", active);
+        el.classList.toggle("text-accent-foreground", active);
+      });
+
+      var title = q("#current-file-title");
+      if (title) title.textContent = file;
+    }
+
+    function closeEditorTab(file) {
+      var tab = findEditorTab(file);
+      if (!tab) return;
+
+      var active = tab.classList.contains("active-tab");
+
+      tab.classList.add("hidden");
+      tab.classList.remove("flex");
+
+      if (!active) return;
+
+      var nextTab = qa(".editor-tab").find(function (item) {
+        return !item.classList.contains("hidden");
+      });
+
+      if (nextTab) {
+        openFile(nextTab.dataset.tab);
+      } else {
+        openFile(".python-version");
+      }
+    }
+
+    function openTerminal(name) {
+      var terminal = panelByName("terminal");
+      show(terminal);
+      syncPanelHandle(terminal, true);
+      setStatusButtonActive('[data-toggle-panel="terminal"]', true);
+
+      qa(".terminal-tab").forEach(function (tab) {
+        var active = tab.dataset.terminalTab === name;
+        tab.classList.toggle("active-terminal", active);
+        tab.classList.toggle("bg-accent", active);
+        tab.classList.toggle("text-accent-foreground", active);
+        tab.classList.toggle("text-muted-foreground", !active);
+      });
+
+      qa(".terminal-pane").forEach(function (pane) {
+        pane.classList.toggle("hidden", pane.dataset.terminalPane !== name);
+      });
+
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function closeTerminalTab(name) {
+      var tab = qa(".terminal-tab").find(function (item) {
+        return item.dataset.terminalTab === name;
+      });
+
+      var pane = qa(".terminal-pane").find(function (item) {
+        return item.dataset.terminalPane === name;
+      });
+
+      if (!tab) return;
+
+      var active = tab.classList.contains("active-terminal");
+
+      tab.classList.add("hidden");
+      tab.classList.remove("flex");
+
+      if (pane) {
+        pane.classList.add("hidden");
+      }
+
+      if (!active) return;
+
+      var nextTab = qa(".terminal-tab").find(function (item) {
+        return !item.classList.contains("hidden");
+      });
+
+      if (nextTab) {
+        openTerminal(nextTab.dataset.terminalTab);
+      }
+    }
+
+    root.addEventListener("click", function (e) {
+      var togglePanelBtn = e.target.closest("[data-toggle-panel]");
+      if (togglePanelBtn && root.contains(togglePanelBtn)) {
+        togglePanel(togglePanelBtn.dataset.togglePanel);
+        return;
+      }
+
+      var toggleRightBtn = e.target.closest("[data-toggle-right]");
+      if (toggleRightBtn && root.contains(toggleRightBtn)) {
+        toggleRight(toggleRightBtn.dataset.toggleRight);
+        return;
+      }
+
+      var rightModeBtn = e.target.closest(".right-mode");
+      if (rightModeBtn && root.contains(rightModeBtn)) {
+        openRight(rightModeBtn.dataset.rightMode);
+        return;
+      }
+
+      var usersBtn = e.target.closest("[data-toggle-users]");
+      if (usersBtn && root.contains(usersBtn)) {
+        openLeftMode("users");
+        return;
+      }
+
+      var fileBtn = e.target.closest("[data-open-file]");
+      if (fileBtn && root.contains(fileBtn)) {
+        openLeftMode("files");
+        openFile(fileBtn.dataset.openFile);
+        return;
+      }
+
+      var editorClose = e.target.closest(".tab-close");
+      if (editorClose && root.contains(editorClose)) {
+        var editorTab = editorClose.closest("[data-tab]");
+        if (editorTab) closeEditorTab(editorTab.dataset.tab);
+        return;
+      }
+
+      var terminalClose = e.target.closest(".terminal-tab-close");
+      if (terminalClose && root.contains(terminalClose)) {
+        var terminalTab = terminalClose.closest("[data-terminal-tab]");
+        if (terminalTab) closeTerminalTab(terminalTab.dataset.terminalTab);
+        return;
+      }
+
+      var editorTabBtn = e.target.closest(".editor-tab");
+      if (editorTabBtn && root.contains(editorTabBtn)) {
+        openFile(editorTabBtn.dataset.tab);
+        return;
+      }
+
+      var terminalTabBtn = e.target.closest(".terminal-tab");
+      if (terminalTabBtn && root.contains(terminalTabBtn)) {
+        openTerminal(terminalTabBtn.dataset.terminalTab);
+        return;
+      }
+    });
+
+    setInterval(function () {
+      var time = q("#sandbox-time");
+      if (!time) return;
+
+      time.textContent = new Date().toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }, 1000);
+
+    openFile(".python-version");
+    openTerminal("bash");
+    openRight("notes");
+  }
+
+  initSandboxShell();
+  window.addEventListener("app-router:patch", initSandboxShell);
+})();
 {% end_app_script %}
