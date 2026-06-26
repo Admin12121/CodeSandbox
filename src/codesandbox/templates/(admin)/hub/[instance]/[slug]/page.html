@@ -6,6 +6,26 @@
 
 
 <style>
+#sandbox-preloader {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0f;
+}
+
+@keyframes preloader-row-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.preloader-row {
+  opacity: 0;
+  animation: preloader-row-in 0.3s ease-in forwards;
+}
+
 .fs-row {
   display: flex;
   align-items: center;
@@ -42,7 +62,67 @@
 }
 </style>
 
-<div id="sandbox-ui" class="h-[calc(100vh-4.85rem)]">
+<div style="position:relative;height:calc(100vh - 4.85rem)">
+<div id="sandbox-preloader">
+  <div style="display:flex;flex-direction:column;align-items:center">
+
+    <div style="position:relative;width:288px;height:202px;flex-shrink:0">
+      <svg id="preloader-svg" width="202" height="288" viewBox="0 0 202 288" fill="none" style="position:absolute;left:50%;top:50%;margin-left:-101px;margin-top:-144px;transform:rotate(90deg)">
+        <path d="M0 100H55.022C61.8914 100 68.6451 101.769 74.6324 105.137L120.368 130.863C126.355 134.231 133.109 136 139.978 136H201.5" stroke="white" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 60H48.2171C59.2463 60 69.7861 64.5539 77.3451 72.5854L117.655 115.415C125.214 123.446 135.754 128 146.783 128H201.5" stroke="white" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 188H55.022C61.8914 188 68.6451 186.231 74.6324 182.863L120.368 157.137C126.355 153.769 133.109 152 139.978 152H201.5" stroke="white" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 228H48.2171C59.2463 228 69.7861 223.446 77.3451 215.415L117.655 172.585C125.214 164.554 135.754 160 146.783 160H201.5" stroke="white" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 287H41.7852C56.4929 287 70.0142 278.929 76.994 265.983L118.49 189.017C125.47 176.071 138.991 168 153.699 168H202" stroke="white" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 144L201 145" stroke="white" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 1H41.5946C56.3171 1 69.8495 9.08744 76.823 22.0537L118.177 98.9463C125.15 111.913 138.683 120 153.405 120H201.5" stroke="white" stroke-opacity="0.2" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 100H55.022C61.8914 100 68.6451 101.769 74.6324 105.137L120.368 130.863C126.355 134.231 133.109 136 139.978 136H201.5" stroke="url(#preloader-pulse-0)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 60H48.2171C59.2463 60 69.7861 64.5539 77.3451 72.5854L117.655 115.415C125.214 123.446 135.754 128 146.783 128H201.5" stroke="url(#preloader-pulse-1)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 188H55.022C61.8914 188 68.6451 186.231 74.6324 182.863L120.368 157.137C126.355 153.769 133.109 152 139.978 152H201.5" stroke="url(#preloader-pulse-2)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 228H48.2171C59.2463 228 69.7861 223.446 77.3451 215.415L117.655 172.585C125.214 164.554 135.754 160 146.783 160H201.5" stroke="url(#preloader-pulse-3)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 287H41.7852C56.4929 287 70.0142 278.929 76.994 265.983L118.49 189.017C125.47 176.071 138.991 168 153.699 168H202" stroke="url(#preloader-pulse-4)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 144L201 145" stroke="url(#preloader-pulse-5)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <path d="M0 1H41.5946C56.3171 1 69.8495 9.08744 76.823 22.0537L118.177 98.9463C125.15 111.913 138.683 120 153.405 120H201.5" stroke="url(#preloader-pulse-6)" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.1 3" mask="url(#preloader-mask)"/>
+        <defs>
+          <linearGradient id="preloader-mask-grad" x1="202" y1="227" x2="32" y2="227" gradientUnits="userSpaceOnUse">
+            <stop stop-color="white"/><stop offset="1" stop-color="white" stop-opacity="0"/>
+          </linearGradient>
+          <mask id="preloader-mask" maskUnits="userSpaceOnUse">
+            <rect width="202" height="288" fill="url(#preloader-mask-grad)"/>
+          </mask>
+          <linearGradient id="preloader-pulse-0" x1="-101" y1="0" x2="101" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.35" stop-color="#716FFF" stop-opacity="0"/><stop offset="0.45" stop-color="#716FFF"/><stop offset="0.55" stop-color="#716FFF"/><stop offset="0.65" stop-color="#716FFF" stop-opacity="0"/></linearGradient>
+          <linearGradient id="preloader-pulse-1" x1="-101" y1="0" x2="101" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.35" stop-color="#716FFF" stop-opacity="0"/><stop offset="0.45" stop-color="#716FFF"/><stop offset="0.55" stop-color="#716FFF"/><stop offset="0.65" stop-color="#716FFF" stop-opacity="0"/></linearGradient>
+          <linearGradient id="preloader-pulse-2" x1="-101" y1="0" x2="101" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.35" stop-color="#716FFF" stop-opacity="0"/><stop offset="0.45" stop-color="#716FFF"/><stop offset="0.55" stop-color="#716FFF"/><stop offset="0.65" stop-color="#716FFF" stop-opacity="0"/></linearGradient>
+          <linearGradient id="preloader-pulse-3" x1="-101" y1="0" x2="101" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.35" stop-color="#716FFF" stop-opacity="0"/><stop offset="0.45" stop-color="#716FFF"/><stop offset="0.55" stop-color="#716FFF"/><stop offset="0.65" stop-color="#716FFF" stop-opacity="0"/></linearGradient>
+          <linearGradient id="preloader-pulse-4" x1="-101" y1="0" x2="101" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.35" stop-color="#716FFF" stop-opacity="0"/><stop offset="0.45" stop-color="#716FFF"/><stop offset="0.55" stop-color="#716FFF"/><stop offset="0.65" stop-color="#716FFF" stop-opacity="0"/></linearGradient>
+          <linearGradient id="preloader-pulse-5" x1="-101" y1="0" x2="101" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.35" stop-color="#716FFF" stop-opacity="0"/><stop offset="0.45" stop-color="#716FFF"/><stop offset="0.55" stop-color="#716FFF"/><stop offset="0.65" stop-color="#716FFF" stop-opacity="0"/></linearGradient>
+          <linearGradient id="preloader-pulse-6" x1="-101" y1="0" x2="101" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.35" stop-color="#716FFF" stop-opacity="0"/><stop offset="0.45" stop-color="#716FFF"/><stop offset="0.55" stop-color="#716FFF"/><stop offset="0.65" stop-color="#716FFF" stop-opacity="0"/></linearGradient>
+        </defs>
+      </svg>
+    </div>
+
+    <div style="height:260px;width:400px;overflow:hidden;border-radius:14px;background:linear-gradient(rgba(255,255,255,0.05) 0%,rgba(255,255,255,0) 100%)">
+      <div style="display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,0.075);padding:10px">
+        <div style="height:8px;width:8px;border-radius:50%;background:rgba(255,255,255,0.1)"></div>
+        <div style="height:8px;width:8px;border-radius:50%;background:rgba(255,255,255,0.1)"></div>
+        <div style="height:8px;width:8px;border-radius:50%;background:rgba(255,255,255,0.1)"></div>
+      </div>
+      <div style="display:flex;width:100%;overflow:hidden">
+        <div style="display:flex;height:40px;width:180px;flex-shrink:0;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:16px;width:16px;border-radius:2px;border:2px solid rgba(255,255,255,0.075);background:rgba(255,255,255,0.15)"></div><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div>
+        <div style="display:flex;height:40px;width:180px;flex-shrink:0;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:16px;width:16px;border-radius:2px;border:2px solid rgba(255,255,255,0.075);background:rgba(255,255,255,0.15)"></div><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div>
+        <div style="display:flex;height:40px;width:180px;flex-shrink:0;align-items:center;gap:8px;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:16px;width:16px;border-radius:2px;border:2px solid rgba(255,255,255,0.075);background:rgba(255,255,255,0.15)"></div><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div>
+      </div>
+      <div class="preloader-row" style="display:flex;width:100%;overflow:hidden;animation-delay:1.25s"><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div></div>
+      <div class="preloader-row" style="display:flex;width:100%;overflow:hidden;animation-delay:2.75s"><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:64px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:100px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:72px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div></div>
+      <div class="preloader-row" style="display:flex;width:100%;overflow:hidden;animation-delay:4.25s"><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:56px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div></div>
+      <div class="preloader-row" style="display:flex;width:100%;overflow:hidden;animation-delay:5.75s"><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:72px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:48px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div></div>
+      <div class="preloader-row" style="display:flex;width:100%;overflow:hidden;animation-delay:7.25s"><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:80px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div></div>
+      <div class="preloader-row" style="display:flex;width:100%;overflow:hidden;animation-delay:8.75s"><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:56px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:88px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div><div style="display:flex;height:36px;width:180px;flex-shrink:0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.075);border-right:1px solid rgba(255,255,255,0.075);padding:0 8px"><div style="height:8px;width:64px;border-radius:2px;background:rgba(255,255,255,0.075)"></div></div></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="sandbox-ui" class="h-full">
 
   {% call resizable.resizable_panel_group(orientation="horizontal", class="rounded-xl") %}
 
@@ -205,3 +285,50 @@
   </div>
 
 </div>
+</div>{# /wrapper #}
+
+{% app_script "sandbox-preloader-anim" %}
+(function(){
+  'use strict';
+
+  var CYCLE   = 1500;  // ms per pulse sweep
+  var DELAY   = 250;   // ms before first sweep starts
+  var DISMISS = 9500;  // ms until fade begins
+  var FADE    = 600;   // ms fade-out duration
+
+  var grads = [];
+  for(var i = 0; i < 7; i++){
+    var g = document.getElementById('preloader-pulse-' + i);
+    if(g) grads.push(g);
+  }
+
+  var startTime = null;
+  var raf = null;
+
+  function step(ts){
+    if(startTime === null) startTime = ts + DELAY;
+    var elapsed = Math.max(0, ts - startTime);
+    var t = (elapsed % CYCLE) / CYCLE;
+    var x1 = -101 + t * 303;
+    var x2 =  101 + t * 202;
+    for(var j = 0; j < grads.length; j++){
+      grads[j].setAttribute('x1', x1);
+      grads[j].setAttribute('x2', x2);
+    }
+    raf = requestAnimationFrame(step);
+  }
+
+  if(grads.length) raf = requestAnimationFrame(step);
+
+  setTimeout(function(){
+    var el = document.getElementById('sandbox-preloader');
+    if(!el) return;
+    el.style.transition = 'opacity ' + FADE + 'ms ease';
+    el.style.opacity = '0';
+    setTimeout(function(){
+      if(el.parentNode) el.parentNode.removeChild(el);
+      if(raf) cancelAnimationFrame(raf);
+    }, FADE);
+  }, DISMISS);
+})();
+{% end_app_script %}
