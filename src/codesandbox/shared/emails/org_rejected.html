@@ -1,0 +1,27 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, btn, notice %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
+  "#fee2e2"
+) }}
+
+{{ h1("Organization application not approved") }}
+
+<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#71717a">
+  Thank you for your interest in CodeSandbox. Unfortunately, the application for
+  <strong style="color:#18181b">{{ org_name }}</strong> was not approved at this time.
+</p>
+
+{% if reason %}
+{{ notice(reason, "#fef2f2", "#fecaca", "#991b1b") }}
+{% endif %}
+
+<p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#71717a">
+  If you believe this decision was made in error or would like to provide additional
+  information, please contact our support team.
+</p>
+
+<p style="margin:0">{{ btn(support_url, "Contact support") }}</p>
+{% endblock %}

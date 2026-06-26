@@ -1,0 +1,20 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, btn %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>',
+  "#e0f2fe"
+) }}
+
+{{ h1("You've been added to " ~ org_name) }}
+
+<p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#71717a">
+  <strong style="color:#18181b">{{ added_by_name }}</strong> has added you to
+  <strong style="color:#18181b">{{ org_name }}</strong> as a
+  <strong style="color:#18181b">{{ role }}</strong>.
+  Head to your dashboard to start collaborating.
+</p>
+
+<p style="margin:0">{{ btn(dashboard_url, "View " ~ org_name, "#0284c7") }}</p>
+{% endblock %}

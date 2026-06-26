@@ -1,0 +1,27 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, btn, notice %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+  "#fef3c7"
+) }}
+
+{{ h1("Your organization has been suspended") }}
+
+<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#71717a">
+  <strong style="color:#18181b">{{ org_name }}</strong> has been suspended on CodeSandbox.
+  Access to organization resources has been temporarily restricted.
+</p>
+
+{% if reason %}
+{{ notice(reason, "#fffbeb", "#fde68a", "#92400e") }}
+{% endif %}
+
+<p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#71717a">
+  If you believe this is a mistake or have questions about this decision,
+  please reach out to our support team.
+</p>
+
+<p style="margin:0">{{ btn(support_url, "Contact support") }}</p>
+{% endblock %}

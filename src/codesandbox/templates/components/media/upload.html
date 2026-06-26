@@ -21,6 +21,7 @@
   "md": "size-8 rounded-lg text-xs",
   "lg": "size-12 rounded-xl text-base",
   "xl": "size-16 rounded-xl text-xl",
+  "2xl": "size-19 rounded-xl text-2xl"
 } %}
 {% set size_class = sizes.get(size, size) %}
 <div class="{{ cn('flex items-center gap-5', class) }}" data-media-upload {% if bind_key %}data-media-bind="{{ bind_key }}" data-media-name="{{ entity_name }}"{% endif %} {% if upload_url %}data-upload-url="{{ upload_url }}"{% endif %}>

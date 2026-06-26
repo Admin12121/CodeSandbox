@@ -32,7 +32,6 @@ def forgot_password():
     return {
         "_meta": {"title": "Forgot Password — CodeSandbox"},
         "sent": bool(request.args.get("sent")),
-        "dev_url": request.args.get("dev_url"),
         "error": request.args.get("error"),
     }
 
@@ -108,7 +107,6 @@ def settings():
         "page_description": "Profile, sign-in, recovery, and active device controls.",
         "info": request.args.get("info"),
         "error": request.args.get("error"),
-        "dev_url": request.args.get("dev_url"),
         "totp_enabled": totp.is_enabled if totp else False,
         "totp_verified": bool(totp.verified_at) if totp else False,
         "connected_providers": connected_providers,

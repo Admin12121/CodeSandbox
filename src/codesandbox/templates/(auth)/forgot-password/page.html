@@ -29,12 +29,6 @@
                 <p class="text-sm font-medium">Check your email</p>
                 <p class="mt-1 text-xs text-muted-foreground">We sent a password reset link to your email address.</p>
               </div>
-              {% if dev_url %}
-                <div class="w-full rounded-lg border border-dashed border-amber-500/50 bg-amber-500/10 p-3 text-left">
-                  <p class="text-xs font-medium text-amber-600 dark:text-amber-400">Dev mode — reset link:</p>
-                  <a href="{{ dev_url }}" class="mt-1 block break-all text-xs text-blue-600 dark:text-blue-400 hover:underline">{{ request.url_root }}{{ dev_url[1:] if dev_url.startswith('/') else dev_url }}</a>
-                </div>
-              {% endif %}
               <a href="/login" class="text-sm text-muted-foreground underline-offset-4 hover:underline">Back to sign in</a>
             </div>
           {% else %}

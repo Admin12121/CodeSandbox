@@ -1,0 +1,22 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, btn %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>',
+  "#dcfce7"
+) }}
+
+{{ h1("Your organization is approved") }}
+
+<p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#71717a">
+  Great news — <strong style="color:#18181b">{{ org_name }}</strong> has been reviewed and
+  approved on CodeSandbox. Your organization is now active and your workspace has been provisioned.
+</p>
+
+<p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#71717a">
+  You can now invite members, configure roles, and access all platform features.
+</p>
+
+<p style="margin:0">{{ btn(dashboard_url, "Go to dashboard", "#16a34a") }}</p>
+{% endblock %}

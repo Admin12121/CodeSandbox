@@ -1,0 +1,22 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, otp_block %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>',
+  "#ede9fe"
+) }}
+
+{{ h1("Your verification code") }}
+
+<p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#71717a">
+  Use the code below to complete your sign-in. It expires in
+  <strong style="color:#18181b">{{ expires_minutes }} minutes</strong>.
+</p>
+
+{{ otp_block(otp_code) }}
+
+<p style="margin:0;font-size:13px;color:#a1a1aa;line-height:1.6">
+  Never share this code with anyone. CodeSandbox staff will never ask you for it.
+</p>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, btn, fallback_link %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/></svg>',
+  "#e0f2fe"
+) }}
+
+{{ h1("You've been invited") }}
+
+<p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#71717a">
+  <strong style="color:#18181b">{{ invited_by_name }}</strong> has invited you to join
+  <strong style="color:#18181b">{{ org_name }}</strong> on CodeSandbox.
+  Accept the invitation below to get started. This link expires in
+  <strong style="color:#18181b">7 days</strong>.
+</p>
+
+<p style="margin:0 0 28px">{{ btn(invite_url, "Accept invitation", "#0284c7") }}</p>
+
+{{ fallback_link(invite_url) }}
+
+<p style="margin:16px 0 0;font-size:13px;color:#a1a1aa;line-height:1.6">
+  If you weren't expecting this invitation, you can safely ignore this email.
+</p>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1 %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="22" y1="11" x2="16" y2="11"/></svg>',
+  "#f4f4f5"
+) }}
+
+{{ h1("You've been removed from " ~ org_name) }}
+
+<p style="margin:0;font-size:14px;line-height:1.7;color:#71717a">
+  <strong style="color:#18181b">{{ removed_by_name }}</strong> has removed you from
+  <strong style="color:#18181b">{{ org_name }}</strong> on CodeSandbox.
+  You no longer have access to this organization's resources.
+</p>
+
+<p style="margin:16px 0 0;font-size:13px;color:#a1a1aa;line-height:1.6">
+  If you think this was a mistake, please reach out to the organization owner or admin.
+</p>
+{% endblock %}

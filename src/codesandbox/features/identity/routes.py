@@ -116,6 +116,25 @@ def logout_action():
     return response
 
 
+@web_bp.post("/logout/all")
+def logout_all_action():
+    from codesandbox.shared.session import get_current_session
+    cookie_name = current_app.config["CS_AUTH_COOKIE"]
+    cs = get_current_session()
+    if cs:
+        for s in repository.list_user_sessions(cs.user.id):
+            try:
+                s.delete()
+            except Exception:
+                pass
+    session.pop("_2fa_pending_user_id", None)
+    session.pop("_2fa_pending_at", None)
+    session.pop("_2fa_next", None)
+    response = redirect("/login", code=303)
+    response.delete_cookie(cookie_name)
+    return response
+
+
 # ── Email verification ────────────────────────────────────────────────────────
 
 @web_bp.get("/verify-email")
@@ -134,20 +153,13 @@ def verify_email_page():
 def resend_verification():
     from codesandbox.shared.session import get_current_session
     from codesandbox.shared.email import send_email_verification
-    from urllib.parse import quote as _quote
     cs = get_current_session()
     if cs and not cs.user.email_verified:
         settings = get_settings()
         token = request_email_verification(cs.user.id, cs.user.email)
         verify_url = f"{settings.app_url}/verify-email?token={token}"
-        sent = send_email_verification(to=cs.user.email, verify_url=verify_url)
-        if sent:
-            return redirect("/settings?info=Verification+email+sent.+Check+your+inbox.", code=303)
-        # No email service configured — surface the link directly (dev mode)
-        if not settings.resend_api_key:
-            return redirect(f"/settings?dev_url={_quote(verify_url)}&info=No+email+service+configured.+Use+the+link+below.", code=303)
-        return redirect("/settings?error=Failed+to+send+verification+email.+Please+try+again+later.", code=303)
-    return redirect("/settings", code=303)
+        send_email_verification(to=cs.user.email, verify_url=verify_url)
+    return redirect("/settings?info=Verification+email+sent.+Check+your+inbox.", code=303)
 
 
 # ── Password reset ────────────────────────────────────────────────────────────
@@ -161,11 +173,7 @@ def forgot_password_action():
     if found:
         settings = get_settings()
         reset_url = f"{settings.app_url}/reset-password?token={raw_token}"
-        sent = send_password_reset(to=email, reset_url=reset_url)
-        if sent:
-            return redirect("/forgot-password?sent=1", code=303)
-        dev_path = f"/reset-password?token={raw_token}"
-        return redirect(f"/forgot-password?sent=1&dev_url={urllib.parse.quote(dev_path)}", code=303)
+        send_password_reset(to=email, reset_url=reset_url)
     return redirect("/forgot-password?sent=1", code=303)
 
 
@@ -536,6 +544,33 @@ def settings_update_field_action():
     if field == "name" and not value:
         return jsonify({"ok": False, "error": "Name is required."}), 400
     repository.update_user(cs.user.id, **{field: value})
+    return jsonify({"ok": True})
+
+
+@web_bp.post("/settings/update-email")
+@limiter.limit("5 per hour")
+def settings_update_email_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    from codesandbox.shared.email import send_email_verification
+    import re
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    new_email = str(data.get("email", "")).strip().lower()
+    if not new_email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", new_email):
+        return jsonify({"ok": False, "error": "Enter a valid email address."}), 400
+    if new_email == cs.user.email:
+        return jsonify({"ok": False, "error": "That's already your email address."}), 400
+    existing = repository.find_user_by_email(new_email)
+    if existing and str(existing.id) != str(cs.user.id):
+        return jsonify({"ok": False, "error": "That email is already in use."}), 400
+    repository.update_user(cs.user.id, email=new_email, email_verified=False)
+    settings = get_settings()
+    token = request_email_verification(cs.user.id, new_email)
+    verify_url = f"{settings.app_url}/verify-email?token={token}"
+    send_email_verification(to=new_email, verify_url=verify_url)
     return jsonify({"ok": True})
 
 

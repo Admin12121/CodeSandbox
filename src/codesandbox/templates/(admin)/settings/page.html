@@ -61,7 +61,7 @@
 
           {# Avatar upload #}
           {% call frame.frame() %}
-            <div class="p-4">
+            <div class="p-1">
               {{ media_upload.image_upload(
                 id="settings-avatar",
                 entity_name=su.name,
@@ -70,7 +70,8 @@
                 label=su.name,
                 description="PNG, JPG, WebP under 2 MB",
                 editable=true,
-                bind_key="user:" ~ su.id
+                bind_key="user:" ~ su.id,
+                size="2xl"
               ) }}
             </div>
           {% endcall %}
@@ -98,14 +99,14 @@
                   {% call table.table_cell(class="text-right") %}{{ _edit_actions() }}{% endcall %}
                 {% endcall %}
 
-                {# Email — read-only #}
+                {# Email — editable #}
                 {% call table.table_row() %}
-                  {% call table.table_cell(class="font-medium text-sm") %}Email{% endcall %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle") %}Email{% endcall %}
                   {% call table.table_cell() %}
                     <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span>{{ su.email }}</span>
+                      <span id="profile-email-display">{{ su.email }}</span>
                       {% if su.email_verified %}
-                        <svg class="size-4 shrink-0 text-emerald-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Verified"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                        <svg class="size-4 shrink-0 text-blue-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Verified"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>
                       {% else %}
                         <form method="post" action="/resend-verification" class="inline">
                           {{ csrf_input() }}
@@ -114,7 +115,13 @@
                       {% endif %}
                     </div>
                   {% endcall %}
-                  {% call table.table_cell() %}{% endcall %}
+                  {% call table.table_cell(class="text-right") %}
+                    <div class="flex justify-end gap-1">
+                      {% call button.button(type="button", variant="ghost", size="icon-xs", attrs={"data-dialog-trigger": "", "data-target": "#dlg-change-email", "aria-label": "Change email"}) %}
+                        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
+                      {% endcall %}
+                    </div>
+                  {% endcall %}
                 {% endcall %}
 
                 {# Phone — editable #}
@@ -137,14 +144,6 @@
 
         {# Right: account activity + linked accounts #}
         <div class="grid content-start gap-4">
-
-          {# Dev-mode verify URL banner #}
-          {% if dev_url is defined and dev_url %}
-            <div class="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm dark:border-amber-800 dark:bg-amber-950">
-              <span class="font-medium text-amber-800 dark:text-amber-300">Dev mode — no email service. Click to verify:</span>
-              <a href="{{ dev_url }}" class="break-all text-xs text-primary underline underline-offset-4">{{ dev_url }}</a>
-            </div>
-          {% endif %}
 
           {# Account Activity table #}
           {% call frame.frame() %}
@@ -187,39 +186,6 @@
             {% endcall %}
           {% endcall %}
 
-          {# Linked accounts table #}
-          {% set _accounts = auth_accounts if auth_accounts is defined else [] %}
-          {% call frame.frame() %}
-            {% call table.table(variant="card") %}
-              {% call table.table_header() %}
-                {% call table.table_row() %}
-                  {{ table.table_head("Linked accounts — " ~ _accounts | length) }}
-                  {{ table.table_head("Added") }}
-                {% endcall %}
-              {% endcall %}
-              {% call table.table_body() %}
-                {% if not _accounts %}
-                  {% call table.table_row() %}
-                    {% call table.table_cell(class="h-20 text-center text-muted-foreground", attrs={"colspan": "2"}) %}No linked accounts.{% endcall %}
-                  {% endcall %}
-                {% else %}
-                  {% for acct in _accounts %}
-                  {% call table.table_row() %}
-                    {% call table.table_cell() %}
-                      <div class="min-w-0">
-                        <div class="truncate font-medium">{{ acct.provider.title() }}</div>
-                        <div class="truncate text-xs text-muted-foreground">{{ acct.account_id }}</div>
-                      </div>
-                    {% endcall %}
-                    {% call table.table_cell(class="text-sm text-muted-foreground whitespace-nowrap") %}
-                      {% if acct.created_at %}{{ acct.created_at.strftime("%b %d, %Y") }}{% else %}—{% endif %}
-                    {% endcall %}
-                  {% endcall %}
-                  {% endfor %}
-                {% endif %}
-              {% endcall %}
-            {% endcall %}
-          {% endcall %}
         </div>
       </div>
     {% endcall %}
@@ -268,13 +234,9 @@
                 {% call table.table_cell(class="text-right") %}
                   <div id="passkey-actions" class="flex justify-end gap-2">
                     <button id="passkey-add-btn" hidden type="button"
-                      class="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent transition-colors">
-                      Add passkey
-                    </button>
-                    <button id="passkey-other-btn" hidden type="button"
                       data-dialog-trigger data-target="#dlg-passkey-other"
                       class="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium hover:bg-accent transition-colors">
-                      Use another device
+                      Add passkey
                     </button>
                   </div>
                 {% endcall %}
@@ -290,27 +252,29 @@
                   {% if totp_enabled %}{{ badge.badge("Enabled", variant="success") }}
                   {% else %}{{ badge.badge("Not enabled", variant="secondary") }}{% endif %}
                 {% endcall %}
-                {% call table.table_cell(class="text-right flex justify-end gap-2") %}
-                  {% if totp_enabled %}
-                    <form method="post" action="/settings/2fa/disable" class="inline">{{ csrf_input() }}
-                      {% call button.button(type="submit", size="sm", variant="outline") %}Disable{% endcall %}
-                    </form>
-                  {% else %}
-                    {% call button.button(type="button", size="sm", variant="outline", attrs={"data-open-dialog": "dlg-2fa-setup"}) %}Set up 2FA{% endcall %}
-                  {% endif %}
+                {% call table.table_cell(class="text-right") %}
+                  <div class="flex justify-end gap-2">
+                    {% if totp_enabled %}
+                      <form method="post" action="/settings/2fa/disable" class="inline">{{ csrf_input() }}
+                        {% call button.button(type="submit", size="sm", variant="outline") %}Disable{% endcall %}
+                      </form>
+                    {% else %}
+                      {% call button.button(type="button", size="sm", variant="outline", attrs={"data-open-dialog": "dlg-2fa-setup"}) %}Set up 2FA{% endcall %}
+                    {% endif %}
+                  </div>
                 {% endcall %}
               {% endcall %}
 
-              {# Sign out #}
+              {# Sign out of all devices #}
               {% call table.table_row() %}
                 {% call table.table_cell(class="font-medium text-sm") %}
-                  Sign out
-                  <div class="text-xs font-normal text-muted-foreground">End current session on this device</div>
+                  Sign out of all devices
+                  <div class="text-xs font-normal text-muted-foreground">End all active sessions including this one</div>
                 {% endcall %}
                 {% call table.table_cell() %}{% endcall %}
                 {% call table.table_cell(class="text-right") %}
-                  <form method="post" action="/logout">{{ csrf_input() }}
-                    {% call button.button(type="submit", size="sm", variant="destructive") %}Sign out{% endcall %}
+                  <form method="post" action="/logout/all">{{ csrf_input() }}
+                    {% call button.button(type="submit", size="sm", variant="destructive") %}Sign out all{% endcall %}
                   </form>
                 {% endcall %}
               {% endcall %}
@@ -473,6 +437,37 @@
   {% endcall %}
 </div>
 
+{# ── Change Email Dialog ── #}
+{% call dlg_ui.dialog(attrs={"id": "dlg-change-email"}) %}
+  {% call dlg_ui.dialog_close() %}
+    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  {% endcall %}
+  <div class="border-b px-6 py-4">
+    {% call dlg_ui.dialog_header() %}
+      {{ dlg_ui.dialog_title("Change email address") }}
+      {{ dlg_ui.dialog_description("Enter a new email address. A verification link will be sent to confirm it.") }}
+    {% endcall %}
+  </div>
+  {% call dlg_ui.dialog_panel(class="px-6 py-5") %}
+    <div class="grid gap-1.5">
+      <label for="ce-email" class="text-sm font-medium">New email</label>
+      <input id="ce-email" type="email" autocomplete="email" placeholder="you@example.com"
+        class="flex h-9 w-full rounded-md border bg-background px-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring/50">
+    </div>
+    <p id="ce-error" hidden class="text-xs text-destructive"></p>
+    <p id="ce-success" hidden class="text-xs text-primary"></p>
+  {% endcall %}
+  <div class="border-t px-6 py-4">
+    {% call dlg_ui.dialog_footer() %}
+      {{ dlg_ui.dialog_cancel("Cancel") }}
+      <button id="ce-submit" type="button"
+        class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 disabled:opacity-50 sm:h-8">
+        Save
+      </button>
+    {% endcall %}
+  </div>
+{% endcall %}
+
 {# ── Change Password Dialog ── #}
 {% call dlg_ui.dialog(attrs={"id": "dlg-change-password"}) %}
   {% call dlg_ui.dialog_close() %}
@@ -614,28 +609,32 @@
   </div>
 {% endcall %}
 
-{# ── Passkey cross-device Dialog ── #}
+{# ── Add Passkey Dialog ── #}
 {% call dlg_ui.dialog(attrs={"id": "dlg-passkey-other"}) %}
   {% call dlg_ui.dialog_close() %}
     <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
   {% endcall %}
   {% call dlg_ui.dialog_panel(class="px-6 py-8 text-center") %}
-    <div class="flex justify-center mb-4">
-      <svg class="size-14 text-muted-foreground/60" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="5" y="2" width="14" height="20" rx="2"/>
-        <path d="M12 18h.01"/>
-        <path d="M8 7h8M8 11h4"/>
-      </svg>
+    <div class="flex justify-center mb-5">
+      <div class="flex size-16 items-center justify-center rounded-full bg-primary/10">
+        <svg class="size-8 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+        </svg>
+      </div>
     </div>
-    {{ dlg_ui.dialog_title("Use another device") }}
-    <p class="mt-2 text-sm text-muted-foreground">Your device doesn't support passkeys, but you can create one on your phone or tablet.</p>
+    {{ dlg_ui.dialog_title("Add a passkey") }}
+    <p class="mt-2 text-sm text-muted-foreground max-w-xs mx-auto">Create a passkey to sign in with your fingerprint, face, or screen lock. You can also save a passkey on another device like a phone or security key.</p>
   {% endcall %}
   <div class="border-t px-6 py-4">
     {% call dlg_ui.dialog_footer() %}
       {{ dlg_ui.dialog_cancel("Cancel") }}
       <button id="passkey-cross-device-btn" type="button"
-        class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 sm:h-8">
+        class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border bg-background px-4 text-sm font-medium outline-none transition-colors hover:bg-accent sm:h-8">
         Use another device
+      </button>
+      <button id="passkey-create-btn" type="button"
+        class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs/5 outline-none transition-shadow hover:bg-primary/90 sm:h-8">
+        Create a passkey
       </button>
     {% endcall %}
   </div>
@@ -660,6 +659,55 @@
     if(dlg && !dlg.open) dlg.showModal();
   });
 
+  // ── Change email ───────────────────────────────────────────────
+  var dlgEmail = document.getElementById('dlg-change-email');
+  var ceSubmit = document.getElementById('ce-submit');
+  var ceInput = document.getElementById('ce-email');
+  var ceError = document.getElementById('ce-error');
+  var ceSuccess = document.getElementById('ce-success');
+
+  function ceReset(){
+    if(ceInput) ceInput.value = '';
+    if(ceError){ ceError.hidden = true; ceError.textContent = ''; }
+    if(ceSuccess){ ceSuccess.hidden = true; ceSuccess.textContent = ''; }
+    if(ceSubmit){ ceSubmit.disabled = false; ceSubmit.textContent = 'Save'; }
+  }
+  if(dlgEmail) dlgEmail.addEventListener('close', ceReset);
+
+  if(ceSubmit){
+    ceSubmit.addEventListener('click', function(){
+      var email = ceInput ? ceInput.value.trim() : '';
+      if(ceError){ ceError.hidden = true; }
+      if(ceSuccess){ ceSuccess.hidden = true; }
+      ceSubmit.disabled = true; ceSubmit.textContent = 'Saving…';
+      fetch('/settings/update-email', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email: email})
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(body){
+        ceSubmit.disabled = false; ceSubmit.textContent = 'Save';
+        if(!body.ok){
+          if(ceError){ ceError.textContent = body.error || 'Update failed.'; ceError.hidden = false; }
+          return;
+        }
+        var emailDisplay = document.getElementById('profile-email-display');
+        if(emailDisplay) emailDisplay.textContent = email;
+        if(ceSuccess){
+          ceSuccess.textContent = 'Email updated. Check your inbox to verify the new address.';
+          ceSuccess.hidden = false;
+        }
+        ceSubmit.textContent = 'Done';
+        setTimeout(function(){ if(dlgEmail) dlgEmail.close(); window.location.reload(); }, 2500);
+      })
+      .catch(function(){
+        ceSubmit.disabled = false; ceSubmit.textContent = 'Save';
+        if(ceError){ ceError.textContent = 'Network error.'; ceError.hidden = false; }
+      });
+    });
+  }
+
   // ── Reset dialogs on close ────────────────────────────────────────
   var dlgPw = document.getElementById('dlg-change-password');
   if(dlgPw) dlgPw.addEventListener('close', function(){
@@ -678,26 +726,16 @@
   // ── Passkey detection ──────────────────────────────────────────
   var passkeyStatus = document.getElementById('passkey-status');
   var passkeyAddBtn = document.getElementById('passkey-add-btn');
-  var passkeyOtherBtn = document.getElementById('passkey-other-btn');
-
-  function showPasskeyBtn(platform){
-    if(platform){
-      if(passkeyStatus) passkeyStatus.textContent = 'Available on this device';
-      if(passkeyAddBtn) passkeyAddBtn.hidden = false;
-      if(passkeyOtherBtn) passkeyOtherBtn.hidden = false;
-    } else {
-      if(passkeyStatus) passkeyStatus.textContent = 'Not available on this device';
-      if(passkeyOtherBtn) passkeyOtherBtn.hidden = false;
-    }
-  }
 
   if(window.PublicKeyCredential){
+    if(passkeyAddBtn) passkeyAddBtn.hidden = false;
     PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-      .then(showPasskeyBtn)
-      .catch(function(){ showPasskeyBtn(false); });
+      .then(function(platform){
+        if(passkeyStatus) passkeyStatus.textContent = platform ? 'Available on this device' : 'Available via another device';
+      })
+      .catch(function(){});
   } else {
     if(passkeyStatus) passkeyStatus.textContent = 'Not supported in this browser';
-    if(passkeyOtherBtn) passkeyOtherBtn.hidden = false;
   }
 
   function base64urlToBuffer(b64url){
@@ -743,7 +781,7 @@
       }
       return navigator.credentials.create({publicKey: opts})
         .then(function(cred){
-          var credJson = JSON.stringify({
+          var credObj = {
             id: cred.id,
             rawId: bufferToBase64url(cred.rawId),
             type: cred.type,
@@ -751,11 +789,11 @@
               clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
               attestationObject: bufferToBase64url(cred.response.attestationObject)
             }
-          });
+          };
           return fetch('/settings/passkeys/register/complete', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-            body: JSON.stringify({credential: credJson})
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({credential: credObj})
           }).then(function(r){ return r.json(); });
         });
     })
@@ -770,7 +808,8 @@
     });
   }
 
-  if(passkeyAddBtn) passkeyAddBtn.addEventListener('click', function(){ triggerWebAuthn('platform'); });
+  var createBtn = document.getElementById('passkey-create-btn');
+  if(createBtn) createBtn.addEventListener('click', function(){ triggerWebAuthn('platform'); });
 
   var crossDeviceBtn = document.getElementById('passkey-cross-device-btn');
   if(crossDeviceBtn) crossDeviceBtn.addEventListener('click', function(){ triggerWebAuthn('cross-platform'); });
@@ -846,7 +885,7 @@
     if(uri && typeof QRCodeStyling !== 'undefined'){
       try{
         var qr = new QRCodeStyling({
-          width:240, height:240, type:'canvas', data:uri,
+          width:196, height:196, type:'canvas', data:uri,
           qrOptions:{errorCorrectionLevel:'M'},
           dotsOptions:{color:fg, type:'rounded'},
           backgroundOptions:{color:bg},
@@ -858,7 +897,7 @@
       }catch(e){}
     }
     if(uri && typeof QRCode !== 'undefined'){
-      try{ new QRCode(canvas,{text:uri,width:240,height:240,colorDark:fg,colorLight:bg,correctLevel:QRCode.CorrectLevel.M}); return; }catch(e){}
+      try{ new QRCode(canvas,{text:uri,width:196,height:196,colorDark:fg,colorLight:bg,correctLevel:QRCode.CorrectLevel.M}); return; }catch(e){}
     }
     if(fallbackUrl){
       var img = document.createElement('img');

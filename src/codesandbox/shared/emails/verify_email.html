@@ -1,0 +1,20 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, btn, fallback_link %}
+
+{{ icon_badge(
+  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>',
+  "#dcfce7"
+) }}
+
+{{ h1("Verify your email address") }}
+
+<p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#71717a">
+  You're one step away from getting started with CodeSandbox. Click the button below
+  to confirm your email address. This link expires in <strong style="color:#18181b">24 hours</strong>.
+</p>
+
+<p style="margin:0 0 28px">{{ btn(verify_url, "Verify email address", "#16a34a") }}</p>
+
+{{ fallback_link(verify_url) }}
+{% endblock %}

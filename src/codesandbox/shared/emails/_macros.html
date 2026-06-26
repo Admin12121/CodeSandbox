@@ -1,0 +1,74 @@
+{#
+  Reusable email components.
+  Usage in child templates:
+    {% from "_macros.html" import btn, fallback_link, detail_table, icon_badge %}
+#}
+
+{# Primary CTA button #}
+{% macro btn(url, label, bg="#18181b", fg="#ffffff") %}
+<a href="{{ url }}" style="display:inline-block;background:{{ bg }};color:{{ fg }};text-decoration:none;padding:11px 26px;border-radius:8px;font-weight:600;font-size:14px;line-height:1;letter-spacing:-.01em">{{ label }}</a>
+{% endmacro %}
+
+{# Ghost / secondary link button #}
+{% macro btn_outline(url, label) %}
+<a href="{{ url }}" style="display:inline-block;background:transparent;color:#18181b;text-decoration:none;padding:10px 24px;border-radius:8px;font-weight:500;font-size:14px;line-height:1;border:1px solid #e4e4e7">{{ label }}</a>
+{% endmacro %}
+
+{# Fallback plain-text link shown beneath the CTA #}
+{% macro fallback_link(url) %}
+<p style="margin:0;font-size:12px;color:#a1a1aa;line-height:1.6">
+  Or copy and paste this link into your browser:<br>
+  <a href="{{ url }}" style="color:#3b82f6;word-break:break-all;text-decoration:none">{{ url }}</a>
+</p>
+{% endmacro %}
+
+{# Colour-coded icon badge (table-based for Outlook compat) #}
+{% macro icon_badge(icon_svg, bg="#f4f4f5") %}
+<table cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom:24px">
+  <tr>
+    <td style="width:48px;height:48px;background:{{ bg }};border-radius:12px;text-align:center;vertical-align:middle">
+      {{ icon_svg | safe }}
+    </td>
+  </tr>
+</table>
+{% endmacro %}
+
+{# Key-value detail table (rows = list of (label, value) tuples) #}
+{% macro detail_table(rows) %}
+<table cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border:1px solid #e4e4e7;border-radius:10px;overflow:hidden;margin-bottom:24px">
+  {% for label, value in rows %}
+  <tr>
+    <td style="padding:10px 16px;{% if not loop.last %}border-bottom:1px solid #f4f4f5;{% endif %}background:#fafafa;white-space:nowrap;width:110px">
+      <span style="font-size:11px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:.06em">{{ label }}</span>
+    </td>
+    <td style="padding:10px 16px;{% if not loop.last %}border-bottom:1px solid #f4f4f5;{% endif %}">
+      <span style="font-size:14px;color:#18181b">{{ value }}</span>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+
+{# Large monospace OTP code block #}
+{% macro otp_block(code) %}
+<div style="margin:0 0 28px;padding:24px 16px;background:#f4f4f5;border-radius:10px;text-align:center">
+  <span style="font-family:'Courier New',Courier,monospace;font-size:34px;font-weight:700;letter-spacing:.22em;color:#18181b;line-height:1">{{ code }}</span>
+</div>
+{% endmacro %}
+
+{# Alert / notice box — for reason/context callouts #}
+{% macro notice(text, bg="#fff7ed", border="#fed7aa", color="#92400e") %}
+<div style="margin:0 0 24px;padding:14px 16px;background:{{ bg }};border:1px solid {{ border }};border-radius:8px">
+  <p style="margin:0;font-size:13px;color:{{ color }};line-height:1.6">{{ text }}</p>
+</div>
+{% endmacro %}
+
+{# Section heading (h1 equivalent) #}
+{% macro h1(text) %}
+<h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#18181b;line-height:1.2;letter-spacing:-.02em">{{ text }}</h1>
+{% endmacro %}
+
+{# Body paragraph #}
+{% macro p(text) %}
+<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#71717a">{{ text }}</p>
+{% endmacro %}

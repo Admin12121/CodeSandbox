@@ -328,10 +328,12 @@ def passkey_register_begin(user_id: str, attachment: str | None = None) -> dict:
     from webauthn import generate_registration_options, options_to_json
     from webauthn.helpers.structs import (
         AuthenticatorAttachment,
+        AuthenticatorSelectionCriteria,
+        PublicKeyCredentialDescriptor,
         ResidentKeyRequirement,
         UserVerificationRequirement,
     )
-    from webauthn.helpers import bytes_to_base64url
+    from webauthn.helpers import bytes_to_base64url, base64url_to_bytes
     import json
 
     user = repository.find_user_by_id(user_id)
@@ -340,11 +342,12 @@ def passkey_register_begin(user_id: str, attachment: str | None = None) -> dict:
 
     rp_id, _ = _get_rp_config()
     existing = repository.get_user_passkeys(user_id)
-    from webauthn.helpers import base64url_to_bytes
     exclude_credentials = []
     for pk in existing:
         try:
-            exclude_credentials.append({"type": "public-key", "id": base64url_to_bytes(pk.credential_id)})
+            exclude_credentials.append(
+                PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id))
+            )
         except Exception:
             pass
 
@@ -361,9 +364,11 @@ def passkey_register_begin(user_id: str, attachment: str | None = None) -> dict:
         user_name=user.email,
         user_display_name=user.name,
         exclude_credentials=exclude_credentials,
-        authenticator_attachment=auth_attach,
-        resident_key_requirement=ResidentKeyRequirement.REQUIRED,
-        user_verification=UserVerificationRequirement.PREFERRED,
+        authenticator_selection=AuthenticatorSelectionCriteria(
+            authenticator_attachment=auth_attach,
+            resident_key=ResidentKeyRequirement.REQUIRED,
+            user_verification=UserVerificationRequirement.PREFERRED,
+        ),
     )
 
     challenge_b64 = bytes_to_base64url(options.challenge)
