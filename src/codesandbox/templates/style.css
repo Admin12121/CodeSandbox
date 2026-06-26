@@ -497,6 +497,37 @@
     background-color: color-mix(in srgb, var(--muted) 72%, transparent);
   }
 
+  [data-slot="hover-grid"] {
+    position: relative;
+    overflow: hidden;
+  }
+
+  [data-slot="hover-grid-overlay"] {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  [data-slot="hover-grid-block"] {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background-color: var(--background);
+    color: var(--foreground);
+    opacity: 0;
+    transition: opacity 200ms ease;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  [data-slot="hover-grid-block"][data-state="active"] {
+    opacity: 1;
+  }
+
   [data-slot="input-control"],
   [data-slot="input-group"],
   [data-slot="textarea"],

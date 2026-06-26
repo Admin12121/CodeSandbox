@@ -72,6 +72,9 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
             "permission": permission,
         }
 
+    def separator() -> dict:
+        return {"label": "", "href": "", "active": False, "permission": None, "separator": True}
+
     secondary_items = [
         item("Settings", "/settings"),
         item("Get Help", "#help"),
@@ -84,6 +87,8 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
             item("Organizations", "/platform/organizations"),
             item("Application Staff", "/platform/staff", "platform.staff.read"),
             item("Staff Roles", "/platform/roles", "platform.roles.read"),
+            separator(),
+            item("Hub", "/hub"),
         ]
         if role != "system_admin":
             from codesandbox.features.platform_admin import repository as rbac_repo

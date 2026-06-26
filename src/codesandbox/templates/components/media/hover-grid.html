@@ -1,0 +1,148 @@
+{% macro hover_grid_image(src, alt="", class="", attrs={}) -%}
+<div data-slot="hover-grid" data-cs-hover-grid class="{{ cn('', class) }}" {{ html_attrs(**attrs) }}>
+  <img src="{{ src }}" alt="{{ alt }}" class="h-full w-full object-cover" />
+</div>
+{%- endmacro %}
+
+{% app_script "media-hover-grid" %}
+(function(){
+  'use strict';
+
+  var CONFIG = {
+    symbols: ['O','X','*','>','$','W'],
+    blockSize: 25,
+    detectionRadius: 50,
+    clusterSize: 7,
+    blockLifetime: 300,
+    emptyRatio: 0.3,
+    scrambleRatio: 0.25,
+    scrambleInterval: 150,
+  };
+
+  function randomSymbol(){
+    return CONFIG.symbols[Math.floor(Math.random()*CONFIG.symbols.length)];
+  }
+
+  function buildGrid(root){
+    if(root._hoverGridCleanup)root._hoverGridCleanup();
+
+    var width=root.offsetWidth, height=root.offsetHeight;
+    if(!width||!height)return;
+
+    var overlay=document.createElement('div');
+    overlay.setAttribute('data-slot','hover-grid-overlay');
+
+    var cols=Math.ceil(width/CONFIG.blockSize), rows=Math.ceil(height/CONFIG.blockSize);
+    var blocks=[];
+
+    for(var row=0;row<rows;row++){
+      for(var col=0;col<cols;col++){
+        var isEmpty=Math.random()<CONFIG.emptyRatio;
+        var el=document.createElement('div');
+        el.setAttribute('data-slot','hover-grid-block');
+        el.style.width=CONFIG.blockSize+'px';
+        el.style.height=CONFIG.blockSize+'px';
+        el.style.left=(col*CONFIG.blockSize)+'px';
+        el.style.top=(row*CONFIG.blockSize)+'px';
+        if(!isEmpty)el.textContent=randomSymbol();
+        overlay.appendChild(el);
+
+        blocks.push({
+          el: el,
+          x: col*CONFIG.blockSize+CONFIG.blockSize/2,
+          y: row*CONFIG.blockSize+CONFIG.blockSize/2,
+          gx: col, gy: row,
+          highlightEnd: 0,
+          isEmpty: isEmpty,
+          scramble: !isEmpty&&Math.random()<CONFIG.scrambleRatio,
+          scrambleTimer: null,
+        });
+      }
+    }
+    root.appendChild(overlay);
+
+    function activate(block, extraDelay){
+      block.el.dataset.state='active';
+      block.highlightEnd=Date.now()+CONFIG.blockLifetime+(extraDelay||0);
+      if(block.scramble&&!block.scrambleTimer){
+        block.scrambleTimer=setInterval(function(){
+          block.el.textContent=randomSymbol();
+        }, CONFIG.scrambleInterval);
+      }
+    }
+
+    function onMove(e){
+      var rect=root.getBoundingClientRect();
+      var mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      var closest=null, closestDist=Infinity;
+      for(var i=0;i<blocks.length;i++){
+        var b=blocks[i];
+        var dx=mx-b.x, dy=my-b.y;
+        var d=Math.sqrt(dx*dx+dy*dy);
+        if(d<closestDist){closestDist=d;closest=b;}
+      }
+      if(!closest||closestDist>CONFIG.detectionRadius)return;
+
+      activate(closest, 0);
+      var clusterCount=Math.floor(Math.random()*CONFIG.clusterSize)+1;
+      var current=closest, active=[closest];
+      for(var c=0;c<clusterCount;c++){
+        var neighbors=blocks.filter(function(n){
+          if(active.indexOf(n)!==-1)return false;
+          return Math.abs(n.gx-current.gx)<=1&&Math.abs(n.gy-current.gy)<=1;
+        });
+        if(!neighbors.length)break;
+        var pick=neighbors[Math.floor(Math.random()*neighbors.length)];
+        activate(pick, c*10);
+        active.push(pick);
+        current=pick;
+      }
+    }
+    root.addEventListener('mousemove', onMove);
+
+    var raf=null;
+    function tick(){
+      var now=Date.now();
+      blocks.forEach(function(b){
+        if(b.highlightEnd>0&&now>b.highlightEnd){
+          delete b.el.dataset.state;
+          b.highlightEnd=0;
+          if(b.scrambleTimer){
+            clearInterval(b.scrambleTimer);
+            b.scrambleTimer=null;
+            if(!b.isEmpty)b.el.textContent=randomSymbol();
+          }
+        }
+      });
+      raf=requestAnimationFrame(tick);
+    }
+    tick();
+
+    root._hoverGridCleanup=function(){
+      root.removeEventListener('mousemove', onMove);
+      if(raf)cancelAnimationFrame(raf);
+      blocks.forEach(function(b){if(b.scrambleTimer)clearInterval(b.scrambleTimer);});
+      overlay.remove();
+    };
+  }
+
+  function initAll(){
+    document.querySelectorAll('[data-cs-hover-grid]').forEach(function(root){
+      if(root._hoverGridInit)return;
+      root._hoverGridInit=true;
+
+      buildGrid(root);
+
+      var resizeTimer=null;
+      var ro=new ResizeObserver(function(){
+        clearTimeout(resizeTimer);
+        resizeTimer=setTimeout(function(){buildGrid(root);}, 150);
+      });
+      ro.observe(root);
+    });
+  }
+
+  initAll();
+  window.addEventListener('app-router:patch', initAll);
+})();
+{% end_app_script %}

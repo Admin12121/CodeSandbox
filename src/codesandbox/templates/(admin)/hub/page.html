@@ -1,0 +1,27 @@
+{% import "components/ui/separator.html" as separator %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/media/hover-grid.html" as hover_grid %}
+
+<div class="flex h-[calc(100vh-4.85rem)] flex-col p-2 gap-2 overflow-y-auto">
+    {{ hover_grid.hover_grid_image(src="/roof.jpg", alt="info", class="h-[500px] w-full") }}
+    <div class="flex flex-col gap-2 w-full">
+        <h1 class="text-xl">Hub Containers</h1>
+        <div class="grid gap-6 pt-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
+            {% for i in [{ "slug": "decompiler", "title" : "Decompiler", "description" : "Decompiler is best reverse engineering tool", "img":"/decompile.jpg"}, { "slug": "venom", "title" : "Venom", "description" : "Venom is a Secure environement to analyze and test malware", "img": "/malware.jpg"}, { "slug": "athena", "title" : "Athena", "description" : "Athena is a Perfect simulation to perform attacking simulations", "img": "/attack.jpg"}, { "slug": "phenox", "title" : "Phenox", "description" : "Phenox is a best place to learn about defence tools", "img": "/def.jpg"}] %}
+                    {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700", attrs={"data-cs-href": "/hub/" ~ i.slug}) %}
+                        {% call frame.frame_header(class="p-2! gap-1") %}
+                            {% call frame.frame_title() %}
+                                {{ i.title }}
+                            {% endcall %}
+                            {% call frame.frame_description() %}
+                                {{ i.description }}
+                            {% endcall %}
+                        {% endcall %}
+                        {% call frame.frame_panel(class="shadow-sm h-[350px]! p-0! overflow-hidden") %}
+                            <img src="{{ i.img }}" alt="{{ i.title }}" class="h-full w-full object-cover"/>
+                        {% endcall %}
+                    {% endcall %}
+            {% endfor %}
+        </div>
+    </div>
+</div>

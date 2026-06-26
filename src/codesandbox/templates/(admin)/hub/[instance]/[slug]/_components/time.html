@@ -373,30 +373,30 @@
     function openFs(path, push) {
       var fs = document.getElementById("sandbox-fs");
       if (!fs) return;
-    
+
       var view = $('[data-fs-view="' + path + '"]', fs);
       if (!view) return;
-    
+
       fs._path = fs._path || "/";
       fs._history = fs._history || [];
-    
+
       if (push && fs._path !== path) {
         fs._history.push(fs._path);
       }
-    
+
       fs._path = path;
-    
+
       $$("[data-fs-view]", fs).forEach(function (el) {
         el.classList.toggle("hidden", el.dataset.fsView !== path);
       });
-    
+
       $$("[data-fs-main]", fs).forEach(function (el) {
         el.classList.toggle("fs-row-active", el.dataset.fsMain === path);
       });
-    
+
       var label = $("[data-fs-path]", fs);
       if (label) label.textContent = path;
-    
+
       var back = $("[data-fs-back]", fs);
       if (back) {
         back.classList.toggle("hidden", path === "/");

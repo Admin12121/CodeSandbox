@@ -63,6 +63,102 @@ def dashboard():
         **_workspaces_ctx(user),
     }
 
+@router.page("/hub")
+def hub():
+    session, redirect = require_session()
+    if redirect:
+        return redirect
+    user = session.user
+    nav = build_nav("/hub", user)
+    return {
+        "_meta": {"title": "Hub — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": "Hub",
+        **_workspaces_ctx(user),
+    }
+
+
+_HUB_INSTANCES = {
+    "decompiler": {
+        "title": "Decompiler",
+        "img": "/decompile.jpg",
+        "description": "Decompiler is the best reverse engineering tool — disassemble binaries, recover source structure, and step through control flow in an isolated sandbox.",
+        "vcpu": 2,
+        "ram_gb": 4,
+        "disk_gb": 80,
+        "cost_month": 24,
+    },
+    "venom": {
+        "title": "Venom",
+        "img": "/malware.jpg",
+        "description": "Venom is a secure, network-isolated environment to analyze and test malware samples without putting your host or network at risk.",
+        "vcpu": 4,
+        "ram_gb": 8,
+        "disk_gb": 160,
+        "cost_month": 48,
+    },
+    "athena": {
+        "title": "Athena",
+        "img": "/attack.jpg",
+        "description": "Athena is a perfect simulation environment to perform attack simulations against realistic infrastructure targets.",
+        "vcpu": 4,
+        "ram_gb": 16,
+        "disk_gb": 200,
+        "cost_month": 64,
+    },
+    "phenox": {
+        "title": "Phenox",
+        "img": "/def.jpg",
+        "description": "Phenox is the best place to learn about defence tooling — blue-team drills, log analysis, and detection engineering.",
+        "vcpu": 2,
+        "ram_gb": 4,
+        "disk_gb": 100,
+        "cost_month": 20,
+    },
+}
+
+
+@router.page("/hub/<instance>/<slug>")
+def hub_sandbox(instance: str, slug: str):
+    session, redirect = require_session()
+    if redirect:
+        return redirect
+    user = session.user
+
+    if _HUB_INSTANCES.get(instance) is None:
+        return {"_redirect": "/hub"}
+
+    nav = build_nav("/hub", user)
+    return {
+        "_meta": {"title": f"{instance.title()} Sandbox — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        **_workspaces_ctx(user),
+    }
+
+
+@router.page("/hub/<instance>")
+def hub_instance(instance: str):
+    session, redirect = require_session()
+    if redirect:
+        return redirect
+    user = session.user
+
+    data = _HUB_INSTANCES.get(instance)
+    if data is None:
+        return {"_redirect": "/hub"}
+
+    nav = build_nav("/hub", user)
+    return {
+        "_meta": {"title": f"{data['title']} — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": data["title"],
+        "instance": {"slug": instance, **data},
+        **_workspaces_ctx(user),
+    }
+
 @router.page("/laboratory/sandbox")
 def sandbox():
     session, redirect = require_session()

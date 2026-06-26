@@ -1,0 +1,182 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/button.html" as button %}
+
+{% set i = instance %}
+
+{% set plans = [
+  {"id": "basic",    "name": "Basic",          "default": true,  "vcpu": 1, "ram": "1 GB",  "disk": "10 GB SSD", "cost_hr": "0.03"},
+  {"id": "general",  "name": "General Purpose", "default": false, "vcpu": 2, "ram": "4 GB",  "disk": "15 GB SSD", "cost_hr": "0.06"},
+  {"id": "optimized","name": "Optimized",       "default": false, "vcpu": 4, "ram": "8 GB",  "disk": "20 GB SSD", "cost_hr": "0.09"},
+  {"id": "premium",  "name": "Premium",         "default": false, "vcpu": 6, "ram": "12 GB", "disk": "30 GB SSD", "cost_hr": "0.13"},
+] %}
+
+<div class="grid gap-4 p-2 max-w-[1200px] mx-auto">
+
+  {# Page header #}
+  <div class="flex min-w-0 items-center gap-3">
+    <h1 class="truncate text-2xl font-bold tracking-tight">Start Project</h1>
+  </div>
+
+  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_14rem_minmax(20rem,26rem)] mt-[100px] relative" data-plan-selector data-instance="{{ i.slug }}">
+
+    <div class="flex items-start gap-4 flex-col">
+      <span class="flex items-center gap-4">
+        <img src="{{ i.img }}" alt="{{ i.title }}" class="size-14 shrink-0 rounded-2xl object-cover outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700"/>
+        <div class="min-w-0 pt-1">
+          <h2 class="text-lg font-semibold">{{ i.title }}</h2>
+        </div>
+      </span>
+      <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{{ i.description }}</p>
+
+      {# Plan selector #}
+      {% call frame.frame(class="w-full") %}
+        {% call frame.frame_header(class="p-2! gap-1") %}
+          {% call frame.frame_title() %}Plan{% endcall %}
+        {% endcall %}
+
+        {% call table.table(variant="card") %}
+        {% call table.table_body() %}
+            {% for plan in plans %}
+            {% call table.table_row(
+                selected=plan.default,
+                class="cursor-pointer select-none",
+                attrs={
+                "data-plan-row": plan.id,
+                "data-vcpu": plan.vcpu ~ " vCPU",
+                "data-ram": plan.ram,
+                "data-disk": plan.disk,
+                "data-cost": "$" ~ plan.cost_hr ~ "/hr",
+                }
+            ) %}
+                {{ table.table_cell(plan.name ~ (" (default)" if plan.default else ""), class="font-medium") }}
+                {{ table.table_cell(plan.vcpu ~ " vCPU · " ~ plan.ram ~ " · " ~ plan.disk, class="text-right text-muted-foreground text-xs") }}
+            {% endcall %}
+            {% endfor %}
+        {% endcall %}
+        {% endcall %}
+
+      {% endcall %}
+    </div>
+
+    <div></div>
+
+    <div>
+      {% call frame.frame() %}
+        {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+            {% call table.table_row() %}
+                {{ table.table_head("Summary") }}
+            {% call table.table_head(class="flex justify-end items-center") %}
+                {% call button.button(variant="default", attrs={"data-start-btn": ""}) %}
+                Start
+                {% endcall %}
+            {% endcall %}
+            {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+            {% call table.table_row() %}
+                {{ table.table_cell("vCPU", class="text-muted-foreground") }}
+                {{ table.table_cell(i.vcpu ~ " vCPU", class="text-right font-medium", attrs={"data-summary-cell": "vcpu"}) }}
+            {% endcall %}
+            {% call table.table_row() %}
+                {{ table.table_cell("RAM", class="text-muted-foreground") }}
+                {{ table.table_cell(i.ram_gb ~ " GB", class="text-right font-medium", attrs={"data-summary-cell": "ram"}) }}
+            {% endcall %}
+            {% call table.table_row() %}
+                {{ table.table_cell("Disk", class="text-muted-foreground") }}
+                {{ table.table_cell(i.disk_gb ~ " GB SSD", class="text-right font-medium", attrs={"data-summary-cell": "disk"}) }}
+            {% endcall %}
+            {% call table.table_row(class="border-0") %}
+                {{ table.table_cell("Total", class="text-muted-foreground") }}
+                {{ table.table_cell("$0.03/hr", class="text-right font-semibold", attrs={"data-summary-cell": "total"}) }}
+            {% endcall %}
+        {% endcall %}
+        {% endcall %}
+      {% endcall %}
+    </div>
+
+  </div>
+</div>
+
+{% app_script "hub-plan-selector" %}
+(function(){
+  'use strict';
+
+  var VIOLET_BG = 'rgba(97, 95, 255, 0.5)';
+  var VIOLET_BG_DARK = 'rgba(97, 95, 255, 0.5)';
+
+  function isDark(){
+    return document.documentElement.classList.contains('dark');
+  }
+
+  function applyViolet(row){
+    var bg = isDark() ? VIOLET_BG_DARK : VIOLET_BG;
+    row.querySelectorAll('td').forEach(function(td){
+      td.style.setProperty('background-color', bg);
+    });
+  }
+
+  function clearViolet(row){
+    row.querySelectorAll('td').forEach(function(td){
+      td.style.removeProperty('background-color');
+    });
+  }
+
+  function updateSummary(scope, row){
+    var vcpu = row.dataset.vcpu;
+    var ram  = row.dataset.ram;
+    var disk = row.dataset.disk;
+    var cost = row.dataset.cost;
+    scope.querySelectorAll('[data-summary-cell]').forEach(function(cell){
+      var key = cell.dataset.summaryCell;
+      if(key === 'vcpu'  && vcpu) cell.textContent = vcpu;
+      if(key === 'ram'   && ram)  cell.textContent = ram;
+      if(key === 'disk'  && disk) cell.textContent = disk;
+      if(key === 'total' && cost) cell.textContent = cost;
+    });
+  }
+
+  function initPlanSelector(){
+    document.querySelectorAll('[data-plan-selector]').forEach(function(scope){
+      var rows = scope.querySelectorAll('[data-plan-row]');
+      var instance = scope.dataset.instance || '';
+      var startBtn = scope.querySelector('[data-start-btn]');
+
+      function setStartTarget(planId){
+        if(startBtn) startBtn.onclick = function(){
+          window.location.href = '/hub/' + instance + '/' + planId;
+        };
+      }
+
+      rows.forEach(function(row){
+        if(row._planSelectorInit) return;
+        row._planSelectorInit = true;
+
+        if(row.dataset.state === 'selected'){
+          applyViolet(row);
+          setStartTarget(row.dataset.planRow);
+        }
+
+        row.addEventListener('click', function(){
+          rows.forEach(function(r){
+            delete r.dataset.state;
+            clearViolet(r);
+          });
+          row.dataset.state = 'selected';
+          applyViolet(row);
+          updateSummary(scope, row);
+          setStartTarget(row.dataset.planRow);
+        });
+      });
+
+      // Sync summary to default selection on init
+      var defaultRow = scope.querySelector('[data-plan-row][data-state="selected"]');
+      if(defaultRow) updateSummary(scope, defaultRow);
+    });
+  }
+
+  initPlanSelector();
+  window.addEventListener('app-router:patch', initPlanSelector);
+})();
+{% end_app_script %}
