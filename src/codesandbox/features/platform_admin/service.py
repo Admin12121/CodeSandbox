@@ -295,6 +295,16 @@ def save_staff_member(
             phone=(phone or None),
         )
         member_id = user.id
+        try:
+            from codesandbox.config import get_settings
+            from codesandbox.shared.email import send_staff_account_created
+            send_staff_account_created(
+                to=email,
+                name=name,
+                login_url=f"{get_settings().app_url}/login",
+            )
+        except Exception:
+            pass
 
     valid_role_ids = {r.id for r in repository.list_roles()}
     wanted = {rid for rid in role_ids if rid in valid_role_ids}

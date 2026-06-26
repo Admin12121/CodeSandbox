@@ -1,0 +1,43 @@
+{% extends "_layout.html" %}
+{% block content %}
+{% from "_macros.html" import icon_badge, h1, btn, notice %}
+
+{% if new_status == "active" %}
+  {% set _icon_svg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>' %}
+  {% set _icon_bg  = "#dcfce7" %}
+  {% set _heading  = "Your account has been reactivated" %}
+  {% set _body     = "Your CodeSandbox account is now active again. You can sign in and access all your resources." %}
+  {% set _btn_label = "Sign in" %}
+  {% set _btn_bg   = "#16a34a" %}
+{% elif new_status == "banned" %}
+  {% set _icon_svg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>' %}
+  {% set _icon_bg  = "#fee2e2" %}
+  {% set _heading  = "Your account has been suspended" %}
+  {% set _body     = "Your CodeSandbox account has been suspended and access has been revoked. If you believe this is a mistake, please contact support." %}
+  {% set _btn_label = "Contact support" %}
+  {% set _btn_bg   = "#dc2626" %}
+{% else %}
+  {% set _icon_svg = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>' %}
+  {% set _icon_bg  = "#fef3c7" %}
+  {% set _heading  = "Your account has been deactivated" %}
+  {% set _body     = "Your CodeSandbox account has been temporarily deactivated. Contact support if you have questions." %}
+  {% set _btn_label = "Contact support" %}
+  {% set _btn_bg   = "#d97706" %}
+{% endif %}
+
+{{ icon_badge(_icon_svg, _icon_bg) }}
+
+{{ h1(_heading) }}
+
+<p style="margin:0 0 20px;font-size:14px;line-height:1.7;color:#71717a">
+  Hi <strong style="color:#18181b">{{ name }}</strong>, {{ _body }}
+</p>
+
+{% if reason %}
+  {{ notice(reason) }}
+{% endif %}
+
+{% if support_url %}
+  <p style="margin:0">{{ btn(support_url, _btn_label, _btn_bg) }}</p>
+{% endif %}
+{% endblock %}

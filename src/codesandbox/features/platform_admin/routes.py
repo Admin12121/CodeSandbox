@@ -129,6 +129,33 @@ def platform_update_user_field_action(user_id: str):
         update_platform_user(user_id, **{field: value})
     else:
         id_repo.update_user(user_id, **{field: value})
+
+    if field in ("platform_role", "status") and value:
+        try:
+            from codesandbox.config import get_settings
+            from codesandbox.shared import email as mailer
+            target = id_repo.find_user_by_id(user_id)
+            if target:
+                _settings = get_settings()
+                if field == "platform_role":
+                    _labels = {"user": "User", "system_staff": "Platform Staff", "system_admin": "Platform Admin"}
+                    mailer.send_platform_role_changed(
+                        to=target.email,
+                        name=target.name,
+                        new_role=_labels.get(value, value),
+                        changed_by_name=cs.user.name,
+                        dashboard_url=f"{_settings.app_url}/dashboard",
+                    )
+                elif field == "status":
+                    mailer.send_account_status_changed(
+                        to=target.email,
+                        name=target.name,
+                        new_status=value,
+                        support_url=f"{_settings.app_url}/support",
+                    )
+        except Exception:
+            pass
+
     return jsonify({"ok": True})
 
 
@@ -266,5 +293,6 @@ def save_staff_action():
 def update_org_status_action(org_id: str):
     from codesandbox.features.organizations.service import update_organization_status
     status = request.form.get("status", "")
-    update_organization_status(org_id, status)
+    reason = request.form.get("reason", "").strip() or None
+    update_organization_status(org_id, status, reason=reason)
     return redirect(f"/platform/organizations?org={org_id}", code=303)

@@ -89,17 +89,55 @@ def update_organization_details(
     return repository.update_organization(org_id, **kwargs)
 
 
-def update_organization_status(org_id: str, status: str) -> Organization | None:
+def update_organization_status(org_id: str, status: str, reason: str | None = None) -> Organization | None:
     valid = {"active", "inactive", "suspended", "pending", "rejected"}
     if status not in valid:
         return None
     org = repository.update_organization(org_id, status=status)
-    if status == "active" and org is not None:
+    if org is None:
+        return None
+
+    if status == "active":
         existing = repository.get_org_database(org_id)
         if existing is None or existing.status not in ("ready", "provisioning"):
             import threading
             t = threading.Thread(target=repository.provision_org_database, args=(org_id,), daemon=True)
             t.start()
+
+    # Notify org owner by email on significant status transitions
+    if status in ("active", "rejected", "suspended") and org.owner_id:
+        try:
+            from codesandbox.config import get_settings
+            from codesandbox.features.identity import repository as identity_repo
+            from codesandbox.shared import email as mailer
+            owner = identity_repo.find_user_by_id(str(org.owner_id))
+            if owner:
+                settings = get_settings()
+                dashboard_url = f"{settings.app_url}/my/organizations/{org.slug}"
+                support_url = f"{settings.app_url}/support"
+                if status == "active":
+                    mailer.send_org_approved(
+                        to=owner.email,
+                        org_name=org.name,
+                        dashboard_url=dashboard_url,
+                    )
+                elif status == "rejected":
+                    mailer.send_org_rejected(
+                        to=owner.email,
+                        org_name=org.name,
+                        reason=reason,
+                        support_url=support_url,
+                    )
+                elif status == "suspended":
+                    mailer.send_org_suspended(
+                        to=owner.email,
+                        org_name=org.name,
+                        reason=reason,
+                        support_url=support_url,
+                    )
+        except Exception:
+            pass
+
     return org
 
 
