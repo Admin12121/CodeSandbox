@@ -1,2 +1,314 @@
-{% include "components/ui/_runtime.html" %}
-{% macro toast(title="", description="", type="", tooltip=false, class="", attrs={}) -%}<div class="{{ cn('relative rounded-lg border bg-popover text-popover-foreground text-sm shadow-lg/5 transition-[scale,opacity]', 'rounded-md text-xs' if tooltip else '', class) }}" data-slot="toast-popup" {% if type %}data-type="{{ type }}"{% endif %} {{ html_attrs(**attrs) }}><div class="pointer-events-auto flex items-center justify-between gap-1.5 overflow-hidden px-3.5 py-3"><div class="flex flex-col gap-0.5"><div class="font-medium" data-slot="toast-title">{{ title }}</div>{% if description %}<div class="text-muted-foreground" data-slot="toast-description">{{ description }}</div>{% endif %}</div>{% if caller is defined %}{{ caller() }}{% endif %}</div></div>{%- endmacro %}
+{# ── Programmatic toast system ─────────────────────────────────────────────
+   Include once in (admin)/layout.html after _runtime.html.
+   API (available globally as window.Toast):
+     Toast.create({ title, description, type, duration })  → id
+     Toast.dismiss(id)
+     Toast.promise(promise, { loading, success, error })   → id
+     Toast.update(id, { title, description, type, duration })
+   Types: success | error | warning | info | loading
+#}
+<style>
+#cs-toast-vp{
+  position:fixed;bottom:1rem;right:1rem;
+  width:min(22.5rem,calc(100vw - 2rem));
+  z-index:9999;pointer-events:none;
+  transition:height .35s cubic-bezier(.22,1,.36,1);
+}
+.cs-toast{
+  position:absolute;bottom:0;left:0;right:0;
+  border-radius:var(--radius-lg,.5rem);
+  border:1px solid hsl(var(--border));
+  background:hsl(var(--popover));
+  color:hsl(var(--popover-foreground));
+  box-shadow:0 4px 6px -1px rgba(0,0,0,.08),0 2px 4px -2px rgba(0,0,0,.06);
+  transition:transform .5s cubic-bezier(.22,1,.36,1),opacity .3s;
+  transform-origin:50% 100%;
+  user-select:none;pointer-events:auto;overflow:hidden;
+}
+.dark .cs-toast{box-shadow:0 4px 6px -1px rgba(0,0,0,.35),0 2px 4px -2px rgba(0,0,0,.25);}
+.cs-toast-inner{
+  display:flex;align-items:center;gap:8px;
+  padding:12px 14px;font-size:.875rem;line-height:1.4;
+  transition:opacity .25s;
+}
+/* hide content on stacked-behind toasts; reveal on expand */
+.cs-toast[data-behind] .cs-toast-inner{opacity:0;pointer-events:none;}
+#cs-toast-vp[data-expanded] .cs-toast .cs-toast-inner{opacity:1!important;pointer-events:auto!important;}
+.cs-toast-icon{flex-shrink:0;display:flex;align-items:center;}
+.cs-toast-body{flex:1;min-width:0;}
+.cs-toast-title{font-weight:500;}
+.cs-toast-desc{color:hsl(var(--muted-foreground));font-size:.8125rem;margin-top:2px;}
+.cs-toast-close{
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  width:20px;height:20px;border-radius:4px;cursor:pointer;
+  color:hsl(var(--muted-foreground));background:transparent;border:none;padding:0;
+  opacity:0;transition:opacity .15s,background-color .15s,color .15s;margin-left:auto;
+}
+.cs-toast:hover .cs-toast-close,
+#cs-toast-vp[data-expanded] .cs-toast .cs-toast-close{opacity:1;}
+.cs-toast-close:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground));}
+/* icon colours */
+[data-type=success] .cs-toast-icon svg{color:hsl(142 71% 45%);}
+.dark [data-type=success] .cs-toast-icon svg{color:hsl(142 71% 55%);}
+[data-type=error]   .cs-toast-icon svg{color:hsl(var(--destructive));}
+[data-type=warning] .cs-toast-icon svg{color:hsl(38 92% 50%);}
+[data-type=info]    .cs-toast-icon svg{color:hsl(217 91% 60%);}
+[data-type=loading] .cs-toast-icon svg{opacity:.7;animation:cs-spin 1s linear infinite;}
+@keyframes cs-spin{to{transform:rotate(360deg)}}
+</style>
+
+<div id="cs-toast-vp" role="region" aria-label="Notifications" aria-live="polite"></div>
+
+{% app_script "cs-toast-system" %}
+(function(){
+  'use strict';
+
+  var PEEK=8, GAP=12, MAX_VIS=3, DEFAULT_DUR=4000, SWIPE_THRESH=60, SCALE=0.05;
+  var toasts=[], _id=0, _vp=null;
+
+  function vp(){ return _vp||(_vp=document.getElementById('cs-toast-vp')); }
+
+  /* ── svg icons ────────────────────────────────────────────────────────── */
+  var ICONS={
+    success:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
+    error:  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>',
+    warning:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+    info:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+    loading:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
+  };
+
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+  /* ── build DOM element ───────────────────────────────────────────────── */
+  function buildEl(t){
+    var el=document.createElement('div');
+    el.className='cs-toast';
+    if(t.type) el.dataset.type=t.type;
+    el.setAttribute('role', t.type==='error'?'alert':'status');
+    var ic=ICONS[t.type]?'<div class="cs-toast-icon">'+ICONS[t.type]+'</div>':'';
+    el.innerHTML='<div class="cs-toast-inner">'+ic+
+      '<div class="cs-toast-body">'+
+        '<div class="cs-toast-title">'+esc(t.title)+'</div>'+
+        (t.description?'<div class="cs-toast-desc">'+esc(t.description)+'</div>':'')+
+      '</div>'+
+      '<button class="cs-toast-close" aria-label="Dismiss" type="button">'+
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'+
+      '</button>'+
+    '</div>';
+    el.querySelector('.cs-toast-close').addEventListener('click',function(e){
+      e.stopPropagation(); dismiss(t.id);
+    });
+    initSwipe(el, t.id);
+    return el;
+  }
+
+  /* ── swipe to dismiss (touch/pen only) ────────────────────────────────── */
+  function initSwipe(el, id){
+    var ox=0, oy=0, dx=0, dy=0, active=false, savedTransition='';
+    el.addEventListener('pointerdown', function(e){
+      if(e.pointerType==='mouse') return;
+      ox=e.clientX; oy=e.clientY; dx=0; dy=0; active=true;
+      savedTransition=el.style.transition;
+      el.style.transition='none';
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', function(e){
+      if(!active) return;
+      dx=e.clientX-ox; dy=e.clientY-oy;
+      var tx=Math.max(0,dx), ty=Math.max(0,dy);
+      el.style.transform='translateX('+tx+'px) translateY('+ty+'px)';
+      el.style.opacity=String(Math.max(0,1-Math.max(tx,ty)/100));
+    });
+    el.addEventListener('pointerup', function(){
+      if(!active) return; active=false;
+      var tx=Math.max(0,dx), ty=Math.max(0,dy);
+      if(tx>SWIPE_THRESH||ty>SWIPE_THRESH){
+        dismiss(id);
+      } else {
+        el.style.transition=savedTransition;
+        layout(); /* snap back to stacked position */
+      }
+    });
+    el.addEventListener('pointercancel', function(){
+      if(!active) return; active=false;
+      el.style.transition=savedTransition;
+      layout();
+    });
+  }
+
+  /* ── layout: recompute stacked positions for all live toasts ─────────── */
+  function layout(){
+    var v=vp(); if(!v) return;
+    var live=toasts.filter(function(t){return !t._leaving;});
+
+    /* measure heights (skip still-entering toasts) */
+    var fh=60;
+    live.forEach(function(t,i){
+      if(!t._entering && t._el){
+        var h=t._el.offsetHeight;
+        if(h>0) t._h=h;
+      }
+      if(!t._h) t._h=60;
+      if(i===0) fh=t._h;
+    });
+
+    /* assign stacked transforms and z-index */
+    live.forEach(function(t,i){
+      if(!t._el||t._entering||t._leaving) return;
+      var sc=Math.max(0, 1-i*SCALE);
+      var ty=-(i*PEEK + i*SCALE*fh);
+      t._el.style.transform='translateY('+ty+'px) scale('+sc+')';
+      t._el.style.opacity='';
+      t._el.style.zIndex=String(MAX_VIS*100 - i);
+      /* hide content of stacked-behind toasts */
+      if(i>0) t._el.dataset.behind='1'; else delete t._el.dataset.behind;
+      /* hide toasts beyond MAX_VIS */
+      t._el.style.visibility=i>=MAX_VIS?'hidden':'';
+    });
+
+    /* compute expanded offsets from bottom */
+    var acc=0;
+    live.forEach(function(t){
+      t._ey=-acc;
+      acc+=t._h+GAP;
+    });
+
+    /* set viewport height */
+    var vis=Math.min(live.length, MAX_VIS);
+    var collapsed=fh+(vis>0?(vis-1)*PEEK+PEEK+4:4);
+    v.style.height=collapsed+'px';
+    v._expandedH=(Math.max(0,acc-GAP)+4)+'px';
+  }
+
+  /* ── create ──────────────────────────────────────────────────────────── */
+  function create(opts){
+    if(typeof opts==='string') opts={title:opts};
+    var dur=opts.duration!=null?opts.duration:(opts.type==='loading'?0:DEFAULT_DUR);
+    var t={
+      id:++_id, title:opts.title||'', description:opts.description||'',
+      type:opts.type||'', duration:dur,
+      _el:null, _timer:null, _leaving:false, _entering:true, _h:60, _ey:0
+    };
+    var v=vp(); if(!v) return t.id;
+    t._el=buildEl(t);
+
+    /* start off-screen */
+    t._el.style.transition='none';
+    t._el.style.transform='translateY(120px)';
+    t._el.style.opacity='0';
+    t._el.style.zIndex=String(MAX_VIS*100);
+    v.appendChild(t._el);
+    toasts.unshift(t);
+
+    /* next two rAFs: kick in transition and animate to stacked position */
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        t._entering=false;
+        if(!t._el||t._leaving) return;
+        t._el.style.transition='';
+        layout(); /* sets transform + opacity for all */
+      });
+    });
+
+    if(dur>0) t._timer=setTimeout(function(){dismiss(t.id);}, dur);
+    return t.id;
+  }
+
+  /* ── dismiss ─────────────────────────────────────────────────────────── */
+  function dismiss(id){
+    var t=toasts.find(function(x){return x.id===id;});
+    if(!t||t._leaving) return;
+    if(t._timer){clearTimeout(t._timer); t._timer=null;}
+    t._leaving=true;
+    if(t._el){
+      var el=t._el;
+      el.style.transition='transform .35s cubic-bezier(.22,1,.36,1),opacity .3s';
+      el.style.transform='translateX(calc(100% + 1rem))';
+      el.style.opacity='0';
+      setTimeout(function(){
+        el.remove();
+        toasts=toasts.filter(function(x){return x.id!==id;});
+        layout();
+      },350);
+    }
+  }
+
+  /* ── update (title / type / extend duration) ─────────────────────────── */
+  function update(id, opts){
+    var t=toasts.find(function(x){return x.id===id;});
+    if(!t||!t._el) return;
+    if(opts.title!=null){
+      t.title=opts.title;
+      var el=t._el.querySelector('.cs-toast-title');
+      if(el) el.textContent=opts.title;
+    }
+    if(opts.description!=null){
+      t.description=opts.description;
+      var dEl=t._el.querySelector('.cs-toast-desc');
+      if(dEl){ dEl.textContent=opts.description; }
+      else if(opts.description){
+        var body=t._el.querySelector('.cs-toast-body');
+        if(body){var d=document.createElement('div');d.className='cs-toast-desc';d.textContent=opts.description;body.appendChild(d);}
+      }
+    }
+    if(opts.type!=null){
+      t.type=opts.type;
+      t._el.dataset.type=opts.type;
+      /* swap icon */
+      var ic=t._el.querySelector('.cs-toast-icon');
+      if(ic){ ic.innerHTML=ICONS[opts.type]||''; if(!ICONS[opts.type]) ic.remove(); }
+      else if(ICONS[opts.type]){
+        var inner=t._el.querySelector('.cs-toast-inner');
+        if(inner){var ni=document.createElement('div');ni.className='cs-toast-icon';ni.innerHTML=ICONS[opts.type];inner.insertBefore(ni,inner.firstChild);}
+      }
+    }
+    if(opts.duration!=null&&opts.duration>0){
+      if(t._timer) clearTimeout(t._timer);
+      t._timer=setTimeout(function(){dismiss(t.id);},opts.duration);
+    }
+  }
+
+  /* ── promise ─────────────────────────────────────────────────────────── */
+  function toastPromise(p, msgs){
+    var id=create({title:typeof msgs.loading==='string'?msgs.loading:'Loading…',type:'loading',duration:0});
+    Promise.resolve(p).then(function(res){
+      var msg=typeof msgs.success==='function'?msgs.success(res):(msgs.success||'Done');
+      update(id,{title:msg,type:'success',duration:DEFAULT_DUR});
+    }).catch(function(err){
+      var msg=typeof msgs.error==='function'?msgs.error(err):(msgs.error||'Something went wrong');
+      update(id,{title:msg,type:'error',duration:DEFAULT_DUR});
+    });
+    return id;
+  }
+
+  /* ── hover expand / collapse ─────────────────────────────────────────── */
+  function initHover(){
+    var v=vp(); if(!v||v._hoverReady) return;
+    v._hoverReady=true;
+    v.addEventListener('mouseenter',function(){
+      v.dataset.expanded='1';
+      if(v._expandedH) v.style.height=v._expandedH;
+      var live=toasts.filter(function(t){return !t._leaving;});
+      live.forEach(function(t,i){
+        if(!t._el||t._entering||t._leaving) return;
+        t._el.style.transform='translateY('+t._ey+'px)';
+        t._el.style.opacity='1';
+        t._el.style.visibility='';
+        delete t._el.dataset.behind;
+      });
+    });
+    v.addEventListener('mouseleave',function(){
+      delete v.dataset.expanded;
+      layout();
+    });
+  }
+
+  /* ── boot ────────────────────────────────────────────────────────────── */
+  function boot(){ _vp=null; initHover(); }
+  if(document.readyState!=='loading') boot();
+  else document.addEventListener('DOMContentLoaded',boot);
+  window.addEventListener('app-router:patch', boot);
+
+  window.Toast={create:create,dismiss:dismiss,promise:toastPromise,update:update};
+})();
+{% end_app_script %}

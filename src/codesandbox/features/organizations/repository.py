@@ -17,7 +17,6 @@ from nexorm.exceptions import DoesNotExist, IntegrityError
 
 from .models import (
     Organization,
-    OrganizationDatabase,
     OrganizationInvitation,
     OrganizationMember,
     OrganizationMemberRole,
@@ -384,128 +383,6 @@ def delete_member(member_id: str) -> None:
     except Exception:
         pass
 
-
-def get_org_database(org_id: str) -> OrganizationDatabase | None:
-    return OrganizationDatabase.objects.filter(org_id=org_id).first()
-
-
-def provision_org_database(org_id: str) -> OrganizationDatabase | None:
-    """
-    Create a per-org MySQL database from the cyberrange_org_template schema.
-    Stores the mapping in organization_databases. Idempotent — skips if already exists.
-    """
-    existing = get_org_database(org_id)
-    if existing and existing.status == "ready":
-        return existing
-
-    org = get_organization(org_id)
-    if org is None:
-        return None
-
-    raw_db_name = f"cyberrange_org_{org.slug.replace('-', '_')}"
-    import re as _re_db
-    if not _re_db.match(r'^[a-z0-9_]{1,80}$', raw_db_name):
-        import logging as _log
-        _log.getLogger(__name__).error("Refusing to provision DB: unsafe name %r", raw_db_name)
-        return None
-    db_name = raw_db_name
-
-    if existing is None:
-        existing = OrganizationDatabase(
-            id=str(uuid.uuid4()),
-            org_id=org_id,
-            db_name=db_name,
-            status="provisioning",
-        )
-        existing.save()
-    else:
-        existing.db_name = db_name
-        existing.status = "provisioning"
-        existing.updated_at = datetime.now(timezone.utc)
-        existing.save()
-
-    try:
-        import os
-        import pymysql
-        from codesandbox.config import get_settings
-        settings = get_settings()
-        db_url = settings.database_url
-        # Parse mysql://user:pass@host:port/dbname
-        import urllib.parse as _up
-        parsed = _up.urlparse(db_url)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 3306
-        user = parsed.username or "root"
-        password = parsed.password or ""
-
-        conn = pymysql.connect(host=host, port=port, user=user, password=password, charset="utf8mb4")
-        cur = conn.cursor()
-        cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-
-        # Run the template SQL against the new database
-        template_path = os.path.join(os.path.dirname(__file__), "../../../../docs/cyberrange_organization_schema_mysql.sql")
-        template_path = os.path.normpath(template_path)
-        if os.path.exists(template_path):
-            with open(template_path, "r", encoding="utf-8") as f:
-                sql_text = f.read()
-            # Swap the CREATE DATABASE / USE statements to target the new DB name
-            import re as _re
-            sql_text = _re.sub(r"CREATE DATABASE IF NOT EXISTS `[^`]+`[^;]+;", "", sql_text, flags=_re.IGNORECASE)
-            sql_text = _re.sub(r"USE `[^`]+`;", f"USE `{db_name}`;", sql_text, flags=_re.IGNORECASE)
-            sql_text = _re.sub(r"SET foreign_key_checks\s*=\s*0;", "SET foreign_key_checks = 0;", sql_text, flags=_re.IGNORECASE)
-            conn.select_db(db_name)
-            cur.execute("SET foreign_key_checks = 0")
-            for stmt in _split_sql_statements(sql_text):
-                stmt = stmt.strip()
-                if stmt:
-                    try:
-                        cur.execute(stmt)
-                    except Exception:
-                        pass
-            cur.execute("SET foreign_key_checks = 1")
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        existing.status = "ready"
-        existing.provisioned_at = datetime.now(timezone.utc)
-        existing.updated_at = datetime.now(timezone.utc)
-        existing.db_user = user
-        existing.save()
-    except Exception as exc:
-        existing.status = "failed"
-        existing.updated_at = datetime.now(timezone.utc)
-        existing.save()
-        import logging
-        logging.getLogger(__name__).error("Failed to provision org DB %s: %s", org_id, exc)
-
-    return existing
-
-
-def _split_sql_statements(sql: str) -> list[str]:
-    """Naive SQL splitter on ';' respecting string literals."""
-    import re as _re
-    # Remove single-line comments
-    sql = _re.sub(r"--[^\n]*", "", sql)
-    # Split on ; outside quotes (simple heuristic)
-    stmts = []
-    buf = []
-    in_str = False
-    str_char = ""
-    for ch in sql:
-        if not in_str and ch in ("'", '"', '`'):
-            in_str = True
-            str_char = ch
-        elif in_str and ch == str_char:
-            in_str = False
-        if not in_str and ch == ";":
-            stmts.append("".join(buf))
-            buf = []
-        else:
-            buf.append(ch)
-    if "".join(buf).strip():
-        stmts.append("".join(buf))
-    return stmts
 
 
 def ensure_org_permissions_seeded() -> None:

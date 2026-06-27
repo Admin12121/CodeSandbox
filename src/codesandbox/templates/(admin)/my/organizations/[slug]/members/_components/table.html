@@ -302,14 +302,14 @@
         if(m2) m2.classList.add('hidden');
         var mid=assignBtn.getAttribute('data-assign-role');
         var rid=assignBtn.getAttribute('data-role-id');
-        fetch('/my/organizations/'+_slug+'/members/'+mid+'/assign-role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:rid})}).then(function(r){return r.json();}).then(function(d){if(!d.ok){alert(d.error||'Failed');return;}renderRoleCell(mid,d.roles);}).catch(function(){alert('Network error');});
+        fetch('/my/organizations/'+_slug+'/members/'+mid+'/assign-role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:rid})}).then(function(r){return r.json();}).then(function(d){if(!d.ok){window.Toast.create({title:d.error||'Failed',type:'error'});return;}renderRoleCell(mid,d.roles);}).catch(function(){window.Toast.create({title:'Network error',type:'error'});});
         return;
       }
       var removeBtn=e.target.closest('[data-remove-role]');
       if(removeBtn){
         var mid2=removeBtn.getAttribute('data-remove-role');
         var rid2=removeBtn.getAttribute('data-role-id');
-        fetch('/my/organizations/'+_slug+'/members/'+mid2+'/remove-role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:rid2})}).then(function(r){return r.json();}).then(function(d){if(!d.ok){alert(d.error||'Failed');return;}renderRoleCell(mid2,d.roles);}).catch(function(){alert('Network error');});
+        fetch('/my/organizations/'+_slug+'/members/'+mid2+'/remove-role',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({role_id:rid2})}).then(function(r){return r.json();}).then(function(d){if(!d.ok){window.Toast.create({title:d.error||'Failed',type:'error'});return;}renderRoleCell(mid2,d.roles);}).catch(function(){window.Toast.create({title:'Network error',type:'error'});});
         return;
       }
       if(!e.target.closest('.role-menu')&&!e.target.closest('[data-add-role-btn]')){

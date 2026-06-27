@@ -449,13 +449,6 @@
             {% endcall %}
           {% endcall %}
 
-          {# Error toast #}
-          <div id="platform-org-field-error" hidden
-            class="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
-            <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            <span id="platform-org-field-error-msg"></span>
-          </div>
-
           {% app_script "platform-org-editor" %}
           (function(){
             var OID='{{ oid }}';
@@ -522,12 +515,7 @@
               })
               .catch(function(err){showError(err.message);if(saveBtn)saveBtn.disabled=false;});
             }
-            function showError(msg){
-              var t=document.getElementById('platform-org-field-error');
-              var m=document.getElementById('platform-org-field-error-msg');
-              if(!t)return;m.textContent=msg;t.hidden=false;
-              setTimeout(function(){t.hidden=true;},4000);
-            }
+            function showError(msg){window.Toast.create({title:msg,type:'error'});}
             function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
           })();
           {% end_app_script %}

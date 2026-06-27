@@ -100,17 +100,3 @@ class OrganizationMemberRole(Model):
         table_name = "organization_member_roles"
 
 
-class OrganizationDatabase(Model):
-    id = StringField(primary_key=True, max_length=36)
-    org_id = ForeignKey(to=Organization, on_delete="CASCADE")
-    db_name = StringField(max_length=160)
-    db_host = StringField(max_length=255, default="127.0.0.1")
-    db_port = IntegerField(default=3306)
-    db_user = StringField(max_length=160, default="")
-    status = StringField(max_length=30, default="provisioning")
-    provisioned_at = DateTimeField(nullable=True)
-    created_at = DateTimeField(default=_now)
-    updated_at = DateTimeField(nullable=True)
-
-    class Meta:
-        table_name = "organization_databases"

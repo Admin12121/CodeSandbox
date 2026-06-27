@@ -97,13 +97,6 @@ def update_organization_status(org_id: str, status: str, reason: str | None = No
     if org is None:
         return None
 
-    if status == "active":
-        existing = repository.get_org_database(org_id)
-        if existing is None or existing.status not in ("ready", "provisioning"):
-            import threading
-            t = threading.Thread(target=repository.provision_org_database, args=(org_id,), daemon=True)
-            t.start()
-
     # Notify org owner by email on significant status transitions
     if status in ("active", "rejected", "suspended") and org.owner_id:
         try:

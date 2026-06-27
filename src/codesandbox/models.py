@@ -1,7 +1,6 @@
 from codesandbox.features.identity.models import ApiKey, LoginAttempt, Session, User, UserPasskey
 from codesandbox.features.organizations.models import (
     Organization,
-    OrganizationDatabase,
     OrganizationInvitation,
     OrganizationMember,
     OrganizationMemberRole,
@@ -14,6 +13,14 @@ from codesandbox.features.platform_admin.models import (
     PlatformRole,
     PlatformRolePermission,
     PlatformUserRole,
+)
+from codesandbox.features.sandbox.models import (
+    Balance,
+    BalanceTransaction,
+    InstanceRequest,
+    SandboxInstance,
+    SandboxPlan,
+    SandboxTemplate,
 )
 
 __all__ = [
@@ -33,7 +40,12 @@ __all__ = [
     "OrganizationPermission",
     "OrganizationRolePermission",
     "OrganizationMemberRole",
-    "OrganizationDatabase",
+    "SandboxTemplate",
+    "SandboxPlan",
+    "SandboxInstance",
+    "InstanceRequest",
+    "Balance",
+    "BalanceTransaction",
 ]
 
 # Auth extensions — imported here so NexORM registers them for migrations

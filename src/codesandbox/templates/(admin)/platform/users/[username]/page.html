@@ -321,11 +321,6 @@
   </div>
 </div>
 
-<div id="platform-user-field-error" hidden
-  class="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
-  <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-  <span id="platform-user-field-error-msg"></span>
-</div>
 
 {% app_script "platform-user-detail" %}
 (function(){
@@ -409,12 +404,7 @@
   }
 
   function showError(msg){
-    var toast = document.getElementById('platform-user-field-error');
-    var msgEl = document.getElementById('platform-user-field-error-msg');
-    if(!toast) return;
-    msgEl.textContent = msg;
-    toast.hidden = false;
-    setTimeout(function(){ toast.hidden = true; }, 4000);
+    window.Toast.create({title:msg,type:'error'});
   }
 })();
 {% end_app_script %}
