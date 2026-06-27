@@ -1,7 +1,15 @@
 import json
+from decimal import Decimal
 from pathlib import Path
 from nexorm.fields import ForeignKey
 from nexorm.registry import get_models
+
+
+class _StateEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return str(o)
+        return super().default(o)
 
 
 def model_state(dialect=None):
@@ -60,4 +68,4 @@ def read_state(path="migrations/schema_state.json"):
 def write_state(state, path="migrations/schema_state.json"):
     file = Path(path)
     file.parent.mkdir(parents=True, exist_ok=True)
-    file.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+    file.write_text(json.dumps(state, indent=2, sort_keys=True, cls=_StateEncoder) + "\n")

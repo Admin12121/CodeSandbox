@@ -1,3 +1,4 @@
+from decimal import Decimal
 from nexorm.migrations.operations import *
 
 operations = [
