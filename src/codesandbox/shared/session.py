@@ -88,6 +88,9 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
             item("Application Staff", "/platform/staff", "platform.staff.read"),
             item("Staff Roles", "/platform/roles", "platform.roles.read"),
             separator(),
+            item("Sandboxes", "/platform/sandboxes", "platform.sandboxes.manage"),
+            item("Sandbox Plans", "/platform/sandbox-plans", "platform.sandbox_plans.manage"),
+            separator(),
             item("Hub", "/hub"),
         ]
         if role != "system_admin":

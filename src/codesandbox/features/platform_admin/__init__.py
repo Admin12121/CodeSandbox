@@ -11,3 +11,5 @@ register_platform_permission("platform.roles.manage",         "Manage Roles",   
 register_platform_permission("platform.organizations.read",   "View Organizations",         "Organizations")
 register_platform_permission("platform.organizations.edit",   "Edit Organizations",         "Organizations")
 register_platform_permission("platform.organizations.status", "Change Organization Status", "Organizations")
+register_platform_permission("platform.sandboxes.manage",       "Manage Sandbox Templates", "Sandboxes")
+register_platform_permission("platform.sandbox_plans.manage",   "Manage Sandbox Plans",     "Sandboxes")

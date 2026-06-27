@@ -1,0 +1,15 @@
+{% import "(admin)/platform/sandbox-plans/_components/table.html" as tbl %}
+
+{% if selected_plan is defined and selected_plan %}
+  {{ tbl.plan_editor(
+    selected_plan=selected_plan,
+    plans=plans,
+    can_manage=can_manage,
+    error=error if error is defined else none,
+  ) }}
+{% else %}
+  {{ tbl.plans_table(
+    plans=plans,
+    can_manage=can_manage,
+  ) }}
+{% endif %}

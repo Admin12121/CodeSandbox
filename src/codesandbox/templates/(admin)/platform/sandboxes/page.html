@@ -1,0 +1,26 @@
+{% import "(admin)/platform/sandboxes/_components/table.html" as tbl %}
+
+{% if selected_template is defined and selected_template %}
+  {{ tbl.template_editor(
+    selected_template=selected_template,
+    templates=templates,
+    can_manage=can_manage,
+    sandbox_types=sandbox_types,
+    runtime_classes=runtime_classes,
+    interface_modes=interface_modes,
+    network_modes=network_modes,
+    template_statuses=template_statuses,
+    tab=tab if tab is defined else "identity",
+    error=error if error is defined else none,
+  ) }}
+{% else %}
+  {{ tbl.templates_table(
+    templates=templates,
+    total=total,
+    page=page,
+    total_pages=total_pages,
+    search=search,
+    status_filter=status_filter,
+    can_manage=can_manage,
+  ) }}
+{% endif %}

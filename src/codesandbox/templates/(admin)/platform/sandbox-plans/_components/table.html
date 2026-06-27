@@ -1,0 +1,324 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/input.html" as inp %}
+{% import "components/ui/label.html" as label %}
+{% import "components/ui/switch.html" as sw %}
+{% import "components/ui/alert.html" as alert %}
+
+{# ═══ LIST VIEW ═══ #}
+{% macro plans_table(plans, can_manage=false) %}
+<div class="grid gap-4 p-2">
+
+  <div class="flex items-center justify-between">
+    <p class="text-sm text-muted-foreground">{{ plans | length }} plan(s) configured. Changes take effect on new instances only.</p>
+    {% if can_manage %}
+      {% call button.button(attrs={"data-cs-href": "/platform/sandbox-plans?plan=new"}, type="button", size="sm") %}
+        <svg class="size-4 mr-1.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        New Plan
+      {% endcall %}
+    {% endif %}
+  </div>
+
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Plan") }}
+          {{ table.table_head("Individual Tier", class="text-center") }}
+          {{ table.table_head("Org Tier", class="text-center") }}
+          {{ table.table_head("Active", class="w-20 text-center") }}
+          {{ table.table_head("", class="w-12") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if not plans %}
+          {% call table.table_row() %}
+            {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "5"}) %}No plans configured yet.{% endcall %}
+          {% endcall %}
+        {% else %}
+          {% for plan in plans %}
+            {% call table.table_row(class="group") %}
+              {% call table.table_cell() %}
+                <div class="min-w-0">
+                  <div class="font-medium">{{ plan.name }}</div>
+                  <code class="text-xs text-muted-foreground">{{ plan.id }}</code>
+                </div>
+              {% endcall %}
+              {% call table.table_cell(class="text-center text-sm") %}
+                <div class="tabular-nums">{{ plan.ind_vcpu }}vCPU · {{ plan.ind_ram_gb }}GB RAM · {{ plan.ind_disk_gb }}GB</div>
+                <div class="text-xs text-muted-foreground">${{ plan.ind_cost_hr }}/hr</div>
+              {% endcall %}
+              {% call table.table_cell(class="text-center text-sm") %}
+                <div class="tabular-nums">{{ plan.org_vcpu }}vCPU · {{ plan.org_ram_gb }}GB RAM · {{ plan.org_disk_gb }}GB</div>
+                <div class="text-xs text-muted-foreground">${{ plan.org_cost_hr }}/hr</div>
+              {% endcall %}
+              {% call table.table_cell(class="text-center") %}
+                {% if can_manage %}
+                  <form method="post" action="/platform/sandbox-plans/{{ plan.id }}/toggle" class="inline-flex">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="is_active" value="{{ '0' if plan.is_active else '1' }}">
+                    <button type="submit" class="cursor-pointer bg-transparent border-0 p-0 inline-flex" aria-label="{{ 'Deactivate' if plan.is_active else 'Activate' }} {{ plan.name }}">
+                      {{ sw.switch(checked=plan.is_active) }}
+                    </button>
+                  </form>
+                {% else %}
+                  {{ badge.badge("Active" if plan.is_active else "Inactive", variant=("outline" if plan.is_active else "secondary")) }}
+                {% endif %}
+              {% endcall %}
+              {% call table.table_cell() %}
+                <div class="flex justify-end">
+                  <a href="/platform/sandbox-plans?plan={{ plan.id }}" aria-label="Edit {{ plan.name }}"
+                     class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all sm:size-6">
+                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                  </a>
+                </div>
+              {% endcall %}
+            {% endcall %}
+          {% endfor %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+</div>
+{% endmacro %}
+
+
+{# ═══ EDITOR VIEW ═══ #}
+{% macro plan_editor(selected_plan, plans, can_manage, error) %}
+{% set is_create = selected_plan.id == "" %}
+{% set pid = selected_plan.id %}
+
+<div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
+
+  {# Left sidebar #}
+  <div class="flex w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
+    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+      <a href="/platform/sandbox-plans" aria-label="Back"
+         class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </a>
+      {% if can_manage %}
+        <a href="/platform/sandbox-plans?plan=new" aria-label="New plan"
+           class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        </a>
+      {% endif %}
+    </div>
+    <div class="min-h-0 flex-1 overflow-y-auto p-2">
+      <p class="px-2 py-1 text-xs font-medium text-muted-foreground select-none">Plans</p>
+      <ul class="m-0 flex flex-col gap-0.5 p-0 list-none">
+        {% if is_create %}
+          <li><span class="flex w-full items-center gap-2 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground">
+            <svg class="size-4 shrink-0 opacity-60" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            New plan
+          </span></li>
+        {% endif %}
+        {% for plan in plans %}
+          <li>
+            <a href="/platform/sandbox-plans?plan={{ plan.id }}"
+               class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {{ 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' if pid == plan.id else 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground' }}">
+              <span class="truncate">{{ plan.name }}</span>
+              {% if not plan.is_active %}
+                <span class="ml-auto shrink-0 size-1.5 rounded-full bg-muted-foreground/40"></span>
+              {% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  {# Right: form #}
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+
+    <div class="flex h-12 shrink-0 items-center border-b px-4">
+      <div class="truncate text-sm font-semibold">{{ "New Plan" if is_create else selected_plan.name }}</div>
+    </div>
+
+    {% if error %}
+      <div class="shrink-0 border-b px-4 py-2">
+        {{ alert.alert(error, variant="destructive") }}
+      </div>
+    {% endif %}
+
+    <div class="flex-1 overflow-y-auto">
+      {% if can_manage %}
+        <form method="post" action="/platform/sandbox-plans/save">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+          <div class="grid gap-4 p-4">
+
+            {# Identity #}
+            {% call frame.frame() %}
+              {% call table.table(variant="card") %}
+                {% call table.table_header() %}
+                  {% call table.table_row() %}
+                    {{ table.table_head("Identity", class="w-44") }}
+                    {{ table.table_head("") }}
+                  {% endcall %}
+                {% endcall %}
+                {% call table.table_body() %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Plan ID{% endcall %}
+                    {% call table.table_cell() %}
+                      <input name="plan_id" type="text" value="{{ selected_plan.id }}" placeholder="basic" required
+                        pattern="[a-z0-9_\-]{1,40}" {% if not is_create %}readonly{% endif %}
+                        class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {{ 'opacity-60 cursor-not-allowed' if not is_create else '' }}">
+                      <p class="text-xs text-muted-foreground mt-1">Lowercase, hyphens/underscores. Cannot change after creation.</p>
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Display Name{% endcall %}
+                    {% call table.table_cell() %}
+                      <input name="name" type="text" value="{{ selected_plan.name }}" placeholder="Basic" required
+                        class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Sort Order{% endcall %}
+                    {% call table.table_cell() %}
+                      <input name="sort_order" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.sort_order }}"
+                        class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {% endcall %}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+
+            {# Tiers — side by side #}
+            <div class="grid gap-4 lg:grid-cols-2">
+
+              {# Individual Tier #}
+              {% call frame.frame() %}
+                {% call table.table(variant="card") %}
+                  {% call table.table_header() %}
+                    {% call table.table_row() %}
+                      {{ table.table_head("Individual Tier", class="w-36") }}
+                      {{ table.table_head("") }}
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_body() %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}vCPU{% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="ind_vcpu" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.ind_vcpu }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}RAM (GB){% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="ind_ram_gb" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.ind_ram_gb }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}Disk (GB){% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="ind_disk_gb" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.ind_disk_gb }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}Cost/hr ($){% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="ind_cost_hr" type="text" inputmode="decimal" value="{{ selected_plan.ind_cost_hr }}" placeholder="0.0000"
+                          class="h-8 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+
+              {# Organization Tier #}
+              {% call frame.frame() %}
+                {% call table.table(variant="card") %}
+                  {% call table.table_header() %}
+                    {% call table.table_row() %}
+                      {{ table.table_head("Organization Tier", class="w-36") }}
+                      {{ table.table_head("") }}
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_body() %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}vCPU{% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="org_vcpu" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.org_vcpu }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}RAM (GB){% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="org_ram_gb" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.org_ram_gb }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}Disk (GB){% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="org_disk_gb" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.org_disk_gb }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}Cost/hr ($){% endcall %}
+                      {% call table.table_cell() %}
+                        <input name="org_cost_hr" type="text" inputmode="decimal" value="{{ selected_plan.org_cost_hr }}" placeholder="0.0000"
+                          class="h-8 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {% endcall %}
+                    {% endcall %}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+
+            </div>
+
+            <div class="flex gap-2 pb-2">
+              {% call button.button(type="submit") %}{{ "Create Plan" if is_create else "Save Changes" }}{% endcall %}
+              {% call button.button(type="button", variant="outline", attrs={"data-cs-href": "/platform/sandbox-plans"}) %}Cancel{% endcall %}
+            </div>
+
+          </div>
+        </form>
+      {% else %}
+        {# Read-only #}
+        <div class="grid gap-4 p-4">
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Plan", class="w-44") }}
+                  {{ table.table_head("") }}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Plan ID{% endcall %}
+                  {% call table.table_cell(class="font-mono text-xs text-muted-foreground") %}{{ selected_plan.id }}{% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Name{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ selected_plan.name }}{% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Individual{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground tabular-nums") %}{{ selected_plan.ind_vcpu }}vCPU · {{ selected_plan.ind_ram_gb }}GB RAM · {{ selected_plan.ind_disk_gb }}GB disk · ${{ selected_plan.ind_cost_hr }}/hr{% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Organization{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground tabular-nums") %}{{ selected_plan.org_vcpu }}vCPU · {{ selected_plan.org_ram_gb }}GB RAM · {{ selected_plan.org_disk_gb }}GB disk · ${{ selected_plan.org_cost_hr }}/hr{% endcall %}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endmacro %}
