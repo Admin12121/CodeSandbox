@@ -137,36 +137,45 @@
 <div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
 
   {# Left sidebar #}
-  <div class="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
-    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+  <div id="tmpl-sidebar" data-state="expanded"
+    class="group/tmpl-sb flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden transition-[width] duration-200 overflow-hidden data-[state=collapsed]:w-12"
+    style="min-width:0">
+    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3 group-data-[state=collapsed]/tmpl-sb:justify-center group-data-[state=collapsed]/tmpl-sb:px-1">
       <a href="/platform/sandboxes" aria-label="Back"
          class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
       </a>
       {% if can_manage %}
         <a href="/platform/sandboxes?template=new" aria-label="New template"
-           class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+           class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors group-data-[state=collapsed]/tmpl-sb:hidden">
           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
         </a>
       {% endif %}
     </div>
-    <div class="min-h-0 flex-1 overflow-y-auto p-2">
-      <p class="px-2 py-1 text-xs font-medium text-muted-foreground select-none">Templates</p>
+    <div class="min-h-0 flex-1 overflow-y-auto p-2 group-data-[state=collapsed]/tmpl-sb:px-1">
       <ul class="m-0 flex flex-col gap-0.5 p-0 list-none">
         {% if is_create %}
-          <li><span class="flex w-full items-center gap-2 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground">
-            <svg class="size-4 shrink-0 opacity-60" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M14 15h1"/><path d="M14 12h3"/><path d="M14 9h3"/></svg>
-            New template
+          <li><span class="flex w-full items-center gap-2 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground group-data-[state=collapsed]/tmpl-sb:justify-center group-data-[state=collapsed]/tmpl-sb:px-0">
+            <div class="flex size-5 shrink-0 items-center justify-center rounded-md border border-muted-foreground/15 bg-muted text-muted-foreground select-none" aria-hidden="true">
+              <svg viewBox="0 0 256 256" class="size-3.5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+            </div>
+            <span class="truncate group-data-[state=collapsed]/tmpl-sb:hidden">New template</span>
           </span></li>
         {% endif %}
         {% for tmpl in templates %}
           <li>
             <a href="/platform/sandboxes?template={{ tmpl.id }}"
-               class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {{ 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' if tid == tmpl.id else 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground' }}">
-              <svg class="size-4 shrink-0 opacity-60" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="M14 15h1"/><path d="M14 12h3"/><path d="M14 9h3"/></svg>
-              <span class="truncate">{{ tmpl.name }}</span>
+               class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors group-data-[state=collapsed]/tmpl-sb:justify-center group-data-[state=collapsed]/tmpl-sb:px-0 {{ 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' if tid == tmpl.id else 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground' }}">
+              {% if tmpl.icon_path %}
+                <img src="{{ tmpl.icon_path }}" alt="" class="size-5 shrink-0 rounded object-cover">
+              {% else %}
+                <div class="flex size-5 shrink-0 items-center justify-center rounded-md border border-muted-foreground/15 bg-muted text-muted-foreground select-none" aria-hidden="true">
+                  <svg viewBox="0 0 256 256" class="size-3.5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+                </div>
+              {% endif %}
+              <span class="truncate group-data-[state=collapsed]/tmpl-sb:hidden">{{ tmpl.name }}</span>
               {% if tmpl.status != "active" %}
-                <span class="ml-auto shrink-0 size-1.5 rounded-full {{ 'bg-yellow-400' if tmpl.status == 'maintenance' else 'bg-muted-foreground/40' }}"></span>
+                <span class="ml-auto shrink-0 size-1.5 rounded-full group-data-[state=collapsed]/tmpl-sb:hidden {{ 'bg-yellow-400' if tmpl.status == 'maintenance' else 'bg-muted-foreground/40' }}"></span>
               {% endif %}
             </a>
           </li>
@@ -180,8 +189,14 @@
 
     {# ── Header ── #}
     <div class="flex h-12 shrink-0 items-center justify-between border-b px-4 gap-4">
-      <div class="truncate text-sm font-semibold min-w-0">
-        {{ "New Template" if is_create else selected_template.name }}
+      <div class="flex items-center gap-2 min-w-0">
+        <button id="tmpl-sidebar-toggle" type="button" aria-label="Toggle sidebar"
+          class="max-md:hidden inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <div class="truncate text-sm font-semibold min-w-0">
+          {{ "New Template" if is_create else selected_template.name }}
+        </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
         {% if not is_create and can_manage %}
@@ -248,14 +263,14 @@
 
       {# Identity form #}
       <div class="flex-1 overflow-y-auto">
-        {# File input lives outside the table to avoid browser native UI bleeding into table cells #}
+        <form id="identity-form" method="post" action="/platform/sandboxes/save" enctype="multipart/form-data">
+        {# File input lives inside the form so it's included in multipart submission #}
         <input id="thumb-input" name="icon_file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
           aria-label="Upload thumbnail"
           style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;clip:rect(0 0 0 0)">
-
-        <form id="identity-form" method="post" action="/platform/sandboxes/save" enctype="multipart/form-data">
           <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
           {% if tid %}<input type="hidden" name="template_id" value="{{ tid }}">{% endif %}
+          <input type="hidden" name="existing_icon_path" value="{{ selected_template.icon_path or '' }}">
           <div class="p-4 grid gap-4">
 
             {# ── Identity ── #}
@@ -317,10 +332,6 @@
                           <option value="{{ t }}" {% if t == selected_template.sandbox_type %}selected{% endif %}>{{ m.label }}</option>
                         {% endfor %}
                       </select>
-                      <p id="purpose-desc" class="mt-1 text-xs text-muted-foreground">
-                        {%- set cur = type_meta.get(selected_template.sandbox_type, {"desc": ""}) -%}
-                        {{ cur.desc }}
-                      </p>
                     {% endcall %}
                   {% endcall %}
                 {% endcall %}
@@ -347,8 +358,8 @@
 
                         <label class="rc-card relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border border-input p-4 transition-colors hover:bg-accent/20" data-rc="container">
                           <input type="radio" name="runtime_class" value="container" class="sr-only" {% if selected_template.runtime_class == "container" or not selected_template.runtime_class %}checked{% endif %}>
-                          <div class="rc-indicator absolute right-3 top-3 size-5 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
-                            <svg class="rc-check size-3" style="opacity:0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                          <div class="rc-indicator absolute right-3 top-3 size-4 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
+                            <div class="rc-dot size-1.5 rounded-full bg-primary transition-transform" style="transform:scale(0)"></div>
                           </div>
                           <svg class="size-4 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6" y1="6" y2="6"/><line x1="6" x2="6" y1="18" y2="18"/></svg>
                           <div class="pr-6">
@@ -359,8 +370,8 @@
 
                         <label class="rc-card relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border border-input p-4 transition-colors hover:bg-accent/20" data-rc="microvm">
                           <input type="radio" name="runtime_class" value="microvm" class="sr-only" {% if selected_template.runtime_class == "microvm" %}checked{% endif %}>
-                          <div class="rc-indicator absolute right-3 top-3 size-5 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
-                            <svg class="rc-check size-3" style="opacity:0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                          <div class="rc-indicator absolute right-3 top-3 size-4 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
+                            <div class="rc-dot size-1.5 rounded-full bg-primary transition-transform" style="transform:scale(0)"></div>
                           </div>
                           <svg class="size-4 text-orange-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>
                           <div class="pr-6">
@@ -371,8 +382,8 @@
 
                         <label class="rc-card relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border border-input p-4 transition-colors hover:bg-accent/20" data-rc="fullvm">
                           <input type="radio" name="runtime_class" value="fullvm" class="sr-only" {% if selected_template.runtime_class == "fullvm" %}checked{% endif %}>
-                          <div class="rc-indicator absolute right-3 top-3 size-5 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
-                            <svg class="rc-check size-3" style="opacity:0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                          <div class="rc-indicator absolute right-3 top-3 size-4 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
+                            <div class="rc-dot size-1.5 rounded-full bg-primary transition-transform" style="transform:scale(0)"></div>
                           </div>
                           <svg class="size-4 text-purple-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
                           <div class="pr-6">
@@ -383,8 +394,8 @@
 
                         <label class="rc-card relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border border-input p-4 transition-colors hover:bg-accent/20" data-rc="android_emulator">
                           <input type="radio" name="runtime_class" value="android_emulator" class="sr-only" {% if selected_template.runtime_class == "android_emulator" %}checked{% endif %}>
-                          <div class="rc-indicator absolute right-3 top-3 size-5 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
-                            <svg class="rc-check size-3" style="opacity:0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                          <div class="rc-indicator absolute right-3 top-3 size-4 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
+                            <div class="rc-dot size-1.5 rounded-full bg-primary transition-transform" style="transform:scale(0)"></div>
                           </div>
                           <svg class="size-4 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
                           <div class="pr-6">
@@ -440,7 +451,7 @@
                           class="font-mono text-xs",
                           attrs={"id": "img-combobox-input", "autocomplete": "off"}
                         ) }}
-                        {% call cb.combobox_popup(attrs={"id": "img-combobox-popup"}) %}
+                        {% call cb.combobox_popup(class="absolute left-0 right-0 top-full mt-1 z-[100]", attrs={"id": "img-combobox-popup"}) %}
                           {% call cb.combobox_list(attrs={"id": "img-combobox-list"}) %}{% endcall %}
                         {% endcall %}
                       {% endcall %}
@@ -493,33 +504,6 @@
               {% endcall %}
             {% endcall %}
 
-            {# ── Config Files link (edit mode only) ── #}
-            {% if not is_create %}
-              {% call frame.frame() %}
-                {% call table.table(variant="card") %}
-                  {% call table.table_header() %}
-                    {% call table.table_row() %}
-                      {{ table.table_head("Container Config", class="w-44") }}
-                      {{ table.table_head("") }}
-                    {% endcall %}
-                  {% endcall %}
-                  {% call table.table_body() %}
-                    {% call table.table_row() %}
-                      {% call table.table_cell(class="font-medium text-sm align-middle") %}Config Files{% endcall %}
-                      {% call table.table_cell() %}
-                        <a href="/platform/sandboxes?template={{ tid }}&tab=config"
-                          class="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
-                          <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M10 13l-2 2 2 2"/><path d="M14 17l2-2-2-2"/></svg>
-                          Open Config Editor
-                          <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                        </a>
-                      {% endcall %}
-                    {% endcall %}
-                  {% endcall %}
-                {% endcall %}
-              {% endcall %}
-            {% endif %}
-
           </div>
         </form>
       </div>
@@ -527,7 +511,9 @@
     {% else %}
 
       {# ── Config IDE ── #}
-      <div class="flex flex-1 min-h-0 overflow-hidden" id="config-ide">
+      <div class="flex flex-col flex-1 min-h-0 overflow-hidden" id="config-ide">
+
+      <div class="flex flex-1 min-h-0 overflow-hidden">
 
         {# File tree panel #}
         <div id="ft-panel" class="flex shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground overflow-hidden" style="width:240px;min-width:120px;max-width:480px">
@@ -571,6 +557,24 @@
           </div>
         </div>
 
+      </div>{# /inner panels row #}
+
+      {# ── Config IDE bottom toolbar ── #}
+      <div class="flex h-[25px] shrink-0 items-center justify-between border-t bg-sidebar px-1 text-[10px] text-muted-foreground">
+        <div class="flex h-full items-center gap-1">
+          <button id="ide-ft-toggle" title="Toggle file tree"
+            class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+          </button>
+        </div>
+        <div class="flex h-full items-center gap-1 px-1">
+          <span id="ide-active-file" class="font-mono opacity-60"></span>
+        </div>
+      </div>
+
+      {# File tree right-click context menu #}
+      <div id="ft-ctx-menu" hidden
+        class="fixed z-[200] min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
       </div>
 
       {# Hidden form for saving config files #}
@@ -621,17 +625,17 @@
         var inp = c.querySelector('input[type="radio"]');
         if (!inp) return;
         var indicator = c.querySelector('.rc-indicator');
-        var chk = c.querySelector('.rc-check');
+        var dot = c.querySelector('.rc-dot');
         if (inp.checked) {
           c.classList.add('border-foreground/30', 'bg-accent/10');
           c.classList.remove('border-input');
-          if (indicator) { indicator.style.background = 'hsl(var(--primary))'; indicator.style.borderColor = 'hsl(var(--primary))'; }
-          if (chk) chk.style.opacity = '1';
+          if (indicator) { indicator.style.borderColor = 'hsl(var(--primary))'; }
+          if (dot) dot.style.transform = 'scale(1)';
         } else {
           c.classList.remove('border-foreground/30', 'bg-accent/10');
           c.classList.add('border-input');
-          if (indicator) { indicator.style.background = ''; indicator.style.borderColor = ''; }
-          if (chk) chk.style.opacity = '0';
+          if (indicator) { indicator.style.borderColor = ''; }
+          if (dot) dot.style.transform = 'scale(0)';
         }
       });
     }
@@ -737,6 +741,11 @@
         else hideCombo();
       });
       comboInput.addEventListener('blur', function() { setTimeout(hideCombo, 150); });
+      comboInput.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+    }
+    var comboWrapper = document.getElementById('img-combobox');
+    if (comboWrapper) {
+      comboWrapper.addEventListener('click', function(e) { e.stopPropagation(); });
     }
 
     onRuntimeChange();
@@ -790,28 +799,23 @@ var SEED = {};
 try { var raw = JSON.parse(SEED_EL ? SEED_EL.textContent : '{}'); SEED = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {}; } catch(e){}
 
 // ── File System State ──────────────────────────────────────────────────────
-var FS = {}; // path → content string
+var FS = {};
+var NL = String.fromCharCode(10);
 
 var DEFAULT_SANDBOX = [
-'# Sandbox — Container Definition',
-'# Syntax compatible with Dockerfile. Defines the base image for every instance.',
+'# Sandbox - Container Definition',
+'# Syntax compatible with Dockerfile.',
 '',
 'FROM ubuntu:22.04',
 '',
 'LABEL org.codesandbox.type="sandbox"',
 '',
-'# System packages',
-'RUN apt-get update && apt-get install -y --no-install-recommends \\',
-'    curl wget git vim nano \\',
-'    python3 python3-pip \\',
-'    build-essential \\',
-'    && rm -rf /var/lib/apt/lists/*',
+'RUN apt-get update && apt-get install -y --no-install-recommends curl wget git vim nano python3 python3-pip build-essential && rm -rf /var/lib/apt/lists/*',
 '',
-'# Default workspace',
 'WORKDIR /workspace',
 '',
 'CMD ["/bin/bash"]',
-].join('\n');
+].join(NL);
 
 var DEFAULT_RESOURCES = [
 '# Resource and runtime configuration.',
@@ -819,7 +823,7 @@ var DEFAULT_RESOURCES = [
 '',
 '[runtime]',
 'class          = "container"     # container | microvm | fullvm | android_emulator',
-'interface      = "terminal"      # terminal | full_ui | background | android_ui',
+'interface      = ["terminal"]    # terminal | full_ui | background | android_ui (multiple allowed)',
 'network        = "disabled"      # disabled | isolated | fake_internet | controlled_proxy | allowlist',
 'allow_root     = false',
 'max_timeout_hr = 2',
@@ -850,7 +854,7 @@ var DEFAULT_RESOURCES = [
 'cpu_limit      = ""              # vCPU cores, e.g. "2"',
 'memory_limit_gb  = ""            # RAM in GB, e.g. "4"',
 'disk_limit_gb    = ""            # disk in GB, e.g. "20"',
-].join('\n');
+].join(NL);
 
 // Load from seed or set defaults
 if (Object.keys(SEED).length > 0) {
@@ -934,18 +938,16 @@ function renderNode(container, node, prefix, depth) {
 
     if (info.__type === 'dir') {
       var expanded = expandedDirs.has(path);
+      el.setAttribute('data-path', path);
+      el.setAttribute('data-type', 'dir');
       el.innerHTML = (expanded
         ? '<svg class="size-3 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
         : '<svg class="size-3 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>'
       ) + '<svg class="size-3.5 shrink-0 text-muted-foreground/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
-        + '<span class="truncate flex-1">' + esc(name) + '</span>'
-        + '<button class="opacity-0 group-hover:opacity-100 size-4 inline-flex items-center justify-center rounded hover:bg-destructive/20 text-destructive shrink-0" data-delete-dir="' + esc(path) + '" title="Delete folder">'
-          + '<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>'
-        + '</button>';
+        + '<span class="truncate flex-1">' + esc(name) + '</span>';
       el.classList.add('text-sidebar-foreground', 'hover:bg-sidebar-accent/60');
 
       el.addEventListener('click', function(e) {
-        if (e.target.closest('[data-delete-dir]')) return;
         if (expandedDirs.has(path)) expandedDirs.delete(path);
         else expandedDirs.add(path);
         renderTree();
@@ -959,16 +961,14 @@ function renderNode(container, node, prefix, depth) {
         container.appendChild(sub);
       }
     } else {
+      el.setAttribute('data-path', path);
+      el.setAttribute('data-type', 'file');
       el.innerHTML = fileIcon(name)
-        + '<span class="truncate flex-1 ' + (activeFile === path ? 'text-sidebar-accent-foreground font-medium' : 'text-sidebar-foreground') + '">' + esc(name) + '</span>'
-        + '<button class="opacity-0 group-hover:opacity-100 size-4 inline-flex items-center justify-center rounded hover:bg-destructive/20 text-destructive shrink-0" data-delete-file="' + esc(path) + '" title="Delete file">'
-          + '<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
-        + '</button>';
+        + '<span class="truncate flex-1 ' + (activeFile === path ? 'text-sidebar-accent-foreground font-medium' : 'text-sidebar-foreground') + '">' + esc(name) + '</span>';
       if (activeFile === path) el.classList.add('bg-sidebar-accent');
       else el.classList.add('hover:bg-sidebar-accent/60');
 
       el.addEventListener('click', function(e) {
-        if (e.target.closest('[data-delete-file]')) return;
         openFile(path);
       });
       container.appendChild(el);
@@ -1024,6 +1024,8 @@ function openFile(path) {
     }
     editor.setModel(monacoModels[path]);
   }
+  var activeLabel = document.getElementById('ide-active-file');
+  if (activeLabel) activeLabel.textContent = path;
   renderTabs();
   renderTree();
   toggleEmptyState();
@@ -1163,22 +1165,184 @@ function toggleEmptyState() {
   });
 })();
 
+// ── File tree toggle (bottom toolbar) ────────────────────────────────────────
+(function(){
+  var togBtn = document.getElementById('ide-ft-toggle');
+  var ftPanel = document.getElementById('ft-panel');
+  var ftResizeHandle = document.getElementById('ft-resize');
+  if (!togBtn || !ftPanel) return;
+  var prevWidth = '240px';
+  togBtn.addEventListener('click', function() {
+    if (ftPanel.style.display === 'none') {
+      ftPanel.style.display = '';
+      ftPanel.style.width = prevWidth;
+      if (ftResizeHandle) ftResizeHandle.style.display = '';
+      if (editor) editor.layout();
+    } else {
+      prevWidth = ftPanel.style.width || '240px';
+      ftPanel.style.display = 'none';
+      if (ftResizeHandle) ftResizeHandle.style.display = 'none';
+      if (editor) editor.layout();
+    }
+  });
+})();
+
 // ── Event wiring ────────────────────────────────────────────────────────────
 document.getElementById('btn-new-file').addEventListener('click', function(){ startNew('file'); });
 document.getElementById('btn-new-folder').addEventListener('click', function(){ startNew('dir'); });
 
 var ftNewInp = document.getElementById('ft-new-input');
 ftNewInp.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') { e.preventDefault(); commitNew(); }
-  if (e.key === 'Escape') { e.preventDefault(); cancelNew(); }
+  if (e.key === 'Enter') { e.preventDefault(); pendingRename ? commitRename() : commitNew(); }
+  if (e.key === 'Escape') { e.preventDefault(); pendingRename = null; cancelNew(); }
 });
-ftNewInp.addEventListener('blur', function() { setTimeout(cancelNew, 150); });
+ftNewInp.addEventListener('blur', function() {
+  setTimeout(function() { if (pendingRename) { commitRename(); } else { cancelNew(); } }, 150);
+});
 
-document.getElementById('file-tree').addEventListener('click', function(e) {
-  var df = e.target.closest('[data-delete-file]');
-  if (df) { e.stopPropagation(); deleteFile(df.getAttribute('data-delete-file')); return; }
-  var dd = e.target.closest('[data-delete-dir]');
-  if (dd) { e.stopPropagation(); deleteDir(dd.getAttribute('data-delete-dir')); return; }
+// ── Context menu ─────────────────────────────────────────────────────────────
+var ctxMenu = document.getElementById('ft-ctx-menu');
+var pendingRename = null; // { path, type }
+
+function hideCtxMenu() {
+  if (ctxMenu) ctxMenu.setAttribute('hidden', '');
+}
+
+function showCtxMenu(x, y, path, type) {
+  if (!ctxMenu) return;
+  ctxMenu.innerHTML = '';
+
+  var ICON_CLS = 'size-3.5 shrink-0';
+  var ITEM_CLS = 'flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground';
+  var SEP_CLS  = '-mx-1 my-1 h-px bg-border';
+
+  function mkItem(label, iconPath, action, destructive) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = ITEM_CLS + (destructive ? ' text-destructive hover:text-destructive' : '');
+    btn.innerHTML = '<svg class="' + ICON_CLS + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + iconPath + '</svg><span>' + esc(label) + '</span>';
+    btn.addEventListener('click', function() { hideCtxMenu(); action(); });
+    ctxMenu.appendChild(btn);
+    return btn;
+  }
+  function mkSep() {
+    var d = document.createElement('div'); d.className = SEP_CLS; ctxMenu.appendChild(d);
+  }
+
+  var ICON_NEW_FILE = '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15h6"/>';
+  var ICON_NEW_DIR  = '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><path d="M12 11v6"/><path d="M9 14h6"/>';
+  var ICON_RENAME   = '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>';
+  var ICON_COPY     = '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>';
+  var ICON_DELETE   = '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>';
+  var ICON_FORMAT   = '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>';
+
+  mkItem('New File', ICON_NEW_FILE, function() { startNew('file'); });
+  mkItem('New Folder', ICON_NEW_DIR, function() { startNew('dir'); });
+
+  if (path) {
+    mkSep();
+    mkItem('Rename', ICON_RENAME, function() { startRename(path, type); });
+    mkItem('Copy Path', ICON_COPY, function() {
+      if (navigator.clipboard) navigator.clipboard.writeText(path);
+    });
+    if (type === 'file') {
+      mkSep();
+      mkItem('Format Document', ICON_FORMAT, function() {
+        if (window._monaco && editor) {
+          var action = editor.getAction('editor.action.formatDocument');
+          if (action) action.run();
+        }
+      });
+    }
+    mkSep();
+    mkItem('Delete', ICON_DELETE, function() {
+      type === 'file' ? deleteFile(path) : deleteDir(path);
+    }, true);
+  }
+
+  ctxMenu.removeAttribute('hidden');
+  var w = window.innerWidth, h = window.innerHeight;
+  var mw = 192, mh = ctxMenu.offsetHeight || 160;
+  ctxMenu.style.left = Math.min(x, w - mw - 8) + 'px';
+  ctxMenu.style.top  = Math.min(y, h - mh - 8) + 'px';
+}
+
+// Rename: reuse ft-new-input-row with old path tracked
+function startRename(path, type) {
+  pendingRename = { path: path, type: type };
+  var row = document.getElementById('ft-new-input-row');
+  var icon = document.getElementById('ft-new-input-icon');
+  var inp = document.getElementById('ft-new-input');
+  row.hidden = false;
+  if (type === 'dir') {
+    icon.innerHTML = '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>';
+  } else {
+    icon.innerHTML = '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/>';
+  }
+  var shortName = path.split('/').pop();
+  inp.value = shortName;
+  inp.placeholder = 'new name';
+  inp.select();
+  inp.focus();
+}
+
+function commitRename() {
+  if (!pendingRename) return;
+  var inp = document.getElementById('ft-new-input');
+  var newName = inp.value.trim();
+  var oldPath = pendingRename.path;
+  var type = pendingRename.type;
+  pendingRename = null;
+  cancelNew();
+  if (!newName || newName === oldPath.split('/').pop()) { renderTree(); return; }
+  var parent = oldPath.includes('/') ? oldPath.substring(0, oldPath.lastIndexOf('/')) : '';
+  var newPath = parent ? parent + '/' + newName : newName;
+  if (type === 'file') {
+    if (!FS.hasOwnProperty(oldPath)) { renderTree(); return; }
+    var content = FS[oldPath];
+    delete FS[oldPath];
+    FS[newPath] = content;
+    if (monacoModels[oldPath]) {
+      monacoModels[oldPath].dispose();
+      delete monacoModels[oldPath];
+    }
+    openTabs = openTabs.map(function(t) { return t === oldPath ? newPath : t; });
+    if (activeFile === oldPath) { activeFile = newPath; }
+  } else {
+    var prefix = oldPath + '/';
+    Object.keys(FS).forEach(function(p) {
+      if (p === oldPath || p.startsWith(prefix)) {
+        var rel = p.substring(oldPath.length);
+        var moved = newPath + rel;
+        FS[moved] = FS[p];
+        delete FS[p];
+        if (monacoModels[p]) { monacoModels[p].dispose(); delete monacoModels[p]; }
+        openTabs = openTabs.map(function(t) { return t === p ? moved : t; });
+        if (activeFile === p) activeFile = moved;
+      }
+    });
+    expandedDirs.delete(oldPath);
+    expandedDirs.add(newPath);
+  }
+  renderTree();
+  renderTabs();
+}
+
+document.getElementById('file-tree').addEventListener('contextmenu', function(e) {
+  e.preventDefault();
+  var el = e.target.closest('[data-path]');
+  if (el) {
+    showCtxMenu(e.clientX, e.clientY, el.getAttribute('data-path'), el.getAttribute('data-type'));
+  } else {
+    showCtxMenu(e.clientX, e.clientY, null, null);
+  }
+});
+
+document.addEventListener('click', function(e) {
+  if (ctxMenu && !ctxMenu.hasAttribute('hidden') && !ctxMenu.contains(e.target)) hideCtxMenu();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') hideCtxMenu();
 });
 
 var saveBtn = document.getElementById('ide-save-btn');
@@ -1202,16 +1366,17 @@ loaderScript.onload = function() {
   require(['vs/editor/editor.main'], function(monaco) {
     window._monaco = monaco;
 
-    // Use vs-dark theme, tweak background to match app
     monaco.editor.defineTheme('cs-dark', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [],
+      base: 'vs-dark', inherit: true, rules: [],
       colors: { 'editor.background': '#09090b' }
+    });
+    monaco.editor.defineTheme('cs-light', {
+      base: 'vs', inherit: true, rules: [],
+      colors: { 'editor.background': '#ffffff' }
     });
 
     editor = monaco.editor.create(document.getElementById('monaco-mount'), {
-      theme: document.documentElement.classList.contains('dark') ? 'cs-dark' : 'vs-dark',
+      theme: document.documentElement.classList.contains('dark') ? 'cs-dark' : 'cs-light',
       automaticLayout: true,
       fontSize: 13,
       lineHeight: 22,
@@ -1238,6 +1403,11 @@ loaderScript.onload = function() {
     editor.onDidChangeModelContent(function() {
       if (activeFile) FS[activeFile] = editor.getValue();
     });
+
+    // Follow app-level theme changes
+    new MutationObserver(function() {
+      monaco.editor.setTheme(document.documentElement.classList.contains('dark') ? 'cs-dark' : 'cs-light');
+    }).observe(document.documentElement, { attributeFilter: ['class'] });
   });
 };
 document.head.appendChild(loaderScript);
@@ -1245,5 +1415,25 @@ document.head.appendChild(loaderScript);
 })();
 {% end_app_script %}
 {% endif %}
+
+{% app_script "tmpl-sidebar-toggle" %}
+(function(){
+  var btn = document.getElementById('tmpl-sidebar-toggle');
+  var sidebar = document.getElementById('tmpl-sidebar');
+  if (!btn || !sidebar) return;
+  var LS_KEY = 'tmpl-sidebar-state';
+  function applyState(collapsed) {
+    sidebar.setAttribute('data-state', collapsed ? 'collapsed' : 'expanded');
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    try { localStorage.setItem(LS_KEY, collapsed ? 'collapsed' : 'expanded'); } catch(e) {}
+  }
+  try {
+    if (localStorage.getItem(LS_KEY) === 'collapsed') applyState(true);
+  } catch(e) {}
+  btn.addEventListener('click', function() {
+    applyState(sidebar.getAttribute('data-state') !== 'collapsed');
+  });
+})();
+{% end_app_script %}
 
 {% endmacro %}

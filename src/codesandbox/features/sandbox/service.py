@@ -90,7 +90,8 @@ def save_template(
     if not docker_image.strip():
         return None, "Docker image is required."
     runtime_class = runtime_class if runtime_class in RUNTIME_CLASSES else "container"
-    interface_mode = interface_mode if interface_mode in INTERFACE_MODES else "terminal"
+    _modes = [m.strip() for m in interface_mode.split(",") if m.strip() in INTERFACE_MODES]
+    interface_mode = ",".join(_modes) if _modes else "terminal"
     network_mode = network_mode if network_mode in NETWORK_MODES else "disabled"
     max_timeout_hr = max(1, min(72, int(max_timeout_hr or 2)))
 

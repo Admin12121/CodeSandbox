@@ -15,9 +15,9 @@ install_csrf_protection(web_bp)
 TAILWIND_CDN_CSP = (
     "default-src 'self'; "
     "script-src 'self' https://cdn.jsdelivr.net; "
-    "style-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "img-src 'self' data:; "
-    "font-src 'self'; "
+    "font-src 'self' https://cdn.jsdelivr.net; "
     "object-src 'none'; "
     "base-uri 'self'; "
     "frame-ancestors 'none'"

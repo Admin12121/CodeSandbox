@@ -1,14 +1,37 @@
 from __future__ import annotations
 
+import os
+import uuid as _uuid
 from urllib.parse import quote
 
-from flask import jsonify, redirect, request
+from flask import redirect, request
 
 from codesandbox.shared.guards import platform_perm
 from codesandbox.shared.session import get_current_session
 from codesandbox.web.blueprint import web_bp
 
 from .service import delete_template, save_plan, save_template, save_template_config, set_template_status, toggle_plan_active
+
+_PUBLIC_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../templates/public"))
+_THUMB_ALLOWED = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
+_THUMB_EXTS = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg"}
+
+
+def _save_thumbnail(file_storage) -> str | None:
+    if not file_storage or not file_storage.filename:
+        return None
+    mime = (file_storage.mimetype or "").split(";")[0].strip()
+    if mime not in _THUMB_ALLOWED:
+        return None
+    data = file_storage.read()
+    if not data or len(data) > 2 * 1024 * 1024:
+        return None
+    thumbs_dir = os.path.join(_PUBLIC_DIR, "thumbnails")
+    os.makedirs(thumbs_dir, exist_ok=True)
+    filename = f"{_uuid.uuid4().hex}.{_THUMB_EXTS[mime]}"
+    with open(os.path.join(thumbs_dir, filename), "wb") as fh:
+        fh.write(data)
+    return f"/thumbnails/{filename}"
 
 
 def _sandboxes_redirect(template_id: str | None = None, error: str | None = None):
@@ -43,17 +66,20 @@ def save_template_action():
     cs = get_current_session()
     template_id = request.form.get("template_id") or None
 
+    icon_path = (_save_thumbnail(request.files.get("icon_file"))
+                 or request.form.get("existing_icon_path", ""))
+
     result, error = save_template(
         template_id=template_id,
         name=request.form.get("name", ""),
         description=request.form.get("description", ""),
-        icon_path="",
+        icon_path=icon_path,
         docker_image=request.form.get("docker_image", ""),
         sandbox_type=request.form.get("sandbox_type", "interactive"),
         type_config=request.form.get("type_config", ""),
         created_by_id=str(cs.user.id),
         runtime_class=request.form.get("runtime_class", "container"),
-        interface_mode=request.form.get("interface_mode", "terminal"),
+        interface_mode=",".join(request.form.getlist("interface_mode")) or "terminal",
         network_mode=request.form.get("network_mode", "disabled"),
         allow_root=request.form.get("allow_root") == "1",
         max_timeout_hr=int(request.form.get("max_timeout_hr") or 2),
