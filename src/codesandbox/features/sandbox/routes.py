@@ -10,7 +10,17 @@ from codesandbox.shared.guards import platform_perm
 from codesandbox.shared.session import get_current_session
 from codesandbox.web.blueprint import web_bp
 
-from .service import delete_template, save_plan, save_template, save_template_config, set_template_status, toggle_plan_active
+import json as _json
+
+from .service import (
+    delete_template,
+    save_plan,
+    save_template,
+    save_template_config,
+    save_template_plan_configs,
+    set_template_status,
+    toggle_plan_active,
+)
 
 _PUBLIC_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../templates/public"))
 _THUMB_ALLOWED = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
@@ -105,6 +115,18 @@ def set_template_status_action(template_id: str):
     return _sandboxes_redirect(template_id, error)
 
 
+@web_bp.post("/platform/sandboxes/<template_id>/plans")
+@platform_perm("platform.sandboxes.manage")
+def save_template_plans_action(template_id: str):
+    plans_json = request.form.get("plans_json", "[]")
+    try:
+        plan_data = _json.loads(plans_json)
+    except Exception:
+        return _sandboxes_redirect(template_id, "Invalid plans data.")
+    save_template_plan_configs(template_id, plan_data)
+    return redirect(f"/platform/sandboxes?template={template_id}&tab=plans", 303)
+
+
 @web_bp.post("/platform/sandboxes/<template_id>/delete")
 @platform_perm("platform.sandboxes.manage")
 def delete_template_action(template_id: str):
@@ -124,7 +146,6 @@ def save_plan_action():
     result, error = save_plan(
         plan_id=request.form.get("plan_id", ""),
         name=request.form.get("name", ""),
-        sort_order=int(request.form.get("sort_order") or 0),
         ind_vcpu=int(request.form.get("ind_vcpu") or 1),
         ind_ram_gb=int(request.form.get("ind_ram_gb") or 1),
         ind_disk_gb=int(request.form.get("ind_disk_gb") or 10),

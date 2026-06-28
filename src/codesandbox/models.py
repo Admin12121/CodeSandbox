@@ -21,6 +21,7 @@ from codesandbox.features.sandbox.models import (
     SandboxInstance,
     SandboxPlan,
     SandboxTemplate,
+    SandboxTemplatePlan,
 )
 
 __all__ = [
@@ -42,6 +43,7 @@ __all__ = [
     "OrganizationMemberRole",
     "SandboxTemplate",
     "SandboxPlan",
+    "SandboxTemplatePlan",
     "SandboxInstance",
     "InstanceRequest",
     "Balance",

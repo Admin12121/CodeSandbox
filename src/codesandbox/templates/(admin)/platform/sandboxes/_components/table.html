@@ -129,10 +129,10 @@
 
 
 {# ═══ EDITOR VIEW ═══ #}
-{% macro template_editor(selected_template, templates, can_manage, sandbox_types, runtime_classes, interface_modes, network_modes, template_statuses, tab="identity", error=none) %}
+{% macro template_editor(selected_template, templates, can_manage, sandbox_types, runtime_classes, interface_modes, network_modes, template_statuses, tab="identity", error=none, template_plan_configs=none) %}
 {% set is_create = selected_template.id is none %}
 {% set tid = selected_template.id or "" %}
-{% set active_tab = "config" if (not is_create and tab == "config") else "identity" %}
+{% set active_tab = "config" if (not is_create and tab == "config") else ("plans" if (not is_create and tab == "plans") else "identity") %}
 
 <div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
 
@@ -249,6 +249,11 @@
            class="px-5 py-2.5 text-xs font-medium border-b-2 transition-colors
                   {{ 'border-foreground text-foreground' if active_tab == 'identity' else 'border-transparent text-muted-foreground hover:text-foreground' }}">
           Identity
+        </a>
+        <a href="/platform/sandboxes?template={{ tid }}&tab=plans"
+           class="px-5 py-2.5 text-xs font-medium border-b-2 transition-colors
+                  {{ 'border-foreground text-foreground' if active_tab == 'plans' else 'border-transparent text-muted-foreground hover:text-foreground' }}">
+          Plans
         </a>
         <a href="/platform/sandboxes?template={{ tid }}&tab=config"
            class="px-5 py-2.5 text-xs font-medium border-b-2 transition-colors
@@ -418,6 +423,7 @@
                           {"value": "full_ui",    "label": "Full UI",     "runtimes": "container microvm fullvm"},
                           {"value": "background", "label": "Background",  "runtimes": "container microvm fullvm"},
                           {"value": "android_ui", "label": "Android UI",  "runtimes": "android_emulator"},
+                          {"value": "gui",        "label": "GUI (VNC)",   "runtimes": "fullvm"},
                         ] %}
                         {% for opt in iface_opts %}
                           <label class="iface-pill inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-input px-3 py-1 text-sm font-medium transition-colors hover:bg-accent/20"
@@ -507,6 +513,93 @@
           </div>
         </form>
       </div>
+
+    {% elif active_tab == "plans" %}
+
+    {# ── Plans tab ── #}
+    <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+      {% call frame.frame() %}
+        {% call frame.frame_header(class="p-4! gap-1") %}
+          {% call frame.frame_title() %}Per-Template Plan Overrides{% endcall %}
+          {% call frame.frame_description() %}
+            Leave fields empty to inherit the global plan default. Disable a plan to hide it for this template only.
+          {% endcall %}
+        {% endcall %}
+        <div class="px-4 pb-4">
+          <form id="plans-override-form" method="post" action="/platform/sandboxes/{{ tid }}/plans">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" id="plans-json" name="plans_json" value="">
+
+            <div class="overflow-x-auto rounded-md border">
+              <table class="w-full text-xs">
+                <thead class="bg-muted/40">
+                  <tr class="border-b">
+                    <th class="px-3 py-2 text-left font-medium text-muted-foreground" rowspan="2">Plan</th>
+                    <th class="px-3 py-2 text-center font-medium text-muted-foreground" rowspan="2">Enabled</th>
+                    <th class="px-3 py-1 text-center font-medium text-muted-foreground border-l" colspan="4">Individual Tier</th>
+                    <th class="px-3 py-1 text-center font-medium text-muted-foreground border-l" colspan="4">Org Tier</th>
+                  </tr>
+                  <tr class="border-b text-[11px]">
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 border-l w-16">vCPU</th>
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">RAM GB</th>
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">Disk GB</th>
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-20">$/hr</th>
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 border-l w-16">vCPU</th>
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">RAM GB</th>
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">Disk GB</th>
+                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-20">$/hr</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if template_plan_configs %}
+                    {% for cfg in template_plan_configs %}
+                      {% set gp = cfg['global'] %}
+                      <tr class="border-b plan-row hover:bg-muted/20 transition-colors" data-plan-id="{{ gp.id }}">
+                        <td class="px-3 py-2 font-medium whitespace-nowrap">
+                          {{ gp.name }}
+                          <span class="ml-1.5 font-mono text-[10px] text-muted-foreground opacity-60">{{ gp.id }}</span>
+                        </td>
+                        <td class="px-3 py-2 text-center">
+                          <input type="checkbox" class="plan-enabled size-4 cursor-pointer rounded" {% if cfg.is_enabled %}checked{% endif %}>
+                        </td>
+                        {# Individual tier overrides #}
+                        <td class="px-1 py-1 border-l"><input type="number" min="1" step="1" class="plan-ind-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else '' }}" placeholder="{{ gp.ind_vcpu }}"></td>
+                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-ind-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else '' }}" placeholder="{{ gp.ind_ram_gb }}"></td>
+                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-ind-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else '' }}" placeholder="{{ gp.ind_disk_gb }}"></td>
+                        <td class="px-1 py-1"><input type="text" class="plan-ind-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else '' }}" placeholder="{{ gp.ind_cost_hr }}"></td>
+                        {# Org tier overrides #}
+                        <td class="px-1 py-1 border-l"><input type="number" min="1" step="1" class="plan-org-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_vcpu if cfg.org_vcpu is not none else '' }}" placeholder="{{ gp.org_vcpu }}"></td>
+                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-org-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else '' }}" placeholder="{{ gp.org_ram_gb }}"></td>
+                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-org-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else '' }}" placeholder="{{ gp.org_disk_gb }}"></td>
+                        <td class="px-1 py-1"><input type="text" class="plan-org-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else '' }}" placeholder="{{ gp.org_cost_hr }}"></td>
+                      </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr>
+                      <td colspan="10" class="px-4 py-10 text-center text-muted-foreground text-sm">
+                        No global plans configured yet.
+                        <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Create plans</a> first.
+                      </td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+
+            {% if template_plan_configs %}
+              <div class="flex items-center justify-between pt-3">
+                <p class="text-xs text-muted-foreground">Empty fields inherit the global plan default. Changes take effect immediately for new instances.</p>
+                <button type="button" id="plans-save-btn"
+                  class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors shrink-0">
+                  <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                  Save Overrides
+                </button>
+              </div>
+            {% endif %}
+          </form>
+        </div>
+      {% endcall %}
+    </div>
 
     {% else %}
 
@@ -599,7 +692,7 @@
                         opts:['ubuntu:22.04','ubuntu:20.04','debian:12','kali:latest','alpine:3.19','python:3.12','node:20','parrotsec/core'] },
     microvm:          { label:'Kernel Image',    ph:'vmlinux-5.10.0', ifaces:['terminal','full_ui','background'],  def:'terminal',
                         opts:['vmlinux-5.10.0','vmlinux-5.15.0','vmlinux-6.1.0'] },
-    fullvm:           { label:'VM Image',        ph:'win10.qcow2',    ifaces:['full_ui','background','terminal'],  def:'full_ui',
+    fullvm:           { label:'VM Image',        ph:'win10.qcow2',    ifaces:['gui','full_ui','background','terminal'],  def:'gui',
                         opts:['win10.qcow2','win11.qcow2','ubuntu-22.04.qcow2','debian-12.qcow2'] },
     android_emulator: { label:'Emulator Target', ph:'android:30',     ifaces:['android_ui'],                      def:'android_ui',
                         opts:['android:30','android:31','android:33','android:34'] },
@@ -823,7 +916,7 @@ var DEFAULT_RESOURCES = [
 '',
 '[runtime]',
 'class          = "container"     # container | microvm | fullvm | android_emulator',
-'interface      = ["terminal"]    # terminal | full_ui | background | android_ui (multiple allowed)',
+'interface      = ["terminal"]    # terminal | full_ui | background | android_ui | gui (multiple allowed)',
 'network        = "disabled"      # disabled | isolated | fake_internet | controlled_proxy | allowlist',
 'allow_root     = false',
 'max_timeout_hr = 2',
@@ -851,9 +944,11 @@ var DEFAULT_RESOURCES = [
 'allowlist      = []              # domains allowed in allowlist network mode',
 '',
 '[resources]',
-'cpu_limit      = ""              # vCPU cores, e.g. "2"',
-'memory_limit_gb  = ""            # RAM in GB, e.g. "4"',
-'disk_limit_gb    = ""            # disk in GB, e.g. "20"',
+'# Hard caps — overrides the selected SandboxPlan tier for this template.',
+'# Leave empty to use the allocated values from the plan.',
+'cpu_limit      = ""              # max vCPU cores, e.g. "2"',
+'memory_limit_gb  = ""            # max RAM in GB, e.g. "4"',
+'disk_limit_gb    = ""            # max disk in GB, e.g. "20"',
 ].join(NL);
 
 // Load from seed or set defaults
@@ -1435,5 +1530,37 @@ document.head.appendChild(loaderScript);
   });
 })();
 {% end_app_script %}
+
+{% if active_tab == "plans" %}
+{% app_script "sandbox-plans-tab" %}
+(function(){
+  var btn = document.getElementById('plans-save-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function(){
+    var rows = document.querySelectorAll('.plan-row');
+    var data = [];
+    rows.forEach(function(row){
+      var planId = row.getAttribute('data-plan-id');
+      function v(cls){ var el = row.querySelector('.' + cls); return el ? el.value.trim() : ''; }
+      function chk(cls){ var el = row.querySelector('.' + cls); return el ? el.checked : true; }
+      data.push({
+        plan_id:    planId,
+        is_enabled: chk('plan-enabled'),
+        ind_vcpu:   v('plan-ind-vcpu')  || null,
+        ind_ram_gb: v('plan-ind-ram')   || null,
+        ind_disk_gb:v('plan-ind-disk')  || null,
+        ind_cost_hr:v('plan-ind-cost')  || null,
+        org_vcpu:   v('plan-org-vcpu')  || null,
+        org_ram_gb: v('plan-org-ram')   || null,
+        org_disk_gb:v('plan-org-disk')  || null,
+        org_cost_hr:v('plan-org-cost')  || null,
+      });
+    });
+    document.getElementById('plans-json').value = JSON.stringify(data);
+    document.getElementById('plans-override-form').submit();
+  });
+})();
+{% end_app_script %}
+{% endif %}
 
 {% endmacro %}

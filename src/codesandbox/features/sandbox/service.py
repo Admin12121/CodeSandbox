@@ -23,7 +23,7 @@ def _parse_decimal(value: str) -> Decimal | None:
 
 SANDBOX_TYPES = ("interactive", "malware", "reverse_engineering", "android", "ctf")
 RUNTIME_CLASSES = ("container", "microvm", "fullvm", "android_emulator")
-INTERFACE_MODES = ("terminal", "full_ui", "background", "android_ui")
+INTERFACE_MODES = ("terminal", "full_ui", "background", "android_ui", "gui")
 NETWORK_MODES = ("disabled", "isolated", "fake_internet", "controlled_proxy", "allowlist")
 TEMPLATE_STATUSES = ("active", "maintenance", "disabled")
 
@@ -56,7 +56,7 @@ def get_hub_template_by_slug(slug: str) -> dict | None:
 
 
 def get_hub_plans() -> list[dict]:
-    return [p for p in (get_platform_plans()) if p["is_active"]]
+    return [p for p in get_platform_plans() if p["is_active"]]
 
 
 # ── SandboxInstance ───────────────────────────────────────────────────────────
@@ -374,7 +374,6 @@ def _plan_dict(p) -> dict:
 def save_plan(
     plan_id: str,
     name: str,
-    sort_order: int,
     ind_vcpu: int, ind_ram_gb: int, ind_disk_gb: int, ind_cost_hr: str,
     org_vcpu: int, org_ram_gb: int, org_disk_gb: int, org_cost_hr: str,
     updated_by_id: str | None,
@@ -395,12 +394,13 @@ def save_plan(
     if existing:
         p = repository.update_plan(
             plan_id,
-            name=name, sort_order=sort_order,
+            name=name,
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
             org_vcpu=org_vcpu, org_ram_gb=org_ram_gb, org_disk_gb=org_disk_gb, org_cost_hr=org_cost,
             updated_by=updated_by_id,
         )
     else:
+        sort_order = len(repository.list_plans())
         p = repository.create_plan(
             plan_id=plan_id, name=name, sort_order=sort_order,
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
@@ -412,6 +412,101 @@ def save_plan(
 
 def toggle_plan_active(plan_id: str, is_active: bool) -> None:
     repository.update_plan(plan_id, is_active=is_active)
+
+
+# ── SandboxTemplatePlan ───────────────────────────────────────────────────────
+
+def _int_or_none(v) -> int | None:
+    s = str(v).strip() if v is not None else ""
+    if not s:
+        return None
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return None
+
+
+def _resolve_plan_specs(global_plan: dict, tp) -> dict:
+    """Merge template-level overrides onto the global plan. tp may be None."""
+    result = dict(global_plan)
+    if tp is None:
+        return result
+    if tp.ind_vcpu is not None:
+        result["ind_vcpu"] = int(tp.ind_vcpu)
+    if tp.ind_ram_gb is not None:
+        result["ind_ram_gb"] = int(tp.ind_ram_gb)
+    if tp.ind_disk_gb is not None:
+        result["ind_disk_gb"] = int(tp.ind_disk_gb)
+    if tp.ind_cost_hr is not None:
+        result["ind_cost_hr"] = str(tp.ind_cost_hr)
+    if tp.org_vcpu is not None:
+        result["org_vcpu"] = int(tp.org_vcpu)
+    if tp.org_ram_gb is not None:
+        result["org_ram_gb"] = int(tp.org_ram_gb)
+    if tp.org_disk_gb is not None:
+        result["org_disk_gb"] = int(tp.org_disk_gb)
+    if tp.org_cost_hr is not None:
+        result["org_cost_hr"] = str(tp.org_cost_hr)
+    result["is_enabled"] = bool(tp.is_enabled)
+    return result
+
+
+def get_template_plans_for_hub(template_id: str) -> list[dict]:
+    """Active global plans merged with template-level overrides, in sort order."""
+    global_plans = [p for p in get_platform_plans() if p["is_active"]]
+    tp_rows = repository.list_template_plans(template_id)
+    tp_by_plan = {str(tp.plan_id): tp for tp in tp_rows}
+    result = []
+    for gp in global_plans:
+        tp = tp_by_plan.get(gp["id"])
+        if tp is not None and not tp.is_enabled:
+            continue
+        result.append(_resolve_plan_specs(gp, tp))
+    return result
+
+
+def get_template_plan_configs(template_id: str) -> list[dict]:
+    """All global plans + their template overrides, for the admin Plans tab."""
+    global_plans = get_platform_plans()
+    tp_rows = repository.list_template_plans(template_id)
+    tp_by_plan = {str(tp.plan_id): tp for tp in tp_rows}
+    result = []
+    for gp in global_plans:
+        tp = tp_by_plan.get(gp["id"])
+        result.append({
+            "global": gp,
+            "is_enabled": bool(tp.is_enabled) if tp is not None else True,
+            "ind_vcpu": int(tp.ind_vcpu) if (tp is not None and tp.ind_vcpu is not None) else None,
+            "ind_ram_gb": int(tp.ind_ram_gb) if (tp is not None and tp.ind_ram_gb is not None) else None,
+            "ind_disk_gb": int(tp.ind_disk_gb) if (tp is not None and tp.ind_disk_gb is not None) else None,
+            "ind_cost_hr": str(tp.ind_cost_hr) if (tp is not None and tp.ind_cost_hr is not None) else None,
+            "org_vcpu": int(tp.org_vcpu) if (tp is not None and tp.org_vcpu is not None) else None,
+            "org_ram_gb": int(tp.org_ram_gb) if (tp is not None and tp.org_ram_gb is not None) else None,
+            "org_disk_gb": int(tp.org_disk_gb) if (tp is not None and tp.org_disk_gb is not None) else None,
+            "org_cost_hr": str(tp.org_cost_hr) if (tp is not None and tp.org_cost_hr is not None) else None,
+        })
+    return result
+
+
+def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> None:
+    """Upsert per-template plan overrides from the admin Plans tab."""
+    for row in plan_data:
+        plan_id = str(row.get("plan_id", "")).strip()
+        if not plan_id or not repository.get_plan(plan_id):
+            continue
+        repository.upsert_template_plan(
+            template_id=template_id,
+            plan_id=plan_id,
+            is_enabled=bool(row.get("is_enabled", True)),
+            ind_vcpu=_int_or_none(row.get("ind_vcpu")),
+            ind_ram_gb=_int_or_none(row.get("ind_ram_gb")),
+            ind_disk_gb=_int_or_none(row.get("ind_disk_gb")),
+            ind_cost_hr=_parse_decimal(str(row["ind_cost_hr"]).strip()) if row.get("ind_cost_hr") else None,
+            org_vcpu=_int_or_none(row.get("org_vcpu")),
+            org_ram_gb=_int_or_none(row.get("org_ram_gb")),
+            org_disk_gb=_int_or_none(row.get("org_disk_gb")),
+            org_cost_hr=_parse_decimal(str(row["org_cost_hr"]).strip()) if row.get("org_cost_hr") else None,
+        )
 
 
 # ── Balance / Billing ─────────────────────────────────────────────────────────

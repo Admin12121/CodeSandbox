@@ -8,12 +8,12 @@ from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.organizations import repository as org_repo
 from codesandbox.features.sandbox.service import (
     create_personal_instance,
-    get_hub_plans,
     get_hub_template_by_slug,
     get_hub_templates,
     get_org_billing,
     get_org_instances,
     get_org_requests,
+    get_template_plans_for_hub,
     get_user_assigned_instances,
     get_user_billing,
     get_user_instances,
@@ -129,10 +129,10 @@ def hub_template(instance: str):
     if template is None:
         return {"_redirect": "/hub"}
 
-    plans = get_hub_plans()
     ws_ctx = _workspaces_ctx(user)
     active_workspace = ws_ctx.get("active_workspace")
     is_org = active_workspace is not None
+    plans = get_template_plans_for_hub(template["id"])
 
     can_start = True  # personal users can always start
     if active_workspace:
@@ -174,7 +174,7 @@ def hub_sandbox(instance: str, slug: str):
     if template is None:
         return {"_redirect": "/hub"}
 
-    plans = get_hub_plans()
+    plans = get_template_plans_for_hub(template["id"])
     plan = next((p for p in plans if p["id"] == slug), None)
     if plan is None:
         return {"_redirect": f"/hub/{instance}"}

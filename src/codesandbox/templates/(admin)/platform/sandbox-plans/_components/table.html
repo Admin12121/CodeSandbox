@@ -164,7 +164,7 @@
                   {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Plan ID{% endcall %}
                     {% call table.table_cell() %}
-                      <input name="plan_id" type="text" value="{{ selected_plan.id }}" placeholder="basic" required
+                      <input id="plan-id-input" name="plan_id" type="text" value="{{ selected_plan.id }}" placeholder="basic" required
                         pattern="[a-z0-9_\-]{1,40}" {% if not is_create %}readonly{% endif %}
                         class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {{ 'opacity-60 cursor-not-allowed' if not is_create else '' }}">
                       <p class="text-xs text-muted-foreground mt-1">Lowercase, hyphens/underscores. Cannot change after creation.</p>
@@ -173,15 +173,8 @@
                   {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Display Name{% endcall %}
                     {% call table.table_cell() %}
-                      <input name="name" type="text" value="{{ selected_plan.name }}" placeholder="Basic" required
+                      <input id="plan-name-input" name="name" type="text" value="{{ selected_plan.name }}" placeholder="Basic" required
                         class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    {% endcall %}
-                  {% endcall %}
-                  {% call table.table_row() %}
-                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Sort Order{% endcall %}
-                    {% call table.table_cell() %}
-                      <input name="sort_order" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_plan.sort_order }}"
-                        class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     {% endcall %}
                   {% endcall %}
                 {% endcall %}
@@ -321,4 +314,19 @@
   </div>
 
 </div>
+{% if is_create and can_manage %}
+{% app_script "sandbox-plan-id-autofill" %}
+(function () {
+  var nameEl = document.getElementById('plan-name-input');
+  var idEl = document.getElementById('plan-id-input');
+  if (!nameEl || !idEl) return;
+  var userEdited = false;
+  idEl.addEventListener('input', function () { userEdited = !!idEl.value; });
+  nameEl.addEventListener('input', function () {
+    if (userEdited) return;
+    idEl.value = nameEl.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  });
+})();
+{% end_app_script %}
+{% endif %}
 {% endmacro %}

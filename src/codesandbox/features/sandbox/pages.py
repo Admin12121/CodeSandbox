@@ -18,6 +18,7 @@ from .service import (
     get_platform_plans,
     get_platform_templates,
     get_template_detail,
+    get_template_plan_configs,
 )
 
 
@@ -58,6 +59,10 @@ def platform_sandboxes():
     elif template_param:
         selected_template = get_template_detail(template_param)
 
+    template_plan_configs = None
+    if tab == "plans" and selected_template and selected_template.get("id"):
+        template_plan_configs = get_template_plan_configs(selected_template["id"])
+
     return {
         "_meta": {"title": "Sandboxes — CodeSandbox"},
         "user": _user_ctx(user),
@@ -80,6 +85,7 @@ def platform_sandboxes():
         "interface_modes": INTERFACE_MODES,
         "network_modes": NETWORK_MODES,
         "template_statuses": TEMPLATE_STATUSES,
+        "template_plan_configs": template_plan_configs,
         "error": request.args.get("error"),
     }
 

@@ -167,3 +167,28 @@ class BalanceTransaction(Model):
 
     class Meta:
         table_name = "balance_transactions"
+
+
+class SandboxTemplatePlan(Model):
+    """Per-template, per-plan resource and pricing overrides."""
+    id = StringField(primary_key=True, max_length=36)
+    template_id = ForeignKey(to=SandboxTemplate, on_delete="CASCADE")
+    plan_id = StringField(max_length=40)  # references SandboxPlan.id
+
+    # Individual tier overrides — None means "use SandboxPlan global default"
+    ind_vcpu = IntegerField(nullable=True)
+    ind_ram_gb = IntegerField(nullable=True)
+    ind_disk_gb = IntegerField(nullable=True)
+    ind_cost_hr = DecimalField(max_digits=10, decimal_places=4, nullable=True)
+
+    # Org tier overrides
+    org_vcpu = IntegerField(nullable=True)
+    org_ram_gb = IntegerField(nullable=True)
+    org_disk_gb = IntegerField(nullable=True)
+    org_cost_hr = DecimalField(max_digits=10, decimal_places=4, nullable=True)
+
+    is_enabled = BooleanField(default=True)
+    sort_order = IntegerField(default=0)
+
+    class Meta:
+        table_name = "sandbox_template_plans"

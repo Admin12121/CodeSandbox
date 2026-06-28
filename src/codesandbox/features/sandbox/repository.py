@@ -11,6 +11,7 @@ from .models import (
     SandboxInstance,
     SandboxPlan,
     SandboxTemplate,
+    SandboxTemplatePlan,
 )
 
 
@@ -323,3 +324,34 @@ def add_balance_transaction(
 def list_transactions(entity_type: str, entity_id: str, limit: int = 50) -> list:
     txs = BalanceTransaction.objects.filter(entity_type=entity_type, entity_id=entity_id).all()
     return sorted(txs, key=lambda t: t.created_at, reverse=True)[:limit]
+
+
+# ── SandboxTemplatePlan ───────────────────────────────────────────────────────
+
+def list_template_plans(template_id: str) -> list[SandboxTemplatePlan]:
+    return SandboxTemplatePlan.objects.filter(template_id=template_id).all()
+
+
+def get_template_plan(template_id: str, plan_id: str) -> SandboxTemplatePlan | None:
+    rows = SandboxTemplatePlan.objects.filter(template_id=template_id, plan_id=plan_id).all()
+    return rows[0] if rows else None
+
+
+def upsert_template_plan(template_id: str, plan_id: str, **kwargs) -> SandboxTemplatePlan:
+    tp = get_template_plan(template_id, plan_id)
+    if tp is None:
+        tp = SandboxTemplatePlan(
+            id=str(uuid.uuid4()),
+            template_id=template_id,
+            plan_id=plan_id,
+        )
+    for k, v in kwargs.items():
+        setattr(tp, k, v)
+    tp.save()
+    return tp
+
+
+def delete_template_plan(template_id: str, plan_id: str) -> None:
+    tp = get_template_plan(template_id, plan_id)
+    if tp:
+        tp.delete()
