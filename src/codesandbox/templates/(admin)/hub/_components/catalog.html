@@ -1,0 +1,29 @@
+{% import "components/ui/frame.html" as frame %}
+
+{% if templates %}
+  <div class="grid gap-6 pt-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
+    {% for tmpl in templates %}
+      {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700", attrs={"data-cs-href": "/hub/" ~ tmpl.slug}) %}
+        {% call frame.frame_header(class="p-2! gap-1") %}
+          {% call frame.frame_title() %}{{ tmpl.name }}{% endcall %}
+          {% call frame.frame_description() %}{{ tmpl.description }}{% endcall %}
+        {% endcall %}
+        {% call frame.frame_panel(class="shadow-sm h-[350px]! p-0! overflow-hidden") %}
+          {% if tmpl.icon_path %}
+            <img src="{{ tmpl.icon_path }}" alt="{{ tmpl.name }}" class="h-full w-full object-cover"/>
+          {% else %}
+            <div class="flex h-full w-full items-center justify-center bg-muted">
+              <svg viewBox="0 0 256 256" class="size-16 text-muted-foreground opacity-30"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+            </div>
+          {% endif %}
+        {% endcall %}
+      {% endcall %}
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="flex flex-col items-center justify-center py-24 text-muted-foreground">
+    <svg viewBox="0 0 256 256" class="size-12 mb-3 opacity-20"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+    <p class="text-sm">No sandbox templates available yet.</p>
+    <p class="text-xs mt-1 opacity-60">Ask an admin to create and activate sandbox templates.</p>
+  </div>
+{% endif %}

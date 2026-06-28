@@ -61,6 +61,18 @@ def require_platform_role(
     return session, None
 
 
+def require_sandbox_user(
+    next_path: str | None = None,
+) -> tuple[CurrentSession | None, RedirectResult | None]:
+    session, redirect = require_session(next_path)
+    if redirect:
+        return None, redirect
+    assert session is not None
+    if session.user.platform_role != "user":
+        return None, RedirectResult(url="/dashboard")
+    return session, None
+
+
 def build_nav(current_path: str, user: User) -> dict[str, Any]:
     role = user.platform_role
 
@@ -107,6 +119,10 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
 
     user_items = [
         item("Dashboard", "/dashboard"),
+        item("Hub", "/hub"),
+        item("My Instances", "/my-instances"),
+        item("Private Instances", "/private_instances"),
+        item("Billing", "/billing"),
     ]
     return {
         "sections": [{"label": "Workspace", "items": user_items}],

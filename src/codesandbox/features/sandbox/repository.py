@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from .models import (
+    Balance,
+    BalanceTransaction,
     InstanceRequest,
     SandboxInstance,
     SandboxPlan,
@@ -40,6 +43,14 @@ def get_template(template_id: str) -> SandboxTemplate | None:
 
 def get_template_by_slug(slug: str) -> SandboxTemplate | None:
     return SandboxTemplate.objects.filter(slug=slug).first()
+
+
+def get_templates_by_ids(ids: list[str]) -> list[SandboxTemplate]:
+    """Batch-fetch templates by a list of IDs (one scan, no N+1)."""
+    if not ids:
+        return []
+    id_set = set(ids)
+    return [t for t in SandboxTemplate.objects.all() if str(t.id) in id_set]
 
 
 def create_template(
@@ -95,6 +106,10 @@ def delete_template(template_id: str) -> str | None:
     blocked = [i for i in active if i.status in ("idle", "provisioning", "running", "stopping")]
     if blocked:
         return f"Cannot delete: {len(blocked)} active/idle instance(s) exist."
+    pending_requests = InstanceRequest.objects.filter(template_id=template_id).all()
+    pending = [r for r in pending_requests if r.status == "pending"]
+    if pending:
+        return f"Cannot delete: {len(pending)} pending request(s) reference this template."
     t = get_template(template_id)
     if t:
         t.delete()
@@ -148,3 +163,163 @@ def update_plan(plan_id: str, **kwargs) -> SandboxPlan | None:
     p.updated_at = _now()
     p.save()
     return p
+
+
+# ── SandboxInstance ───────────────────────────────────────────────────────────
+
+def create_instance(
+    template_id: str,
+    plan_id: str,
+    workspace_type: str,
+    created_by_user_id: str,
+    billing_entity: str,
+    workspace_user_id: str | None = None,
+    workspace_org_id: str | None = None,
+    assigned_to_user_id: str | None = None,
+    billed_user_id: str | None = None,
+    billed_org_id: str | None = None,
+    user_config: str | None = None,
+) -> SandboxInstance:
+    inst = SandboxInstance(
+        id=str(uuid.uuid4()),
+        template_id=template_id,
+        plan_id=plan_id,
+        workspace_type=workspace_type,
+        workspace_user_id=workspace_user_id,
+        workspace_org_id=workspace_org_id,
+        assigned_to_user_id=assigned_to_user_id,
+        created_by_user_id=created_by_user_id,
+        status="idle",
+        billing_entity=billing_entity,
+        billed_user_id=billed_user_id,
+        billed_org_id=billed_org_id,
+        user_config=user_config,
+        created_at=_now(),
+    )
+    inst.save()
+    return inst
+
+
+def get_instance(instance_id: str) -> SandboxInstance | None:
+    return SandboxInstance.objects.filter(id=instance_id).first()
+
+
+def list_instances_for_user(user_id: str) -> list[SandboxInstance]:
+    return SandboxInstance.objects.filter(workspace_user_id=user_id, workspace_type="personal").all()
+
+
+def list_instances_for_org(org_id: str) -> list[SandboxInstance]:
+    return SandboxInstance.objects.filter(workspace_org_id=org_id, workspace_type="org").all()
+
+
+def list_instances_assigned_to_user_in_org(user_id: str, org_id: str) -> list[SandboxInstance]:
+    all_org = SandboxInstance.objects.filter(workspace_org_id=org_id, workspace_type="org").all()
+    return [i for i in all_org if str(i.assigned_to_user_id) == str(user_id)]
+
+
+# ── InstanceRequest ───────────────────────────────────────────────────────────
+
+def create_instance_request(
+    org_id: str,
+    requested_by: str,
+    template_id: str,
+    plan_id: str,
+    note: str | None = None,
+) -> InstanceRequest:
+    req = InstanceRequest(
+        id=str(uuid.uuid4()),
+        org_id=org_id,
+        requested_by=requested_by,
+        template_id=template_id,
+        plan_id=plan_id,
+        note=note,
+        status="pending",
+        created_at=_now(),
+    )
+    req.save()
+    return req
+
+
+def get_instance_request(request_id: str) -> InstanceRequest | None:
+    return InstanceRequest.objects.filter(id=request_id).first()
+
+
+def list_requests_for_org(org_id: str, status: str | None = None) -> list[InstanceRequest]:
+    reqs = InstanceRequest.objects.filter(org_id=org_id).all()
+    if status:
+        reqs = [r for r in reqs if r.status == status]
+    return sorted(reqs, key=lambda r: r.created_at, reverse=True)
+
+
+def list_requests_by_user_in_org(user_id: str, org_id: str) -> list[InstanceRequest]:
+    reqs = InstanceRequest.objects.filter(org_id=org_id, requested_by=user_id).all()
+    return sorted(reqs, key=lambda r: r.created_at, reverse=True)
+
+
+def update_instance_request(request_id: str, **kwargs) -> InstanceRequest | None:
+    req = get_instance_request(request_id)
+    if req is None:
+        return None
+    for k, v in kwargs.items():
+        setattr(req, k, v)
+    req.save()
+    return req
+
+
+# ── Balance ───────────────────────────────────────────────────────────────────
+
+def get_balance(entity_type: str, entity_id: str) -> Balance | None:
+    return Balance.objects.filter(entity_type=entity_type, entity_id=entity_id).first()
+
+
+def get_or_create_balance(entity_type: str, entity_id: str) -> Balance:
+    rows = Balance.objects.filter(entity_type=entity_type, entity_id=entity_id).all()
+    if rows:
+        # Deterministic winner if duplicates exist from a prior race
+        return sorted(rows, key=lambda b: b.id)[0]
+    b = Balance(
+        id=str(uuid.uuid4()),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        amount=Decimal("0.00"),
+        updated_at=_now(),
+    )
+    b.save()
+    # Re-fetch after insert: if two processes raced, take the smallest UUID
+    all_rows = Balance.objects.filter(entity_type=entity_type, entity_id=entity_id).all()
+    return sorted(all_rows, key=lambda b: b.id)[0]
+
+
+def add_balance_transaction(
+    entity_type: str,
+    entity_id: str,
+    tx_type: str,
+    amount: Decimal,
+    description: str | None = None,
+    instance_id: str | None = None,
+) -> BalanceTransaction:
+    b = get_or_create_balance(entity_type, entity_id)
+    current = Decimal(str(b.amount or "0"))
+    if tx_type in ("topup", "refund"):
+        b.amount = current + amount
+    elif tx_type == "deduction":
+        b.amount = current - amount
+    b.updated_at = _now()
+    b.save()
+    tx = BalanceTransaction(
+        id=str(uuid.uuid4()),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        type=tx_type,
+        amount=amount,
+        instance_id=instance_id,
+        description=description,
+        created_at=_now(),
+    )
+    tx.save()
+    return tx
+
+
+def list_transactions(entity_type: str, entity_id: str, limit: int = 50) -> list:
+    txs = BalanceTransaction.objects.filter(entity_type=entity_type, entity_id=entity_id).all()
+    return sorted(txs, key=lambda t: t.created_at, reverse=True)[:limit]

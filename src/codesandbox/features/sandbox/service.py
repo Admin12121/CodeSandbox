@@ -43,6 +43,221 @@ def get_template_detail(template_id: str) -> dict | None:
     return _template_dict(t) if t else None
 
 
+def get_hub_templates() -> list[dict]:
+    templates, _ = repository.list_templates(status="active", page=1, page_size=200)
+    return [_template_dict(t) for t in templates]
+
+
+def get_hub_template_by_slug(slug: str) -> dict | None:
+    t = repository.get_template_by_slug(slug)
+    if t is None or t.status != "active":
+        return None
+    return _template_dict(t)
+
+
+def get_hub_plans() -> list[dict]:
+    return [p for p in (get_platform_plans()) if p["is_active"]]
+
+
+# ── SandboxInstance ───────────────────────────────────────────────────────────
+
+def _instance_dict(inst, template_cache: dict | None = None) -> dict:
+    tid = str(inst.template_id)
+    t = (template_cache or {}).get(tid) or repository.get_template(tid)
+    return {
+        "id": str(inst.id),
+        "template_id": tid,
+        "template_name": t.name if t else "Unknown",
+        "template_slug": t.slug if t else "",
+        "template_icon": t.icon_path or "" if t else "",
+        "plan_id": inst.plan_id,
+        "workspace_type": inst.workspace_type,
+        "workspace_user_id": str(inst.workspace_user_id) if inst.workspace_user_id else None,
+        "workspace_org_id": str(inst.workspace_org_id) if inst.workspace_org_id else None,
+        "assigned_to_user_id": str(inst.assigned_to_user_id) if inst.assigned_to_user_id else None,
+        "status": inst.status,
+        "billing_entity": inst.billing_entity,
+        "created_at": inst.created_at,
+        "started_at": inst.started_at,
+        "stopped_at": inst.stopped_at,
+    }
+
+
+def _template_cache_for(items) -> dict:
+    """Build a {template_id: SandboxTemplate} cache to avoid N+1 queries."""
+    if not items:
+        return {}
+    ids = list({str(i.template_id) for i in items})
+    return {str(t.id): t for t in repository.get_templates_by_ids(ids)}
+
+
+def create_personal_instance(
+    user_id: str,
+    template_slug: str,
+    plan_id: str,
+) -> tuple[dict | None, str | None]:
+    t = repository.get_template_by_slug(template_slug)
+    if not t or t.status != "active":
+        return None, "Template not found or inactive."
+    p = repository.get_plan(plan_id)
+    if not p or not p.is_active:
+        return None, "Plan not found or inactive."
+    inst = repository.create_instance(
+        template_id=str(t.id),
+        plan_id=plan_id,
+        workspace_type="personal",
+        workspace_user_id=user_id,
+        created_by_user_id=user_id,
+        billing_entity="user",
+        billed_user_id=user_id,
+    )
+    return _instance_dict(inst), None
+
+
+def create_org_instance(
+    org_id: str,
+    creator_user_id: str,
+    template_slug: str,
+    plan_id: str,
+    assigned_to_user_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    t = repository.get_template_by_slug(template_slug)
+    if not t or t.status != "active":
+        return None, "Template not found or inactive."
+    p = repository.get_plan(plan_id)
+    if not p or not p.is_active:
+        return None, "Plan not found or inactive."
+    inst = repository.create_instance(
+        template_id=str(t.id),
+        plan_id=plan_id,
+        workspace_type="org",
+        workspace_org_id=org_id,
+        assigned_to_user_id=assigned_to_user_id,
+        created_by_user_id=creator_user_id,
+        billing_entity="org",
+        billed_org_id=org_id,
+    )
+    return _instance_dict(inst), None
+
+
+def get_user_instances(user_id: str) -> list[dict]:
+    instances = repository.list_instances_for_user(user_id)
+    cache = _template_cache_for(instances)
+    return [_instance_dict(i, cache) for i in instances]
+
+
+def get_org_instances(org_id: str) -> list[dict]:
+    instances = repository.list_instances_for_org(org_id)
+    cache = _template_cache_for(instances)
+    return [_instance_dict(i, cache) for i in instances]
+
+
+def get_user_assigned_instances(user_id: str, org_id: str) -> list[dict]:
+    instances = repository.list_instances_assigned_to_user_in_org(user_id, org_id)
+    cache = _template_cache_for(instances)
+    return [_instance_dict(i, cache) for i in instances]
+
+
+# ── InstanceRequest ───────────────────────────────────────────────────────────
+
+def _request_dict(req, template_cache: dict | None = None) -> dict:
+    tid = str(req.template_id)
+    t = (template_cache or {}).get(tid) or repository.get_template(tid)
+    return {
+        "id": str(req.id),
+        "org_id": str(req.org_id),
+        "requested_by": str(req.requested_by),
+        "template_id": str(req.template_id),
+        "template_name": t.name if t else "Unknown",
+        "template_slug": t.slug if t else "",
+        "plan_id": req.plan_id,
+        "note": req.note or "",
+        "status": req.status,
+        "reviewed_by": str(req.reviewed_by) if req.reviewed_by else None,
+        "reviewed_at": req.reviewed_at,
+        "review_note": req.review_note or "",
+        "instance_id": str(req.instance_id) if req.instance_id else None,
+        "created_at": req.created_at,
+    }
+
+
+def submit_instance_request(
+    org_id: str,
+    user_id: str,
+    template_slug: str,
+    plan_id: str,
+    note: str | None = None,
+) -> tuple[dict | None, str | None]:
+    t = repository.get_template_by_slug(template_slug)
+    if not t or t.status != "active":
+        return None, "Template not found or inactive."
+    p = repository.get_plan(plan_id)
+    if not p or not p.is_active:
+        return None, "Plan not found or inactive."
+    req = repository.create_instance_request(
+        org_id=org_id,
+        requested_by=user_id,
+        template_id=str(t.id),
+        plan_id=plan_id,
+        note=note,
+    )
+    return _request_dict(req), None
+
+
+def review_instance_request(
+    request_id: str,
+    reviewer_id: str,
+    action: str,
+    review_note: str | None = None,
+) -> tuple[dict | None, str | None]:
+    from datetime import datetime, timezone
+    req = repository.get_instance_request(request_id)
+    if not req:
+        return None, "Request not found."
+    if req.status != "pending":
+        return None, "Request already reviewed."
+    if action not in ("approved", "denied"):
+        return None, "Invalid action."
+
+    instance_id = None
+    if action == "approved":
+        tmpl = repository.get_template(str(req.template_id))
+        if not tmpl:
+            return None, "Template no longer exists; cannot approve."
+        inst, err = create_org_instance(
+            org_id=str(req.org_id),
+            creator_user_id=reviewer_id,
+            template_slug=tmpl.slug,
+            plan_id=req.plan_id,
+            assigned_to_user_id=str(req.requested_by),
+        )
+        if err:
+            return None, err
+        instance_id = inst["id"]
+
+    req = repository.update_instance_request(
+        request_id,
+        status=action,
+        reviewed_by=reviewer_id,
+        reviewed_at=datetime.now(timezone.utc),
+        review_note=review_note,
+        instance_id=instance_id,
+    )
+    return _request_dict(req), None
+
+
+def get_org_requests(org_id: str, status: str | None = None) -> list[dict]:
+    reqs = repository.list_requests_for_org(org_id, status)
+    cache = _template_cache_for(reqs)
+    return [_request_dict(r, cache) for r in reqs]
+
+
+def get_user_requests_in_org(user_id: str, org_id: str) -> list[dict]:
+    reqs = repository.list_requests_by_user_in_org(user_id, org_id)
+    cache = _template_cache_for(reqs)
+    return [_request_dict(r, cache) for r in reqs]
+
+
 def _template_dict(t) -> dict:
     return {
         "id": str(t.id),
@@ -197,3 +412,43 @@ def save_plan(
 
 def toggle_plan_active(plan_id: str, is_active: bool) -> None:
     repository.update_plan(plan_id, is_active=is_active)
+
+
+# ── Balance / Billing ─────────────────────────────────────────────────────────
+
+def _balance_dict(b) -> dict:
+    return {
+        "entity_type": b.entity_type,
+        "entity_id": str(b.entity_id),
+        "amount": str(b.amount),
+        "updated_at": b.updated_at,
+    }
+
+
+def _transaction_dict(tx) -> dict:
+    return {
+        "id": str(tx.id),
+        "type": tx.type,
+        "amount": str(tx.amount),
+        "description": tx.description or "",
+        "instance_id": str(tx.instance_id) if tx.instance_id else None,
+        "created_at": tx.created_at,
+    }
+
+
+def get_user_billing(user_id: str) -> dict:
+    b = repository.get_or_create_balance("user", user_id)
+    txs = repository.list_transactions("user", user_id)
+    return {
+        "balance": _balance_dict(b),
+        "transactions": [_transaction_dict(t) for t in txs],
+    }
+
+
+def get_org_billing(org_id: str) -> dict:
+    b = repository.get_or_create_balance("org", org_id)
+    txs = repository.list_transactions("org", org_id)
+    return {
+        "balance": _balance_dict(b),
+        "transactions": [_transaction_dict(t) for t in txs],
+    }

@@ -1,0 +1,113 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/button.html" as button %}
+
+<div class="flex h-[calc(100vh-4.85rem)] flex-col gap-6 p-6 overflow-y-auto">
+
+  {# ── Header ── #}
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="text-xl font-semibold">Billing</h1>
+      <p class="text-sm text-muted-foreground mt-0.5">
+        {{ billing_label }}
+        {% if active_workspace %} — org workspace{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[20rem_minmax(0,1fr)]">
+
+    {# ── Balance card ── #}
+    {% call frame.frame() %}
+      {% call frame.frame_header(class="p-4! gap-1") %}
+        {% call frame.frame_title() %}Current Balance{% endcall %}
+        {% call frame.frame_description() %}
+          {% if active_workspace %}Billed to org account{% else %}Billed to your account{% endif %}
+        {% endcall %}
+      {% endcall %}
+      <div class="px-4 pb-2">
+        <p class="text-4xl font-bold tracking-tight
+          {{ 'text-destructive' if balance.amount | float <= 0 else '' }}">
+          ${{ balance.amount }}
+        </p>
+        {% if balance.updated_at %}
+          <p class="mt-1 text-xs text-muted-foreground">
+            Last updated {{ balance.updated_at.strftime('%b %d, %Y') }}
+          </p>
+        {% endif %}
+      </div>
+      <div class="px-4 pb-4 pt-2">
+        <button id="topup-btn" type="button"
+          class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          Add Funds
+        </button>
+        <p class="mt-2 text-center text-xs text-muted-foreground opacity-60">
+          Payment gateway not yet configured
+        </p>
+      </div>
+    {% endcall %}
+
+    {# ── Transaction history ── #}
+    {% call frame.frame(class="min-w-0") %}
+      {% call frame.frame_header(class="p-2! gap-1") %}
+        {% call frame.frame_title() %}Transaction History{% endcall %}
+      {% endcall %}
+
+      {% if transactions %}
+        {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Date") }}
+            {{ table.table_head("Type") }}
+            {{ table.table_head("Description") }}
+            {{ table.table_head("Amount", class="text-right") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+          {% for tx in transactions %}
+            {% call table.table_row() %}
+              {{ table.table_cell(tx.created_at.strftime('%b %d, %Y') if tx.created_at else '—', class="text-muted-foreground whitespace-nowrap text-xs") }}
+              {% call table.table_cell() %}
+                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium
+                  {{ 'bg-green-500/15 text-green-600 dark:text-green-400' if tx.type == 'topup' else
+                     'bg-sky-500/15 text-sky-600 dark:text-sky-400' if tx.type == 'refund' else
+                     'bg-muted text-muted-foreground' }}">
+                  {{ tx.type | capitalize }}
+                </span>
+              {% endcall %}
+              {{ table.table_cell(tx.description or "—", class="text-sm max-w-[200px] truncate") }}
+              {% call table.table_cell(class="text-right font-mono font-medium whitespace-nowrap") %}
+                <span class="{{ 'text-green-600 dark:text-green-400' if tx.type in ('topup', 'refund') else 'text-destructive' }}">
+                  {{ '+' if tx.type in ('topup', 'refund') else '−' }}${{ tx.amount }}
+                </span>
+              {% endcall %}
+            {% endcall %}
+          {% endfor %}
+        {% endcall %}
+        {% endcall %}
+      {% else %}
+        <div class="flex flex-col items-center justify-center py-16 text-muted-foreground">
+          <svg class="size-10 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+          <p class="text-sm">No transactions yet.</p>
+          <p class="text-xs mt-1 opacity-60">Transactions appear here after you add funds or run sandboxes.</p>
+        </div>
+      {% endif %}
+    {% endcall %}
+
+  </div>
+</div>
+
+{% app_script "billing-topup-placeholder" %}
+(function(){
+  var btn = document.getElementById('topup-btn');
+  if (!btn) return;
+  btn.addEventListener('click', function(){
+    window.Toast && window.Toast.create({
+      title: 'Payment gateway not configured',
+      description: 'Top-up will be available once a payment provider is connected.',
+      type: 'info',
+    });
+  });
+})();
+{% end_app_script %}
