@@ -169,6 +169,21 @@ class BalanceTransaction(Model):
         table_name = "balance_transactions"
 
 
+class SandboxAuditLog(Model):
+    """Immutable record of every status transition on a SandboxInstance."""
+    id = StringField(primary_key=True, max_length=36)
+    instance_id = ForeignKey(to=SandboxInstance, on_delete="CASCADE")
+    event = StringField(max_length=60)    # queued|started|stopped|failed|killed|escape_attempt
+    old_status = StringField(max_length=20, nullable=True)
+    new_status = StringField(max_length=20, nullable=True)
+    actor = StringField(max_length=80, nullable=True)   # user:<id> | worker | system
+    detail = TextField(nullable=True)                   # JSON extra data
+    created_at = DateTimeField(default=_now)
+
+    class Meta:
+        table_name = "sandbox_audit_logs"
+
+
 class SandboxTemplatePlan(Model):
     """Per-template, per-plan resource and pricing overrides."""
     id = StringField(primary_key=True, max_length=36)

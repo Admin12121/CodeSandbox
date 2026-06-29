@@ -8,6 +8,7 @@ from .models import (
     Balance,
     BalanceTransaction,
     InstanceRequest,
+    SandboxAuditLog,
     SandboxInstance,
     SandboxPlan,
     SandboxTemplate,
@@ -324,6 +325,59 @@ def add_balance_transaction(
 def list_transactions(entity_type: str, entity_id: str, limit: int = 50) -> list:
     txs = BalanceTransaction.objects.filter(entity_type=entity_type, entity_id=entity_id).all()
     return sorted(txs, key=lambda t: t.created_at, reverse=True)[:limit]
+
+
+# ── SandboxAuditLog ───────────────────────────────────────────────────────────
+
+def log_instance_event(
+    instance_id: str,
+    event: str,
+    old_status: str | None = None,
+    new_status: str | None = None,
+    actor: str | None = None,
+    detail: str | None = None,
+) -> SandboxAuditLog:
+    entry = SandboxAuditLog(
+        id=str(uuid.uuid4()),
+        instance_id=instance_id,
+        event=event,
+        old_status=old_status,
+        new_status=new_status,
+        actor=actor,
+        detail=detail,
+        created_at=_now(),
+    )
+    entry.save()
+    return entry
+
+
+def list_instance_audit_log(instance_id: str, limit: int = 50) -> list[SandboxAuditLog]:
+    rows = SandboxAuditLog.objects.filter(instance_id=instance_id).all()
+    return sorted(rows, key=lambda r: r.created_at, reverse=True)[:limit]
+
+
+def transition_instance_status(
+    instance_id: str,
+    new_status: str,
+    actor: str | None = None,
+    **extra_fields,
+) -> SandboxInstance | None:
+    inst = get_instance(instance_id)
+    if inst is None:
+        return None
+    old_status = inst.status
+    inst.status = new_status
+    for k, v in extra_fields.items():
+        setattr(inst, k, v)
+    inst.save()
+    log_instance_event(
+        instance_id=instance_id,
+        event=f"status:{old_status}->{new_status}",
+        old_status=old_status,
+        new_status=new_status,
+        actor=actor,
+    )
+    return inst
 
 
 # ── SandboxTemplatePlan ───────────────────────────────────────────────────────

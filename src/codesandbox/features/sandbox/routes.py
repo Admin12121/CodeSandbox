@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+import json as _json
 import os
 import uuid as _uuid
 from urllib.parse import quote
 
-from flask import redirect, request
+from flask import abort, redirect, request
 
+from codesandbox.config import get_settings
 from codesandbox.shared.guards import platform_perm
 from codesandbox.shared.session import get_current_session
 from codesandbox.web.blueprint import web_bp
 
-import json as _json
-
 from .service import (
     delete_template,
+    handle_worker_callback,
     save_plan,
     save_template,
     save_template_config,
     save_template_plan_configs,
     set_template_status,
+    start_test_instance,
+    stop_instance,
     toggle_plan_active,
 )
 
@@ -167,3 +170,53 @@ def toggle_plan_action(plan_id: str):
     is_active = request.form.get("is_active") == "1"
     toggle_plan_active(plan_id, is_active)
     return _plans_redirect(plan_id)
+
+
+# ── Admin: test-run a template ────────────────────────────────────────────────
+
+@web_bp.post("/platform/sandboxes/<template_id>/test-run")
+@platform_perm("platform.sandboxes.manage")
+def test_run_action(template_id: str):
+    cs = get_current_session()
+    result, err = start_test_instance(template_id, actor_user_id=str(cs.user.id))
+    if err:
+        return {"ok": False, "error": err}, 400
+    return {"ok": True, "instance_id": result["id"]}
+
+
+# ── Instance stop (user-facing) ───────────────────────────────────────────────
+
+@web_bp.post("/instances/<instance_id>/stop")
+def stop_instance_action(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        return redirect("/login", 303)
+    _, err = stop_instance(instance_id, actor_user_id=str(cs.user.id))
+    if err:
+        return redirect(f"/my-instances?error={quote(err)}", 303)
+    return redirect("/my-instances", 303)
+
+
+# ── Internal worker callback ──────────────────────────────────────────────────
+
+@web_bp.post("/internal/worker/callback")
+def worker_callback():
+    """Receives status updates from the worker plane. Auth: Bearer WORKER_TOKEN."""
+    settings = get_settings()
+    auth = request.headers.get("Authorization", "")
+    expected = f"Bearer {settings.worker_token}"
+    if auth != expected:
+        abort(401)
+
+    body = request.get_json(silent=True) or {}
+    instance_id = body.get("instance_id", "")
+    event = body.get("event", "")
+    data = body.get("data") or {}
+
+    if not instance_id or not event:
+        abort(400)
+
+    err = handle_worker_callback(instance_id, event, data)
+    if err:
+        return {"ok": False, "error": err}, 400
+    return {"ok": True}

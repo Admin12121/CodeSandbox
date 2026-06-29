@@ -1,3 +1,4 @@
+{% import "components/ui/chart.html" as ch %}
 {% import "components/ui/combobox.html" as cb %}
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/button.html" as button %}
@@ -224,7 +225,12 @@
               <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
               {{ "Create Template" if is_create else "Save Changes" }}
             </button>
-          {% else %}
+          {% elif active_tab == "config" %}
+            <button type="button" id="test-launch-btn"
+              class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+              <svg class="size-3.5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Test Launch
+            </button>
             <button type="button" id="ide-save-btn"
               class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
               <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
@@ -457,7 +463,7 @@
                           class="font-mono text-xs",
                           attrs={"id": "img-combobox-input", "autocomplete": "off"}
                         ) }}
-                        {% call cb.combobox_popup(class="absolute left-0 right-0 top-full mt-1 z-[100]", attrs={"id": "img-combobox-popup"}) %}
+                        {% call cb.combobox_popup(class="fixed z-[9999]", attrs={"id": "img-combobox-popup"}) %}
                           {% call cb.combobox_list(attrs={"id": "img-combobox-list"}) %}{% endcall %}
                         {% endcall %}
                       {% endcall %}
@@ -517,88 +523,86 @@
     {% elif active_tab == "plans" %}
 
     {# ── Plans tab ── #}
-    <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-      {% call frame.frame() %}
-        {% call frame.frame_header(class="p-4! gap-1") %}
-          {% call frame.frame_title() %}Per-Template Plan Overrides{% endcall %}
-          {% call frame.frame_description() %}
-            Leave fields empty to inherit the global plan default. Disable a plan to hide it for this template only.
+    <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+
+      {# Header — outside frame #}
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h2 class="text-sm font-semibold">Per-Template Plan Overrides</h2>
+          <p class="text-xs text-muted-foreground mt-0.5">Leave fields empty to inherit the global plan default. Disable a plan to hide it for this template only.</p>
+        </div>
+        {% if template_plan_configs %}
+          <button type="button" id="plans-save-btn"
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Overrides
+          </button>
+        {% endif %}
+      </div>
+
+      {# Table — inside frame #}
+      <form id="plans-override-form" method="post" action="/platform/sandboxes/{{ tid }}/plans">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" id="plans-json" name="plans_json" value="">
+
+        {% call frame.frame() %}
+          {% call table.table(variant="card") %}
+            <thead data-slot="table-header" class="[&_tr]:border-b">
+              <tr data-slot="table-row" class="border-b">
+                <th rowspan="2" class="w-36 px-3 py-2 text-left align-middle text-sm font-medium text-muted-foreground">Plan</th>
+                <th rowspan="2" class="w-20 px-3 py-2 text-center align-middle text-sm font-medium text-muted-foreground">Enabled</th>
+                <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Individual Tier</th>
+                <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Org Tier</th>
+              </tr>
+              <tr data-slot="table-row" class="border-b bg-muted/30">
+                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70 border-l">vCPU</th>
+                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">RAM GB</th>
+                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">Disk GB</th>
+                <th class="w-20 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">$/hr</th>
+                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70 border-l">vCPU</th>
+                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">RAM GB</th>
+                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">Disk GB</th>
+                <th class="w-20 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">$/hr</th>
+              </tr>
+            </thead>
+            {% call table.table_body() %}
+              {% if template_plan_configs %}
+                {% for cfg in template_plan_configs %}
+                  {% set gp = cfg['global'] %}
+                  {% call table.table_row(class="plan-row", attrs={"data-plan-id": gp.id}) %}
+                    {% call table.table_cell() %}
+                      <div class="font-medium text-sm">{{ gp.name }}</div>
+                      <code class="text-[10px] text-muted-foreground">{{ gp.id }}</code>
+                    {% endcall %}
+                    {% call table.table_cell(class="text-center") %}
+                      <input type="checkbox" class="plan-enabled size-4 cursor-pointer rounded" {% if cfg.is_enabled %}checked{% endif %}>
+                    {% endcall %}
+                    {% call table.table_cell(class="border-l p-1") %}<input type="number" min="1" step="1" class="plan-ind-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else '' }}" placeholder="{{ gp.ind_vcpu }}">{% endcall %}
+                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-ind-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else '' }}" placeholder="{{ gp.ind_ram_gb }}">{% endcall %}
+                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-ind-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else '' }}" placeholder="{{ gp.ind_disk_gb }}">{% endcall %}
+                    {% call table.table_cell(class="p-1") %}<input type="text" class="plan-ind-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else '' }}" placeholder="{{ gp.ind_cost_hr }}">{% endcall %}
+                    {% call table.table_cell(class="border-l p-1") %}<input type="number" min="1" step="1" class="plan-org-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_vcpu if cfg.org_vcpu is not none else '' }}" placeholder="{{ gp.org_vcpu }}">{% endcall %}
+                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-org-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else '' }}" placeholder="{{ gp.org_ram_gb }}">{% endcall %}
+                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-org-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else '' }}" placeholder="{{ gp.org_disk_gb }}">{% endcall %}
+                    {% call table.table_cell(class="p-1") %}<input type="text" class="plan-org-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else '' }}" placeholder="{{ gp.org_cost_hr }}">{% endcall %}
+                  {% endcall %}
+                {% endfor %}
+              {% else %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "10"}) %}
+                    No global plans configured yet.
+                    <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Create plans</a> first.
+                  {% endcall %}
+                {% endcall %}
+              {% endif %}
+            {% endcall %}
           {% endcall %}
         {% endcall %}
-        <div class="px-4 pb-4">
-          <form id="plans-override-form" method="post" action="/platform/sandboxes/{{ tid }}/plans">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" id="plans-json" name="plans_json" value="">
+      </form>
 
-            <div class="overflow-x-auto rounded-md border">
-              <table class="w-full text-xs">
-                <thead class="bg-muted/40">
-                  <tr class="border-b">
-                    <th class="px-3 py-2 text-left font-medium text-muted-foreground" rowspan="2">Plan</th>
-                    <th class="px-3 py-2 text-center font-medium text-muted-foreground" rowspan="2">Enabled</th>
-                    <th class="px-3 py-1 text-center font-medium text-muted-foreground border-l" colspan="4">Individual Tier</th>
-                    <th class="px-3 py-1 text-center font-medium text-muted-foreground border-l" colspan="4">Org Tier</th>
-                  </tr>
-                  <tr class="border-b text-[11px]">
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 border-l w-16">vCPU</th>
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">RAM GB</th>
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">Disk GB</th>
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-20">$/hr</th>
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 border-l w-16">vCPU</th>
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">RAM GB</th>
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-16">Disk GB</th>
-                    <th class="px-2 py-1 text-center font-medium text-muted-foreground/70 w-20">$/hr</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% if template_plan_configs %}
-                    {% for cfg in template_plan_configs %}
-                      {% set gp = cfg['global'] %}
-                      <tr class="border-b plan-row hover:bg-muted/20 transition-colors" data-plan-id="{{ gp.id }}">
-                        <td class="px-3 py-2 font-medium whitespace-nowrap">
-                          {{ gp.name }}
-                          <span class="ml-1.5 font-mono text-[10px] text-muted-foreground opacity-60">{{ gp.id }}</span>
-                        </td>
-                        <td class="px-3 py-2 text-center">
-                          <input type="checkbox" class="plan-enabled size-4 cursor-pointer rounded" {% if cfg.is_enabled %}checked{% endif %}>
-                        </td>
-                        {# Individual tier overrides #}
-                        <td class="px-1 py-1 border-l"><input type="number" min="1" step="1" class="plan-ind-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else '' }}" placeholder="{{ gp.ind_vcpu }}"></td>
-                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-ind-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else '' }}" placeholder="{{ gp.ind_ram_gb }}"></td>
-                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-ind-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else '' }}" placeholder="{{ gp.ind_disk_gb }}"></td>
-                        <td class="px-1 py-1"><input type="text" class="plan-ind-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else '' }}" placeholder="{{ gp.ind_cost_hr }}"></td>
-                        {# Org tier overrides #}
-                        <td class="px-1 py-1 border-l"><input type="number" min="1" step="1" class="plan-org-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_vcpu if cfg.org_vcpu is not none else '' }}" placeholder="{{ gp.org_vcpu }}"></td>
-                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-org-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else '' }}" placeholder="{{ gp.org_ram_gb }}"></td>
-                        <td class="px-1 py-1"><input type="number" min="1" step="1" class="plan-org-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else '' }}" placeholder="{{ gp.org_disk_gb }}"></td>
-                        <td class="px-1 py-1"><input type="text" class="plan-org-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else '' }}" placeholder="{{ gp.org_cost_hr }}"></td>
-                      </tr>
-                    {% endfor %}
-                  {% else %}
-                    <tr>
-                      <td colspan="10" class="px-4 py-10 text-center text-muted-foreground text-sm">
-                        No global plans configured yet.
-                        <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Create plans</a> first.
-                      </td>
-                    </tr>
-                  {% endif %}
-                </tbody>
-              </table>
-            </div>
-
-            {% if template_plan_configs %}
-              <div class="flex items-center justify-between pt-3">
-                <p class="text-xs text-muted-foreground">Empty fields inherit the global plan default. Changes take effect immediately for new instances.</p>
-                <button type="button" id="plans-save-btn"
-                  class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors shrink-0">
-                  <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                  Save Overrides
-                </button>
-              </div>
-            {% endif %}
-          </form>
-        </div>
-      {% endcall %}
+      {% if template_plan_configs %}
+        <p class="text-xs text-muted-foreground">Empty fields inherit the global plan default. Changes take effect immediately for new instances.</p>
+      {% endif %}
     </div>
 
     {% else %}
@@ -652,12 +656,36 @@
 
       </div>{# /inner panels row #}
 
+      {# ── Terminal resize handle ── #}
+      <div id="term-resize-handle" class="h-0.5 shrink-0 bg-border cursor-row-resize hover:bg-ring transition-colors relative z-10 hidden">
+        <div class="absolute inset-x-0 -inset-y-1.5"></div>
+      </div>
+
+      {# ── Terminal panel ── #}
+      <div id="term-panel" class="flex flex-col shrink-0 border-t overflow-hidden" style="height:200px;display:none">
+        <div class="flex h-7 shrink-0 items-center justify-between border-b bg-sidebar px-2">
+          <div class="flex items-center gap-1.5">
+            <svg class="size-3.5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            <span class="text-[11px] font-medium text-muted-foreground select-none">Terminal</span>
+          </div>
+          <button id="term-close-btn" title="Close terminal"
+            class="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+            <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div id="xterm-mount" class="flex-1 overflow-hidden" style="background:#09090b"></div>
+      </div>
+
       {# ── Config IDE bottom toolbar ── #}
       <div class="flex h-[25px] shrink-0 items-center justify-between border-t bg-sidebar px-1 text-[10px] text-muted-foreground">
         <div class="flex h-full items-center gap-1">
           <button id="ide-ft-toggle" title="Toggle file tree"
             class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
             <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+          </button>
+          <button id="ide-term-toggle" title="Toggle terminal"
+            class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
           </button>
         </div>
         <div class="flex h-full items-center gap-1 px-1">
@@ -678,6 +706,97 @@
 
       {# Seed data for JS #}
       <script id="ide-seed" type="application/json">{{ (selected_template.type_config or "{}") | safe }}</script>
+
+      {# ── Real-time monitor overlay ───────────────────────────────────────── #}
+      <div id="monitor-overlay" aria-hidden="true"
+        class="fixed inset-0 z-[400] pointer-events-none">
+        {# Backdrop #}
+        <div id="monitor-backdrop"
+          class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200 pointer-events-none">
+        </div>
+        {# Slide-up panel #}
+        <div id="monitor-panel"
+          class="absolute bottom-0 left-0 right-0 flex flex-col bg-background border-t shadow-2xl pointer-events-auto"
+          style="height:420px;transform:translateY(100%);transition:transform .25s cubic-bezier(.4,0,.2,1)">
+
+          {# Panel header #}
+          <div class="flex h-10 shrink-0 items-center justify-between border-b px-4 gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="flex items-center gap-1.5">
+                <div id="mon-dot" class="size-2 rounded-full bg-muted-foreground"></div>
+                <span id="mon-status" class="text-xs font-medium text-muted-foreground">Idle</span>
+              </div>
+              <span class="text-[11px] font-mono text-muted-foreground/60 truncate" id="mon-iid">—</span>
+              <div class="flex items-center gap-1.5">
+                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span class="text-[11px] text-muted-foreground tabular-nums" id="mon-uptime">0s</span>
+              </div>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <button id="mon-stop-btn" type="button"
+                class="inline-flex h-7 items-center gap-1 rounded-md border border-destructive/50 px-2.5 text-[11px] font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors disabled:opacity-40"
+                disabled>
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                Stop
+              </button>
+              <button id="mon-close-btn" type="button" aria-label="Close monitor"
+                class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+                <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+          </div>
+
+          {# Charts 2×2 grid #}
+          <div class="grid grid-cols-2 grid-rows-2 flex-1 min-h-0 divide-x divide-y bg-border/30">
+
+            {# CPU % #}
+            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-medium text-muted-foreground">CPU</span>
+                <span class="text-[11px] font-mono" id="mon-cpu-val">—</span>
+              </div>
+              {{ ch.area_chart("mon-cpu", {
+                "cpu": {"label": "CPU %", "color": "oklch(0.646 0.222 41.116)", "fill_color": "rgba(234,88,12,0.14)"}
+              }, class="flex-1 min-h-0", height=110) }}
+            </div>
+
+            {# RAM MB #}
+            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-medium text-muted-foreground">Memory</span>
+                <span class="text-[11px] font-mono" id="mon-ram-val">—</span>
+              </div>
+              {{ ch.area_chart("mon-ram", {
+                "ram": {"label": "RAM MB", "color": "oklch(0.6 0.118 184.704)", "fill_color": "rgba(14,116,144,0.14)"}
+              }, class="flex-1 min-h-0", height=110) }}
+            </div>
+
+            {# Net RX #}
+            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-medium text-muted-foreground">Net In</span>
+                <span class="text-[11px] font-mono" id="mon-rx-val">—</span>
+              </div>
+              {{ ch.area_chart("mon-netrx", {
+                "net_rx": {"label": "RX KB/s", "color": "oklch(0.696 0.17 162.48)", "fill_color": "rgba(16,185,129,0.14)"}
+              }, class="flex-1 min-h-0", height=110) }}
+            </div>
+
+            {# Net TX #}
+            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-medium text-muted-foreground">Net Out</span>
+                <span class="text-[11px] font-mono" id="mon-tx-val">—</span>
+              </div>
+              {{ ch.area_chart("mon-nettx", {
+                "net_tx": {"label": "TX KB/s", "color": "oklch(0.627 0.265 303.9)", "fill_color": "rgba(139,92,246,0.14)"}
+              }, class="flex-1 min-h-0", height=110) }}
+            </div>
+
+          </div>{# /charts grid #}
+
+        </div>{# /monitor-panel #}
+      </div>{# /monitor-overlay #}
 
     {% endif %}
 
@@ -788,10 +907,21 @@
       });
     }
 
+    function positionCombo() {
+      if (!comboPopup || !comboInput) return;
+      var rect = comboInput.getBoundingClientRect();
+      comboPopup.style.position = 'fixed';
+      comboPopup.style.top = (rect.bottom + 2) + 'px';
+      comboPopup.style.left = rect.left + 'px';
+      comboPopup.style.width = rect.width + 'px';
+      comboPopup.style.zIndex = '9999';
+    }
+
     function showCombo() {
       if (!comboPopup) return;
       buildComboOptions(currentRuntime());
       if (!comboList || comboList.children.length === 0) return;
+      positionCombo();
       comboPopup.removeAttribute('hidden');
       comboPopup.setAttribute('data-state', 'open');
     }
@@ -1506,6 +1636,314 @@ loaderScript.onload = function() {
   });
 };
 document.head.appendChild(loaderScript);
+
+// ── Terminal panel ─────────────────────────────────────────────────────────
+var termPanel     = document.getElementById('term-panel');
+var termResizeH   = document.getElementById('term-resize-handle');
+var termCloseBtn  = document.getElementById('term-close-btn');
+var termToggleBtn = document.getElementById('ide-term-toggle');
+var xtermInstance = null;
+var xtermReady    = false;
+var termWs        = null;
+
+function openTermPanel() {
+  if (!termPanel) return;
+  termPanel.style.display = '';
+  if (termResizeH) termResizeH.classList.remove('hidden');
+  if (editor) editor.layout();
+  if (!xtermReady) loadXterm();
+  else if (xtermInstance) { setTimeout(function(){ xtermInstance.fit && xtermInstance.fit(); }, 50); }
+}
+
+function closeTermPanel() {
+  if (!termPanel) return;
+  termPanel.style.display = 'none';
+  if (termResizeH) termResizeH.classList.add('hidden');
+  if (editor) editor.layout();
+}
+
+function loadXterm() {
+  if (xtermReady) return;
+  var s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js';
+  s.onload = function() {
+    var css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css';
+    document.head.appendChild(css);
+    var fitScript = document.createElement('script');
+    fitScript.src = 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js';
+    fitScript.onload = function() { initXterm(); };
+    document.head.appendChild(fitScript);
+  };
+  document.head.appendChild(s);
+}
+
+function initXterm() {
+  xtermReady = true;
+  var mount = document.getElementById('xterm-mount');
+  if (!mount || typeof Terminal === 'undefined') return;
+
+  var isDark = document.documentElement.classList.contains('dark');
+  var term = new Terminal({
+    fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
+    fontSize: 13,
+    lineHeight: 1.5,
+    cursorBlink: true,
+    cursorStyle: 'bar',
+    theme: {
+      background: '#09090b',
+      foreground: '#e4e4e7',
+      cursor: '#a1a1aa',
+      selectionBackground: 'rgba(255,255,255,0.15)',
+    },
+  });
+  var fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(mount);
+  fitAddon.fit();
+  xtermInstance = term;
+  xtermInstance.fit = function() { fitAddon.fit(); };
+
+  var wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+  var wsUrl = wsProto + '://' + location.host + '/platform/sandboxes/' + TEMPLATE_ID + '/terminal-ws';
+  term.writeln('\x1b[90mConnecting to sandbox terminal…\x1b[0m');
+
+  try {
+    termWs = new WebSocket(wsUrl);
+    termWs.onopen = function() {
+      term.writeln('\x1b[32mConnected.\x1b[0m');
+      term.write('\x1b[90m$ \x1b[0m');
+    };
+    termWs.onmessage = function(e) { term.write(e.data); };
+    termWs.onerror = function() { term.writeln('\x1b[31mNo terminal backend available for this template.\x1b[0m'); };
+    termWs.onclose = function() { term.writeln('\r\n\x1b[90m[disconnected]\x1b[0m'); };
+  } catch(e) {
+    term.writeln('\x1b[31mWebSocket not available.\x1b[0m');
+  }
+
+  term.onData(function(data) {
+    if (termWs && termWs.readyState === WebSocket.OPEN) termWs.send(data);
+  });
+
+  var ro = new ResizeObserver(function() { try { fitAddon.fit(); } catch(e){} });
+  ro.observe(mount);
+}
+
+if (termToggleBtn) {
+  termToggleBtn.addEventListener('click', function() {
+    if (termPanel && termPanel.style.display === 'none') openTermPanel();
+    else closeTermPanel();
+  });
+}
+if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
+
+// ── Test Launch + Real-time Monitor ───────────────────────────────────────
+(function(){
+  var overlay   = document.getElementById('monitor-overlay');
+  var panel     = document.getElementById('monitor-panel');
+  var backdrop  = document.getElementById('monitor-backdrop');
+  var monDot    = document.getElementById('mon-dot');
+  var monStatus = document.getElementById('mon-status');
+  var monIid    = document.getElementById('mon-iid');
+  var monUptime = document.getElementById('mon-uptime');
+  var stopBtn   = document.getElementById('mon-stop-btn');
+  var closeBtn  = document.getElementById('mon-close-btn');
+  var launchBtn = document.getElementById('test-launch-btn');
+
+  var monitorWs = null;
+  var uptimeTimer = null;
+  var uptimeStart = null;
+  var currentInstanceId = null;
+
+  // CSRF is injected automatically by csrf-fetch.js (X-CSRF-Token header on all fetch POSTs)
+  var csrfInput = document.querySelector('input[name="_csrf_token"]');
+  var csrfToken = csrfInput ? csrfInput.value : '';
+
+  function setStatus(state) {
+    var map = {
+      provisioning: { label: 'Provisioning…', dot: 'bg-yellow-400 animate-pulse', btn: false },
+      running:      { label: 'Running',        dot: 'bg-green-500',                btn: true  },
+      stopping:     { label: 'Stopping…',      dot: 'bg-yellow-400 animate-pulse', btn: false },
+      stopped:      { label: 'Stopped',        dot: 'bg-muted-foreground',         btn: false },
+      failed:       { label: 'Failed',         dot: 'bg-destructive',              btn: false },
+      killed:       { label: 'Killed',         dot: 'bg-destructive',              btn: false },
+      connecting:   { label: 'Connecting…',    dot: 'bg-muted-foreground animate-pulse', btn: false },
+    };
+    var s = map[state] || map.connecting;
+    if (monStatus) monStatus.textContent = s.label;
+    if (monDot) {
+      monDot.className = 'size-2 rounded-full ' + s.dot;
+    }
+    if (stopBtn) stopBtn.disabled = !s.btn;
+    if (state === 'running' && !uptimeTimer) {
+      uptimeStart = Date.now();
+      uptimeTimer = setInterval(function() {
+        if (!monUptime) return;
+        var sec = Math.floor((Date.now() - uptimeStart) / 1000);
+        var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+        monUptime.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+      }, 1000);
+    }
+    if (state !== 'running') {
+      clearInterval(uptimeTimer); uptimeTimer = null;
+    }
+  }
+
+  function openMonitor(instanceId) {
+    currentInstanceId = instanceId;
+    if (monIid) monIid.textContent = instanceId.substring(0, 8) + '…';
+    if (monUptime) monUptime.textContent = '0s';
+
+    // Show overlay
+    overlay.setAttribute('aria-hidden', 'false');
+    overlay.style.pointerEvents = 'auto';
+    backdrop.style.pointerEvents = 'auto';
+    backdrop.style.opacity = '1';
+    panel.style.transform = 'translateY(0)';
+
+    setStatus('connecting');
+
+    // Reset charts
+    ['mon-cpu','mon-ram','mon-netrx','mon-nettx'].forEach(function(id) {
+      if (window.csCharts && window.csCharts[id]) window.csCharts[id].reset();
+    });
+    ['mon-cpu-val','mon-ram-val','mon-rx-val','mon-tx-val'].forEach(function(id) {
+      var el = document.getElementById(id); if (el) el.textContent = '—';
+    });
+
+    // Open WebSocket
+    var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    var wsUrl = proto + '://' + location.host + '/ws/sandbox/' + instanceId + '/monitor';
+    try {
+      monitorWs = new WebSocket(wsUrl);
+    } catch(e) {
+      setStatus('failed');
+      return;
+    }
+
+    monitorWs.onopen = function() {
+      setStatus('provisioning');
+    };
+
+    monitorWs.onmessage = function(e) {
+      var msg;
+      try { msg = JSON.parse(e.data); } catch(ex) { return; }
+
+      if (msg.type === 'heartbeat') return;
+
+      if (msg.type === 'metrics') {
+        var ts = new Date(msg.ts * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        if (window.csCharts) {
+          if (window.csCharts['mon-cpu'])   window.csCharts['mon-cpu'].addPoint('cpu', msg.cpu_pct, ts);
+          if (window.csCharts['mon-ram'])   window.csCharts['mon-ram'].addPoint('ram', msg.mem_mb, ts);
+          if (window.csCharts['mon-netrx']) window.csCharts['mon-netrx'].addPoint('net_rx', msg.net_rx_kb, ts);
+          if (window.csCharts['mon-nettx']) window.csCharts['mon-nettx'].addPoint('net_tx', msg.net_tx_kb, ts);
+        }
+        var cpuEl = document.getElementById('mon-cpu-val'); if (cpuEl) cpuEl.textContent = msg.cpu_pct.toFixed(1) + '%';
+        var ramEl = document.getElementById('mon-ram-val'); if (ramEl) ramEl.textContent = msg.mem_mb + ' MB';
+        var rxEl  = document.getElementById('mon-rx-val');  if (rxEl)  rxEl.textContent  = msg.net_rx_kb.toFixed(1) + ' KB/s';
+        var txEl  = document.getElementById('mon-tx-val');  if (txEl)  txEl.textContent  = msg.net_tx_kb.toFixed(1) + ' KB/s';
+      }
+
+      if (msg.type === 'event') {
+        if (msg.event === 'started')  setStatus('running');
+        if (msg.event === 'stopped' || msg.event === 'killed' || msg.event === 'failed') setStatus(msg.event);
+      }
+
+      if (msg.type === 'error') setStatus('failed');
+    };
+
+    monitorWs.onerror = function() { setStatus('failed'); };
+    monitorWs.onclose = function() {
+      if (monStatus && monStatus.textContent === 'Running') setStatus('stopped');
+    };
+  }
+
+  function closeMonitor() {
+    panel.style.transform = 'translateY(100%)';
+    backdrop.style.opacity = '0';
+    setTimeout(function() {
+      overlay.setAttribute('aria-hidden', 'true');
+      overlay.style.pointerEvents = 'none';
+      backdrop.style.pointerEvents = 'none';
+    }, 260);
+    if (monitorWs) { try { monitorWs.close(); } catch(e){} monitorWs = null; }
+    clearInterval(uptimeTimer); uptimeTimer = null;
+    currentInstanceId = null;
+  }
+
+  if (launchBtn) {
+    launchBtn.addEventListener('click', function() {
+      launchBtn.disabled = true;
+      launchBtn.textContent = 'Launching…';
+      fetch('/platform/sandboxes/{{ tid }}/test-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        launchBtn.disabled = false;
+        launchBtn.innerHTML = '<svg class="size-3.5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Test Launch';
+        if (data.ok) {
+          openMonitor(data.instance_id);
+        } else {
+          alert('Launch failed: ' + (data.error || 'unknown error'));
+        }
+      })
+      .catch(function(err) {
+        launchBtn.disabled = false;
+        launchBtn.innerHTML = '<svg class="size-3.5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Test Launch';
+        alert('Network error: ' + err.message);
+      });
+    });
+  }
+
+  if (closeBtn) closeBtn.addEventListener('click', closeMonitor);
+
+  if (backdrop) backdrop.addEventListener('click', closeMonitor);
+
+  if (stopBtn) {
+    stopBtn.addEventListener('click', function() {
+      if (!currentInstanceId) return;
+      stopBtn.disabled = true;
+      fetch('/instances/' + currentInstanceId + '/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: '_csrf_token=' + encodeURIComponent(csrfToken),
+      }).then(function() {
+        setStatus('stopping');
+      }).catch(function() {});
+    });
+  }
+})();
+
+// Vertical resize handle for terminal panel
+(function(){
+  var handle = document.getElementById('term-resize-handle');
+  var panel  = document.getElementById('term-panel');
+  if (!handle || !panel) return;
+  var dragging = false, startY, startH;
+  handle.addEventListener('mousedown', function(e) {
+    dragging = true; startY = e.clientY; startH = panel.offsetHeight;
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var h = Math.max(80, Math.min(600, startH - (e.clientY - startY)));
+    panel.style.height = h + 'px';
+    if (editor) editor.layout();
+    if (xtermInstance && xtermInstance.fit) xtermInstance.fit();
+  });
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+})();
 
 })();
 {% end_app_script %}

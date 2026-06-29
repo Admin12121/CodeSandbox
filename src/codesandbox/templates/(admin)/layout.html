@@ -8,6 +8,11 @@
 
 {# ── Icon macro keyed by href ─────────────────────────────────────────────── #}
 {% macro nav_icon(href) -%}
+{%- if href in ("/platform/sandboxes", "/platform/sandbox-plans") -%}
+<svg class="size-4.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true">
+  <path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"/>
+</svg>
+{%- else -%}
 <svg class="size-4.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
   {%- if href == "/dashboard" -%}<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>
   {%- elif href == "/platform/users" -%}<path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/>
@@ -28,6 +33,7 @@
   {%- else -%}<circle cx="12" cy="12" r="10"/>
   {%- endif -%}
 </svg>
+{%- endif -%}
 {%- endmacro %}
 
 {# ── Sidebar trigger icon — panel-left-close / panel-left-open ─────────── #}

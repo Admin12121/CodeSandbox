@@ -26,7 +26,7 @@ services:
         uv run nexorm makemigrations
         uv run nexorm migrate
         uv run python seed.py
-        exec uv run flask run --host 0.0.0.0 --port 5000 --debug
+        exec uv run uvicorn codesandbox.asgi:app --host 0.0.0.0 --port 5000 --reload
     volumes:
       - .:/app
     environment:
@@ -40,6 +40,9 @@ services:
       SECRET_KEY: dev-secret-change-in-production
       SESSION_COOKIE_NAME: cs_session
       SESSION_TTL_HOURS: "24"
+      WORKER_TOKEN: dev-worker-token-change-in-production
+      APP_URL: http://app:5000
+      NATS_URL: nats://nats:4222
     depends_on:
       mysql:
         condition: service_healthy
@@ -47,6 +50,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      nats:
+        condition: service_started
     restart: unless-stopped
 
   # ── MySQL ──────────────────────────────────────────────────────────────────
@@ -82,6 +87,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # ── Mock sandbox worker ───────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./worker
+    container_name: codesandbox-worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CONTROL_PLANE_URL: http://app:5000
+      WORKER_TOKEN: dev-worker-token-change-in-production
+      NATS_URL: nats://nats:4222
+    depends_on:
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── NATS messaging ─────────────────────────────────────────────────────────
+  nats:
+    image: nats:2-alpine
+    container_name: codesandbox-nats
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
     restart: unless-stopped
 
   # ── MinIO object storage ───────────────────────────────────────────────────

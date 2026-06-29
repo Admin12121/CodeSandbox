@@ -36,6 +36,8 @@ class Settings:
         self.resend_api_key = os.environ.get("RESEND_APIKEY", "")
         self.from_email = os.environ.get("FROM_EMAIL", "CodeSandbox <noreply@admin12121.com>")
         self.cookie_secure = os.environ.get("COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
+        self.worker_token = os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production")
+        self.nats_url = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
 
 
 @lru_cache(maxsize=1)

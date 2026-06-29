@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+import os
 import re
+import uuid as _uuid
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from . import repository
+from .policy import PolicyBuilder
 
 
 def _slugify(name: str) -> str:
@@ -299,7 +304,6 @@ def save_template(
     name = name.strip()
     if not name:
         return None, "Name is required."
-    slug = (slug.strip() or _slugify(name))
     if sandbox_type not in SANDBOX_TYPES:
         return None, "Invalid sandbox type."
     if not docker_image.strip():
@@ -311,6 +315,8 @@ def save_template(
     max_timeout_hr = max(1, min(72, int(max_timeout_hr or 2)))
 
     if template_id:
+        existing_t = repository.get_template(template_id)
+        slug = existing_t.slug if existing_t else (slug.strip() or _slugify(name))
         t = repository.update_template(
             template_id,
             name=name, slug=slug, description=description or None,
@@ -321,6 +327,7 @@ def save_template(
             type_config=type_config.strip() or None,
         )
     else:
+        slug = slug.strip() or _slugify(name)
         existing = repository.get_template_by_slug(slug)
         if existing:
             return None, f"Slug '{slug}' is already taken."
@@ -507,6 +514,174 @@ def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> None:
             org_disk_gb=_int_or_none(row.get("org_disk_gb")),
             org_cost_hr=_parse_decimal(str(row["org_cost_hr"]).strip()) if row.get("org_cost_hr") else None,
         )
+
+
+# ── Instance lifecycle (Phase 5) ──────────────────────────────────────────────
+
+_policy_builder = PolicyBuilder()
+
+
+def start_instance(
+    instance_id: str,
+    actor_user_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """Build runtime policy, enqueue start job, transition idle→provisioning."""
+    from .queue import enqueue_job
+
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Instance not found."
+    if inst.status != "idle":
+        return None, f"Cannot start an instance in '{inst.status}' state."
+
+    t = repository.get_template(str(inst.template_id))
+    p = repository.get_plan(inst.plan_id)
+    if not t or not p:
+        return None, "Template or plan no longer exists."
+
+    workspace_type = inst.workspace_type or "personal"
+    plan_dict = _plan_dict(p)
+    template_dict = _template_dict(t)
+    runtime_policy = _policy_builder.build(template_dict, plan_dict, workspace_type)
+
+    actor = f"user:{actor_user_id}" if actor_user_id else "system"
+    callback_url = os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback"
+    worker_token = os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production")
+    job_id = str(_uuid.uuid4())
+
+    job_payload = {
+        "job_id": job_id,
+        "action": "start",
+        "instance_id": instance_id,
+        "runtime_policy": runtime_policy,
+        "callback_url": callback_url,
+        "callback_token": worker_token,
+    }
+
+    inst = repository.transition_instance_status(
+        instance_id,
+        new_status="provisioning",
+        actor=actor,
+        runtime_policy=json.dumps(runtime_policy),
+        worker_job_id=job_id,
+    )
+    enqueue_job(job_payload)
+    return _instance_dict(inst), None
+
+
+def stop_instance(
+    instance_id: str,
+    actor_user_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """Enqueue stop job, transition running→stopping."""
+    from .queue import enqueue_job
+
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Instance not found."
+    if inst.status not in ("running", "provisioning"):
+        return None, f"Cannot stop an instance in '{inst.status}' state."
+
+    actor = f"user:{actor_user_id}" if actor_user_id else "system"
+    callback_url = os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback"
+    worker_token = os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production")
+
+    enqueue_job({
+        "job_id": str(_uuid.uuid4()),
+        "action": "stop",
+        "instance_id": instance_id,
+        "callback_url": callback_url,
+        "callback_token": worker_token,
+    })
+    inst = repository.transition_instance_status(instance_id, new_status="stopping", actor=actor)
+    return _instance_dict(inst), None
+
+
+def handle_worker_callback(
+    instance_id: str,
+    event: str,
+    data: dict | None = None,
+) -> str | None:
+    """Process a worker callback event and advance the instance state machine."""
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return "Instance not found."
+
+    now = datetime.now(timezone.utc)
+    detail = json.dumps(data) if data else None
+
+    if event == "started":
+        repository.transition_instance_status(
+            instance_id, new_status="running", actor="worker",
+            started_at=now,
+        )
+        repository.log_instance_event(instance_id, "started", actor="worker", detail=detail)
+
+    elif event == "stopped":
+        prev = inst.started_at
+        runtime_sec = int((now - prev).total_seconds()) if prev else 0
+        repository.transition_instance_status(
+            instance_id, new_status="stopped", actor="worker",
+            stopped_at=now, total_runtime_sec=runtime_sec,
+        )
+        repository.log_instance_event(instance_id, "stopped", actor="worker", detail=detail)
+
+    elif event == "failed":
+        repository.transition_instance_status(instance_id, new_status="failed", actor="worker")
+        repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)
+
+    elif event == "killed":
+        repository.transition_instance_status(instance_id, new_status="killed", actor="worker")
+        repository.log_instance_event(instance_id, "killed", actor="worker", detail=detail)
+
+    elif event == "escape_attempt":
+        repository.log_instance_event(instance_id, "escape_attempt", actor="worker", detail=detail)
+        # Auto-kill on escape attempt
+        repository.transition_instance_status(instance_id, new_status="killed", actor="system")
+        from .queue import enqueue_job
+        enqueue_job({
+            "job_id": str(_uuid.uuid4()),
+            "action": "kill",
+            "instance_id": instance_id,
+            "callback_url": os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback",
+            "callback_token": os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production"),
+        })
+
+    elif event == "artifact_ready":
+        repository.log_instance_event(instance_id, "artifact_ready", actor="worker", detail=detail)
+
+    else:
+        return f"Unknown event: {event}"
+
+    return None
+
+
+# ── Admin Test Run ────────────────────────────────────────────────────────────
+
+def start_test_instance(
+    template_id: str,
+    actor_user_id: str,
+) -> tuple[dict | None, str | None]:
+    """Admin: create + immediately start a single-use test instance of a template."""
+    t = repository.get_template(template_id)
+    if t is None:
+        return None, "Template not found."
+
+    plans = get_platform_plans()
+    active_plans = [p for p in plans if p["is_active"]]
+    if not active_plans:
+        return None, "No active plans. Create at least one plan in Sandbox Plans first."
+
+    plan_id = active_plans[0]["id"]
+    inst = repository.create_instance(
+        template_id=template_id,
+        plan_id=plan_id,
+        workspace_type="personal",
+        created_by_user_id=actor_user_id,
+        billing_entity="user",
+        billed_user_id=actor_user_id,
+    )
+    return start_instance(str(inst.id), actor_user_id=actor_user_id)
 
 
 # ── Balance / Billing ─────────────────────────────────────────────────────────

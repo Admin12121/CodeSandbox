@@ -19,6 +19,7 @@ from codesandbox.features.sandbox.service import (
     get_user_instances,
     get_user_requests_in_org,
     review_instance_request,
+    start_instance,
     submit_instance_request,
 )
 from codesandbox.shared.session import build_nav, require_sandbox_user, require_session
@@ -280,7 +281,9 @@ def hub_start(instance: str):
     result, err = create_personal_instance(str(user.id), instance, plan_id)
     if err:
         return redirect(f"/hub/{instance}?error={err}", 303)
-    # For now redirect to the IDE page; Phase 5/6 will dispatch to worker
+    _, err = start_instance(result["id"], actor_user_id=str(user.id))
+    if err:
+        return redirect(f"/hub/{instance}?error={err}", 303)
     return redirect(f"/hub/{instance}/{plan_id}", 303)
 
 
