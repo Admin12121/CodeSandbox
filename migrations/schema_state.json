@@ -6181,6 +6181,54 @@
           "type": "StringField",
           "unique": false
         },
+        "last_test_status": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "untested",
+          "field": {
+            "auto_increment": false,
+            "default": "untested",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "last_test_status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "last_tested_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "last_tested_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
         "max_timeout_hr": {
           "auto_increment": false,
           "decimal_places": null,

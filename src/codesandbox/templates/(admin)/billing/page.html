@@ -1,61 +1,54 @@
 {% import "components/ui/frame.html" as frame %}
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/button.html" as button %}
+{% import "components/ui/badge.html" as badge %}
 
-<div class="flex h-[calc(100vh-4.85rem)] flex-col gap-6 p-6 overflow-y-auto">
+{% set invoices = invoices if invoices is defined else [] %}
+{% set is_org_billing = active_workspace is defined and active_workspace %}
+{% set billing_scope = "Organization account" if is_org_billing else "Personal account" %}
 
-  {# ── Header ── #}
-  <div class="flex items-start justify-between">
-    <div>
-      <h1 class="text-xl font-semibold">Billing</h1>
-      <p class="text-sm text-muted-foreground mt-0.5">
-        {{ billing_label }}
-        {% if active_workspace %} — org workspace{% endif %}
-      </p>
+<div class="flex min-h-full flex-col gap-5 p-6">
+  <div class="flex items-start justify-between gap-4">
+    <div class="min-w-0">
+      <h1 class="text-xl font-semibold tracking-tight">Billing</h1>
+      <p class="mt-0.5 text-sm text-muted-foreground">{{ billing_label }} · {{ billing_scope }}</p>
     </div>
   </div>
 
-  <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[20rem_minmax(0,1fr)]">
-
-    {# ── Balance card ── #}
-    {% call frame.frame() %}
-      {% call frame.frame_header(class="p-4! gap-1") %}
-        {% call frame.frame_title() %}Current Balance{% endcall %}
-        {% call frame.frame_description() %}
-          {% if active_workspace %}Billed to org account{% else %}Billed to your account{% endif %}
-        {% endcall %}
-      {% endcall %}
-      <div class="px-4 pb-2">
-        <p class="text-4xl font-bold tracking-tight
-          {{ 'text-destructive' if balance.amount | float <= 0 else '' }}">
-          ${{ balance.amount }}
-        </p>
-        {% if balance.updated_at %}
-          <p class="mt-1 text-xs text-muted-foreground">
-            Last updated {{ balance.updated_at.strftime('%b %d, %Y') }}
-          </p>
-        {% endif %}
-      </div>
-      <div class="px-4 pb-4 pt-2">
-        <button id="topup-btn" type="button"
-          class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-          Add Funds
-        </button>
-        <p class="mt-2 text-center text-xs text-muted-foreground opacity-60">
-          Payment gateway not yet configured
-        </p>
+  {% call frame.frame() %}
+    {% call frame.frame_panel(class="p-0") %}
+      <div class="flex flex-col gap-6 p-5 md:flex-row md:items-end md:justify-between">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            {% call frame.frame_title(class="text-base") %}Current Balance{% endcall %}
+            {{ badge.badge("Org" if is_org_billing else "Personal", variant="outline") }}
+          </div>
+          {% call frame.frame_description(class="mt-1") %}
+            {% if is_org_billing %}Billed to the active workspace{% else %}Billed to your account{% endif %}
+          {% endcall %}
+          <div class="mt-5 flex flex-wrap items-end gap-x-4 gap-y-2">
+            <p class="text-4xl font-semibold tracking-tight {{ 'text-destructive' if balance.amount | float <= 0 else '' }}">
+              रु {{ balance.amount }}
+            </p>
+          </div>
+        </div>
+        <div class="flex w-full flex-col gap-2 md:w-56">
+          {% call button.button(type="button", variant="default", class="w-full", attrs={"id": "topup-btn"}) %}
+            <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Add Funds
+          {% endcall %}
+          <p class="text-center text-xs text-muted-foreground">Payment gateway not configured</p>
+        </div>
       </div>
     {% endcall %}
+  {% endcall %}
 
-    {# ── Transaction history ── #}
-    {% call frame.frame(class="min-w-0") %}
-      {% call frame.frame_header(class="p-2! gap-1") %}
-        {% call frame.frame_title() %}Transaction History{% endcall %}
-      {% endcall %}
-
-      {% if transactions %}
-        {% call table.table(variant="card") %}
+    <div class="flex items-center justify-between pt-4">
+        {% call frame.frame_title(class="text-base") %}Transaction History{% endcall %}
+    </div>
+      
+  {% call frame.frame() %}
+      {% call table.table(variant="card") %}
         {% call table.table_header() %}
           {% call table.table_row() %}
             {{ table.table_head("Date") }}
@@ -65,37 +58,73 @@
           {% endcall %}
         {% endcall %}
         {% call table.table_body() %}
-          {% for tx in transactions %}
-            {% call table.table_row() %}
-              {{ table.table_cell(tx.created_at.strftime('%b %d, %Y') if tx.created_at else '—', class="text-muted-foreground whitespace-nowrap text-xs") }}
-              {% call table.table_cell() %}
-                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium
-                  {{ 'bg-green-500/15 text-green-600 dark:text-green-400' if tx.type == 'topup' else
-                     'bg-sky-500/15 text-sky-600 dark:text-sky-400' if tx.type == 'refund' else
-                     'bg-muted text-muted-foreground' }}">
-                  {{ tx.type | capitalize }}
-                </span>
+          {% if transactions %}
+            {% for tx in transactions %}
+              {% call table.table_row() %}
+                {{ table.table_cell(tx.created_at.strftime('%b %d, %Y') if tx.created_at else '-', class="text-muted-foreground") }}
+                {% call table.table_cell() %}
+                  {% if tx.type in ("topup", "refund") %}
+                    {{ badge.badge(tx.type | capitalize, variant="success") }}
+                  {% elif tx.type in ("charge", "usage") %}
+                    {{ badge.badge(tx.type | capitalize, variant="warning") }}
+                  {% else %}
+                    {{ badge.badge(tx.type | capitalize, variant="secondary") }}
+                  {% endif %}
+                {% endcall %}
+                {{ table.table_cell(tx.description or "-", class="max-w-[28rem] truncate") }}
+                {% call table.table_cell(class="text-right font-mono font-medium") %}
+                  <span class="{{ 'text-success-foreground' if tx.type in ('topup', 'refund') else 'text-destructive' }}">
+                    {{ '+' if tx.type in ('topup', 'refund') else '-' }}${{ tx.amount }}
+                  </span>
+                {% endcall %}
               {% endcall %}
-              {{ table.table_cell(tx.description or "—", class="text-sm max-w-[200px] truncate") }}
-              {% call table.table_cell(class="text-right font-mono font-medium whitespace-nowrap") %}
-                <span class="{{ 'text-green-600 dark:text-green-400' if tx.type in ('topup', 'refund') else 'text-destructive' }}">
-                  {{ '+' if tx.type in ('topup', 'refund') else '−' }}${{ tx.amount }}
-                </span>
+            {% endfor %}
+          {% else %}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "4"}) %}
+                Transactions appear here after funds are added or sandboxes run.
               {% endcall %}
             {% endcall %}
-          {% endfor %}
+          {% endif %}
         {% endcall %}
-        {% endcall %}
-      {% else %}
-        <div class="flex flex-col items-center justify-center py-16 text-muted-foreground">
-          <svg class="size-10 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-          <p class="text-sm">No transactions yet.</p>
-          <p class="text-xs mt-1 opacity-60">Transactions appear here after you add funds or run sandboxes.</p>
-        </div>
-      {% endif %}
     {% endcall %}
+  {% endcall %}
 
-  </div>
+      <div class="flex items-center pt-4">
+          {% call frame.frame_title(class="text-base") %}Invoices{% endcall %}
+      </div>
+  {% call frame.frame() %}
+      {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Invoice") }}
+            {{ table.table_head("Date") }}
+            {{ table.table_head("Status") }}
+            {{ table.table_head("Total", class="text-right") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+          {% if invoices %}
+            {% for invoice in invoices %}
+              {% call table.table_row() %}
+                {{ table.table_cell(invoice.number or invoice.id, class="font-medium") }}
+                {{ table.table_cell(invoice.created_at.strftime('%b %d, %Y') if invoice.created_at else "-", class="text-muted-foreground") }}
+                {% call table.table_cell() %}
+                  {{ badge.badge(invoice.status | capitalize, variant=("success" if invoice.status == "paid" else "secondary")) }}
+                {% endcall %}
+                {{ table.table_cell("$" ~ invoice.total, class="text-right font-mono font-medium") }}
+              {% endcall %}
+            {% endfor %}
+          {% else %}
+            {% call table.table_row() %}
+              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "4"}) %}
+                Invoices will appear here after billing is enabled.
+              {% endcall %}
+            {% endcall %}
+          {% endif %}
+        {% endcall %}
+    {% endcall %}
+  {% endcall %}
 </div>
 
 {% app_script "billing-topup-placeholder" %}

@@ -250,7 +250,10 @@ def billing():
     active_workspace = ws_ctx.get("active_workspace")
 
     if active_workspace:
-        billing_data = get_org_billing(str(active_workspace["id"]))
+        org_id = str(active_workspace["id"])
+        if not org_repo.is_org_owner(org_id, str(user.id)):
+            return {"_redirect": "/dashboard"}
+        billing_data = get_org_billing(org_id)
         billing_label = active_workspace.get("name", "Org")
     else:
         billing_data = get_user_billing(str(user.id))
