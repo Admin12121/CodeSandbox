@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import threading
 import uuid
+from io import BytesIO
 
 import boto3
 from botocore.client import Config
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from codesandbox.config import get_settings
 
-_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/avif", "image/gif"}
-_EXTS = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp", "image/avif": "avif", "image/gif": "gif"}
+_ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+_EXTS = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp"}
+_FORMAT_TO_MIME = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
 _MAX_BYTES = 2 * 1024 * 1024  # 2 MB
+_MAX_PIXELS = 12_000_000
 
 _s3_lock = threading.Lock()
 _s3_client = None
@@ -60,7 +64,7 @@ def upload_image(data: bytes, mime: str, prefix: str = "uploads") -> str | None:
     """Upload image bytes to S3/MinIO. Returns the public URL or None on failure."""
     if mime not in _ALLOWED_TYPES:
         return None
-    if len(data) > _MAX_BYTES:
+    if not data or len(data) > _MAX_BYTES:
         return None
     s = get_settings()
     bucket = s.s3_bucket
@@ -79,6 +83,51 @@ def upload_image_from_filestorage(file_storage, prefix: str = "uploads") -> str 
     """Wrapper for Werkzeug FileStorage objects."""
     if not file_storage or not file_storage.filename:
         return None
-    mime = file_storage.mimetype or ""
     data = file_storage.read()
-    return upload_image(data, mime, prefix=prefix)
+    validated = _validate_and_normalize_image(data)
+    if not validated:
+        return None
+    safe_data, safe_mime = validated
+    return upload_image(safe_data, safe_mime, prefix=prefix)
+
+
+def _validate_and_normalize_image(data: bytes) -> tuple[bytes, str] | None:
+    if not data or len(data) > _MAX_BYTES:
+        return None
+
+    previous_limit = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = _MAX_PIXELS
+    try:
+        with Image.open(BytesIO(data)) as probe:
+            fmt = (probe.format or "").upper()
+            if fmt not in _FORMAT_TO_MIME:
+                return None
+            probe.verify()
+
+        with Image.open(BytesIO(data)) as img:
+            fmt = (img.format or "").upper()
+            if fmt not in _FORMAT_TO_MIME:
+                return None
+            img = ImageOps.exif_transpose(img)
+            out = BytesIO()
+            if fmt == "JPEG":
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
+                img.save(out, format="JPEG", quality=88, optimize=True)
+            elif fmt == "PNG":
+                if img.mode not in ("RGB", "RGBA", "L", "LA", "P"):
+                    img = img.convert("RGBA")
+                img.save(out, format="PNG", optimize=True)
+            else:
+                if img.mode not in ("RGB", "RGBA"):
+                    img = img.convert("RGBA")
+                img.save(out, format="WEBP", quality=88, method=4)
+            safe_data = out.getvalue()
+    except (Image.DecompressionBombError, OSError, UnidentifiedImageError, ValueError):
+        return None
+    finally:
+        Image.MAX_IMAGE_PIXELS = previous_limit
+
+    if not safe_data or len(safe_data) > _MAX_BYTES:
+        return None
+    return safe_data, _FORMAT_TO_MIME[fmt]

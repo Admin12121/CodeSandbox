@@ -53,7 +53,7 @@
         Upload
       </label>
       <input data-media-upload-input type="file" id="{{ input_id }}" name="{{ name }}"
-        accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+        accept="image/png,image/jpeg,image/webp"
         class="sr-only" {% if upload_url %}data-upload-url="{{ upload_url }}"{% endif %}
         {{ html_attrs(**input_attrs) }}>
       <span data-media-status class="hidden text-xs text-muted-foreground"></span>

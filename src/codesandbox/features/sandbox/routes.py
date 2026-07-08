@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import hmac
 import json as _json
 from urllib.parse import quote
 
 from flask import abort, redirect, request
-from itsdangerous import URLSafeTimedSerializer
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from codesandbox.config import get_settings
 from codesandbox.shared.guards import platform_perm
@@ -30,6 +29,12 @@ from .service import (
 
 # Must match the salt asgi.py verifies the token with.
 _WS_TOKEN_SALT = "sandbox.monitor-ws"
+_WORKER_CALLBACK_SALT = "sandbox.worker-callback"
+_WORKER_ACTION_EVENTS = {
+    "start": {"started", "stopped", "failed", "escape_attempt", "artifact_ready"},
+    "stop": {"stopped", "failed"},
+    "kill": {"killed", "failed"},
+}
 
 def _save_thumbnail(file_storage) -> str | None:
     # SVG intentionally excluded: shared/storage.py's allowlist excludes it too
@@ -217,26 +222,42 @@ def instance_monitor_token(instance_id: str):
 @web_bp.post("/internal/worker/callback")
 @csrf_exempt
 def worker_callback():
-    """Receives status updates from the worker plane. Auth: Bearer WORKER_TOKEN.
+    """Receives status updates from the worker plane.
 
     Exempt from CSRF: the worker has no browser session/cookie, it authenticates
-    with a static bearer token instead.
+    with a short-lived bearer token scoped to the queued job.
     """
     settings = get_settings()
     auth = request.headers.get("Authorization", "")
-    expected = f"Bearer {settings.worker_token}"
-    if not hmac.compare_digest(auth, expected):
+    if not auth.startswith("Bearer "):
         abort(401)
+    raw_token = auth.removeprefix("Bearer ").strip()
 
     body = request.get_json(silent=True) or {}
     instance_id = body.get("instance_id", "")
+    job_id = body.get("job_id", "")
     event = body.get("event", "")
     data = body.get("data") or {}
 
-    if not instance_id or not event:
+    if not instance_id or not job_id or not event:
         abort(400)
+    try:
+        claims = URLSafeTimedSerializer(
+            settings.secret_key,
+            salt=_WORKER_CALLBACK_SALT,
+        ).loads(raw_token, max_age=settings.worker_callback_token_ttl_seconds)
+    except SignatureExpired:
+        abort(401)
+    except BadSignature:
+        abort(401)
 
-    err = handle_worker_callback(instance_id, event, data)
+    if claims.get("instance_id") != instance_id or claims.get("job_id") != job_id:
+        abort(401)
+    allowed_events = _WORKER_ACTION_EVENTS.get(str(claims.get("action") or ""), set())
+    if event not in allowed_events:
+        abort(401)
+
+    err = handle_worker_callback(instance_id, job_id, event, data)
     if err:
         return {"ok": False, "error": err}, 400
     return {"ok": True}

@@ -7,8 +7,14 @@ import uuid as _uuid
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
+from itsdangerous import URLSafeTimedSerializer
+
+from codesandbox.config import get_settings
+
 from . import repository
 from .policy import PolicyBuilder
+
+_WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 
 
 def _slugify(name: str) -> str:
@@ -45,6 +51,18 @@ RUNTIME_CLASSES = ("container", "microvm", "fullvm", "android_emulator")
 INTERFACE_MODES = ("terminal", "full_ui", "background", "android_ui", "gui")
 NETWORK_MODES = ("disabled", "isolated", "fake_internet", "controlled_proxy", "allowlist")
 TEMPLATE_STATUSES = ("active", "maintenance", "disabled")
+
+
+def make_worker_callback_token(job_id: str, instance_id: str, action: str) -> str:
+    """Create a short-lived bearer token scoped to one worker job."""
+    return URLSafeTimedSerializer(
+        get_settings().secret_key,
+        salt=_WORKER_CALLBACK_SALT,
+    ).dumps({
+        "job_id": job_id,
+        "instance_id": instance_id,
+        "action": action,
+    })
 
 
 def get_platform_templates(
@@ -225,6 +243,7 @@ def submit_instance_request(
 
 def review_instance_request(
     request_id: str,
+    org_id: str,
     reviewer_id: str,
     action: str,
     review_note: str | None = None,
@@ -233,6 +252,8 @@ def review_instance_request(
     req = repository.get_instance_request(request_id)
     if not req:
         return None, "Request not found."
+    if str(req.org_id) != org_id:
+        return None, "Request not found in this organization."
     if req.status != "pending":
         return None, "Request already reviewed."
     if action not in ("approved", "denied"):
@@ -626,8 +647,8 @@ def start_instance(
 
     actor = f"user:{actor_user_id}" if actor_user_id else "system"
     callback_url = os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback"
-    worker_token = os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production")
     job_id = str(_uuid.uuid4())
+    callback_token = make_worker_callback_token(job_id, instance_id, "start")
 
     job_payload = {
         "job_id": job_id,
@@ -635,7 +656,7 @@ def start_instance(
         "instance_id": instance_id,
         "runtime_policy": runtime_policy,
         "callback_url": callback_url,
-        "callback_token": worker_token,
+        "callback_token": callback_token,
     }
 
     inst = repository.transition_instance_status(
@@ -666,16 +687,22 @@ def stop_instance(
 
     actor = f"user:{actor_user_id}" if actor_user_id else "system"
     callback_url = os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback"
-    worker_token = os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production")
+    job_id = str(_uuid.uuid4())
+    callback_token = make_worker_callback_token(job_id, instance_id, "stop")
 
     enqueue_job({
-        "job_id": str(_uuid.uuid4()),
+        "job_id": job_id,
         "action": "stop",
         "instance_id": instance_id,
         "callback_url": callback_url,
-        "callback_token": worker_token,
+        "callback_token": callback_token,
     })
-    inst = repository.transition_instance_status(instance_id, new_status="stopping", actor=actor)
+    inst = repository.transition_instance_status(
+        instance_id,
+        new_status="stopping",
+        actor=actor,
+        worker_job_id=job_id,
+    )
     return _instance_dict(inst), None
 
 
@@ -692,6 +719,7 @@ def _mark_template_test_result(inst, status: str) -> None:
 
 def handle_worker_callback(
     instance_id: str,
+    job_id: str,
     event: str,
     data: dict | None = None,
 ) -> str | None:
@@ -699,6 +727,8 @@ def handle_worker_callback(
     inst = repository.get_instance(instance_id)
     if inst is None:
         return "Instance not found."
+    if str(inst.worker_job_id or "") != job_id:
+        return "Callback job does not match the active worker job."
 
     now = datetime.now(timezone.utc)
     detail = json.dumps(data) if data else None
@@ -737,14 +767,21 @@ def handle_worker_callback(
     elif event == "escape_attempt":
         repository.log_instance_event(instance_id, "escape_attempt", actor="worker", detail=detail)
         # Auto-kill on escape attempt
-        repository.transition_instance_status(instance_id, new_status="killed", actor="system")
         from .queue import enqueue_job
+        kill_job_id = str(_uuid.uuid4())
+        callback_token = make_worker_callback_token(kill_job_id, instance_id, "kill")
+        repository.transition_instance_status(
+            instance_id,
+            new_status="killed",
+            actor="system",
+            worker_job_id=kill_job_id,
+        )
         enqueue_job({
-            "job_id": str(_uuid.uuid4()),
+            "job_id": kill_job_id,
             "action": "kill",
             "instance_id": instance_id,
             "callback_url": os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback",
-            "callback_token": os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production"),
+            "callback_token": callback_token,
         })
 
     elif event == "artifact_ready":

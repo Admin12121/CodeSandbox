@@ -61,7 +61,6 @@ log = logging.getLogger("mock-worker")
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 QUEUE_KEY = "codesandbox:sandbox-jobs"
-WORKER_TOKEN = os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production")
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "http://app:5000")
 NATS_URL = os.environ.get("NATS_URL", "nats://nats:4222")
 
@@ -235,8 +234,15 @@ async def _on_terminal_input(msg) -> None:
 
 # ── HTTP callback ─────────────────────────────────────────────────────────────
 
-def callback(callback_url: str, callback_token: str, instance_id: str, event: str, data: dict | None = None) -> None:
-    payload = {"instance_id": instance_id, "event": event, "data": data or {}}
+def callback(
+    callback_url: str,
+    callback_token: str,
+    job_id: str,
+    instance_id: str,
+    event: str,
+    data: dict | None = None,
+) -> None:
+    payload = {"job_id": job_id, "instance_id": instance_id, "event": event, "data": data or {}}
     try:
         resp = requests.post(
             callback_url,
@@ -288,9 +294,10 @@ def _stream_metrics(instance_id: str, stop_ev: threading.Event) -> None:
 # ── Job handlers ──────────────────────────────────────────────────────────────
 
 def simulate_start(job: dict, stop_ev: threading.Event) -> None:
+    job_id = job["job_id"]
     instance_id = job["instance_id"]
     cb_url = job.get("callback_url", CONTROL_PLANE_URL + "/internal/worker/callback")
-    cb_tok = job.get("callback_token", WORKER_TOKEN)
+    cb_tok = job["callback_token"]
 
     # Simulate provisioning delay (2–4 s)
     prov_time = random.uniform(2, 4)
@@ -298,14 +305,14 @@ def simulate_start(job: dict, stop_ev: threading.Event) -> None:
     _publish_event(instance_id, "provisioning")
 
     if stop_ev.wait(prov_time):
-        callback(cb_url, cb_tok, instance_id, "stopped", {"reason": "stop_during_provision"})
+        callback(cb_url, cb_tok, job_id, instance_id, "stopped", {"reason": "stop_during_provision"})
         _publish_event(instance_id, "stopped", {"reason": "stop_during_provision"})
         with _lock:
             _stop_events.pop(instance_id, None)
         return
 
     # Send "started" callback + event
-    callback(cb_url, cb_tok, instance_id, "started")
+    callback(cb_url, cb_tok, job_id, instance_id, "started")
     _publish_event(instance_id, "started")
     log.info("running   %s", instance_id[:8])
 
@@ -327,7 +334,7 @@ def simulate_start(job: dict, stop_ev: threading.Event) -> None:
     stop_ev.set()  # ensure metrics thread exits
     metrics_thread.join(timeout=2)
 
-    callback(cb_url, cb_tok, instance_id, "stopped", {"reason": reason})
+    callback(cb_url, cb_tok, job_id, instance_id, "stopped", {"reason": reason})
     _publish_event(instance_id, "stopped", {"reason": reason})
     log.info("stopped   %s (%s)", instance_id[:8], reason)
 
@@ -336,31 +343,35 @@ def simulate_start(job: dict, stop_ev: threading.Event) -> None:
 
 
 def handle_stop(job: dict) -> None:
+    job_id = job["job_id"]
     instance_id = job["instance_id"]
     cb_url = job.get("callback_url", CONTROL_PLANE_URL + "/internal/worker/callback")
-    cb_tok = job.get("callback_token", WORKER_TOKEN)
+    cb_tok = job["callback_token"]
 
     with _lock:
         ev = _stop_events.get(instance_id)
     if ev:
         ev.set()
         log.info("signalled stop for %s", instance_id[:8])
+        callback(cb_url, cb_tok, job_id, instance_id, "stopped", {"reason": "stop_signal"})
+        _publish_event(instance_id, "stopped", {"reason": "stop_signal"})
     else:
         time.sleep(0.5)
-        callback(cb_url, cb_tok, instance_id, "stopped", {"reason": "direct_stop"})
+        callback(cb_url, cb_tok, job_id, instance_id, "stopped", {"reason": "direct_stop"})
         _publish_event(instance_id, "stopped", {"reason": "direct_stop"})
 
 
 def handle_kill(job: dict) -> None:
+    job_id = job["job_id"]
     instance_id = job["instance_id"]
     cb_url = job.get("callback_url", CONTROL_PLANE_URL + "/internal/worker/callback")
-    cb_tok = job.get("callback_token", WORKER_TOKEN)
+    cb_tok = job["callback_token"]
 
     with _lock:
         ev = _stop_events.pop(instance_id, None)
     if ev:
         ev.set()
-    callback(cb_url, cb_tok, instance_id, "killed", {"reason": "kill_signal"})
+    callback(cb_url, cb_tok, job_id, instance_id, "killed", {"reason": "kill_signal"})
     _publish_event(instance_id, "killed", {"reason": "kill_signal"})
     log.info("killed %s", instance_id[:8])
 

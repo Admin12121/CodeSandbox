@@ -328,7 +328,7 @@ def hub_review_request(request_id: str):
 
     action = request.form.get("action", "")
     review_note = request.form.get("review_note", "").strip()
-    _, err = review_instance_request(request_id, str(user.id), action, review_note or None)
+    _, err = review_instance_request(request_id, org_id, str(user.id), action, review_note or None)
     if err:
         return redirect(f"/hub?error={err}", 303)
     return redirect("/hub", 303)

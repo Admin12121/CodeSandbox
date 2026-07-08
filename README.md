@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./src/codesandbox/templates/public/logo.webp" alt="Rooms24 logo" width="96" />
+  <img src="./src/codesandbox/templates/public/logo.webp" alt="CodeSandBox logo" width="96" />
 </p>
 
 <h1 align="center">CodeSandbox</h1>

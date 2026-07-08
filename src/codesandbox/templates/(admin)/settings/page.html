@@ -255,9 +255,7 @@
                 {% call table.table_cell(class="text-right") %}
                   <div class="flex justify-end gap-2">
                     {% if totp_enabled %}
-                      <form method="post" action="/settings/2fa/disable" class="inline">{{ csrf_input() }}
-                        {% call button.button(type="submit", size="sm", variant="outline") %}Disable{% endcall %}
-                      </form>
+                      {% call button.button(type="button", size="sm", variant="outline", attrs={"data-dialog-trigger": "", "data-target": "#dlg-2fa-disable"}) %}Disable{% endcall %}
                     {% else %}
                       {% call button.button(type="button", size="sm", variant="outline", attrs={"data-open-dialog": "dlg-2fa-setup"}) %}Set up 2FA{% endcall %}
                     {% endif %}
@@ -607,6 +605,45 @@
       {% endcall %}
     </div>
   </div>
+{% endcall %}
+
+{# ── Disable 2FA Dialog ── #}
+{% call dlg_ui.dialog(attrs={"id": "dlg-2fa-disable"}) %}
+  {% call dlg_ui.dialog_close() %}
+    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  {% endcall %}
+  <div class="border-b px-6 py-4">
+    {% call dlg_ui.dialog_header() %}
+      {{ dlg_ui.dialog_title("Disable two-factor authentication") }}
+      {{ dlg_ui.dialog_description("Confirm with your password or a current 2FA code before removing this protection.") }}
+    {% endcall %}
+  </div>
+  <form method="post" action="/settings/2fa/disable">
+    {{ csrf_input() }}
+    {% call dlg_ui.dialog_panel(class="px-6 py-5") %}
+      <div class="grid gap-4">
+        {% if has_password %}
+          <div class="grid gap-1.5">
+            <label for="disable-2fa-password" class="text-sm font-medium">Current password</label>
+            <input id="disable-2fa-password" name="current_password" type="password" autocomplete="current-password"
+              class="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40">
+          </div>
+        {% endif %}
+        <div class="grid gap-1.5">
+          <label for="disable-2fa-code" class="text-sm font-medium">Authenticator or backup code</label>
+          <input id="disable-2fa-code" name="code" inputmode="numeric" autocomplete="one-time-code"
+            class="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40">
+          <p class="text-xs text-muted-foreground">Either field is enough. Backup codes can be used once.</p>
+        </div>
+      </div>
+    {% endcall %}
+    <div class="border-t px-6 py-4">
+      {% call dlg_ui.dialog_footer() %}
+        {{ dlg_ui.dialog_cancel("Cancel") }}
+        {% call button.button(type="submit", variant="destructive") %}Disable 2FA{% endcall %}
+      {% endcall %}
+    </div>
+  </form>
 {% endcall %}
 
 {# ── Add Passkey Dialog ── #}

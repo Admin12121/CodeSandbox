@@ -267,7 +267,7 @@
       <div class="flex-1 overflow-y-auto">
         <form id="identity-form" method="post" action="/platform/sandboxes/save" enctype="multipart/form-data">
         {# File input lives inside the form so it's included in multipart submission #}
-        <input id="thumb-input" name="icon_file" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"
+        <input id="thumb-input" name="icon_file" type="file" accept="image/png,image/jpeg,image/webp"
           aria-label="Upload thumbnail"
           style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;clip:rect(0 0 0 0)">
           <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">

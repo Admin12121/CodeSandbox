@@ -301,11 +301,26 @@ def totp_confirm_json_action():
 
 
 @web_bp.post("/settings/2fa/disable")
+@limiter.limit("5 per minute")
 def totp_disable_action():
     from codesandbox.shared.session import require_session
+    from werkzeug.security import check_password_hash
     cs, redir = require_session()
     if redir:
         return redirect(redir.url, code=303)
+    current_password = request.form.get("current_password", "")
+    code = request.form.get("code", "").strip().replace(" ", "")
+    password_ok = bool(
+        cs.user.password_hash
+        and current_password
+        and check_password_hash(cs.user.password_hash, current_password)
+    )
+    totp_ok = bool(code and verify_totp(cs.user.id, code))
+    if not password_ok and not totp_ok:
+        return redirect(
+            "/settings?tab=security&error=Confirm+with+your+password+or+2FA+code+to+disable+two-factor+authentication.",
+            code=303,
+        )
     disable_2fa(cs.user.id)
     return redirect("/settings?tab=security&info=Two-factor+authentication+disabled.", code=303)
 
