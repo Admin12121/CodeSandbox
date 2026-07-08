@@ -38,6 +38,9 @@ class Settings:
         self.cookie_secure = os.environ.get("COOKIE_SECURE", "false").lower() in ("1", "true", "yes")
         self.worker_token = os.environ.get("WORKER_TOKEN", "dev-worker-token-change-in-production")
         self.nats_url = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
+        # Read explicitly rather than relying on Flask's `flask run --debug` CLI flag,
+        # since the app is served via `uvicorn` (ASGI) in dev, which never sets it.
+        self.debug = os.environ.get("FLASK_DEBUG", "0") == "1"
 
 
 @lru_cache(maxsize=1)

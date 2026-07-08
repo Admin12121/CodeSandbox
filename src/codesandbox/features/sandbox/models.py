@@ -46,6 +46,11 @@ class SandboxTemplate(Model):
     # Visibility
     status = StringField(max_length=20, default="active")  # active|maintenance|disabled
 
+    # Test gate — a template can only be activated after a Test Launch has
+    # passed. Runtime-affecting edits reset this back to "untested".
+    last_test_status = StringField(max_length=20, default="untested")  # untested|passed|failed
+    last_tested_at = DateTimeField(nullable=True)
+
     # Type-specific config JSON — admin editable, worker reads
     type_config = TextField(nullable=True)
 

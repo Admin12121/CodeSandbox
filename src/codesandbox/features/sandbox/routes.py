@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import hmac
 import json as _json
-import os
-import uuid as _uuid
 from urllib.parse import quote
 
 from flask import abort, redirect, request
+from itsdangerous import URLSafeTimedSerializer
 
 from codesandbox.config import get_settings
 from codesandbox.shared.guards import platform_perm
 from codesandbox.shared.session import get_current_session
+from codesandbox.shared.storage import upload_image_from_filestorage
 from codesandbox.web.blueprint import web_bp
+from codesandbox.web.csrf import csrf_exempt
 
 from .service import (
+    can_view_instance,
     delete_template,
     handle_worker_callback,
     save_plan,
@@ -25,26 +28,13 @@ from .service import (
     toggle_plan_active,
 )
 
-_PUBLIC_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../templates/public"))
-_THUMB_ALLOWED = {"image/png", "image/jpeg", "image/webp", "image/svg+xml"}
-_THUMB_EXTS = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg"}
-
+# Must match the salt asgi.py verifies the token with.
+_WS_TOKEN_SALT = "sandbox.monitor-ws"
 
 def _save_thumbnail(file_storage) -> str | None:
-    if not file_storage or not file_storage.filename:
-        return None
-    mime = (file_storage.mimetype or "").split(";")[0].strip()
-    if mime not in _THUMB_ALLOWED:
-        return None
-    data = file_storage.read()
-    if not data or len(data) > 2 * 1024 * 1024:
-        return None
-    thumbs_dir = os.path.join(_PUBLIC_DIR, "thumbnails")
-    os.makedirs(thumbs_dir, exist_ok=True)
-    filename = f"{_uuid.uuid4().hex}.{_THUMB_EXTS[mime]}"
-    with open(os.path.join(thumbs_dir, filename), "wb") as fh:
-        fh.write(data)
-    return f"/thumbnails/{filename}"
+    # SVG intentionally excluded: shared/storage.py's allowlist excludes it too
+    # (an uploaded SVG can embed <script>, a stored-XSS vector when served back).
+    return upload_image_from_filestorage(file_storage, prefix="sandbox-templates")
 
 
 def _sandboxes_redirect(template_id: str | None = None, error: str | None = None):
@@ -105,17 +95,21 @@ def save_template_action():
 @web_bp.post("/platform/sandboxes/<template_id>/config")
 @platform_perm("platform.sandboxes.manage")
 def save_template_config_action(template_id: str):
-    config_json = request.form.get("config_json", "")
+    body = request.get_json(silent=True) or {}
+    config_json = _json.dumps(body.get("files", {}))
     save_template_config(template_id, config_json)
-    return redirect(f"/platform/sandboxes?template={template_id}&tab=config", 303)
+    return {"ok": True}
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/status")
 @platform_perm("platform.sandboxes.manage")
 def set_template_status_action(template_id: str):
-    status = request.form.get("status", "")
+    body = request.get_json(silent=True) or {}
+    status = body.get("status", "")
     error = set_template_status(template_id, status)
-    return _sandboxes_redirect(template_id, error)
+    if error:
+        return {"ok": False, "error": error}, 400
+    return {"ok": True}
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/plans")
@@ -197,15 +191,41 @@ def stop_instance_action(instance_id: str):
     return redirect("/my-instances", 303)
 
 
+# ── Instance monitor WS token ─────────────────────────────────────────────────
+
+@web_bp.get("/instances/<instance_id>/monitor-token")
+def instance_monitor_token(instance_id: str):
+    """Issues a short-lived signed token gating the real-time monitor WebSocket.
+
+    That WS route lives on the Starlette layer, outside this blueprint, so it
+    never sees the session cookie — this token is how the session's authorization
+    decision (made here, with full access to it) is carried over to that layer.
+    """
+    cs = get_current_session()
+    if not cs:
+        abort(401)
+    if not can_view_instance(instance_id, str(cs.user.id)):
+        abort(403)
+    token = URLSafeTimedSerializer(get_settings().secret_key, salt=_WS_TOKEN_SALT).dumps(
+        {"instance_id": instance_id}
+    )
+    return {"token": token}
+
+
 # ── Internal worker callback ──────────────────────────────────────────────────
 
 @web_bp.post("/internal/worker/callback")
+@csrf_exempt
 def worker_callback():
-    """Receives status updates from the worker plane. Auth: Bearer WORKER_TOKEN."""
+    """Receives status updates from the worker plane. Auth: Bearer WORKER_TOKEN.
+
+    Exempt from CSRF: the worker has no browser session/cookie, it authenticates
+    with a static bearer token instead.
+    """
     settings = get_settings()
     auth = request.headers.get("Authorization", "")
     expected = f"Bearer {settings.worker_token}"
-    if auth != expected:
+    if not hmac.compare_digest(auth, expected):
         abort(401)
 
     body = request.get_json(silent=True) or {}

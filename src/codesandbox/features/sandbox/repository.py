@@ -69,7 +69,10 @@ def create_template(
     max_timeout_hr: int,
     type_config: str | None,
     created_by_id: str | None,
+    status: str = "maintenance",
 ) -> SandboxTemplate:
+    # New templates never start "active" — they have no plans configured yet, and an
+    # active-but-planless template is broken for real end users hitting the Hub.
     t = SandboxTemplate(
         id=str(uuid.uuid4()),
         name=name,
@@ -86,6 +89,7 @@ def create_template(
         type_config=type_config or None,
         created_by=created_by_id,
         created_at=_now(),
+        status=status,
     )
     t.save()
     return t
@@ -120,7 +124,10 @@ def delete_template(template_id: str) -> str | None:
 
 def count_active_instances_for_template(template_id: str) -> int:
     instances = SandboxInstance.objects.filter(template_id=template_id).all()
-    return sum(1 for i in instances if i.status in ("idle", "provisioning", "running", "stopping"))
+    return sum(
+        1 for i in instances
+        if i.status in ("idle", "provisioning", "running", "stopping") and i.workspace_type != "test"
+    )
 
 
 # ── SandboxPlan ───────────────────────────────────────────────────────────────

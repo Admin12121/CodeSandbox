@@ -21,6 +21,7 @@ dependencies = [
     "webauthn>=2.0",
     "starlette>=0.40",
     "nats-py>=2.7",
+    "itsdangerous>=2.1",
 ]
 
 [tool.uv.workspace]

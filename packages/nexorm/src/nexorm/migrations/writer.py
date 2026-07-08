@@ -26,7 +26,11 @@ class MigrationWriter:
     def write(self, name=None):
         filename = self.next_name(name)
         path = self.migrations_dir / filename
-        imports = "from nexorm.migrations.operations import *\n\n"
+        # `target_state`/operation reprs can embed Decimal(...) literals (any
+        # DecimalField default anywhere in the schema, not just this migration's
+        # table), so always import it — otherwise the generated file raises
+        # NameError the moment such a default shows up.
+        imports = "from decimal import Decimal\nfrom nexorm.migrations.operations import *\n\n"
         body = "operations = [\n"
         for op in self.operations:
             body += f"    {repr_operation(op)},\n"

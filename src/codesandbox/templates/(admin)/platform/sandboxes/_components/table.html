@@ -200,23 +200,14 @@
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        {% if not is_create and can_manage %}
-          {% set next_status = {"active": "maintenance", "maintenance": "disabled", "disabled": "active"} %}
-          {% set ns = next_status.get(selected_template.status, "active") %}
-          <form method="post" action="/platform/sandboxes/{{ tid }}/status" class="contents">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="status" value="{{ ns }}">
-            {% call button.button(type="submit", variant="ghost", size="sm") %}{{ ns | title }}{% endcall %}
-          </form>
-          {% if selected_template.active_instances == 0 %}
-            {{ del_dialog.delete_dialog_trigger("del-tmpl-dlg") }}
-            {{ del_dialog.delete_dialog(
-              id="del-tmpl-dlg",
-              name=selected_template.name,
-              description="Permanently deletes this sandbox template. Cannot be undone.",
-              action="/platform/sandboxes/" ~ tid ~ "/delete",
-            ) }}
-          {% endif %}
+        {% if not is_create and can_manage and selected_template.active_instances == 0 %}
+          {{ del_dialog.delete_dialog_trigger("del-tmpl-dlg") }}
+          {{ del_dialog.delete_dialog(
+            id="del-tmpl-dlg",
+            name=selected_template.name,
+            description="Permanently deletes this sandbox template. Cannot be undone.",
+            action="/platform/sandboxes/" ~ tid ~ "/delete",
+          ) }}
         {% endif %}
         {% if can_manage %}
           {% if is_create or active_tab == "identity" %}
@@ -226,15 +217,15 @@
               {{ "Create Template" if is_create else "Save Changes" }}
             </button>
           {% elif active_tab == "config" %}
-            <button type="button" id="test-launch-btn"
-              class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
-              <svg class="size-3.5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Test Launch
+            <button type="button" id="test-launch-btn" title="Test Launch"
+              class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+              <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             </button>
-            <button type="button" id="ide-save-btn"
-              class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-              <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              Save Config
+            <button type="button" id="ide-save-btn" title="Save Config"
+              class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+              <svg id="ide-save-icon" class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <svg id="ide-save-spinner" hidden class="size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <svg id="ide-save-check" hidden class="size-4 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
             </button>
           {% endif %}
         {% endif %}
@@ -294,6 +285,36 @@
                   {% endcall %}
                 {% endcall %}
                 {% call table.table_body() %}
+                  {% if not is_create %}
+                    {% call table.table_row() %}
+                      {% call table.table_cell(class="font-medium text-sm align-middle") %}Status{% endcall %}
+                      {% call table.table_cell() %}
+                        <div class="flex items-center gap-3">
+                          {% if selected_template.status == "active" %}
+                            {{ badge.badge("Active", variant="outline") }}
+                          {% elif selected_template.status == "maintenance" %}
+                            {{ badge.badge("Maintenance", variant="secondary") }}
+                          {% else %}
+                            {{ badge.badge("Disabled", variant="destructive") }}
+                          {% endif %}
+                          {% if can_manage %}
+                            <button type="button" id="status-toggle-btn"
+                              data-target-status="{{ 'maintenance' if selected_template.status == 'active' else 'active' }}"
+                              class="inline-flex h-7 items-center justify-center rounded-md border border-input px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                              {{ "Deactivate" if selected_template.status == "active" else "Activate" }}
+                            </button>
+                          {% endif %}
+                          {% if selected_template.status != "active" %}
+                            <span class="text-xs text-muted-foreground">
+                              {% if selected_template.last_test_status == "passed" %}Test passed — ready to activate
+                              {% elif selected_template.last_test_status == "failed" %}Last test failed — run Test Launch again
+                              {% else %}Not yet tested — run Test Launch in the Config tab before activating{% endif %}
+                            </span>
+                          {% endif %}
+                        </div>
+                      {% endcall %}
+                    {% endcall %}
+                  {% endif %}
                   {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Thumbnail{% endcall %}
                     {% call table.table_cell() %}
@@ -698,12 +719,6 @@
         class="fixed z-[200] min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
       </div>
 
-      {# Hidden form for saving config files #}
-      <form id="save-config-form" method="post" action="/platform/sandboxes/{{ tid }}/config" class="hidden">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="config_json" id="save-config-json">
-      </form>
-
       {# Seed data for JS #}
       <script id="ide-seed" type="application/json">{{ (selected_template.type_config or "{}") | safe }}</script>
 
@@ -1013,6 +1028,45 @@
 })();
 {% end_app_script %}
 
+{% app_script "sandbox-status-toggle" %}
+(function(){
+  function initStatusToggle() {
+    var btn = document.getElementById('status-toggle-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      btn.disabled = true;
+      fetch('/platform/sandboxes/{{ tid }}/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: btn.getAttribute('data-target-status') }),
+      })
+      .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+      .then(function(res) {
+        if (res.ok && res.data.ok) {
+          location.reload();
+          return;
+        }
+        btn.disabled = false;
+        window.Toast && window.Toast.create({
+          title: 'Could not change status',
+          description: (res.data && res.data.error) || 'Unknown error',
+          type: 'error',
+        });
+      })
+      .catch(function(err) {
+        btn.disabled = false;
+        window.Toast && window.Toast.create({ title: 'Network error', description: err.message, type: 'error' });
+      });
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initStatusToggle);
+  } else {
+    initStatusToggle();
+  }
+})();
+{% end_app_script %}
+
 {% if active_tab == "config" %}
 {% app_script "sandbox-ide-editor" %}
 (function(){
@@ -1301,6 +1355,7 @@ function commitNew() {
   }
   cancelNew();
   renderTree();
+  scheduleAutosave();
 }
 
 function cancelNew() {
@@ -1316,6 +1371,7 @@ function deleteFile(path) {
   if (monacoModels[path]) { monacoModels[path].dispose(); delete monacoModels[path]; }
   closeTab(path);
   renderTree();
+  scheduleAutosave();
 }
 
 function deleteDir(path) {
@@ -1333,10 +1389,38 @@ function deleteDir(path) {
   }
   renderTree();
   renderTabs();
+  scheduleAutosave();
 }
 
-// ── Save Config ───────────────────────────────────────────────────────────────
+// ── Save Config (autosave, debounced) ──────────────────────────────────────
+var autosaveTimer = null;
+var saveInFlight = false;
+var saveQueued = false;
+var AUTOSAVE_DELAY_MS = 1200;
+
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(saveConfig, AUTOSAVE_DELAY_MS);
+  setSaveIcon('dirty');
+}
+
+function setSaveIcon(state) {
+  var iconEl = document.getElementById('ide-save-icon');
+  var spinEl = document.getElementById('ide-save-spinner');
+  var checkEl = document.getElementById('ide-save-check');
+  if (!iconEl || !spinEl || !checkEl) return;
+  iconEl.setAttribute('hidden', '');
+  spinEl.setAttribute('hidden', '');
+  checkEl.setAttribute('hidden', '');
+  if (state === 'saving') spinEl.removeAttribute('hidden');
+  else if (state === 'saved') checkEl.removeAttribute('hidden');
+  else iconEl.removeAttribute('hidden'); // 'dirty' or 'idle' both show the plain save glyph
+}
+
 function saveConfig() {
+  clearTimeout(autosaveTimer);
+  if (saveInFlight) { saveQueued = true; return; }
+
   // Flush active model content back to FS
   if (editor && activeFile) {
     var model = editor.getModel();
@@ -1351,8 +1435,27 @@ function saveConfig() {
   Object.keys(FS).forEach(function(p) {
     if (!p.endsWith('/.gitkeep')) toSave[p] = FS[p];
   });
-  document.getElementById('save-config-json').value = JSON.stringify(toSave);
-  document.getElementById('save-config-form').submit();
+
+  saveInFlight = true;
+  setSaveIcon('saving');
+  fetch('/platform/sandboxes/{{ tid }}/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files: toSave }),
+  })
+  .then(function(r) { if (!r.ok) throw new Error('save failed (' + r.status + ')'); })
+  .then(function() {
+    setSaveIcon('saved');
+    setTimeout(function() { setSaveIcon('idle'); }, 1500);
+  })
+  .catch(function(err) {
+    setSaveIcon('dirty');
+    window.Toast && window.Toast.create({ title: 'Autosave failed', description: err.message, type: 'error' });
+  })
+  .finally(function() {
+    saveInFlight = false;
+    if (saveQueued) { saveQueued = false; saveConfig(); }
+  });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1551,6 +1654,7 @@ function commitRename() {
   }
   renderTree();
   renderTabs();
+  scheduleAutosave();
 }
 
 document.getElementById('file-tree').addEventListener('contextmenu', function(e) {
@@ -1627,6 +1731,7 @@ loaderScript.onload = function() {
     // Sync model content → FS on change
     editor.onDidChangeModelContent(function() {
       if (activeFile) FS[activeFile] = editor.getValue();
+      scheduleAutosave();
     });
 
     // Follow app-level theme changes
@@ -1784,6 +1889,11 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
         var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
         monUptime.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
       }, 1000);
+      window.Toast && window.Toast.create({
+        title: 'Test passed',
+        description: 'This template can now be activated from the Identity tab.',
+        type: 'success',
+      });
     }
     if (state !== 'running') {
       clearInterval(uptimeTimer); uptimeTimer = null;
@@ -1812,9 +1922,21 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
       var el = document.getElementById(id); if (el) el.textContent = '—';
     });
 
-    // Open WebSocket
+    // Fetch a short-lived signed token, then open the WebSocket with it.
+    // The WS route lives outside the Flask session/cookie stack, so it can't
+    // authorize the connection itself — this token carries that decision over.
+    fetch('/instances/' + instanceId + '/monitor-token')
+      .then(function(r) {
+        if (!r.ok) throw new Error('token request failed (' + r.status + ')');
+        return r.json();
+      })
+      .then(function(data) { connectMonitorWs(instanceId, data.token); })
+      .catch(function() { setStatus('failed'); });
+  }
+
+  function connectMonitorWs(instanceId, token) {
     var proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    var wsUrl = proto + '://' + location.host + '/ws/sandbox/' + instanceId + '/monitor';
+    var wsUrl = proto + '://' + location.host + '/ws/sandbox/' + instanceId + '/monitor?token=' + encodeURIComponent(token);
     try {
       monitorWs = new WebSocket(wsUrl);
     } catch(e) {
@@ -1889,13 +2011,21 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
         if (data.ok) {
           openMonitor(data.instance_id);
         } else {
-          alert('Launch failed: ' + (data.error || 'unknown error'));
+          window.Toast && window.Toast.create({
+            title: 'Launch failed',
+            description: data.error || 'Unknown error',
+            type: 'error',
+          });
         }
       })
       .catch(function(err) {
         launchBtn.disabled = false;
         launchBtn.innerHTML = '<svg class="size-3.5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Test Launch';
-        alert('Network error: ' + err.message);
+        window.Toast && window.Toast.create({
+          title: 'Network error',
+          description: err.message,
+          type: 'error',
+        });
       });
     });
   }

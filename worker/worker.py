@@ -13,22 +13,38 @@ Queue:   LPUSH codesandbox:sandbox-jobs <json>  (Flask enqueues)
 NATS subjects published:
   codesandbox.sandbox.metrics.<instance_id>  — metrics every ~1 s while running
   codesandbox.sandbox.events.<instance_id>   — lifecycle events
+  codesandbox.sandbox.terminal.<instance_id>.output — PTY output bytes
+
+NATS subjects subscribed (wildcard, one subscription covers every instance):
+  codesandbox.sandbox.terminal.*.ctl    — {"action":"open"|"close"|"resize",...}
+  codesandbox.sandbox.terminal.*.input  — {"data": "<keystrokes>"}
 
 Lifecycle (mock):
   start → "started" after ~3 s → metrics stream → "stopped" after timeout or stop signal
   stop  → signals running simulation to stop early
   kill  → signals stop, sends "killed" immediately
+
+Terminal: a real PTY (/bin/bash) spawned per instance_id on "open", killed on
+"close". This is a genuine shell in the WORKER container, not (yet) an exec
+into the template's own container image — that requires the real container
+runtime worker (Phase 6a). Isolated per instance: its own PTY, its own
+process group, torn down independently of any other session.
 """
 
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import logging
 import os
+import pty
 import random
 import signal
+import struct
+import subprocess
 import sys
+import termios
 import threading
 import time
 
@@ -86,6 +102,137 @@ def _nats_publish(subject: str, payload: dict) -> None:
     asyncio.run_coroutine_threadsafe(_nats_client.publish(subject, data), _nats_loop)
 
 
+# ── Terminal (real PTY, isolated per instance) ─────────────────────────────────
+
+_pty_sessions: dict[str, dict] = {}
+_pty_lock = threading.Lock()
+
+
+def _terminal_output_subject(instance_id: str) -> str:
+    return f"codesandbox.sandbox.terminal.{instance_id}.output"
+
+
+def _pty_reader(instance_id: str, master_fd: int, stop_ev: threading.Event) -> None:
+    """Blocking read loop on the PTY master fd, run in its own thread."""
+    try:
+        while not stop_ev.is_set():
+            try:
+                chunk = os.read(master_fd, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            _nats_publish(_terminal_output_subject(instance_id), {
+                "type": "output", "data": chunk.decode(errors="replace"),
+            })
+    finally:
+        _nats_publish(_terminal_output_subject(instance_id), {"type": "closed"})
+        with _pty_lock:
+            _pty_sessions.pop(instance_id, None)
+
+
+def _terminal_open(instance_id: str) -> None:
+    with _pty_lock:
+        if instance_id in _pty_sessions:
+            return  # already open
+    try:
+        pid, master_fd = pty.fork()
+    except OSError as exc:
+        log.warning("pty.fork failed for %s: %s", instance_id[:8], exc)
+        return
+
+    if pid == 0:
+        # Child: replace with an interactive shell in its own session.
+        shell = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
+        env = dict(os.environ, TERM="xterm-256color", PS1="sandbox-test:\\w\\$ ")
+        os.chdir("/tmp")
+        os.execvpe(shell, [shell], env)
+        os._exit(1)  # pragma: no cover — only reached if execvpe fails
+
+    stop_ev = threading.Event()
+    reader = threading.Thread(target=_pty_reader, args=(instance_id, master_fd, stop_ev), daemon=True)
+    with _pty_lock:
+        _pty_sessions[instance_id] = {"pid": pid, "master_fd": master_fd, "stop_ev": stop_ev}
+    reader.start()
+    log.info("terminal opened for %s (pid=%s)", instance_id[:8], pid)
+    _nats_publish(_terminal_output_subject(instance_id), {"type": "ready"})
+
+
+def _terminal_close(instance_id: str) -> None:
+    with _pty_lock:
+        session = _pty_sessions.pop(instance_id, None)
+    if not session:
+        return
+    session["stop_ev"].set()
+    try:
+        os.kill(session["pid"], signal.SIGHUP)
+    except OSError:
+        pass
+    try:
+        os.close(session["master_fd"])
+    except OSError:
+        pass
+    log.info("terminal closed for %s", instance_id[:8])
+
+
+def _terminal_resize(instance_id: str, cols: int, rows: int) -> None:
+    with _pty_lock:
+        session = _pty_sessions.get(instance_id)
+    if not session:
+        return
+    try:
+        fcntl.ioctl(session["master_fd"], termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+    except OSError:
+        pass
+
+
+def _terminal_write(instance_id: str, data: str) -> None:
+    with _pty_lock:
+        session = _pty_sessions.get(instance_id)
+    if not session:
+        return
+    try:
+        os.write(session["master_fd"], data.encode())
+    except OSError:
+        pass
+
+
+def _subject_instance_id(subject: str) -> str | None:
+    # codesandbox.sandbox.terminal.<instance_id>.ctl|input
+    parts = subject.split(".")
+    return parts[3] if len(parts) >= 5 else None
+
+
+async def _on_terminal_ctl(msg) -> None:
+    instance_id = _subject_instance_id(msg.subject)
+    if not instance_id:
+        return
+    try:
+        body = json.loads(msg.data)
+    except Exception:
+        return
+    action = body.get("action")
+    if action == "open":
+        threading.Thread(target=_terminal_open, args=(instance_id,), daemon=True).start()
+    elif action == "close":
+        _terminal_close(instance_id)
+    elif action == "resize":
+        _terminal_resize(instance_id, int(body.get("cols", 80)), int(body.get("rows", 24)))
+
+
+async def _on_terminal_input(msg) -> None:
+    instance_id = _subject_instance_id(msg.subject)
+    if not instance_id:
+        return
+    try:
+        body = json.loads(msg.data)
+    except Exception:
+        return
+    data = body.get("data", "")
+    if data:
+        _terminal_write(instance_id, data)
+
+
 # ── HTTP callback ─────────────────────────────────────────────────────────────
 
 def callback(callback_url: str, callback_token: str, instance_id: str, event: str, data: dict | None = None) -> None:
@@ -140,14 +287,10 @@ def _stream_metrics(instance_id: str, stop_ev: threading.Event) -> None:
 
 # ── Job handlers ──────────────────────────────────────────────────────────────
 
-def simulate_start(job: dict) -> None:
+def simulate_start(job: dict, stop_ev: threading.Event) -> None:
     instance_id = job["instance_id"]
     cb_url = job.get("callback_url", CONTROL_PLANE_URL + "/internal/worker/callback")
     cb_tok = job.get("callback_token", WORKER_TOKEN)
-
-    stop_ev = threading.Event()
-    with _lock:
-        _stop_events[instance_id] = stop_ev
 
     # Simulate provisioning delay (2–4 s)
     prov_time = random.uniform(2, 4)
@@ -234,7 +377,10 @@ def process_job(raw: str) -> None:
     log.info("job  action=%s instance=%s", action, instance_id[:8])
 
     if action == "start":
-        t = threading.Thread(target=simulate_start, args=(job,), daemon=True)
+        stop_ev = threading.Event()
+        with _lock:
+            _stop_events[instance_id] = stop_ev
+        t = threading.Thread(target=simulate_start, args=(job, stop_ev), daemon=True)
         t.start()
     elif action == "stop":
         handle_stop(job)

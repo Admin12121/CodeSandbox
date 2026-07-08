@@ -27,6 +27,7 @@ def create_app() -> Flask:
     configure_db(settings.database_url)
 
     app = Flask(__name__, template_folder="templates")
+    app.debug = settings.debug
     app.config["SECRET_KEY"] = settings.secret_key
     app.config["DATABASE_URL"] = settings.database_url
     app.config["SESSION_TTL_HOURS"] = settings.session_ttl_hours

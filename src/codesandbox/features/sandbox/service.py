@@ -24,6 +24,20 @@ def _parse_decimal(value: str) -> Decimal | None:
         return None
 
 
+def _runtime_fields_changed(
+    existing_t, runtime_class: str, docker_image: str, interface_mode: str,
+    network_mode: str, allow_root: bool, max_timeout_hr: int,
+) -> bool:
+    return (
+        existing_t.runtime_class != runtime_class
+        or existing_t.docker_image != docker_image
+        or existing_t.interface_mode != interface_mode
+        or existing_t.network_mode != network_mode
+        or bool(existing_t.allow_root) != allow_root
+        or int(existing_t.max_timeout_hr) != max_timeout_hr
+    )
+
+
 # ── SandboxTemplate ───────────────────────────────────────────────────────────
 
 SANDBOX_TYPES = ("interactive", "malware", "reverse_engineering", "android", "ctf")
@@ -278,6 +292,8 @@ def _template_dict(t) -> dict:
         "allow_root": bool(t.allow_root),
         "max_timeout_hr": int(t.max_timeout_hr),
         "status": t.status,
+        "last_test_status": t.last_test_status or "untested",
+        "last_tested_at": t.last_tested_at,
         "type_config": t.type_config or "",
         "created_at": t.created_at,
         "updated_at": t.updated_at,
@@ -317,8 +333,8 @@ def save_template(
     if template_id:
         existing_t = repository.get_template(template_id)
         slug = existing_t.slug if existing_t else (slug.strip() or _slugify(name))
-        t = repository.update_template(
-            template_id,
+
+        update_kwargs = dict(
             name=name, slug=slug, description=description or None,
             icon_path=icon_path or None, docker_image=docker_image.strip(),
             sandbox_type=sandbox_type, runtime_class=runtime_class,
@@ -326,6 +342,16 @@ def save_template(
             allow_root=allow_root, max_timeout_hr=max_timeout_hr,
             type_config=type_config.strip() or None,
         )
+
+        if existing_t is not None and _runtime_fields_changed(existing_t, runtime_class, docker_image.strip(), interface_mode, network_mode, allow_root, max_timeout_hr):
+            # A Runtime-affecting edit invalidates any prior test pass. If the
+            # template was live, take it out of rotation until it's retested.
+            update_kwargs["last_test_status"] = "untested"
+            update_kwargs["last_tested_at"] = None
+            if existing_t.status == "active":
+                update_kwargs["status"] = "maintenance"
+
+        t = repository.update_template(template_id, **update_kwargs)
     else:
         slug = slug.strip() or _slugify(name)
         existing = repository.get_template_by_slug(slug)
@@ -346,6 +372,14 @@ def save_template(
 def set_template_status(template_id: str, status: str) -> str | None:
     if status not in TEMPLATE_STATUSES:
         return "Invalid status."
+    if status == "active":
+        if not get_template_plans_for_hub(template_id):
+            return "Cannot activate: no plans available for this template. Enable at least one plan in the Plans tab first."
+        t = repository.get_template(template_id)
+        if t is None:
+            return "Template not found."
+        if (t.last_test_status or "untested") != "passed":
+            return "Cannot activate: run a successful Test Launch first."
     repository.update_template(template_id, status=status)
     return None
 
@@ -521,6 +555,46 @@ def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> None:
 _policy_builder = PolicyBuilder()
 
 
+def can_manage_instance(inst, actor_user_id: str | None) -> bool:
+    """Owner, assignee, org managers (sandbox.instances.create), and platform staff may act on an instance."""
+    if not actor_user_id:
+        return False
+
+    from codesandbox.features.identity.models import User
+    from codesandbox.shared.permissions import has_org_permission, is_platform_staff
+
+    if inst.workspace_user_id and str(inst.workspace_user_id) == actor_user_id:
+        return True
+    if inst.workspace_type == "org" and inst.assigned_to_user_id and str(inst.assigned_to_user_id) == actor_user_id:
+        return True
+
+    user = User.objects.filter(id=actor_user_id).first()
+    if user is None:
+        return False
+    if is_platform_staff(user):
+        return True
+    if inst.workspace_type == "org" and inst.workspace_org_id:
+        return has_org_permission(str(inst.workspace_org_id), user, "sandbox.instances.create")
+    return False
+
+
+def can_view_instance(instance_id: str, actor_user_id: str | None) -> bool:
+    """Same authorization bar as managing it — used to gate the monitor WS token."""
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return False
+    return can_manage_instance(inst, actor_user_id)
+
+
+# Admin test launches are a no-billing preview run — they don't need a real
+# SandboxPlan to exist, so a minimal fixed resource envelope stands in for one.
+_TEST_PLAN = {
+    "id": "__test__", "name": "Test",
+    "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 5, "ind_cost_hr": "0",
+    "org_vcpu": 1, "org_ram_gb": 1, "org_disk_gb": 5, "org_cost_hr": "0",
+}
+
+
 def start_instance(
     instance_id: str,
     actor_user_id: str | None = None,
@@ -535,12 +609,18 @@ def start_instance(
         return None, f"Cannot start an instance in '{inst.status}' state."
 
     t = repository.get_template(str(inst.template_id))
-    p = repository.get_plan(inst.plan_id)
-    if not t or not p:
-        return None, "Template or plan no longer exists."
+    if not t:
+        return None, "Template no longer exists."
+
+    if inst.workspace_type == "test":
+        plan_dict = dict(_TEST_PLAN)
+    else:
+        p = repository.get_plan(inst.plan_id)
+        if not p:
+            return None, "Plan no longer exists."
+        plan_dict = _plan_dict(p)
 
     workspace_type = inst.workspace_type or "personal"
-    plan_dict = _plan_dict(p)
     template_dict = _template_dict(t)
     runtime_policy = _policy_builder.build(template_dict, plan_dict, workspace_type)
 
@@ -579,6 +659,8 @@ def stop_instance(
     inst = repository.get_instance(instance_id)
     if inst is None:
         return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to stop this instance."
     if inst.status not in ("running", "provisioning"):
         return None, f"Cannot stop an instance in '{inst.status}' state."
 
@@ -595,6 +677,17 @@ def stop_instance(
     })
     inst = repository.transition_instance_status(instance_id, new_status="stopping", actor=actor)
     return _instance_dict(inst), None
+
+
+def _mark_template_test_result(inst, status: str) -> None:
+    """If this instance was a Test Launch, record the pass/fail outcome on its template."""
+    if inst.workspace_type != "test":
+        return
+    repository.update_template(
+        str(inst.template_id),
+        last_test_status=status,
+        last_tested_at=datetime.now(timezone.utc),
+    )
 
 
 def handle_worker_callback(
@@ -616,9 +709,14 @@ def handle_worker_callback(
             started_at=now,
         )
         repository.log_instance_event(instance_id, "started", actor="worker", detail=detail)
+        _mark_template_test_result(inst, "passed")
 
     elif event == "stopped":
         prev = inst.started_at
+        # started_at round-trips through MySQL DATETIME (no tz stored) and comes back
+        # naive; assume it was written as UTC (see _now() in repository.py) to compare.
+        if prev is not None and prev.tzinfo is None:
+            prev = prev.replace(tzinfo=timezone.utc)
         runtime_sec = int((now - prev).total_seconds()) if prev else 0
         repository.transition_instance_status(
             instance_id, new_status="stopped", actor="worker",
@@ -629,10 +727,12 @@ def handle_worker_callback(
     elif event == "failed":
         repository.transition_instance_status(instance_id, new_status="failed", actor="worker")
         repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)
+        _mark_template_test_result(inst, "failed")
 
     elif event == "killed":
         repository.transition_instance_status(instance_id, new_status="killed", actor="worker")
         repository.log_instance_event(instance_id, "killed", actor="worker", detail=detail)
+        _mark_template_test_result(inst, "failed")
 
     elif event == "escape_attempt":
         repository.log_instance_event(instance_id, "escape_attempt", actor="worker", detail=detail)
@@ -662,24 +762,21 @@ def start_test_instance(
     template_id: str,
     actor_user_id: str,
 ) -> tuple[dict | None, str | None]:
-    """Admin: create + immediately start a single-use test instance of a template."""
+    """Admin: create + immediately start a single-use test instance of a template.
+
+    No-billing preview run — doesn't require a SandboxPlan to exist (see _TEST_PLAN).
+    """
     t = repository.get_template(template_id)
     if t is None:
         return None, "Template not found."
 
-    plans = get_platform_plans()
-    active_plans = [p for p in plans if p["is_active"]]
-    if not active_plans:
-        return None, "No active plans. Create at least one plan in Sandbox Plans first."
-
-    plan_id = active_plans[0]["id"]
     inst = repository.create_instance(
         template_id=template_id,
-        plan_id=plan_id,
-        workspace_type="personal",
+        plan_id=_TEST_PLAN["id"],
+        workspace_type="test",
+        workspace_user_id=actor_user_id,
         created_by_user_id=actor_user_id,
-        billing_entity="user",
-        billed_user_id=actor_user_id,
+        billing_entity="test",
     )
     return start_instance(str(inst.id), actor_user_id=actor_user_id)
 

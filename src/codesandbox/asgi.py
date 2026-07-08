@@ -15,14 +15,21 @@ import os
 from contextlib import asynccontextmanager
 
 import nats as _nats
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from starlette.applications import Starlette
 from starlette.middleware.wsgi import WSGIMiddleware
 from starlette.routing import Mount, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from codesandbox.config import get_settings
+
 log = logging.getLogger(__name__)
 
 NATS_URL = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
+
+# Must match the salt used by the token-issuing route in features/sandbox/routes.py.
+_WS_TOKEN_SALT = "sandbox.monitor-ws"
+_WS_TOKEN_MAX_AGE = 30  # seconds — the browser fetches and uses it immediately
 
 _nc: "_nats.aio.client.Client | None" = None
 _nc_lock = asyncio.Lock()
@@ -53,11 +60,93 @@ async def lifespan(app: Starlette):
         await _nc.drain()
 
 
+def _verify_ws_token(token: str, instance_id: str) -> bool:
+    """Validate the short-lived signed token issued by GET .../monitor-token."""
+    if not token:
+        return False
+    secret = get_settings().secret_key
+    try:
+        payload = URLSafeTimedSerializer(secret, salt=_WS_TOKEN_SALT).loads(
+            token, max_age=_WS_TOKEN_MAX_AGE
+        )
+    except (BadSignature, SignatureExpired):
+        return False
+    return isinstance(payload, dict) and payload.get("instance_id") == instance_id
+
+
+# ── Per-instance NATS fan-out (one subscription serves every connected viewer) ─
+
+class _InstanceFanout:
+    __slots__ = ("subs", "viewers")
+
+    def __init__(self) -> None:
+        self.subs: list = []
+        self.viewers: set[asyncio.Queue] = set()
+
+
+_fanouts: dict[str, _InstanceFanout] = {}
+_fanouts_lock = asyncio.Lock()
+
+
+async def _acquire_fanout(instance_id: str) -> _InstanceFanout | None:
+    """Get (or create) the shared NATS subscription for an instance_id."""
+    async with _fanouts_lock:
+        fanout = _fanouts.get(instance_id)
+        if fanout is not None:
+            return fanout
+
+        try:
+            nc = await _get_nats()
+        except Exception:
+            return None
+
+        fanout = _InstanceFanout()
+
+        async def _broadcast(msg: "_nats.aio.msg.Msg") -> None:
+            for q in fanout.viewers:
+                try:
+                    q.put_nowait(msg.data)
+                except asyncio.QueueFull:
+                    pass
+
+        fanout.subs.append(
+            await nc.subscribe(f"codesandbox.sandbox.metrics.{instance_id}", cb=_broadcast)
+        )
+        fanout.subs.append(
+            await nc.subscribe(f"codesandbox.sandbox.events.{instance_id}", cb=_broadcast)
+        )
+        _fanouts[instance_id] = fanout
+        return fanout
+
+
+async def _release_fanout(instance_id: str, queue: asyncio.Queue) -> None:
+    """Drop a viewer; tear down the NATS subscription once nobody is left watching."""
+    async with _fanouts_lock:
+        fanout = _fanouts.get(instance_id)
+        if fanout is None:
+            return
+        fanout.viewers.discard(queue)
+        if fanout.viewers:
+            return
+        for sub in fanout.subs:
+            try:
+                await sub.unsubscribe()
+            except Exception:
+                pass
+        _fanouts.pop(instance_id, None)
+
+
 # ── WebSocket: real-time instance monitor ─────────────────────────────────────
 
 async def ws_sandbox_monitor(websocket: WebSocket) -> None:
     """
     Streams sandbox metrics to the browser in real-time.
+
+    Auth: requires a `token` query param — a short-lived signed token issued by
+    GET /platform/sandboxes/<instance_id>/monitor-token to a session that has
+    permission to view/manage this instance. This route sits on the Starlette
+    layer outside the Flask blueprint, so it never sees the session cookie
+    directly; the token is how it borrows that authorization decision.
 
     NATS subject: codesandbox.sandbox.metrics.<instance_id>
     Payload:  {"type":"metrics","ts":…,"cpu_pct":…,"mem_mb":…,"net_rx_kb":…,"net_tx_kb":…}
@@ -65,26 +154,23 @@ async def ws_sandbox_monitor(websocket: WebSocket) -> None:
     Also relays lifecycle events on: codesandbox.sandbox.events.<instance_id>
     """
     instance_id: str = websocket.path_params["instance_id"]
+    token = websocket.query_params.get("token", "")
+
+    if not _verify_ws_token(token, instance_id):
+        await websocket.close(code=1008)  # policy violation — reject before accept()
+        return
+
     await websocket.accept()
 
     queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=200)
-
-    async def _enqueue(msg: "_nats.aio.msg.Msg") -> None:
-        try:
-            queue.put_nowait(msg.data)
-        except asyncio.QueueFull:
-            pass
-
-    subs = []
-    try:
-        nc = await _get_nats()
-        subs.append(await nc.subscribe(f"codesandbox.sandbox.metrics.{instance_id}", cb=_enqueue))
-        subs.append(await nc.subscribe(f"codesandbox.sandbox.events.{instance_id}", cb=_enqueue))
-    except Exception as exc:
-        log.warning("NATS subscribe failed for %s: %s — sending error frame", instance_id[:8], exc)
+    fanout = await _acquire_fanout(instance_id)
+    if fanout is None:
         await websocket.send_text(json.dumps({"type": "error", "message": "NATS unavailable"}))
         await websocket.close()
         return
+
+    async with _fanouts_lock:
+        fanout.viewers.add(queue)
 
     try:
         while True:
@@ -96,18 +182,13 @@ async def ws_sandbox_monitor(websocket: WebSocket) -> None:
     except (WebSocketDisconnect, Exception):
         pass
     finally:
-        for sub in subs:
-            try:
-                await sub.unsubscribe()
-            except Exception:
-                pass
+        await _release_fanout(instance_id, queue)
 
 
 # ── Build the ASGI app ────────────────────────────────────────────────────────
 
 def _make_app() -> Starlette:
-    from codesandbox.app import create_app as _flask_factory
-    flask_wsgi = _flask_factory()
+    from codesandbox.app import app as flask_wsgi
 
     return Starlette(
         lifespan=lifespan,
