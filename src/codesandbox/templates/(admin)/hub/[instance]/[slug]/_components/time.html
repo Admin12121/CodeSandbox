@@ -422,6 +422,81 @@
       if (dot) dot.classList.toggle("hidden", !dirty);
     }
 
+    // ── CodeMirror 6 (syntax highlighting, search, bracket matching) ──────
+    // Loaded via dynamic ESM import() — plain ES modules, not UMD/AMD, so
+    // this doesn't hit the Monaco-AMD-hijack problem xterm.js/Chart.js had
+    // elsewhere in this app (this page has no Monaco anyway).
+    //
+    // esm.sh, not jsdelivr's `+esm`: CodeMirror's core bundle and its
+    // language/theme packages share low-level deps (@codemirror/state,
+    // @codemirror/view, ...). jsdelivr's `+esm` resolves each separate
+    // import() URL's dependency tree independently, so those shared deps
+    // silently resolve to different, incompatible versions loaded side by
+    // side (verified: state@6.0.1 *and* state@6.5.2 both loaded on the same
+    // page) — CodeMirror's extension system relies on those being the exact
+    // same module instance, so the editor throws and never mounts. esm.sh
+    // deduplicates shared sub-dependencies consistently across separate
+    // import() calls, which is what this needs.
+    var CM_LANG_URLS = {
+      py: "https://esm.sh/@codemirror/lang-python@6",
+      js: "https://esm.sh/@codemirror/lang-javascript@6",
+      jsx: "https://esm.sh/@codemirror/lang-javascript@6",
+      mjs: "https://esm.sh/@codemirror/lang-javascript@6",
+      ts: "https://esm.sh/@codemirror/lang-javascript@6",
+      tsx: "https://esm.sh/@codemirror/lang-javascript@6",
+      json: "https://esm.sh/@codemirror/lang-json@6",
+      html: "https://esm.sh/@codemirror/lang-html@6",
+      css: "https://esm.sh/@codemirror/lang-css@6",
+      md: "https://esm.sh/@codemirror/lang-markdown@6",
+    };
+
+    function cmCore() {
+      return import("https://esm.sh/codemirror@6.0.1");
+    }
+
+    function cmLangExtension(path) {
+      var ext = (path.split(".").pop() || "").toLowerCase();
+      var url = CM_LANG_URLS[ext];
+      if (!url) return Promise.resolve(null);
+      return import(url).then(function (mod) {
+        if (mod.python) return mod.python();
+        if (mod.javascript) return mod.javascript({ jsx: ext === "jsx" || ext === "tsx", typescript: ext === "ts" || ext === "tsx" });
+        if (mod.json) return mod.json();
+        if (mod.html) return mod.html();
+        if (mod.css) return mod.css();
+        if (mod.markdown) return mod.markdown();
+        return null;
+      }).catch(function (err) { console.warn("CodeMirror language extension failed to load:", err); return null; });
+    }
+
+    function cmTheme() {
+      if (!document.documentElement.classList.contains("dark")) return Promise.resolve(null);
+      return import("https://esm.sh/@codemirror/theme-one-dark@6")
+        .then(function (mod) { return mod.oneDark; })
+        .catch(function (err) { console.warn("CodeMirror theme failed to load:", err); return null; });
+    }
+
+    function mountCodeMirror(pane, path, content) {
+      var mount = document.createElement("div");
+      mount.className = "cm-mount h-full w-full overflow-auto";
+      pane.appendChild(mount);
+
+      return Promise.all([cmCore(), cmLangExtension(path), cmTheme()]).then(function (results) {
+        var core = results[0], langExt = results[1], themeExt = results[2];
+        var extensions = [core.basicSetup];
+        if (langExt) extensions.push(langExt);
+        if (themeExt) extensions.push(themeExt);
+        extensions.push(core.EditorView.updateListener.of(function (update) {
+          if (!update.docChanged) return;
+          var state = openFileState[path];
+          if (!state) return;
+          setDirty(path, update.state.doc.toString() !== state.original);
+        }));
+
+        return new core.EditorView({ doc: content, extensions: extensions, parent: mount });
+      });
+    }
+
     function openFileInEditor(path) {
       if (editorTabByPath(path)) { openEditor(path); return; }
       if (visibleEditorTabs().length >= maxEditors) return;
@@ -443,31 +518,32 @@
 
       var pane = document.createElement("div");
       pane.dataset.editorFile = path;
-      pane.className = "editor-pane hidden h-full w-full";
-      pane.innerHTML = '<textarea class="editor-textarea h-full w-full resize-none bg-transparent p-3 font-mono text-xs leading-5 outline-none" spellcheck="false" disabled placeholder="Loading…"></textarea>';
+      pane.className = "editor-pane hidden h-full w-full overflow-hidden";
+      pane.innerHTML = '<div class="p-3 text-xs text-muted-foreground">Loading…</div>';
 
       tabs.appendChild(tab);
       panes.appendChild(pane);
       openEditor(path);
 
-      var textarea = pane.querySelector("textarea");
       fsRead(path).then(function (res) {
         if (!res.ok) {
-          textarea.placeholder = res.error || "Could not open file.";
+          pane.innerHTML = '<div class="p-3 text-xs text-red-400">' + escHtml(res.error || "Could not open file.") + "</div>";
           return;
         }
         if (res.binary) {
-          textarea.placeholder = "Binary file — cannot edit here.";
+          pane.innerHTML = '<div class="p-3 text-xs text-muted-foreground">Binary file — cannot edit here.</div>';
           return;
         }
-        textarea.disabled = false;
-        textarea.value = res.content;
-        openFileState[path] = { original: res.content };
-        textarea.addEventListener("input", function () {
-          setDirty(path, textarea.value !== openFileState[path].original);
+        openFileState[path] = { original: res.content, view: null };
+        pane.innerHTML = "";
+        mountCodeMirror(pane, path, res.content).then(function (view) {
+          if (openFileState[path]) openFileState[path].view = view;
+        }).catch(function (err) {
+          console.error("CodeMirror mount failed:", err);
+          pane.innerHTML = '<div class="p-3 text-xs text-red-400">Editor failed to load.</div>';
         });
       }).catch(function (err) {
-        textarea.placeholder = err.message;
+        pane.innerHTML = '<div class="p-3 text-xs text-red-400">' + escHtml(err.message) + "</div>";
       });
     }
 
@@ -475,14 +551,13 @@
       var activeTab = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
       if (!activeTab) return;
       var path = activeTab.dataset.tab;
-      var pane = editorPaneByPath(path);
-      var textarea = pane && pane.querySelector("textarea");
-      if (!textarea || textarea.disabled) return;
+      var state = openFileState[path];
+      if (!state || !state.view) return;
 
-      var content = textarea.value;
+      var content = state.view.state.doc.toString();
       fsWrite(path, content).then(function (res) {
         if (res.ok) {
-          openFileState[path] = { original: content };
+          state.original = content;
           setDirty(path, false);
           window.Toast && window.Toast.create({ title: "Saved", type: "success", duration: 1500 });
         } else {
@@ -591,9 +666,12 @@
 
       var wasActive = tab.classList.contains("active-tab");
 
+      var state = openFileState[file];
+      if (state && state.view) { try { state.view.destroy(); } catch (e) {} }
+      delete openFileState[file];
+
       tab.remove();
       if (pane) pane.remove();
-      delete openFileState[file];
 
       if (wasActive) {
         var next = visibleEditorTabs()[0];
@@ -710,14 +788,150 @@
       if (action.dataset.terminalTab) return openTerminal(action.dataset.terminalTab);
     });
 
-    // Ctrl+S saves the active file instead of triggering the browser's
-    // native "Save Page" dialog — only while this IDE root has focus.
+    function toggleRightPanel() {
+      var right = panel("right");
+      if (!right) return;
+      if (!hidden(right)) {
+        hide(right);
+        syncHandle(right, false);
+        setActive("[data-toggle-right]", false);
+      } else {
+        var activePane = $$("[data-right-pane]").find(function (el) { return !el.classList.contains("hidden"); });
+        openRight(activePane ? activePane.dataset.rightPane : "notes");
+      }
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function focusTerminal() {
+      var terminalName = ensureTerminalTab();
+      if (!terminalName) return;
+      if (hidden(panel("terminal"))) togglePanel("terminal");
+      else openTerminal(terminalName);
+      if (terminalState && terminalState.term) terminalState.term.focus();
+    }
+
+    function isTypingInPlainField() {
+      // The notes-panel title input / AI textarea are the only real
+      // <input>/<textarea> elements on this page — CodeMirror's content is a
+      // contenteditable div (never matched here, so code-editing keystrokes
+      // always reach the shortcuts below) and xterm.js's own hidden input
+      // lives inside .xterm (excluded so terminal typing isn't touched).
+      var el = document.activeElement;
+      if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return false;
+      return !el.closest(".xterm");
+    }
+
+    // ── IDE keyboard shortcuts + DevTools hardening (this page only) ──────
+    // Capture phase: fires before xterm.js's own handlers and before the
+    // main admin layout's bubble-phase keydown listener (which also binds
+    // Ctrl+J → command palette, Ctrl+B → nothing but browser bookmarks) —
+    // stopPropagation() on the ones that collide keeps this page in charge.
     document.addEventListener("keydown", function (event) {
-      if (!(event.ctrlKey || event.metaKey) || event.key !== "s") return;
-      if (!root.contains(document.activeElement)) return;
-      event.preventDefault();
-      saveActiveFile();
+      var key = event.key;
+      var mod = event.ctrlKey || event.metaKey;
+      var terminalFocused = !!(document.activeElement && document.activeElement.closest(".xterm"));
+
+      // DevTools shortcuts — blocked page-wide, before anything else.
+      if (key === "F12") { event.preventDefault(); event.stopPropagation(); return; }
+      if (mod && event.shiftKey && (key === "I" || key === "i" || key === "J" || key === "j" || key === "K" || key === "k")) {
+        event.preventDefault(); return;
+      }
+      if (event.altKey && mod && (key === "I" || key === "i")) { event.preventDefault(); return; } // macOS Cmd+Option+I
+      if (mod && !event.shiftKey && (key === "U" || key === "u")) { event.preventDefault(); return; } // view-source
+
+      // Ctrl+Shift+C: let xterm.js handle it as copy when the terminal has
+      // focus, otherwise block it — Chrome's DevTools element-picker binds
+      // the same combo.
+      if (mod && event.shiftKey && (key === "C" || key === "c")) {
+        if (!terminalFocused) event.preventDefault();
+        return;
+      }
+      if (mod && event.shiftKey && (key === "V" || key === "v") && terminalFocused) return; // xterm paste
+
+      if (isTypingInPlainField()) return; // don't hijack the notes/AI text fields
+
+      if (mod && !event.altKey && (key === "b" || key === "B")) {
+        event.preventDefault(); event.stopPropagation();
+        togglePanel("left");
+        return;
+      }
+      if (mod && event.altKey && (key === "b" || key === "B")) {
+        event.preventDefault(); event.stopPropagation();
+        toggleRightPanel();
+        return;
+      }
+      if (mod && (key === "j" || key === "J")) {
+        event.preventDefault(); event.stopPropagation();
+        togglePanel("terminal");
+        return;
+      }
+      if (mod && (key === "s" || key === "S")) {
+        event.preventDefault(); event.stopPropagation();
+        saveActiveFile();
+        return;
+      }
+      if (mod && (key === "w" || key === "W")) {
+        var activeTab = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
+        if (activeTab) {
+          event.preventDefault(); event.stopPropagation();
+          closeEditor(activeTab.dataset.tab);
+        }
+        return;
+      }
+      if (mod && /^[123]$/.test(key)) {
+        var tabs = visibleEditorTabs();
+        var target = tabs[Number(key) - 1];
+        if (target) {
+          event.preventDefault(); event.stopPropagation();
+          openEditor(target.dataset.tab);
+        }
+        return;
+      }
+      if (mod && key === "`") {
+        event.preventDefault(); event.stopPropagation();
+        focusTerminal();
+        return;
+      }
+      if (key === "Escape" && terminalFocused) {
+        var activeTab2 = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
+        var editorPane = activeTab2 && editorPaneByPath(activeTab2.dataset.tab);
+        var cmContent = editorPane && editorPane.querySelector(".cm-content");
+        if (cmContent) cmContent.focus();
+        return;
+      }
     }, true);
+
+    // Right-click is disabled everywhere on this page except inside the
+    // terminal, where it's xterm.js's paste gesture.
+    document.addEventListener("contextmenu", function (event) {
+      if (event.target.closest && event.target.closest(".xterm")) return;
+      event.preventDefault();
+    }, true);
+
+    // DevTools-open heuristic: docked DevTools shrinks the viewport relative
+    // to the outer window by roughly its own width/height. Not a security
+    // boundary (misses undocked DevTools windows entirely) — a UX guard for
+    // a security-training platform where "just open DevTools" would
+    // trivially defeat the sandboxed-IDE framing.
+    var devtoolsOverlay = null;
+    function ensureDevtoolsOverlay() {
+      if (devtoolsOverlay) return devtoolsOverlay;
+      var el = document.createElement("div");
+      el.id = "sandbox-devtools-block";
+      el.className = "fixed inset-0 z-[9999] hidden items-center justify-center bg-background/95 backdrop-blur-sm text-center px-6";
+      el.innerHTML =
+        '<div><p class="text-lg font-semibold">DevTools detected</p>' +
+        '<p class="mt-1 text-sm text-muted-foreground">Close DevTools to continue using the sandbox IDE.</p></div>';
+      document.body.appendChild(el);
+      devtoolsOverlay = el;
+      return el;
+    }
+    window.setInterval(function () {
+      var open = (window.outerWidth - window.innerWidth > 160) || (window.outerHeight - window.innerHeight > 160);
+      var overlay = ensureDevtoolsOverlay();
+      overlay.classList.toggle("hidden", !open);
+      overlay.classList.toggle("flex", open);
+    }, 1500);
 
     window.setInterval(function () {
       var time = $("#sandbox-time");
