@@ -24,6 +24,7 @@ from codesandbox.features.sandbox.service import (
     submit_instance_request,
 )
 from codesandbox.shared.session import build_nav, require_sandbox_user, require_session
+from codesandbox.shared.guards import verified_email
 from codesandbox.web.blueprint import router, web_bp
 from codesandbox.web._ctx import _user_ctx, _workspaces_ctx
 
@@ -285,6 +286,15 @@ def billing():
         **billing_data,
         **ws_ctx,
     }
+
+
+@web_bp.post("/billing/topup")
+@verified_email("adding funds")
+def billing_topup_action():
+    session, redir = require_sandbox_user()
+    if redir:
+        return redirect("/login", 303)
+    return redirect("/billing?error=Payment+gateway+not+configured", 303)
 
 
 # ── Hub action routes (Phase 4a) ──────────────────────────────────────────────

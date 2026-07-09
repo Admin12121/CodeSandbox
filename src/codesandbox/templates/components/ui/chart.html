@@ -199,9 +199,29 @@
       },
     });
 
-    var MAX_POINTS = 60;
+    // Fixed-duration sliding window (real-time strip chart): the labels/data
+    // arrays are always kept at exactly `windowState.maxPoints` entries, padded
+    // with null placeholders up front. Without this, Chart.js's category scale
+    // spaces whatever points exist evenly across the full width — so a chart
+    // that has only been running 3s looks "spread out", and as more points
+    // arrive the same fixed width holds more of them, visually squeezing
+    // existing points together ("compacting") until the buffer finally fills.
+    // Keeping the slot count constant from the first tick removes that effect.
+    var windowState = { maxPoints: 60 };
     var keyIndex = {};
     datasets.forEach(function(ds, i) { keyIndex[ds._key] = i; });
+
+    function padToWindow() {
+      while (chart.data.labels.length < windowState.maxPoints) {
+        chart.data.labels.unshift('');
+        chart.data.datasets.forEach(function(ds) { ds.data.unshift(null); });
+      }
+      while (chart.data.labels.length > windowState.maxPoints) {
+        chart.data.labels.shift();
+        chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
+      }
+    }
+    padToWindow();
 
     if (!window.csCharts) window.csCharts = {};
     window.csCharts['{{ chart_id }}'] = {
@@ -217,7 +237,7 @@
           });
         }
         chart.data.datasets[idx].data.push(value);
-        if (chart.data.labels.length > MAX_POINTS) {
+        if (chart.data.labels.length > windowState.maxPoints) {
           chart.data.labels.shift();
           chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
         }
@@ -230,7 +250,7 @@
           var val = kvMap.hasOwnProperty(ds._key) ? kvMap[ds._key] : null;
           ds.data.push(val);
         });
-        if (chart.data.labels.length > MAX_POINTS) {
+        if (chart.data.labels.length > windowState.maxPoints) {
           chart.data.labels.shift();
           chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
         }
@@ -239,6 +259,12 @@
       reset: function() {
         chart.data.labels = [];
         chart.data.datasets.forEach(function(ds) { ds.data = []; });
+        padToWindow();
+        chart.update('none');
+      },
+      setWindow: function(seconds) {
+        windowState.maxPoints = seconds;
+        padToWindow();
         chart.update('none');
       },
       raw: chart,

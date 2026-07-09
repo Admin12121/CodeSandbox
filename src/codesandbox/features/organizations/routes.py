@@ -11,6 +11,7 @@ from codesandbox.shared.guards import (
     org_owner,
     org_perm,
     platform_perm,
+    verified_email,
 )
 from codesandbox.shared.session import get_current_session
 from codesandbox.shared.storage import upload_image_from_filestorage
@@ -120,6 +121,7 @@ def platform_upload_org_logo_action(org_id: str):
 
 @web_bp.post("/my/organizations/create")
 @no_staff
+@verified_email("creating an organization")
 def user_create_org_action():
     cs = get_current_session()
     from codesandbox.features.organizations.service import get_user_org_list
@@ -159,6 +161,7 @@ def user_create_org_action():
 
 @web_bp.get("/my/organizations/join/<token>")
 @no_staff
+@verified_email("joining an organization")
 def join_org_action(token: str):
     cs = get_current_session()
     ok, result = accept_org_invitation(token, cs.user.id)
@@ -174,6 +177,7 @@ def join_org_action(token: str):
 
 @web_bp.get("/my/organizations/join/code/<code>")
 @no_staff
+@verified_email("joining an organization")
 def join_org_by_code(code: str):
     cs = get_current_session()
     ok, result = join_by_invite_code(code, cs.user.id)

@@ -6,6 +6,7 @@ from datetime import datetime, timezone as _tz
 from flask import request, session as flask_session
 
 from codesandbox.features.identity import repository as identity_repo
+from codesandbox.features.identity.service import totp_qr_data_uri
 from codesandbox.shared.session import build_nav, format_role_label, require_session
 from codesandbox.web.blueprint import router
 from codesandbox.web._ctx import _user_ctx, _workspaces_ctx
@@ -151,6 +152,7 @@ def settings_2fa():
     nav = build_nav("/settings", cs.user, ws_ctx.get("active_workspace"))
     secret = flask_session.get("_2fa_setup_secret") if request.args.get("setup") else None
     uri = flask_session.get("_2fa_setup_uri") if request.args.get("setup") else None
+    qr_url = totp_qr_data_uri(uri) if uri else None
     backup_raw = flask_session.pop("_2fa_backup_codes", "") if request.args.get("enabled") else ""
     backup = [c for c in backup_raw.split(",") if c] if backup_raw else []
     return {
@@ -160,6 +162,7 @@ def settings_2fa():
         "page_title": "Two-Factor Authentication",
         "secret": secret,
         "uri": uri,
+        "qr_url": qr_url,
         "enabled": bool(request.args.get("enabled")),
         "backup": backup,
         "error": request.args.get("error"),

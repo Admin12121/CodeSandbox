@@ -33,7 +33,8 @@ def get_current_session() -> CurrentSession | None:
     if session is None:
         return None
     user = identity_repo.find_user_by_id(session.user_id)
-    if user is None or user.deleted_at is not None:
+    if user is None or user.deleted_at is not None or user.status in {"banned", "inactive"}:
+        identity_repo.delete_session(token_hash)
         return None
     cs_session = CurrentSession(user=user, token_hash=token_hash)
     g._cs_session = cs_session  # type: ignore[attr-defined]

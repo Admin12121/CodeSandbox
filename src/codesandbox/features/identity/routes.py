@@ -16,6 +16,7 @@ def _safe_next(next_path: str, default: str = "/dashboard") -> str:
     return next_path or default
 
 from codesandbox.config import get_settings
+from codesandbox.shared.guards import verified_email
 from codesandbox.shared.limiter import limiter
 from codesandbox.web.blueprint import web_bp
 
@@ -38,6 +39,7 @@ from .service import (
     sign_in_with_google,
     sign_out,
     sign_up,
+    totp_qr_data_uri,
     unlink_account,
     verify_email,
     verify_totp,
@@ -254,14 +256,9 @@ def totp_setup_json_action():
     data = generate_totp_setup(cs.user.id, cs.user.email)
     session["_2fa_setup_secret"] = data["secret"]
     session["_2fa_setup_uri"] = data["uri"]
-    try:
-        import base64, io, qrcode
-        img = qrcode.make(data["uri"])
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        qr_data = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
-    except Exception:
-        qr_data = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={urllib.parse.quote(data['uri'])}"
+    qr_data = totp_qr_data_uri(data["uri"])
+    if qr_data is None:
+        return jsonify({"ok": False, "error": "Unable to generate QR code locally."}), 500
     return jsonify({"ok": True, "secret": data["secret"], "uri": data["uri"], "qr_url": qr_data})
 
 
@@ -349,6 +346,7 @@ def change_password_action():
             return jsonify({"ok": False, "error": "Current password is incorrect."}), 400
     pw_hash = generate_password_hash(new_pw)
     repository.update_user(cs.user.id, password_hash=pw_hash)
+    repository.delete_user_sessions(cs.user.id, except_token_hash=cs.token_hash)
     return jsonify({"ok": True})
 
 
@@ -444,6 +442,7 @@ def google_callback():
 # ── Social account linking (settings) ────────────────────────────────────────
 
 @web_bp.get("/auth/google/connect")
+@verified_email("linking social accounts")
 def google_connect_authorize():
     from codesandbox.shared.session import require_session
     cs, redir = require_session()
@@ -491,6 +490,7 @@ def google_connect_callback():
 
 
 @web_bp.get("/auth/github/connect")
+@verified_email("linking social accounts")
 def github_connect_authorize():
     from codesandbox.shared.session import require_session
     cs, redir = require_session()

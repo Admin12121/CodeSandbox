@@ -80,6 +80,13 @@ def delete_session(token_hash: str) -> None:
         session.delete()
 
 
+def delete_user_sessions(user_id: str, *, except_token_hash: str | None = None) -> None:
+    for session in Session.objects.filter(user_id=user_id).all():
+        if except_token_hash and session.token_hash == except_token_hash:
+            continue
+        session.delete()
+
+
 def record_login_attempt(
     *,
     email: str | None,

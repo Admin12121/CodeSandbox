@@ -11,6 +11,7 @@ def _user_ctx(user) -> dict:
         "platform_role": user.platform_role,
         "role_label": format_role_label(user.platform_role),
         "status": user.status,
+        "email_verified": user.email_verified,
     }
 
 

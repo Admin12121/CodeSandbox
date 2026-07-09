@@ -687,12 +687,18 @@
                   <span class="text-[11px] text-muted-foreground tabular-nums" id="mon-uptime">0s</span>
                 </div>
               </div>
-              <button id="mon-stop-btn" type="button"
-                class="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-destructive/50 px-2 text-[11px] font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors disabled:opacity-40"
-                disabled>
-                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                Stop
-              </button>
+              <div class="flex shrink-0 items-center gap-2">
+                <div id="mon-window-toggle" class="inline-flex items-center rounded-md border p-0.5 text-[11px]">
+                  <button type="button" data-mon-window="60" class="mon-window-btn rounded px-1.5 py-0.5 font-medium transition-colors">1m</button>
+                  <button type="button" data-mon-window="300" class="mon-window-btn rounded px-1.5 py-0.5 font-medium transition-colors">5m</button>
+                </div>
+                <button id="mon-stop-btn" type="button"
+                  class="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-destructive/50 px-2 text-[11px] font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors disabled:opacity-40"
+                  disabled>
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                  Stop
+                </button>
+              </div>
             </div>
 
             {# Charts 2×2 grid #}
@@ -720,25 +726,28 @@
                 }, class="flex-1 min-h-0", height=110) }}
               </div>
 
-              {# Net RX #}
+              {# Network (in + out combined) #}
               <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
                 <div class="flex items-center justify-between">
-                  <span class="text-[11px] font-medium text-muted-foreground">Net In</span>
-                  <span class="text-[11px] font-mono" id="mon-rx-val">—</span>
+                  <span class="text-[11px] font-medium text-muted-foreground">Network</span>
+                  <span class="text-[11px] font-mono">
+                    <span id="mon-rx-val">—</span><span class="text-muted-foreground"> / </span><span id="mon-tx-val">—</span>
+                  </span>
                 </div>
-                {{ ch.area_chart("mon-netrx", {
-                  "net_rx": {"label": "RX KB/s", "color": "oklch(0.696 0.17 162.48)", "fill_color": "rgba(16,185,129,0.14)"}
+                {{ ch.area_chart("mon-net", {
+                  "net_rx": {"label": "In KB/s", "color": "oklch(0.696 0.17 162.48)", "fill_color": "rgba(16,185,129,0.14)"},
+                  "net_tx": {"label": "Out KB/s", "color": "oklch(0.627 0.265 303.9)", "fill_color": "rgba(139,92,246,0.14)"}
                 }, class="flex-1 min-h-0", height=110) }}
               </div>
 
-              {# Net TX #}
+              {# Storage #}
               <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
                 <div class="flex items-center justify-between">
-                  <span class="text-[11px] font-medium text-muted-foreground">Net Out</span>
-                  <span class="text-[11px] font-mono" id="mon-tx-val">—</span>
+                  <span class="text-[11px] font-medium text-muted-foreground">Storage</span>
+                  <span class="text-[11px] font-mono" id="mon-disk-val">—</span>
                 </div>
-                {{ ch.area_chart("mon-nettx", {
-                  "net_tx": {"label": "TX KB/s", "color": "oklch(0.627 0.265 303.9)", "fill_color": "rgba(139,92,246,0.14)"}
+                {{ ch.area_chart("mon-disk", {
+                  "disk": {"label": "Disk %", "color": "oklch(0.769 0.188 70.08)", "fill_color": "rgba(217,119,6,0.14)"}
                 }, class="flex-1 min-h-0", height=110) }}
               </div>
 
@@ -1334,7 +1343,7 @@ function switchToMonitorView() {
   if (!monitorChartsInitialized) {
     monitorChartsInitialized = true;
     requestAnimationFrame(function() {
-      ['mon-cpu', 'mon-ram', 'mon-netrx', 'mon-nettx'].forEach(function(id) {
+      ['mon-cpu', 'mon-ram', 'mon-net', 'mon-disk'].forEach(function(id) {
         window.csInitChart && window.csInitChart(id);
       });
     });
@@ -2088,10 +2097,10 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
     setStatus('connecting');
 
     // Reset charts
-    ['mon-cpu','mon-ram','mon-netrx','mon-nettx'].forEach(function(id) {
+    ['mon-cpu','mon-ram','mon-net','mon-disk'].forEach(function(id) {
       if (window.csCharts && window.csCharts[id]) window.csCharts[id].reset();
     });
-    ['mon-cpu-val','mon-ram-val','mon-rx-val','mon-tx-val'].forEach(function(id) {
+    ['mon-cpu-val','mon-ram-val','mon-rx-val','mon-tx-val','mon-disk-val'].forEach(function(id) {
       var el = document.getElementById(id); if (el) el.textContent = '—';
     });
 
@@ -2130,15 +2139,16 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
       if (msg.type === 'metrics') {
         var ts = new Date(msg.ts * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
         if (window.csCharts) {
-          if (window.csCharts['mon-cpu'])   window.csCharts['mon-cpu'].addPoint('cpu', msg.cpu_pct, ts);
-          if (window.csCharts['mon-ram'])   window.csCharts['mon-ram'].addPoint('ram', msg.mem_mb, ts);
-          if (window.csCharts['mon-netrx']) window.csCharts['mon-netrx'].addPoint('net_rx', msg.net_rx_kb, ts);
-          if (window.csCharts['mon-nettx']) window.csCharts['mon-nettx'].addPoint('net_tx', msg.net_tx_kb, ts);
+          if (window.csCharts['mon-cpu'])  window.csCharts['mon-cpu'].addPoint('cpu', msg.cpu_pct, ts);
+          if (window.csCharts['mon-ram'])  window.csCharts['mon-ram'].addPoint('ram', msg.mem_mb, ts);
+          if (window.csCharts['mon-net'])  window.csCharts['mon-net'].addMulti({ net_rx: msg.net_rx_kb, net_tx: msg.net_tx_kb }, ts);
+          if (window.csCharts['mon-disk']) window.csCharts['mon-disk'].addPoint('disk', msg.disk_pct, ts);
         }
-        var cpuEl = document.getElementById('mon-cpu-val'); if (cpuEl) cpuEl.textContent = msg.cpu_pct.toFixed(1) + '%';
-        var ramEl = document.getElementById('mon-ram-val'); if (ramEl) ramEl.textContent = msg.mem_mb + ' MB';
-        var rxEl  = document.getElementById('mon-rx-val');  if (rxEl)  rxEl.textContent  = msg.net_rx_kb.toFixed(1) + ' KB/s';
-        var txEl  = document.getElementById('mon-tx-val');  if (txEl)  txEl.textContent  = msg.net_tx_kb.toFixed(1) + ' KB/s';
+        var cpuEl  = document.getElementById('mon-cpu-val');  if (cpuEl)  cpuEl.textContent  = msg.cpu_pct.toFixed(1) + '%';
+        var ramEl  = document.getElementById('mon-ram-val');  if (ramEl)  ramEl.textContent  = msg.mem_mb + ' MB';
+        var rxEl   = document.getElementById('mon-rx-val');   if (rxEl)   rxEl.textContent   = '↓' + msg.net_rx_kb.toFixed(1) + ' KB/s';
+        var txEl   = document.getElementById('mon-tx-val');   if (txEl)   txEl.textContent   = '↑' + msg.net_tx_kb.toFixed(1) + ' KB/s';
+        var diskEl = document.getElementById('mon-disk-val'); if (diskEl) diskEl.textContent = msg.disk_pct.toFixed(1) + '%';
       }
 
       if (msg.type === 'event') {
@@ -2205,6 +2215,24 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
   if (stopBtn) {
     stopBtn.addEventListener('click', stopTestInstance);
   }
+
+  // ── Chart time-window toggle (1m / 5m) ─────────────────────────────────
+  var monWindowBtns = Array.prototype.slice.call(document.querySelectorAll('.mon-window-btn'));
+  function setChartWindow(seconds) {
+    monWindowBtns.forEach(function(btn) {
+      var active = Number(btn.dataset.monWindow) === seconds;
+      btn.classList.toggle('bg-accent', active);
+      btn.classList.toggle('text-accent-foreground', active);
+      btn.classList.toggle('text-muted-foreground', !active);
+    });
+    ['mon-cpu', 'mon-ram', 'mon-net', 'mon-disk'].forEach(function(id) {
+      if (window.csCharts && window.csCharts[id]) window.csCharts[id].setWindow(seconds);
+    });
+  }
+  monWindowBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() { setChartWindow(Number(btn.dataset.monWindow)); });
+  });
+  setChartWindow(60);
 
   window.addEventListener('beforeunload', function() {
     if (monitorWs) { try { monitorWs.close(); } catch(e){} }

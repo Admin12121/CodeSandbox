@@ -2,6 +2,7 @@
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/button.html" as button %}
 {% import "components/ui/badge.html" as badge %}
+{% import "components/ui/form.html" as form %}
 
 {% set invoices = invoices if invoices is defined else [] %}
 {% set is_org_billing = active_workspace is defined and active_workspace %}
@@ -33,9 +34,11 @@
           </div>
         </div>
         <div class="flex w-full flex-col gap-2 md:w-56">
-          {% call button.button(type="button", variant="default", class="w-full", attrs={"id": "topup-btn"}) %}
-            <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-            Add Funds
+          {% call form.form(action="/billing/topup", method="post", class="w-full") %}
+            {% call button.button(type="submit", variant="default", class="w-full") %}
+              <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              Add Funds
+            {% endcall %}
           {% endcall %}
           <p class="text-center text-xs text-muted-foreground">Payment gateway not configured</p>
         </div>
@@ -126,17 +129,3 @@
     {% endcall %}
   {% endcall %}
 </div>
-
-{% app_script "billing-topup-placeholder" %}
-(function(){
-  var btn = document.getElementById('topup-btn');
-  if (!btn) return;
-  btn.addEventListener('click', function(){
-    window.Toast && window.Toast.create({
-      title: 'Payment gateway not configured',
-      description: 'Top-up will be available once a payment provider is connected.',
-      type: 'info',
-    });
-  });
-})();
-{% end_app_script %}

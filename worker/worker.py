@@ -270,11 +270,13 @@ def _stream_metrics(instance_id: str, stop_ev: threading.Event) -> None:
     """Publish mock CPU/RAM/network metrics to NATS every second until stopped."""
     cpu = random.uniform(15, 30)
     mem = random.uniform(256, 512)
+    disk = random.uniform(20, 40)
 
     while not stop_ev.is_set():
         # Simulate gradual change
         cpu = max(5, min(95, cpu + random.gauss(0, 4)))
         mem = max(64, min(2048, mem + random.gauss(0, 20)))
+        disk = max(5, min(95, disk + random.gauss(0, 0.5)))  # drifts slowly, unlike cpu/mem
         net_rx = max(0, random.uniform(0, 50) + random.choice([0, 0, 0, 200]))
         net_tx = max(0, random.uniform(0, 20))
 
@@ -286,6 +288,7 @@ def _stream_metrics(instance_id: str, stop_ev: threading.Event) -> None:
                 "ts": int(time.time()),
                 "cpu_pct": round(cpu, 2),
                 "mem_mb": int(mem),
+                "disk_pct": round(disk, 2),
                 "net_rx_kb": round(net_rx, 2),
                 "net_tx_kb": round(net_tx, 2),
             },
