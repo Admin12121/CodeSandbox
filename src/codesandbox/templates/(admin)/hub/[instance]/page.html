@@ -6,6 +6,13 @@
 
 <div class="grid gap-4 p-2 max-w-[1200px] mx-auto">
 
+  {% if error is defined and error %}
+  <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    {{ error }}
+  </div>
+  {% endif %}
+
   <div class="flex min-w-0 items-center gap-3">
     <h1 class="truncate text-2xl font-bold tracking-tight">Start Project</h1>
   </div>

@@ -7,7 +7,12 @@
 
     var terminalCount = 0;
     var editorCount = 0;
-    var maxTabs = 3;
+    var maxEditors = 3;
+    // The worker only holds one real PTY per instance_id (see worker.py
+    // _terminal_open) — so unlike editor tabs, only one live terminal
+    // session is supported right now.
+    var maxTerminals = 1;
+    var terminalState = null; // { name, term, fitAddon, ws, ro }
 
     var $ = function (selector, base) {
       return (base || root).querySelector(selector);
@@ -122,8 +127,127 @@
       show(empty);
     }
 
+    // ── Real terminal (xterm.js + WS, one PTY session per instance) ──────
+    function xtermCdnLoad(cb) {
+      if (window.Terminal && window.FitAddon) { cb(); return; }
+      var s1 = document.createElement("script");
+      s1.src = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js";
+      s1.onload = function () {
+        var css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css";
+        document.head.appendChild(css);
+        var s2 = document.createElement("script");
+        s2.src = "https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js";
+        s2.onload = cb;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s1);
+    }
+
+    function openTerminalWs(state, instanceId, token) {
+      var wsProto = location.protocol === "https:" ? "wss" : "ws";
+      var wsUrl = wsProto + "://" + location.host + "/ws/sandbox/" + instanceId +
+        "/terminal?token=" + encodeURIComponent(token);
+
+      var ws;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        state.term.writeln("\x1b[31mWebSocket not available.\x1b[0m");
+        return;
+      }
+      state.ws = ws;
+
+      ws.onmessage = function (e) {
+        var msg;
+        try { msg = JSON.parse(e.data); } catch (ex) { return; }
+        if (msg.type === "ready") {
+          try { state.fitAddon.fit(); } catch (err) {}
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "resize", cols: state.term.cols, rows: state.term.rows }));
+          }
+        } else if (msg.type === "output") {
+          state.term.write(msg.data);
+        } else if (msg.type === "closed") {
+          state.term.writeln("\r\n\x1b[90m[session closed]\x1b[0m");
+        } else if (msg.type === "error") {
+          state.term.writeln("\x1b[31m" + (msg.message || "terminal error") + "\x1b[0m");
+        }
+      };
+      ws.onerror = function () { state.term.writeln("\x1b[31mNo terminal backend available.\x1b[0m"); };
+      ws.onclose = function () { state.term.writeln("\r\n\x1b[90m[disconnected]\x1b[0m"); };
+    }
+
+    function connectRealTerminal(name, pane) {
+      var instanceId = root.dataset.instanceId;
+      if (!instanceId) {
+        pane.textContent = "No sandbox instance for this session.";
+        return;
+      }
+
+      xtermCdnLoad(function () {
+        var term = new Terminal({
+          fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
+          fontSize: 13,
+          lineHeight: 1.4,
+          cursorBlink: true,
+          cursorStyle: "bar",
+          theme: {
+            background: "#09090b",
+            foreground: "#e4e4e7",
+            cursor: "#a1a1aa",
+            selectionBackground: "rgba(255,255,255,0.15)",
+          },
+        });
+        var fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(pane);
+
+        var state = { name: name, term: term, fitAddon: fitAddon, ws: null, ro: null };
+        terminalState = state;
+
+        var ro = new ResizeObserver(function () {
+          try { fitAddon.fit(); } catch (e) {}
+          if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+          }
+        });
+        ro.observe(pane);
+        state.ro = ro;
+
+        term.onData(function (data) {
+          if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({ type: "data", data: data }));
+          }
+        });
+
+        term.writeln("\x1b[90mConnecting to sandbox terminal…\x1b[0m");
+
+        fetch("/instances/" + instanceId + "/monitor-token?purpose=terminal")
+          .then(function (r) {
+            if (!r.ok) throw new Error("token request failed (" + r.status + ")");
+            return r.json();
+          })
+          .then(function (data) { openTerminalWs(state, instanceId, data.token); })
+          .catch(function (err) {
+            term.writeln("\x1b[31mCould not authenticate terminal: " + err.message + "\x1b[0m");
+          });
+
+        setTimeout(function () { try { fitAddon.fit(); } catch (e) {} }, 50);
+      });
+    }
+
+    function destroyTerminal(name) {
+      if (!terminalState || terminalState.name !== name) return;
+      if (terminalState.ws) { try { terminalState.ws.close(); } catch (e) {} }
+      if (terminalState.ro) { try { terminalState.ro.disconnect(); } catch (e) {} }
+      if (terminalState.term) { try { terminalState.term.dispose(); } catch (e) {} }
+      terminalState = null;
+    }
+
     function createCleanTerminal() {
-      if (visibleTerminalTabs().length >= maxTabs) return null;
+      if (visibleTerminalTabs().length >= maxTerminals) return null;
 
       terminalCount += 1;
 
@@ -140,13 +264,14 @@
         '<span>bash</span>' +
         '<span class="terminal-tab-close rounded p-0.5 hover:bg-background/60">×</span>';
 
-      var pane = document.createElement("pre");
+      var pane = document.createElement("div");
       pane.dataset.terminalPane = name;
-      pane.className = "terminal-pane hidden text-muted-foreground";
-      pane.textContent = "$ ";
+      pane.className = "terminal-pane hidden h-full w-full";
 
       tabs.appendChild(tab);
       panes.appendChild(pane);
+
+      connectRealTerminal(name, pane);
 
       return name;
     }
@@ -166,7 +291,7 @@
     }
 
     function createCleanEditor() {
-      if (visibleEditorTabs().length >= maxTabs) return null;
+      if (visibleEditorTabs().length >= maxEditors) return null;
 
       editorCount += 1;
 
@@ -346,9 +471,9 @@
 
       var wasActive = tab.classList.contains("active-terminal");
 
-      tab.classList.add("hidden");
-      tab.classList.remove("flex");
-      hide(pane);
+      destroyTerminal(name);
+      tab.remove();
+      if (pane) pane.remove();
 
       var remaining = visibleTerminalTabs();
 

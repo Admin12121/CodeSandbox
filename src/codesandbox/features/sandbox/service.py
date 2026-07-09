@@ -195,6 +195,18 @@ def get_user_assigned_instances(user_id: str, org_id: str) -> list[dict]:
     return [_instance_dict(i, cache) for i in instances]
 
 
+def get_active_hub_instance(
+    template_id: str,
+    plan_id: str,
+    *,
+    user_id: str,
+    org_id: str | None = None,
+) -> dict | None:
+    """The instance the /hub/<template>/<plan> IDE page should attach to, if any."""
+    inst = repository.find_hub_instance(template_id, plan_id, user_id=user_id, org_id=org_id)
+    return _instance_dict(inst) if inst else None
+
+
 # ── InstanceRequest ───────────────────────────────────────────────────────────
 
 def _request_dict(req, template_cache: dict | None = None) -> dict:

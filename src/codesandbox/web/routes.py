@@ -8,6 +8,7 @@ from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.organizations import repository as org_repo
 from codesandbox.features.sandbox.service import (
     create_personal_instance,
+    get_active_hub_instance,
     get_hub_template_by_slug,
     get_hub_templates,
     get_org_billing,
@@ -161,6 +162,7 @@ def hub_template(instance: str):
         "is_org": is_org,
         "can_start": can_start,
         "user_balance": user_balance,
+        "error": request.args.get("error"),
         **ws_ctx,
     }
 
@@ -182,13 +184,24 @@ def hub_sandbox(instance: str, slug: str):
         return {"_redirect": f"/hub/{instance}"}
 
     ws_ctx = _workspaces_ctx(user)
-    nav = build_nav("/hub", user, ws_ctx.get("active_workspace"))
+    active_workspace = ws_ctx.get("active_workspace")
+    org_id = str(active_workspace["id"]) if active_workspace else None
+    sandbox_instance = get_active_hub_instance(
+        template["id"], slug, user_id=str(user.id), org_id=org_id
+    )
+    if sandbox_instance is None:
+        # Nothing running for this user/template/plan — nothing for the IDE
+        # to attach to (e.g. a stale bookmark after the instance stopped).
+        return {"_redirect": f"/hub/{instance}?error=No+running+instance+for+this+plan.+Start+one+first."}
+
+    nav = build_nav("/hub", user, active_workspace)
     return {
         "_meta": {"title": f"{template['name']} Sandbox — CodeSandbox"},
         "user": _user_ctx(user),
         "nav": nav,
         "template": template,
         "plan": plan,
+        "instance": sandbox_instance,
         **ws_ctx,
     }
 

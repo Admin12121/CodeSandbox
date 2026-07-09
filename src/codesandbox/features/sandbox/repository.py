@@ -226,6 +226,41 @@ def list_instances_assigned_to_user_in_org(user_id: str, org_id: str) -> list[Sa
     return [i for i in all_org if str(i.assigned_to_user_id) == str(user_id)]
 
 
+_LIVE_INSTANCE_STATUSES = ("idle", "provisioning", "running", "stopping")
+
+
+def find_hub_instance(
+    template_id: str,
+    plan_id: str,
+    *,
+    user_id: str,
+    org_id: str | None = None,
+) -> SandboxInstance | None:
+    """Most recent non-terminal instance for this user + template + plan.
+
+    Personal workspace: instance owned by the user. Org workspace: instance
+    assigned to the user within that org (the pool instance a manager handed
+    them, or one they created for themselves if they have create rights).
+    """
+    if org_id:
+        candidates = [
+            i for i in list_instances_for_org(org_id)
+            if str(i.assigned_to_user_id) == str(user_id)
+        ]
+    else:
+        candidates = list_instances_for_user(user_id)
+
+    live = [
+        i for i in candidates
+        if str(i.template_id) == str(template_id)
+        and i.plan_id == plan_id
+        and i.status in _LIVE_INSTANCE_STATUSES
+    ]
+    if not live:
+        return None
+    return max(live, key=lambda i: i.created_at)
+
+
 # ── InstanceRequest ───────────────────────────────────────────────────────────
 
 def create_instance_request(

@@ -561,19 +561,23 @@
     var r=tr.getBoundingClientRect();
     el.style.position='fixed';
     el.style.top='';el.style.bottom='';el.style.left='';el.style.right='';el.style.width='';
-    if(dir==='up'){
-      el.style.bottom=(window.innerHeight-r.top+4)+'px';
-      el.style.left=r.left+'px';
-      if(matchW)el.style.width=Math.max(r.width,224)+'px';
-    }else if(dir==='down-left'){
-      el.style.top=(r.bottom+4)+'px';
-      el.style.left=r.left+'px';
-      if(matchW)el.style.width=Math.max(r.width,224)+'px';
+    el.classList.remove('hidden'); /* must unhide before measuring offsetWidth below */
+    if(dir==='up'||dir==='down-left'){
+      var w=matchW?Math.max(r.width,224):el.offsetWidth;
+      /* clamp left so the popup never extends past the right edge of the
+         viewport — without this, a fixed-position popup wider than the
+         remaining space forces document.documentElement wider than the
+         viewport, causing page-level horizontal scroll. */
+      var left=Math.min(r.left,window.innerWidth-w-8);
+      left=Math.max(left,8);
+      el.style.left=left+'px';
+      if(dir==='up')el.style.bottom=(window.innerHeight-r.top+4)+'px';
+      else el.style.top=(r.bottom+4)+'px';
+      if(matchW)el.style.width=w+'px';
     }else{
       el.style.top=(r.bottom+4)+'px';
       el.style.right=Math.max(window.innerWidth-r.right,8)+'px';
     }
-    el.classList.remove('hidden');
     _el=el;_tr=tr;
   }
 
