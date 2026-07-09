@@ -1,149 +1,17 @@
 {% import "components/ui/resizable.html" as resizable %}
-{% import "(admin)/hub/[instance]/[slug]/_components/icons.html" as icons %}
-
-{% macro fs_row(name, path=none, file=false, danger=false, expand=none, open_file=none) -%}
-  <div
-    class="{{ cn('fs-row', 'text-red-400' if danger else '') }}"
-    {% if path %}data-fs-main="{{ path }}"{% endif %}
-    {% if expand %}data-fs-expand="{{ expand }}"{% endif %}
-    {% if open_file %}data-open-file="{{ open_file }}"{% endif %}
-  >
-    {% if not file %}
-      {{ icons.icon("folder", class="size-3.5") }}
-    {% endif %}
-    <span class="truncate">{{ name }}</span>
-  </div>
-{%- endmacro %}
-
-{% macro fs_view(path, active=false) -%}
-  <div data-fs-view="{{ path }}" class="{{ cn('fs-view space-y-1', 'hidden' if not active else '') }}">
-    {{ caller() }}
-  </div>
-{%- endmacro %}
-
-{% macro fs_child(key) -%}
-  <div data-fs-child="{{ key }}" class="hidden space-y-1 pl-5">
-    {{ caller() }}
-  </div>
-{%- endmacro %}
 
 {% macro left_panal_filesystem() -%}
 {% call resizable.resizable_panel(default_size=20, min_size=15, max_size=25, class="h-full", attrs={"data-panel": "left"}) %}
   <div id="sandbox-fs" class="flex h-full flex-col overflow-hidden bg-background text-xs">
 
-      <div class="flex h-8 shrink-0 items-center gap-2 border-b px-2">
-        <button
-          data-fs-back
-          class="hidden flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-        >
-          ←
-        </button>
-
-        <div class="flex min-w-0 items-center gap-2 text-muted-foreground">
-          <span data-fs-path>/</span>
-        </div>
-      </div>
+    <div class="flex h-8 shrink-0 items-center gap-2 border-b px-2">
+      <span class="truncate font-mono text-muted-foreground select-none">/workspace</span>
+    </div>
 
     <div class="min-h-0 flex-1 overflow-auto p-2">
-
-      {% call fs_view("/", active=true) %}
-        {{ fs_row("usr", "/usr") }}
-        {{ fs_row("opt", "/opt") }}
-        {{ fs_row("var", "/var") }}
-        {{ fs_row("etc", "/etc") }}
-        {{ fs_row("root", "/root", danger=true) }}
-        {{ fs_row("home", "/home") }}
-        {{ fs_row("mnt", "/mnt") }}
-        {{ fs_row("sys", "/sys") }}
-      {% endcall %}
-
-      {% call fs_view("/usr") %}
-        {{ fs_row("lib", expand="usr-lib") }}
-        {% call fs_child("usr-lib") %}
-          {{ fs_row("ollama") }}
-          {{ fs_row("jvm") }}
-          {{ fs_row("firmware") }}
-          {{ fs_row("modules") }}
-          {{ fs_row("python3.14") }}
-        {% endcall %}
-
-        {{ fs_row("share", expand="usr-share") }}
-        {% call fs_child("usr-share") %}
-          {{ fs_row("applications") }}
-          {{ fs_row("icons") }}
-          {{ fs_row("doc") }}
-        {% endcall %}
-
-        {{ fs_row("bin") }}
-        {{ fs_row("lib32") }}
-        {{ fs_row("include") }}
-        {{ fs_row("src") }}
-        {{ fs_row("local") }}
-      {% endcall %}
-
-      {% call fs_view("/opt") %}
-        {{ fs_row("cuda", expand="opt-cuda") }}
-        {% call fs_child("opt-cuda") %}
-          {{ fs_row("bin") }}
-          {{ fs_row("lib64") }}
-          {{ fs_row("include") }}
-        {% endcall %}
-
-        {{ fs_row("ghidra") }}
-        {{ fs_row("spotify") }}
-        {{ fs_row("winboat") }}
-        {{ fs_row("zen-browser-bin") }}
-        {{ fs_row("sqlmap") }}
-      {% endcall %}
-
-      {% call fs_view("/var") %}
-        {{ fs_row("log") }}
-        {{ fs_row("cache") }}
-        {{ fs_row("tmp") }}
-        {{ fs_row("lib") }}
-        {{ fs_row("spool") }}
-      {% endcall %}
-
-      {% call fs_view("/etc") %}
-        {{ fs_row("passwd", file=true) }}
-        {{ fs_row("hosts", file=true) }}
-        {{ fs_row("resolv.conf", file=true) }}
-        {{ fs_row("nginx") }}
-        {{ fs_row("systemd") }}
-      {% endcall %}
-
-      {% call fs_view("/home") %}
-        {{ fs_row("admin12121", "/home/admin12121") }}
-      {% endcall %}
-
-      {% call fs_view("/home/admin12121") %}
-        {{ fs_row(".cache") }}
-        {{ fs_row(".local") }}
-
-        {{ fs_row("Download", expand="home-download") }}
-        {% call fs_child("home-download") %}
-          {{ fs_row("sample.py", file=true, open_file="sample.py") }}
-        {% endcall %}
-
-        {{ fs_row("Pictures") }}
-        {{ fs_row("Projects") }}
-        {{ fs_row(".config") }}
-      {% endcall %}
-
-      {% call fs_view("/root") %}
-        {{ fs_row("Permission restricted", file=true, danger=true) }}
-      {% endcall %}
-
-      {% call fs_view("/mnt") %}
-        {{ fs_row("sandbox") }}
-      {% endcall %}
-
-      {% call fs_view("/sys") %}
-        {{ fs_row("block") }}
-        {{ fs_row("bus") }}
-        {{ fs_row("class") }}
-      {% endcall %}
-
+      <div id="sandbox-fs-root" data-fs-children-of="/">
+        <div class="px-2 py-1 text-muted-foreground/60">Loading…</div>
+      </div>
     </div>
   </div>
 {% endcall %}

@@ -18,7 +18,7 @@ from codesandbox.config import get_settings
 from . import repository
 
 
-_BLOCKED_USER_STATUSES = {"banned", "inactive"}
+_BLOCKED_USER_STATUSES = {"banned"}
 
 
 @dataclass(frozen=True)

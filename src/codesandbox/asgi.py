@@ -18,7 +18,9 @@ import nats as _nats
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from starlette.applications import Starlette
 from starlette.middleware.wsgi import WSGIMiddleware
-from starlette.routing import Mount, WebSocketRoute
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from codesandbox.config import get_settings
@@ -29,7 +31,10 @@ NATS_URL = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
 
 # Must match the salt used by the token-issuing route in features/sandbox/routes.py.
 _WS_TOKEN_SALT = "sandbox.monitor-ws"
-_WS_TOKEN_MAX_AGE = 30  # seconds — the browser fetches and uses it immediately
+_WS_TOKEN_MAX_AGE = 30  # seconds — the browser fetches and uses it immediately once, for a WS handshake
+# fs tokens back repeated REST calls across an editing session (list, open,
+# save, ...), not a single handshake, so they live much longer than WS tokens.
+_FS_TOKEN_MAX_AGE = 600  # 10 minutes — the browser refetches before this lapses
 
 _nc: "_nats.aio.client.Client | None" = None
 _nc_lock = asyncio.Lock()
@@ -60,7 +65,9 @@ async def lifespan(app: Starlette):
         await _nc.drain()
 
 
-def _verify_ws_token(token: str, instance_id: str, required_purpose: str = "monitor") -> bool:
+def _verify_ws_token(
+    token: str, instance_id: str, required_purpose: str = "monitor", max_age: int = _WS_TOKEN_MAX_AGE
+) -> bool:
     """Validate the short-lived signed token issued by GET .../monitor-token.
 
     Tokens issued before the `purpose` field existed have no such key — treat
@@ -71,7 +78,7 @@ def _verify_ws_token(token: str, instance_id: str, required_purpose: str = "moni
     secret = get_settings().secret_key
     try:
         payload = URLSafeTimedSerializer(secret, salt=_WS_TOKEN_SALT).loads(
-            token, max_age=_WS_TOKEN_MAX_AGE
+            token, max_age=max_age
         )
     except (BadSignature, SignatureExpired):
         return False
@@ -280,6 +287,106 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
             pass
 
 
+# ── HTTP: filesystem REST API (relayed to the worker over NATS request-reply) ──
+#
+# These live on the Starlette layer (not the Flask blueprint) purely so they
+# can share _get_nats()/the async NATS connection already managed here — same
+# reason the WS routes live here. Auth follows the identical short-lived
+# signed-token pattern as the WS routes (Flask mints it, since only Flask
+# sees the session cookie), just with a purpose="fs" scope and a much longer
+# TTL: fs calls fire repeatedly across an editing session, not once per
+# WS handshake.
+
+_FS_REQUEST_TIMEOUT = 5  # seconds — worker should reply near-instantly (local disk I/O)
+
+
+async def _fs_request(instance_id: str, payload: dict) -> tuple[dict | None, int]:
+    """Round-trip a filesystem op to the worker over NATS request-reply.
+
+    Returns (result, http_status). result is None only when the worker never
+    replied at all (not running / NATS down) — actual op failures (bad path,
+    file too large, ...) come back as a normal {"ok": false, "error": ...}
+    body from the worker.
+    """
+    try:
+        nc = await _get_nats()
+    except Exception:
+        return None, 503
+    try:
+        msg = await nc.request(
+            f"codesandbox.sandbox.fs.{instance_id}.request",
+            json.dumps(payload).encode(),
+            timeout=_FS_REQUEST_TIMEOUT,
+        )
+    except _nats.errors.TimeoutError:
+        return None, 504
+    except Exception:
+        return None, 503
+    try:
+        result = json.loads(msg.data.decode())
+    except Exception:
+        return None, 502
+    return result, (200 if result.get("ok") else 400)
+
+
+def _fs_auth(request: Request, instance_id: str) -> bool:
+    token = request.query_params.get("token", "")
+    return _verify_ws_token(token, instance_id, required_purpose="fs", max_age=_FS_TOKEN_MAX_AGE)
+
+
+async def _fs_endpoint(request: Request, build_payload) -> JSONResponse:
+    instance_id = request.path_params["instance_id"]
+    if not _fs_auth(request, instance_id):
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    try:
+        payload = await build_payload(request)
+    except Exception:
+        return JSONResponse({"ok": False, "error": "bad request"}, status_code=400)
+    result, status = await _fs_request(instance_id, payload)
+    if result is None:
+        return JSONResponse({"ok": False, "error": "sandbox unavailable"}, status_code=status)
+    return JSONResponse(result, status_code=status)
+
+
+async def fs_list(request: Request) -> JSONResponse:
+    async def build(r: Request) -> dict:
+        return {"op": "list", "path": r.query_params.get("path", "/")}
+    return await _fs_endpoint(request, build)
+
+
+async def fs_file_get(request: Request) -> JSONResponse:
+    async def build(r: Request) -> dict:
+        return {"op": "read", "path": r.query_params.get("path", "")}
+    return await _fs_endpoint(request, build)
+
+
+async def fs_file_put(request: Request) -> JSONResponse:
+    async def build(r: Request) -> dict:
+        body = await r.json()
+        return {"op": "write", "path": body.get("path", ""), "content": body.get("content", "")}
+    return await _fs_endpoint(request, build)
+
+
+async def fs_file_delete(request: Request) -> JSONResponse:
+    async def build(r: Request) -> dict:
+        return {"op": "delete", "path": r.query_params.get("path", "")}
+    return await _fs_endpoint(request, build)
+
+
+async def fs_mkdir(request: Request) -> JSONResponse:
+    async def build(r: Request) -> dict:
+        body = await r.json()
+        return {"op": "mkdir", "path": body.get("path", "")}
+    return await _fs_endpoint(request, build)
+
+
+async def fs_rename(request: Request) -> JSONResponse:
+    async def build(r: Request) -> dict:
+        body = await r.json()
+        return {"op": "rename", "old": body.get("old", ""), "new": body.get("new", "")}
+    return await _fs_endpoint(request, build)
+
+
 # ── Build the ASGI app ────────────────────────────────────────────────────────
 
 def _make_app() -> Starlette:
@@ -290,6 +397,12 @@ def _make_app() -> Starlette:
         routes=[
             WebSocketRoute("/ws/sandbox/{instance_id}/monitor", ws_sandbox_monitor),
             WebSocketRoute("/ws/sandbox/{instance_id}/terminal", ws_sandbox_terminal),
+            Route("/api/sandbox/{instance_id}/fs", fs_list, methods=["GET"]),
+            Route("/api/sandbox/{instance_id}/file", fs_file_get, methods=["GET"]),
+            Route("/api/sandbox/{instance_id}/file", fs_file_put, methods=["PUT"]),
+            Route("/api/sandbox/{instance_id}/file", fs_file_delete, methods=["DELETE"]),
+            Route("/api/sandbox/{instance_id}/file/mkdir", fs_mkdir, methods=["POST"]),
+            Route("/api/sandbox/{instance_id}/file/rename", fs_rename, methods=["POST"]),
             Mount("/", WSGIMiddleware(flask_wsgi)),
         ],
     )

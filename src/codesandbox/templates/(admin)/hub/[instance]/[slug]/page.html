@@ -38,8 +38,8 @@
 
 .fs-row:hover,
 .fs-row-active {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .editor-tab .tab-close,
@@ -57,8 +57,8 @@
 
 .editor-tab.active-tab,
 .terminal-tab.active-terminal {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 </style>
 
@@ -139,36 +139,15 @@
               <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">←</button>
               <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">→</button>
 
-              <div data-editor-tabs class="flex h-full items-center">
-                <button data-tab="sample.py" class="editor-tab hidden h-full items-center gap-2 border-r px-4 text-xs">
-                  <span>sample.py</span>
-                  <span class="tab-close rounded p-0.5 hover:bg-background/60">{{ icons.icon("x") }}</span>
-                </button>
-              </div>
+              <div data-editor-tabs class="flex h-full items-center"></div>
             </div>
-
-            <button data-new-editor class="flex h-full items-center border-l px-2 text-muted-foreground hover:text-accent-foreground">
-              {{ icons.icon("plus") }}
-            </button>
           </div>
 
           <div class="flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs text-muted-foreground">
             <span id="current-file-title"></span>
-            <button class="hover:text-accent-foreground">{{ icons.icon("search") }}</button>
           </div>
 
-          <div data-editor-panes class="min-h-0 flex-1 overflow-auto bg-background font-mono text-xs">
-            <div data-editor-file="sample.py" class="editor-pane hidden">
-              <div class="flex border-b bg-muted/20">
-                <div class="w-16 select-none border-r px-2 py-1 text-right text-muted-foreground">1</div>
-                <pre class="px-5 py-1"><code>print("hello from /home/admin12121/Download/sample.py")</code></pre>
-              </div>
-              <div class="flex">
-                <div class="w-16 select-none border-r px-2 py-1 text-right text-muted-foreground">2</div>
-                <pre class="px-5 py-1"><code></code></pre>
-              </div>
-            </div>
-          </div>
+          <div data-editor-panes class="min-h-0 flex-1 overflow-auto bg-background font-mono text-xs"></div>
         {% endcall %}
 
         {{ resizable.resizable_handle(with_handle=true, orientation="horizontal") }}

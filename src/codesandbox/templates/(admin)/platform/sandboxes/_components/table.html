@@ -73,7 +73,7 @@
             {{ table.table_head("Runtime", class="w-36") }}
             {{ table.table_head("Status", class="w-28") }}
             {{ table.table_head("Instances", class="w-24 text-right") }}
-            {{ table.table_head("", class="w-12") }}
+            {{ table.table_head("Actions", class="w-24 text-right") }}
           {% endcall %}
         {% endcall %}
         {% call table.table_body() %}
@@ -135,7 +135,7 @@
 {% set tid = selected_template.id or "" %}
 {% set active_tab = "config" if (not is_create and tab == "config") else ("plans" if (not is_create and tab == "plans") else "identity") %}
 
-<div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
+<div class="flex h-[calc(100dvh-var(--header-height))] min-w-0 w-full max-w-full overflow-hidden bg-background">
 
   {# Left sidebar #}
   <div id="tmpl-sidebar" data-state="expanded"
@@ -542,95 +542,80 @@
 
     {% elif active_tab == "plans" %}
 
-    {# ── Plans tab ── #}
+    {# ── Plans tab (read-only reference — edit specs from /platform/sandbox-plans) ── #}
     <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
 
       {# Header — outside frame #}
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h2 class="text-sm font-semibold">Per-Template Plan Overrides</h2>
-          <p class="text-xs text-muted-foreground mt-0.5">Leave fields empty to inherit the global plan default. Disable a plan to hide it for this template only.</p>
-        </div>
-        {% if template_plan_configs %}
-          <button type="button" id="plans-save-btn"
-            class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Save Overrides
-          </button>
-        {% endif %}
+      <div>
+        <h2 class="text-sm font-semibold">Plans</h2>
+        <p class="text-xs text-muted-foreground mt-0.5">
+          Resolved specs for plans available on this template.
+          <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Manage plans</a>.
+        </p>
       </div>
 
       {# Table — inside frame #}
-      <form id="plans-override-form" method="post" action="/platform/sandboxes/{{ tid }}/plans">
-        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" id="plans-json" name="plans_json" value="">
-
-        {% call frame.frame() %}
-          {% call table.table(variant="card") %}
-            <thead data-slot="table-header" class="[&_tr]:border-b">
-              <tr data-slot="table-row" class="border-b">
-                <th rowspan="2" class="w-36 px-3 py-2 text-left align-middle text-sm font-medium text-muted-foreground">Plan</th>
-                <th rowspan="2" class="w-20 px-3 py-2 text-center align-middle text-sm font-medium text-muted-foreground">Enabled</th>
-                <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Individual Tier</th>
-                <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Org Tier</th>
-              </tr>
-              <tr data-slot="table-row" class="border-b bg-muted/30">
-                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70 border-l">vCPU</th>
-                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">RAM GB</th>
-                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">Disk GB</th>
-                <th class="w-20 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">$/hr</th>
-                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70 border-l">vCPU</th>
-                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">RAM GB</th>
-                <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">Disk GB</th>
-                <th class="w-20 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">$/hr</th>
-              </tr>
-            </thead>
-            {% call table.table_body() %}
-              {% if template_plan_configs %}
-                {% for cfg in template_plan_configs %}
-                  {% set gp = cfg['global'] %}
-                  {% call table.table_row(class="plan-row", attrs={"data-plan-id": gp.id}) %}
-                    {% call table.table_cell() %}
-                      <div class="font-medium text-sm">{{ gp.name }}</div>
-                      <code class="text-[10px] text-muted-foreground">{{ gp.id }}</code>
-                    {% endcall %}
-                    {% call table.table_cell(class="text-center") %}
-                      <input type="checkbox" class="plan-enabled size-4 cursor-pointer rounded" {% if cfg.is_enabled %}checked{% endif %}>
-                    {% endcall %}
-                    {% call table.table_cell(class="border-l p-1") %}<input type="number" min="1" step="1" class="plan-ind-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else '' }}" placeholder="{{ gp.ind_vcpu }}">{% endcall %}
-                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-ind-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else '' }}" placeholder="{{ gp.ind_ram_gb }}">{% endcall %}
-                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-ind-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else '' }}" placeholder="{{ gp.ind_disk_gb }}">{% endcall %}
-                    {% call table.table_cell(class="p-1") %}<input type="text" class="plan-ind-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else '' }}" placeholder="{{ gp.ind_cost_hr }}">{% endcall %}
-                    {% call table.table_cell(class="border-l p-1") %}<input type="number" min="1" step="1" class="plan-org-vcpu w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_vcpu if cfg.org_vcpu is not none else '' }}" placeholder="{{ gp.org_vcpu }}">{% endcall %}
-                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-org-ram w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else '' }}" placeholder="{{ gp.org_ram_gb }}">{% endcall %}
-                    {% call table.table_cell(class="p-1") %}<input type="number" min="1" step="1" class="plan-org-disk w-14 h-7 rounded border border-input bg-background px-2 text-center text-xs" value="{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else '' }}" placeholder="{{ gp.org_disk_gb }}">{% endcall %}
-                    {% call table.table_cell(class="p-1") %}<input type="text" class="plan-org-cost w-20 h-7 rounded border border-input bg-background px-2 text-center text-xs font-mono" value="{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else '' }}" placeholder="{{ gp.org_cost_hr }}">{% endcall %}
-                  {% endcall %}
-                {% endfor %}
-              {% else %}
+      {% call frame.frame() %}
+        {% call table.table(variant="card") %}
+          <thead data-slot="table-header" class="[&_tr]:border-b">
+            <tr data-slot="table-row" class="border-b">
+              <th rowspan="2" class="w-36 px-3 py-2 text-left align-middle text-sm font-medium text-muted-foreground">Plan</th>
+              <th rowspan="2" class="w-20 px-3 py-2 text-center align-middle text-sm font-medium text-muted-foreground">Enabled</th>
+              <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Individual Tier</th>
+              <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Org Tier</th>
+            </tr>
+            <tr data-slot="table-row" class="border-b bg-muted/30">
+              <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70 border-l">vCPU</th>
+              <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">RAM GB</th>
+              <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">Disk GB</th>
+              <th class="w-20 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">$/hr</th>
+              <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70 border-l">vCPU</th>
+              <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">RAM GB</th>
+              <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">Disk GB</th>
+              <th class="w-20 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70">$/hr</th>
+            </tr>
+          </thead>
+          {% call table.table_body() %}
+            {% if template_plan_configs %}
+              {% for cfg in template_plan_configs %}
+                {% set gp = cfg['global'] %}
                 {% call table.table_row() %}
-                  {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "10"}) %}
-                    No global plans configured yet.
-                    <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Create plans</a> first.
+                  {% call table.table_cell() %}
+                    <div class="font-medium text-sm">{{ gp.name }}</div>
+                    <code class="text-[10px] text-muted-foreground">{{ gp.id }}</code>
                   {% endcall %}
+                  {% call table.table_cell(class="text-center") %}
+                    {{ badge.badge("Yes" if cfg.is_enabled else "No", variant=("outline" if cfg.is_enabled else "secondary")) }}
+                  {% endcall %}
+                  {% call table.table_cell(class="border-l text-center text-xs tabular-nums") %}{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else gp.ind_vcpu }}{% endcall %}
+                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else gp.ind_ram_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else gp.ind_disk_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else gp.ind_cost_hr }}{% endcall %}
+                  {% call table.table_cell(class="border-l text-center text-xs tabular-nums") %}{{ cfg.org_vcpu if cfg.org_vcpu is not none else gp.org_vcpu }}{% endcall %}
+                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else gp.org_ram_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else gp.org_disk_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else gp.org_cost_hr }}{% endcall %}
                 {% endcall %}
-              {% endif %}
-            {% endcall %}
+              {% endfor %}
+            {% else %}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "10"}) %}
+                  No global plans configured yet.
+                  <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Create plans</a> first.
+                {% endcall %}
+              {% endcall %}
+            {% endif %}
           {% endcall %}
         {% endcall %}
-      </form>
-
-      {% if template_plan_configs %}
-        <p class="text-xs text-muted-foreground">Empty fields inherit the global plan default. Changes take effect immediately for new instances.</p>
-      {% endif %}
+      {% endcall %}
     </div>
 
     {% else %}
 
       {# ── Config IDE ── #}
-      <div class="flex flex-col flex-1 min-h-0 overflow-hidden" id="config-ide">
+      <div class="flex flex-col flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden" id="config-ide">
 
-      <div class="flex flex-1 min-h-0 overflow-hidden">
+      <div class="flex flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden">
 
         {# File tree panel #}
         <div id="ft-panel" class="flex shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground overflow-hidden" style="width:240px;min-width:120px;max-width:480px">
@@ -662,7 +647,7 @@
         </div>
 
         {# Editor area #}
-        <div class="flex flex-col flex-1 min-w-0 overflow-hidden bg-background">
+        <div class="flex flex-col flex-1 min-w-0 max-w-full overflow-hidden bg-background">
           {# Open file tabs #}
           <div id="editor-tabs" class="flex h-9 shrink-0 items-stretch border-b overflow-x-auto" style="scrollbar-width:none"></div>
           {# Monaco mount #}
@@ -763,11 +748,11 @@
       </div>
 
       {# ── Terminal panel ── #}
-      <div id="term-panel" class="flex flex-col shrink-0 border-t overflow-hidden" style="height:200px;display:none">
-        <div class="flex h-7 shrink-0 items-center justify-between border-b bg-sidebar px-2">
-          <div class="flex items-center gap-1.5">
+      <div id="term-panel" class="flex min-w-0 w-full max-w-full flex-col shrink-0 border-t overflow-hidden" style="height:200px;display:none">
+        <div class="flex min-w-0 h-7 shrink-0 items-center justify-between border-b bg-sidebar px-2">
+          <div class="flex min-w-0 items-center gap-1.5">
             <svg class="size-3.5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
-            <span class="text-[11px] font-medium text-muted-foreground select-none">Terminal</span>
+            <span class="truncate text-[11px] font-medium text-muted-foreground select-none">Terminal</span>
             <span title="This is a shell in the worker container, not the template's own Docker image. Exec into the actual sandbox image requires the real container-runtime worker (Phase 6a) — not yet built."
               class="inline-flex items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 size-4 text-amber-600 dark:text-amber-400 cursor-help select-none">
               <svg class="size-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
@@ -778,7 +763,7 @@
             <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
-        <div id="xterm-mount" class="flex-1 overflow-hidden" style="background:#09090b"></div>
+        <div id="xterm-mount" class="min-w-0 w-full max-w-full flex-1 overflow-hidden" style="background:#09090b"></div>
       </div>
 
       {# ── Config IDE bottom toolbar ── #}
@@ -807,6 +792,95 @@
       <div id="ft-ctx-menu" hidden
         class="fixed z-[200] min-w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
       </div>
+
+      <style>
+        @font-face {
+          font-family: "FiraCode Nerd Font";
+          src: url("/fonts/FiraCodeNerdFont-Regular.ttf") format("truetype");
+          font-weight: 400;
+          font-style: normal;
+          font-display: swap;
+        }
+
+        html:has(#config-ide),
+        body:has(#config-ide) {
+          max-width: 100%;
+          overflow-x: hidden;
+        }
+
+        body:has(#config-ide) #cs-sw,
+        body:has(#config-ide) main {
+          max-width: 100vw;
+          overflow-x: hidden;
+        }
+
+        #config-ide {
+          contain: inline-size;
+          max-width: 100%;
+          overflow: hidden;
+        }
+
+        #config-ide .cs-nerd-icon {
+          display: inline-flex;
+          width: 0.875rem;
+          min-width: 0.875rem;
+          height: 0.875rem;
+          align-items: center;
+          justify-content: center;
+          font-family: "FiraCode Nerd Font", "FiraCode Nerd Font Mono", ui-monospace, monospace;
+          font-size: 0.875rem;
+          line-height: 1;
+          font-feature-settings: normal;
+          font-variant-ligatures: none;
+        }
+
+        #config-ide,
+        #config-ide #term-panel,
+        #config-ide #xterm-mount {
+          min-width: 0;
+          max-width: 100%;
+        }
+
+        #config-ide #term-panel,
+        #config-ide #xterm-mount {
+          contain: layout paint;
+          overflow: clip;
+          position: relative;
+        }
+
+        #config-ide #xterm-mount .xterm {
+          inset: 0;
+          max-width: 100%;
+          overflow: hidden;
+        }
+
+        #config-ide #xterm-mount .xterm-screen,
+        #config-ide #xterm-mount .xterm-viewport,
+        #config-ide #xterm-mount .xterm-scroll-area,
+        #config-ide #xterm-mount .xterm-rows {
+          max-width: 100%;
+        }
+
+        #config-ide #xterm-mount .xterm-helpers {
+          inset: 0;
+          overflow: hidden;
+        }
+
+        #config-ide #xterm-mount .xterm-helper-textarea {
+          left: 0 !important;
+          top: 0 !important;
+          width: 1px !important;
+          height: 1px !important;
+          min-width: 0 !important;
+          opacity: 0 !important;
+          overflow: hidden !important;
+          resize: none !important;
+        }
+
+        #config-ide #xterm-mount .xterm-viewport {
+          overflow-x: hidden !important;
+        }
+      </style>
 
       {# Seed data for JS #}
       <script id="ide-seed" type="application/json">{{ (selected_template.type_config or "{}") | safe }}</script>
@@ -1147,6 +1221,50 @@ var activeFile = null;
 var monacoModels = {}; // path → monaco ITextModel
 var editor = null;
 var expandedDirs = new Set();
+var NERD_ICON_CLASS = 'cs-nerd-icon shrink-0';
+
+var FILE_ICON_BY_EXT = {
+  py:['&#xE73C;', 'text-yellow-400'], python:['&#xE73C;', 'text-yellow-400'], pyc:['&#xE73C;', 'text-yellow-500'],
+  js:['&#xE781;', 'text-yellow-300'], mjs:['&#xE781;', 'text-yellow-300'], cjs:['&#xE781;', 'text-yellow-300'],
+  ts:['&#xE628;', 'text-blue-400'], tsx:['&#xE7BA;', 'text-cyan-400'], jsx:['&#xE7BA;', 'text-cyan-400'],
+  vue:['&#xE6A0;', 'text-emerald-400'], svelte:['&#xE697;', 'text-orange-400'],
+  html:['&#xE736;', 'text-orange-400'], htm:['&#xE736;', 'text-orange-400'],
+  css:['&#xE749;', 'text-blue-400'], scss:['&#xE74B;', 'text-pink-400'], sass:['&#xE74B;', 'text-pink-400'], less:['&#xE758;', 'text-blue-300'],
+  json:['&#xE60B;', 'text-green-400'], jsonc:['&#xE60B;', 'text-green-400'], yaml:['&#xE60B;', 'text-purple-300'], yml:['&#xE60B;', 'text-purple-300'], toml:['&#xE615;', 'text-purple-400'],
+  sh:['&#xE795;', 'text-green-300'], bash:['&#xE795;', 'text-green-300'], zsh:['&#xE795;', 'text-green-300'], fish:['&#xE795;', 'text-green-300'], ps1:['&#xE795;', 'text-blue-300'],
+  c:['&#xE61E;', 'text-blue-300'], h:['&#xE61E;', 'text-blue-300'], cpp:['&#xE61D;', 'text-blue-400'], cc:['&#xE61D;', 'text-blue-400'], cxx:['&#xE61D;', 'text-blue-400'], hpp:['&#xE61D;', 'text-blue-400'],
+  cs:['&#xF81A;', 'text-violet-400'], java:['&#xE738;', 'text-red-400'], kt:['&#xE634;', 'text-purple-400'], kts:['&#xE634;', 'text-purple-400'],
+  go:['&#xE626;', 'text-cyan-400'], rs:['&#xE7A8;', 'text-orange-500'], rb:['&#xE739;', 'text-red-400'], php:['&#xE73D;', 'text-indigo-300'],
+  swift:['&#xE755;', 'text-orange-400'], dart:['&#xE798;', 'text-cyan-400'], lua:['&#xE620;', 'text-blue-500'], r:['&#xF25D;', 'text-blue-400'],
+  scala:['&#xE737;', 'text-red-400'], ex:['&#xE62D;', 'text-purple-400'], exs:['&#xE62D;', 'text-purple-400'],
+  sql:['&#xF1C0;', 'text-sky-400'], db:['&#xF1C0;', 'text-sky-400'], sqlite:['&#xF1C0;', 'text-sky-400'],
+  md:['&#xE73E;', 'text-slate-300'], markdown:['&#xE73E;', 'text-slate-300'], txt:['&#xF15C;', 'text-muted-foreground'], log:['&#xF18D;', 'text-muted-foreground'],
+  xml:['&#xF72D;', 'text-orange-300'], svg:['&#xF72D;', 'text-orange-300'],
+  dockerfile:['&#xF308;', 'text-sky-400'], containerfile:['&#xF308;', 'text-sky-400'],
+  gitignore:['&#xE702;', 'text-orange-400'], gitattributes:['&#xE702;', 'text-orange-400'], gitmodules:['&#xE702;', 'text-orange-400'],
+  lock:['&#xF023;', 'text-amber-300'], env:['&#xF023;', 'text-amber-300'],
+  makefile:['&#xE779;', 'text-blue-300'], mk:['&#xE779;', 'text-blue-300'], cmake:['&#xE794;', 'text-green-400'],
+  tf:['&#xE69A;', 'text-purple-400'], hcl:['&#xE69A;', 'text-purple-400'], proto:['&#xE60B;', 'text-blue-300'],
+  png:['&#xF1C5;', 'text-pink-300'], jpg:['&#xF1C5;', 'text-pink-300'], jpeg:['&#xF1C5;', 'text-pink-300'], webp:['&#xF1C5;', 'text-pink-300'], gif:['&#xF1C5;', 'text-pink-300'],
+  zip:['&#xF410;', 'text-yellow-500'], tar:['&#xF410;', 'text-yellow-500'], gz:['&#xF410;', 'text-yellow-500'], rar:['&#xF410;', 'text-yellow-500'],
+};
+
+var FILE_ICON_BY_NAME = {
+  sandbox:['&#xF308;', 'text-blue-300'],
+  dockerfile:['&#xF308;', 'text-sky-400'],
+  containerfile:['&#xF308;', 'text-sky-400'],
+  makefile:['&#xE779;', 'text-blue-300'],
+  'package.json':['&#xE71E;', 'text-red-400'],
+  'package-lock.json':['&#xE71E;', 'text-red-400'],
+  'pnpm-lock.yaml':['&#xE718;', 'text-yellow-400'],
+  'yarn.lock':['&#xE718;', 'text-blue-400'],
+  'requirements.txt':['&#xE73C;', 'text-yellow-400'],
+  'pyproject.toml':['&#xE73C;', 'text-yellow-400'],
+  'cargo.toml':['&#xE7A8;', 'text-orange-500'],
+  'go.mod':['&#xE626;', 'text-cyan-400'],
+  '.env':['&#xF023;', 'text-amber-300'],
+  '.gitignore':['&#xE702;', 'text-orange-400'],
+};
 
 // ── Language detection ─────────────────────────────────────────────────────
 function getLang(path) {
@@ -1220,7 +1338,7 @@ function renderNode(container, node, prefix, depth) {
       el.innerHTML = (expanded
         ? '<svg class="size-3 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
         : '<svg class="size-3 shrink-0 text-muted-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>'
-      ) + '<svg class="size-3.5 shrink-0 text-muted-foreground/70" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+      ) + folderIcon(expanded)
         + '<span class="truncate flex-1">' + esc(name) + '</span>';
       el.classList.add('text-sidebar-foreground', 'hover:bg-sidebar-accent/60');
 
@@ -1253,17 +1371,27 @@ function renderNode(container, node, prefix, depth) {
   });
 }
 
+function folderIcon(expanded) {
+  return '<span class="' + NERD_ICON_CLASS + ' text-amber-300" aria-hidden="true">' + (expanded ? '&#xF07C;' : '&#xF07B;') + '</span>';
+}
+
+function fileIconMeta(name) {
+  var lower = String(name || '').toLowerCase();
+  if (lower === 'sandbox' || lower.endsWith('/sandbox')) return FILE_ICON_BY_NAME.sandbox;
+  if (lower === 'dockerfile' || lower.endsWith('/dockerfile')) return FILE_ICON_BY_NAME.dockerfile;
+  if (lower === 'containerfile' || lower.endsWith('/containerfile')) return FILE_ICON_BY_NAME.containerfile;
+  if (lower === 'makefile' || lower.endsWith('/makefile')) return FILE_ICON_BY_NAME.makefile;
+  if (lower === '.env' || lower.startsWith('.env.')) return FILE_ICON_BY_NAME['.env'];
+  if (FILE_ICON_BY_NAME[lower]) return FILE_ICON_BY_NAME[lower];
+  var parts = lower.split('.');
+  var ext = parts.length > 1 ? parts.pop() : lower;
+  if (FILE_ICON_BY_EXT[ext]) return FILE_ICON_BY_EXT[ext];
+  return ['&#xF15B;', 'text-muted-foreground/70'];
+}
+
 function fileIcon(name) {
-  var ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
-  var color = {
-    py:'text-yellow-400', js:'text-yellow-300', ts:'text-blue-400',
-    rs:'text-orange-400', go:'text-cyan-400', java:'text-red-400',
-    toml:'text-purple-400', yaml:'text-purple-300', yml:'text-purple-300',
-    json:'text-green-400', sh:'text-green-300', bash:'text-green-300',
-    md:'text-slate-400',
-  }[ext] || 'text-muted-foreground/70';
-  if (name === 'Sandbox') color = 'text-blue-300';
-  return '<svg class="size-3.5 shrink-0 ' + color + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>';
+  var meta = fileIconMeta(name);
+  return '<span class="' + NERD_ICON_CLASS + ' ' + meta[1] + '" aria-hidden="true">' + meta[0] + '</span>';
 }
 
 // ── Tab bar ─────────────────────────────────────────────────────────────────
@@ -1780,7 +1908,7 @@ loaderScript.onload = function() {
       automaticLayout: true,
       fontSize: 13,
       lineHeight: 22,
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace',
+      fontFamily: '"FiraCode Nerd Font", "FiraCode Nerd Font Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace',
       fontLigatures: true,
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
@@ -1827,13 +1955,23 @@ var xtermFit      = null;
 var termWs        = null;
 var termInstanceId = null;
 
+function fitTerminalSoon() {
+  if (!xtermFit) return;
+  requestAnimationFrame(function() {
+    try { xtermFit(); } catch(e) {}
+    setTimeout(function() {
+      try { xtermFit(); } catch(e) {}
+    }, 50);
+  });
+}
+
 function openTermPanel() {
   if (!termPanel) return;
   termPanel.style.display = '';
   if (termResizeH) termResizeH.classList.remove('hidden');
   if (editor) editor.layout();
   if (!xtermReady) { loadXterm(); return; }
-  if (xtermInstance) setTimeout(function(){ xtermFit && xtermFit(); }, 50);
+  if (xtermInstance) fitTerminalSoon();
   connectTerminal();
 }
 
@@ -1887,7 +2025,7 @@ function initXterm() {
   if (!mount || typeof Terminal === 'undefined') return;
 
   var term = new Terminal({
-    fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
+    fontFamily: '"FiraCode Nerd Font","FiraCode Nerd Font Mono","JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
     fontSize: 13,
     lineHeight: 1.5,
     cursorBlink: true,
@@ -1902,9 +2040,9 @@ function initXterm() {
   var fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(mount);
-  fitAddon.fit();
   xtermInstance = term;
   xtermFit = function() { fitAddon.fit(); };
+  fitTerminalSoon();
 
   term.onData(function(data) {
     if (termWs && termWs.readyState === WebSocket.OPEN) {
@@ -2255,7 +2393,7 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
     var h = Math.max(80, Math.min(600, startH - (e.clientY - startY)));
     panel.style.height = h + 'px';
     if (editor) editor.layout();
-    if (xtermInstance && xtermInstance.fit) xtermInstance.fit();
+    fitTerminalSoon();
   });
   document.addEventListener('mouseup', function() {
     if (!dragging) return;
@@ -2288,37 +2426,5 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
   });
 })();
 {% end_app_script %}
-
-{% if active_tab == "plans" %}
-{% app_script "sandbox-plans-tab" %}
-(function(){
-  var btn = document.getElementById('plans-save-btn');
-  if (!btn) return;
-  btn.addEventListener('click', function(){
-    var rows = document.querySelectorAll('.plan-row');
-    var data = [];
-    rows.forEach(function(row){
-      var planId = row.getAttribute('data-plan-id');
-      function v(cls){ var el = row.querySelector('.' + cls); return el ? el.value.trim() : ''; }
-      function chk(cls){ var el = row.querySelector('.' + cls); return el ? el.checked : true; }
-      data.push({
-        plan_id:    planId,
-        is_enabled: chk('plan-enabled'),
-        ind_vcpu:   v('plan-ind-vcpu')  || null,
-        ind_ram_gb: v('plan-ind-ram')   || null,
-        ind_disk_gb:v('plan-ind-disk')  || null,
-        ind_cost_hr:v('plan-ind-cost')  || null,
-        org_vcpu:   v('plan-org-vcpu')  || null,
-        org_ram_gb: v('plan-org-ram')   || null,
-        org_disk_gb:v('plan-org-disk')  || null,
-        org_cost_hr:v('plan-org-cost')  || null,
-      });
-    });
-    document.getElementById('plans-json').value = JSON.stringify(data);
-    document.getElementById('plans-override-form').submit();
-  });
-})();
-{% end_app_script %}
-{% endif %}
 
 {% endmacro %}

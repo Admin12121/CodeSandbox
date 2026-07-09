@@ -40,6 +40,7 @@ import logging
 import os
 import pty
 import random
+import shutil
 import signal
 import struct
 import sys
@@ -85,6 +86,7 @@ def _start_nats_loop() -> None:
             log.info("NATS connected: %s", NATS_URL)
             await _nats_client.subscribe("codesandbox.sandbox.terminal.*.ctl", cb=_on_terminal_ctl)
             await _nats_client.subscribe("codesandbox.sandbox.terminal.*.input", cb=_on_terminal_input)
+            await _nats_client.subscribe("codesandbox.sandbox.fs.*.request", cb=_on_fs_request)
             log.info("terminal control channel ready")
         except Exception as exc:
             log.warning("NATS unavailable (%s) — metrics/terminal will not work", exc)
@@ -101,6 +103,198 @@ def _nats_publish(subject: str, payload: dict) -> None:
         return
     data = json.dumps(payload).encode()
     asyncio.run_coroutine_threadsafe(_nats_client.publish(subject, data), _nats_loop)
+
+
+# ── Per-instance workspace isolation ────────────────────────────────────────────
+# Every instance gets its own directory instead of sharing /tmp — without this,
+# concurrent sandbox instances could read/write each other's files.
+
+_WORKSPACE_ROOT = "/tmp/workspaces"
+
+
+def _workspace_dir(instance_id: str) -> str:
+    """Per-instance isolated working directory, created + seeded on first use."""
+    path = os.path.join(_WORKSPACE_ROOT, instance_id)
+    if not os.path.isdir(path):
+        os.makedirs(path, exist_ok=True)
+        try:
+            with open(os.path.join(path, "main.py"), "w") as f:
+                f.write('print("hello from your sandbox")\n')
+            with open(os.path.join(path, "README.md"), "w") as f:
+                f.write("# Workspace\n\nFiles here are isolated to this sandbox instance.\n")
+        except OSError:
+            pass
+    return path
+
+
+def _resolve_workspace_path(instance_id: str, rel_path: str) -> str | None:
+    """Resolve rel_path against the instance's workspace root.
+
+    Returns None if the resolved path would escape the workspace root — via
+    `../` traversal, an absolute path, or a symlink pointing outside it.
+    """
+    root_real = os.path.realpath(_workspace_dir(instance_id))
+    candidate = os.path.join(root_real, rel_path.lstrip("/"))
+    candidate_real = os.path.realpath(candidate)
+    if candidate_real != root_real and not candidate_real.startswith(root_real + os.sep):
+        return None
+    return candidate_real
+
+
+# ── Filesystem operations (REST, relayed via NATS request-reply) ───────────────
+
+_FS_READ_MAX_BYTES = 10 * 1024 * 1024   # 10 MB
+_FS_WRITE_MAX_BYTES = 5 * 1024 * 1024   # 5 MB
+
+
+def _fs_list(instance_id: str, rel_path: str) -> dict:
+    target = _resolve_workspace_path(instance_id, rel_path)
+    if target is None:
+        return {"ok": False, "error": "invalid path"}
+    if not os.path.isdir(target):
+        return {"ok": False, "error": "not a directory"}
+    entries = []
+    try:
+        with os.scandir(target) as it:
+            for entry in it:
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                    is_file = entry.is_file(follow_symlinks=False)
+                    if not is_dir and not is_file:
+                        continue  # skip symlinks/sockets/etc — nothing to browse into
+                    st = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                entries.append({
+                    "name": entry.name,
+                    "type": "dir" if is_dir else "file",
+                    "size": None if is_dir else st.st_size,
+                })
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+    return {"ok": True, "entries": entries}
+
+
+def _fs_read(instance_id: str, rel_path: str) -> dict:
+    target = _resolve_workspace_path(instance_id, rel_path)
+    if target is None:
+        return {"ok": False, "error": "invalid path"}
+    if not os.path.isfile(target):
+        return {"ok": False, "error": "not a file"}
+    try:
+        size = os.path.getsize(target)
+        if size > _FS_READ_MAX_BYTES:
+            return {"ok": False, "error": "file too large to open (max 10 MB)"}
+        with open(target, "rb") as f:
+            raw = f.read()
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return {"ok": True, "binary": True, "size": size}
+    return {"ok": True, "binary": False, "content": text, "size": size}
+
+
+def _fs_write(instance_id: str, rel_path: str, content: str) -> dict:
+    target = _resolve_workspace_path(instance_id, rel_path)
+    if target is None:
+        return {"ok": False, "error": "invalid path"}
+    if os.path.isdir(target):
+        return {"ok": False, "error": "is a directory"}
+    data = content.encode("utf-8")
+    if len(data) > _FS_WRITE_MAX_BYTES:
+        return {"ok": False, "error": "file too large to save (max 5 MB)"}
+    try:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as f:
+            f.write(data)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True}
+
+
+def _fs_mkdir(instance_id: str, rel_path: str) -> dict:
+    target = _resolve_workspace_path(instance_id, rel_path)
+    if target is None:
+        return {"ok": False, "error": "invalid path"}
+    try:
+        os.makedirs(target, exist_ok=True)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True}
+
+
+def _fs_rename(instance_id: str, rel_old: str, rel_new: str) -> dict:
+    old_t = _resolve_workspace_path(instance_id, rel_old)
+    new_t = _resolve_workspace_path(instance_id, rel_new)
+    if old_t is None or new_t is None:
+        return {"ok": False, "error": "invalid path"}
+    if not os.path.exists(old_t):
+        return {"ok": False, "error": "not found"}
+    try:
+        os.makedirs(os.path.dirname(new_t), exist_ok=True)
+        os.rename(old_t, new_t)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True}
+
+
+def _fs_delete(instance_id: str, rel_path: str) -> dict:
+    target = _resolve_workspace_path(instance_id, rel_path)
+    if target is None:
+        return {"ok": False, "error": "invalid path"}
+    if target == os.path.realpath(_workspace_dir(instance_id)):
+        return {"ok": False, "error": "cannot delete workspace root"}
+    try:
+        if os.path.isdir(target) and not os.path.islink(target):
+            shutil.rmtree(target)
+        else:
+            os.remove(target)
+    except OSError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True}
+
+
+async def _on_fs_request(msg) -> None:
+    instance_id = _subject_instance_id(msg.subject)
+    if not instance_id:
+        return
+    try:
+        body = json.loads(msg.data.decode())
+    except Exception:
+        await _fs_reply(msg, {"ok": False, "error": "bad request"})
+        return
+
+    op = body.get("op", "")
+    try:
+        if op == "list":
+            result = _fs_list(instance_id, body.get("path", "/"))
+        elif op == "read":
+            result = _fs_read(instance_id, body.get("path", ""))
+        elif op == "write":
+            result = _fs_write(instance_id, body.get("path", ""), body.get("content", ""))
+        elif op == "mkdir":
+            result = _fs_mkdir(instance_id, body.get("path", ""))
+        elif op == "rename":
+            result = _fs_rename(instance_id, body.get("old", ""), body.get("new", ""))
+        elif op == "delete":
+            result = _fs_delete(instance_id, body.get("path", ""))
+        else:
+            result = {"ok": False, "error": "unknown op"}
+    except Exception:
+        log.exception("fs op %r failed for %s", op, instance_id[:8])
+        result = {"ok": False, "error": "internal error"}
+
+    await _fs_reply(msg, result)
+
+
+async def _fs_reply(msg, result: dict) -> None:
+    try:
+        await msg.respond(json.dumps(result).encode())
+    except Exception:
+        pass
 
 
 # ── Terminal (real PTY, isolated per instance) ─────────────────────────────────
@@ -143,10 +337,12 @@ def _terminal_open(instance_id: str) -> None:
         return
 
     if pid == 0:
-        # Child: replace with an interactive shell in its own session.
+        # Child: replace with an interactive shell in its own session, rooted
+        # in this instance's isolated workspace (same dir the fs API reads
+        # from) so the terminal and file tree stay in sync.
         shell = "/bin/bash" if os.path.exists("/bin/bash") else "/bin/sh"
         env = dict(os.environ, TERM="xterm-256color", PS1="sandbox-test:\\w\\$ ")
-        os.chdir("/tmp")
+        os.chdir(_workspace_dir(instance_id))
         os.execvpe(shell, [shell], env)
         os._exit(1)  # pragma: no cover — only reached if execvpe fails
 

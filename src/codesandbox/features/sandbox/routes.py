@@ -196,14 +196,15 @@ def stop_instance_action(instance_id: str):
     return redirect("/my-instances", 303)
 
 
-# ── Instance monitor / terminal WS token ──────────────────────────────────────
+# ── Instance monitor / terminal / fs token ─────────────────────────────────────
 
-_WS_TOKEN_PURPOSES = {"monitor", "terminal"}
+_WS_TOKEN_PURPOSES = {"monitor", "terminal", "fs"}
 
 
 @web_bp.get("/instances/<instance_id>/monitor-token")
 def instance_monitor_token(instance_id: str):
-    """Issues a short-lived signed token gating a real-time WebSocket (monitor or terminal).
+    """Issues a short-lived signed token gating a real-time WebSocket (monitor or terminal)
+    or the filesystem REST API (fs) — see asgi.py for where each purpose is verified.
 
     Those WS routes live on the Starlette layer, outside this blueprint, so they
     never see the session cookie — this token is how the session's authorization

@@ -6,13 +6,13 @@
     root.dataset.ready = "1";
 
     var terminalCount = 0;
-    var editorCount = 0;
     var maxEditors = 3;
     // The worker only holds one real PTY per instance_id (see worker.py
     // _terminal_open) — so unlike editor tabs, only one live terminal
     // session is supported right now.
     var maxTerminals = 1;
     var terminalState = null; // { name, term, fitAddon, ws, ro }
+    var openFileState = {};   // path -> { original: string }
 
     var $ = function (selector, base) {
       return (base || root).querySelector(selector);
@@ -37,6 +37,20 @@
     var panel = function (name) {
       return $('[data-panel="' + name + '"]');
     };
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    function editorTabByPath(path) {
+      return $$("[data-tab]").find(function (el) { return el.dataset.tab === path; });
+    }
+
+    function editorPaneByPath(path) {
+      return $$("[data-editor-file]").find(function (el) { return el.dataset.editorFile === path; });
+    }
 
     function siblingHandle(el, offset) {
       if (!el || !el.parentElement) return null;
@@ -290,37 +304,193 @@
       return createCleanTerminal();
     }
 
-    function createCleanEditor() {
-      if (visibleEditorTabs().length >= maxEditors) return null;
+    // ── Real filesystem (dynamic tree + real editor read/write) ───────────
+    var fsToken = null;
+    var fsTokenAt = 0;
+    var FS_TOKEN_REFRESH_MS = 8 * 60 * 1000; // token TTL is 10min server-side; refetch before that
 
-      editorCount += 1;
+    function fsInstanceId() {
+      return root.dataset.instanceId || "";
+    }
 
-      var file = "untitled-" + editorCount;
+    function fetchFsToken() {
+      var instanceId = fsInstanceId();
+      if (!instanceId) return Promise.reject(new Error("no sandbox instance"));
+      if (fsToken && Date.now() - fsTokenAt < FS_TOKEN_REFRESH_MS) {
+        return Promise.resolve(fsToken);
+      }
+      return fetch("/instances/" + instanceId + "/monitor-token?purpose=fs")
+        .then(function (r) {
+          if (!r.ok) throw new Error("token request failed (" + r.status + ")");
+          return r.json();
+        })
+        .then(function (data) {
+          fsToken = data.token;
+          fsTokenAt = Date.now();
+          return fsToken;
+        });
+    }
+
+    function fsApi(method, urlPath, params, body) {
+      var instanceId = fsInstanceId();
+      if (!instanceId) return Promise.reject(new Error("no sandbox instance"));
+      return fetchFsToken().then(function (token) {
+        var qs = "token=" + encodeURIComponent(token);
+        Object.keys(params || {}).forEach(function (k) {
+          qs += "&" + encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
+        });
+        var url = "/api/sandbox/" + instanceId + urlPath + "?" + qs;
+        var opts = { method: method };
+        if (body !== undefined) {
+          opts.headers = { "Content-Type": "application/json" };
+          opts.body = JSON.stringify(body);
+        }
+        return fetch(url, opts).then(function (r) {
+          return r.json().then(function (data) { return data; });
+        });
+      });
+    }
+
+    function fsList(path) { return fsApi("GET", "/fs", { path: path }); }
+    function fsRead(path) { return fsApi("GET", "/file", { path: path }); }
+    function fsWrite(path, content) { return fsApi("PUT", "/file", {}, { path: path, content: content }); }
+
+    var FOLDER_ICON = '<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+    var FILE_ICON = '<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>';
+
+    function joinFsPath(dir, name) {
+      if (dir === "/" || dir === "") return name;
+      return dir.replace(/\/$/, "") + "/" + name;
+    }
+
+    function loadFsLevel(path, container) {
+      container.innerHTML = '<div class="px-2 py-1 text-muted-foreground/60">Loading…</div>';
+      fsList(path).then(function (res) {
+        container.innerHTML = "";
+        if (!res.ok) {
+          container.innerHTML = '<div class="px-2 py-1 text-red-400">' + escHtml(res.error || "failed to load") + "</div>";
+          return;
+        }
+        if (!res.entries.length) {
+          container.innerHTML = '<div class="px-2 py-1 text-muted-foreground/60">Empty</div>';
+          return;
+        }
+        res.entries.forEach(function (entry) {
+          var full = joinFsPath(path, entry.name);
+
+          var row = document.createElement("div");
+          row.className = "fs-row";
+          row.dataset.fsPath = full;
+          row.dataset.fsType = entry.type;
+          row.innerHTML = (entry.type === "dir" ? FOLDER_ICON : FILE_ICON) +
+            '<span class="truncate">' + escHtml(entry.name) + "</span>";
+          container.appendChild(row);
+
+          if (entry.type === "dir") {
+            var children = document.createElement("div");
+            children.className = "hidden pl-4";
+            children.dataset.fsChildrenOf = full;
+            container.appendChild(children);
+          }
+        });
+      }).catch(function (err) {
+        container.innerHTML = '<div class="px-2 py-1 text-red-400">' + escHtml(err.message) + "</div>";
+      });
+    }
+
+    function toggleFsDir(row) {
+      var childContainer = row.nextElementSibling;
+      if (!childContainer || childContainer.dataset.fsChildrenOf !== row.dataset.fsPath) return;
+      var willShow = childContainer.classList.contains("hidden");
+      childContainer.classList.toggle("hidden");
+      if (willShow && childContainer.dataset.loaded !== "1") {
+        childContainer.dataset.loaded = "1";
+        loadFsLevel(row.dataset.fsPath, childContainer);
+      }
+    }
+
+    function fsInitRoot() {
+      var mount = document.getElementById("sandbox-fs-root");
+      if (!mount) return;
+      loadFsLevel("/", mount);
+    }
+
+    function setDirty(path, dirty) {
+      var tab = editorTabByPath(path);
+      if (!tab) return;
+      var dot = tab.querySelector(".editor-tab-dirty");
+      if (dot) dot.classList.toggle("hidden", !dirty);
+    }
+
+    function openFileInEditor(path) {
+      if (editorTabByPath(path)) { openEditor(path); return; }
+      if (visibleEditorTabs().length >= maxEditors) return;
+
       var tabs = $("[data-editor-tabs]");
       var panes = $("[data-editor-panes]");
+      if (!tabs || !panes) return;
 
-      if (!tabs || !panes) return null;
+      var name = path.split("/").pop();
 
       var tab = document.createElement("button");
-      tab.dataset.tab = file;
+      tab.dataset.tab = path;
+      tab.title = path;
       tab.className = "editor-tab hidden h-full items-center gap-2 border-r px-4 text-xs text-muted-foreground hover:text-accent-foreground";
       tab.innerHTML =
-        '<span>' + file + '</span>' +
+        '<span class="editor-tab-dirty hidden size-1.5 shrink-0 rounded-full bg-foreground"></span>' +
+        "<span>" + escHtml(name) + "</span>" +
         '<span class="tab-close rounded p-0.5 hover:bg-background/60">×</span>';
 
       var pane = document.createElement("div");
-      pane.dataset.editorFile = file;
-      pane.className = "editor-pane hidden";
-      pane.innerHTML =
-        '<div class="flex border-b bg-muted/20">' +
-          '<div class="w-16 select-none border-r px-2 py-1 text-right text-muted-foreground">1</div>' +
-          '<pre class="px-5 py-1"><code></code></pre>' +
-        '</div>';
+      pane.dataset.editorFile = path;
+      pane.className = "editor-pane hidden h-full w-full";
+      pane.innerHTML = '<textarea class="editor-textarea h-full w-full resize-none bg-transparent p-3 font-mono text-xs leading-5 outline-none" spellcheck="false" disabled placeholder="Loading…"></textarea>';
 
       tabs.appendChild(tab);
       panes.appendChild(pane);
+      openEditor(path);
 
-      return file;
+      var textarea = pane.querySelector("textarea");
+      fsRead(path).then(function (res) {
+        if (!res.ok) {
+          textarea.placeholder = res.error || "Could not open file.";
+          return;
+        }
+        if (res.binary) {
+          textarea.placeholder = "Binary file — cannot edit here.";
+          return;
+        }
+        textarea.disabled = false;
+        textarea.value = res.content;
+        openFileState[path] = { original: res.content };
+        textarea.addEventListener("input", function () {
+          setDirty(path, textarea.value !== openFileState[path].original);
+        });
+      }).catch(function (err) {
+        textarea.placeholder = err.message;
+      });
+    }
+
+    function saveActiveFile() {
+      var activeTab = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
+      if (!activeTab) return;
+      var path = activeTab.dataset.tab;
+      var pane = editorPaneByPath(path);
+      var textarea = pane && pane.querySelector("textarea");
+      if (!textarea || textarea.disabled) return;
+
+      var content = textarea.value;
+      fsWrite(path, content).then(function (res) {
+        if (res.ok) {
+          openFileState[path] = { original: content };
+          setDirty(path, false);
+          window.Toast && window.Toast.create({ title: "Saved", type: "success", duration: 1500 });
+        } else {
+          window.Toast && window.Toast.create({ title: "Save failed", description: res.error || "", type: "error" });
+        }
+      }).catch(function (err) {
+        window.Toast && window.Toast.create({ title: "Save failed", description: err.message, type: "error" });
+      });
     }
 
     function togglePanel(name) {
@@ -388,8 +558,8 @@
     }
 
     function openEditor(file) {
-      var pane = $('[data-editor-file="' + file + '"]');
-      var tab = $('[data-tab="' + file + '"]');
+      var pane = editorPaneByPath(file);
+      var tab = editorTabByPath(file);
 
       if (!pane || !tab) return;
 
@@ -414,16 +584,16 @@
     }
 
     function closeEditor(file) {
-      var tab = $('[data-tab="' + file + '"]');
-      var pane = $('[data-editor-file="' + file + '"]');
+      var tab = editorTabByPath(file);
+      var pane = editorPaneByPath(file);
 
       if (!tab) return;
 
       var wasActive = tab.classList.contains("active-tab");
 
-      tab.classList.add("hidden");
-      tab.classList.remove("flex");
-      hide(pane);
+      tab.remove();
+      if (pane) pane.remove();
+      delete openFileState[file];
 
       if (wasActive) {
         var next = visibleEditorTabs()[0];
@@ -495,59 +665,6 @@
       window.dispatchEvent(new Event("resize"));
     }
 
-    function openFs(path, push) {
-      var fs = document.getElementById("sandbox-fs");
-      if (!fs) return;
-
-      var view = $('[data-fs-view="' + path + '"]', fs);
-      if (!view) return;
-
-      fs._path = fs._path || "/";
-      fs._history = fs._history || [];
-
-      if (push && fs._path !== path) {
-        fs._history.push(fs._path);
-      }
-
-      fs._path = path;
-
-      $$("[data-fs-view]", fs).forEach(function (el) {
-        el.classList.toggle("hidden", el.dataset.fsView !== path);
-      });
-
-      $$("[data-fs-main]", fs).forEach(function (el) {
-        el.classList.toggle("fs-row-active", el.dataset.fsMain === path);
-      });
-
-      var label = $("[data-fs-path]", fs);
-      if (label) label.textContent = path;
-
-      var back = $("[data-fs-back]", fs);
-      if (back) {
-        back.classList.toggle("hidden", path === "/");
-      }
-    }
-
-    function backFs() {
-      var fs = document.getElementById("sandbox-fs");
-
-      if (!fs || !fs._history || !fs._history.length) {
-        openFs("/", false);
-        return;
-      }
-
-      openFs(fs._history.pop(), false);
-    }
-
-    function toggleFsGroup(row) {
-      var key = row.dataset.fsExpand;
-      var child = $('[data-fs-child="' + key + '"]');
-
-      if (!child) return;
-
-      child.classList.toggle("hidden");
-    }
-
     root.addEventListener("click", function (event) {
       var target = event.target;
 
@@ -555,15 +672,11 @@
         target.closest("[data-toggle-panel]") ||
         target.closest("[data-toggle-right]") ||
         target.closest("[data-new-terminal]") ||
-        target.closest("[data-new-editor]") ||
         target.closest(".tab-close") ||
         target.closest(".terminal-tab-close") ||
-        target.closest("[data-open-file]") ||
         target.closest("[data-tab]") ||
         target.closest("[data-terminal-tab]") ||
-        target.closest("[data-fs-back]") ||
-        target.closest("[data-fs-main]") ||
-        target.closest("[data-fs-expand]");
+        target.closest(".fs-row");
 
       if (!action || !root.contains(action)) return;
 
@@ -573,12 +686,6 @@
       if (action.dataset.newTerminal !== undefined) {
         var terminalName = createCleanTerminal();
         if (terminalName) openTerminal(terminalName);
-        return;
-      }
-
-      if (action.dataset.newEditor !== undefined) {
-        var file = createCleanEditor();
-        if (file) openEditor(file);
         return;
       }
 
@@ -594,13 +701,23 @@
         return;
       }
 
-      if (action.dataset.openFile) return openEditor(action.dataset.openFile);
+      if (action.classList.contains("fs-row")) {
+        if (action.dataset.fsType === "dir") return toggleFsDir(action);
+        return openFileInEditor(action.dataset.fsPath);
+      }
+
       if (action.dataset.tab) return openEditor(action.dataset.tab);
       if (action.dataset.terminalTab) return openTerminal(action.dataset.terminalTab);
-      if (action.dataset.fsBack !== undefined) return backFs();
-      if (action.dataset.fsMain) return openFs(action.dataset.fsMain, true);
-      if (action.dataset.fsExpand) return toggleFsGroup(action);
     });
+
+    // Ctrl+S saves the active file instead of triggering the browser's
+    // native "Save Page" dialog — only while this IDE root has focus.
+    document.addEventListener("keydown", function (event) {
+      if (!(event.ctrlKey || event.metaKey) || event.key !== "s") return;
+      if (!root.contains(document.activeElement)) return;
+      event.preventDefault();
+      saveActiveFile();
+    }, true);
 
     window.setInterval(function () {
       var time = $("#sandbox-time");
@@ -614,7 +731,7 @@
 
     openTerminal(createCleanTerminal());
     openRight("notes");
-    openFs("/", false);
+    fsInitRoot();
     syncCenterLayout();
   }
 
