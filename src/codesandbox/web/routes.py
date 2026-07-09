@@ -52,7 +52,8 @@ def dashboard():
     if redir:
         return redir
     user = session.user
-    nav = build_nav("/dashboard", user)
+    ws_ctx = _workspaces_ctx(user)
+    nav = build_nav("/dashboard", user, ws_ctx.get("active_workspace"))
 
     try:
         _, user_count = identity_repo.list_users()
@@ -76,7 +77,7 @@ def dashboard():
         "page_title": "Dashboard",
         "page_description": "Platform overview — users, orgs, runtime, cases",
         "metrics": metrics,
-        **_workspaces_ctx(user),
+        **ws_ctx,
     }
 
 
@@ -88,8 +89,8 @@ def hub():
     if redir:
         return redir
     user = session.user
-    nav = build_nav("/hub", user)
     ws_ctx = _workspaces_ctx(user)
+    nav = build_nav("/hub", user, ws_ctx.get("active_workspace"))
     templates = get_hub_templates()
 
     org_ctx: dict = {}
@@ -150,7 +151,7 @@ def hub_template(instance: str):
             billing = get_user_billing(str(user.id))
         user_balance = billing["balance"]["amount"]
 
-    nav = build_nav("/hub", user)
+    nav = build_nav("/hub", user, active_workspace)
     return {
         "_meta": {"title": f"{template['name']} — CodeSandbox"},
         "user": _user_ctx(user),
@@ -180,14 +181,15 @@ def hub_sandbox(instance: str, slug: str):
     if plan is None:
         return {"_redirect": f"/hub/{instance}"}
 
-    nav = build_nav("/hub", user)
+    ws_ctx = _workspaces_ctx(user)
+    nav = build_nav("/hub", user, ws_ctx.get("active_workspace"))
     return {
         "_meta": {"title": f"{template['name']} Sandbox — CodeSandbox"},
         "user": _user_ctx(user),
         "nav": nav,
         "template": template,
         "plan": plan,
-        **_workspaces_ctx(user),
+        **ws_ctx,
     }
 
 
@@ -199,7 +201,8 @@ def my_instances():
     if redir:
         return redir
     user = session.user
-    nav = build_nav("/my-instances", user)
+    ws_ctx = _workspaces_ctx(user)
+    nav = build_nav("/my-instances", user, ws_ctx.get("active_workspace"))
     instances = get_user_instances(str(user.id))
     return {
         "_meta": {"title": "My Instances — CodeSandbox"},
@@ -207,7 +210,7 @@ def my_instances():
         "nav": nav,
         "page_title": "My Instances",
         "instances": instances,
-        **_workspaces_ctx(user),
+        **ws_ctx,
     }
 
 
@@ -227,7 +230,7 @@ def private_instances():
         org_id = str(active_workspace["id"])
         assigned = get_user_assigned_instances(str(user.id), org_id)
 
-    nav = build_nav("/private_instances", user)
+    nav = build_nav("/private_instances", user, active_workspace)
     return {
         "_meta": {"title": "Private Instances — CodeSandbox"},
         "user": _user_ctx(user),
@@ -259,7 +262,7 @@ def billing():
         billing_data = get_user_billing(str(user.id))
         billing_label = user.name or user.email
 
-    nav = build_nav("/billing", user)
+    nav = build_nav("/billing", user, active_workspace)
     return {
         "_meta": {"title": "Billing — CodeSandbox"},
         "user": _user_ctx(user),
@@ -345,7 +348,8 @@ def sandbox():
     if redir:
         return redir
     user = session.user
-    nav = build_nav("/laboratory/sandbox", user)
+    ws_ctx = _workspaces_ctx(user)
+    nav = build_nav("/laboratory/sandbox", user, ws_ctx.get("active_workspace"))
 
     try:
         _, user_count = identity_repo.list_users()
@@ -369,5 +373,5 @@ def sandbox():
         "page_title": "Dashboard",
         "page_description": "Platform overview — users, orgs, runtime, cases",
         "metrics": metrics,
-        **_workspaces_ctx(user),
+        **ws_ctx,
     }

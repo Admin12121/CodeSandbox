@@ -219,7 +219,10 @@
           {% elif active_tab == "config" %}
             <button type="button" id="test-launch-btn" title="Test Launch"
               class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-              <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg id="launch-icon-play" class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
+              <svg id="launch-icon-spinner" hidden class="size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <svg id="launch-icon-pause" hidden class="size-4 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>
+              <svg id="launch-icon-stopping" hidden class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
             </button>
             <button type="button" id="ide-save-btn" title="Save Config"
               class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
@@ -281,15 +284,16 @@
                 {% call table.table_header() %}
                   {% call table.table_row() %}
                     {{ table.table_head("Identity", class="w-44") }}
-                    {{ table.table_head("") }}
-                  {% endcall %}
-                {% endcall %}
-                {% call table.table_body() %}
-                  {% if not is_create %}
-                    {% call table.table_row() %}
-                      {% call table.table_cell(class="font-medium text-sm align-middle") %}Status{% endcall %}
-                      {% call table.table_cell() %}
-                        <div class="flex items-center gap-3">
+                    {% call table.table_head(class="text-right") %}
+                      {% if not is_create %}
+                        <div class="flex items-center justify-end gap-3 font-normal normal-case">
+                          {% if selected_template.status != "active" %}
+                            <span class="text-xs text-muted-foreground">
+                              {% if selected_template.last_test_status == "passed" %}Test passed — ready to activate
+                              {% elif selected_template.last_test_status == "failed" %}Last test failed — run Test Launch again
+                              {% else %}Not yet tested — run Test Launch in the Config tab before activating{% endif %}
+                            </span>
+                          {% endif %}
                           {% if selected_template.status == "active" %}
                             {{ badge.badge("Active", variant="outline") }}
                           {% elif selected_template.status == "maintenance" %}
@@ -304,17 +308,12 @@
                               {{ "Deactivate" if selected_template.status == "active" else "Activate" }}
                             </button>
                           {% endif %}
-                          {% if selected_template.status != "active" %}
-                            <span class="text-xs text-muted-foreground">
-                              {% if selected_template.last_test_status == "passed" %}Test passed — ready to activate
-                              {% elif selected_template.last_test_status == "failed" %}Last test failed — run Test Launch again
-                              {% else %}Not yet tested — run Test Launch in the Config tab before activating{% endif %}
-                            </span>
-                          {% endif %}
                         </div>
-                      {% endcall %}
+                      {% endif %}
                     {% endcall %}
-                  {% endif %}
+                  {% endcall %}
+                {% endcall %}
+                {% call table.table_body() %}
                   {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Thumbnail{% endcall %}
                     {% call table.table_cell() %}
@@ -673,6 +672,78 @@
             <svg class="size-12 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
             <p class="text-sm">Select a file to edit</p>
           </div>
+
+          {# ── Monitor tab pane (real-time metrics for the running Test Launch instance) ── #}
+          <div id="monitor-content" class="flex-1 min-h-0 overflow-hidden hidden flex-col">
+            <div class="flex h-9 shrink-0 items-center justify-between border-b px-3 gap-3">
+              <div class="flex items-center gap-3 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <div id="mon-dot" class="size-2 rounded-full bg-muted-foreground"></div>
+                  <span id="mon-status" class="text-xs font-medium text-muted-foreground">Idle</span>
+                </div>
+                <span class="text-[11px] font-mono text-muted-foreground/60 truncate" id="mon-iid">—</span>
+                <div class="flex items-center gap-1.5">
+                  <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span class="text-[11px] text-muted-foreground tabular-nums" id="mon-uptime">0s</span>
+                </div>
+              </div>
+              <button id="mon-stop-btn" type="button"
+                class="inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-destructive/50 px-2 text-[11px] font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors disabled:opacity-40"
+                disabled>
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+                Stop
+              </button>
+            </div>
+
+            {# Charts 2×2 grid #}
+            <div class="grid grid-cols-2 grid-rows-2 flex-1 min-h-0 divide-x divide-y bg-border/30">
+
+              {# CPU % #}
+              <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium text-muted-foreground">CPU</span>
+                  <span class="text-[11px] font-mono" id="mon-cpu-val">—</span>
+                </div>
+                {{ ch.area_chart("mon-cpu", {
+                  "cpu": {"label": "CPU %", "color": "oklch(0.646 0.222 41.116)", "fill_color": "rgba(234,88,12,0.14)"}
+                }, class="flex-1 min-h-0", height=110) }}
+              </div>
+
+              {# RAM MB #}
+              <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium text-muted-foreground">Memory</span>
+                  <span class="text-[11px] font-mono" id="mon-ram-val">—</span>
+                </div>
+                {{ ch.area_chart("mon-ram", {
+                  "ram": {"label": "RAM MB", "color": "oklch(0.6 0.118 184.704)", "fill_color": "rgba(14,116,144,0.14)"}
+                }, class="flex-1 min-h-0", height=110) }}
+              </div>
+
+              {# Net RX #}
+              <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium text-muted-foreground">Net In</span>
+                  <span class="text-[11px] font-mono" id="mon-rx-val">—</span>
+                </div>
+                {{ ch.area_chart("mon-netrx", {
+                  "net_rx": {"label": "RX KB/s", "color": "oklch(0.696 0.17 162.48)", "fill_color": "rgba(16,185,129,0.14)"}
+                }, class="flex-1 min-h-0", height=110) }}
+              </div>
+
+              {# Net TX #}
+              <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
+                <div class="flex items-center justify-between">
+                  <span class="text-[11px] font-medium text-muted-foreground">Net Out</span>
+                  <span class="text-[11px] font-mono" id="mon-tx-val">—</span>
+                </div>
+                {{ ch.area_chart("mon-nettx", {
+                  "net_tx": {"label": "TX KB/s", "color": "oklch(0.627 0.265 303.9)", "fill_color": "rgba(139,92,246,0.14)"}
+                }, class="flex-1 min-h-0", height=110) }}
+              </div>
+
+            </div>{# /charts grid #}
+          </div>{# /monitor-content #}
         </div>
 
       </div>{# /inner panels row #}
@@ -688,6 +759,10 @@
           <div class="flex items-center gap-1.5">
             <svg class="size-3.5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
             <span class="text-[11px] font-medium text-muted-foreground select-none">Terminal</span>
+            <span title="This is a shell in the worker container, not the template's own Docker image. Exec into the actual sandbox image requires the real container-runtime worker (Phase 6a) — not yet built."
+              class="inline-flex items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 size-4 text-amber-600 dark:text-amber-400 cursor-help select-none">
+              <svg class="size-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+            </span>
           </div>
           <button id="term-close-btn" title="Close terminal"
             class="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
@@ -709,7 +784,12 @@
             <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
           </button>
         </div>
-        <div class="flex h-full items-center gap-1 px-1">
+        <div class="flex h-full items-center gap-1.5 px-1">
+          <button id="ide-monitor-toggle" title="Sandbox Monitor" hidden
+            class="flex items-center gap-1 rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
+            <span id="ide-monitor-dot" class="size-1.5 rounded-full bg-muted-foreground"></span>
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v4"/><path d="m14.305 7.53.923-.382"/><path d="m15.228 4.852-.923-.383"/><path d="m16.852 3.228-.383-.924"/><path d="m16.852 8.772-.383.923"/><path d="m19.148 3.228.383-.924"/><path d="m19.53 9.696-.382-.924"/><path d="m20.772 4.852.924-.383"/><path d="m20.772 7.148.924.383"/><path d="M22 13v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><path d="M8 21h8"/><circle cx="18" cy="6" r="3"/></svg>
+          </button>
           <span id="ide-active-file" class="font-mono opacity-60"></span>
         </div>
       </div>
@@ -721,97 +801,6 @@
 
       {# Seed data for JS #}
       <script id="ide-seed" type="application/json">{{ (selected_template.type_config or "{}") | safe }}</script>
-
-      {# ── Real-time monitor overlay ───────────────────────────────────────── #}
-      <div id="monitor-overlay" aria-hidden="true"
-        class="fixed inset-0 z-[400] pointer-events-none">
-        {# Backdrop #}
-        <div id="monitor-backdrop"
-          class="absolute inset-0 bg-black/40 opacity-0 transition-opacity duration-200 pointer-events-none">
-        </div>
-        {# Slide-up panel #}
-        <div id="monitor-panel"
-          class="absolute bottom-0 left-0 right-0 flex flex-col bg-background border-t shadow-2xl pointer-events-auto"
-          style="height:420px;transform:translateY(100%);transition:transform .25s cubic-bezier(.4,0,.2,1)">
-
-          {# Panel header #}
-          <div class="flex h-10 shrink-0 items-center justify-between border-b px-4 gap-3">
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="flex items-center gap-1.5">
-                <div id="mon-dot" class="size-2 rounded-full bg-muted-foreground"></div>
-                <span id="mon-status" class="text-xs font-medium text-muted-foreground">Idle</span>
-              </div>
-              <span class="text-[11px] font-mono text-muted-foreground/60 truncate" id="mon-iid">—</span>
-              <div class="flex items-center gap-1.5">
-                <svg class="size-3 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                <span class="text-[11px] text-muted-foreground tabular-nums" id="mon-uptime">0s</span>
-              </div>
-            </div>
-            <div class="flex shrink-0 items-center gap-2">
-              <button id="mon-stop-btn" type="button"
-                class="inline-flex h-7 items-center gap-1 rounded-md border border-destructive/50 px-2.5 text-[11px] font-medium text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors disabled:opacity-40"
-                disabled>
-                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                Stop
-              </button>
-              <button id="mon-close-btn" type="button" aria-label="Close monitor"
-                class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-                <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </div>
-          </div>
-
-          {# Charts 2×2 grid #}
-          <div class="grid grid-cols-2 grid-rows-2 flex-1 min-h-0 divide-x divide-y bg-border/30">
-
-            {# CPU % #}
-            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-muted-foreground">CPU</span>
-                <span class="text-[11px] font-mono" id="mon-cpu-val">—</span>
-              </div>
-              {{ ch.area_chart("mon-cpu", {
-                "cpu": {"label": "CPU %", "color": "oklch(0.646 0.222 41.116)", "fill_color": "rgba(234,88,12,0.14)"}
-              }, class="flex-1 min-h-0", height=110) }}
-            </div>
-
-            {# RAM MB #}
-            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-muted-foreground">Memory</span>
-                <span class="text-[11px] font-mono" id="mon-ram-val">—</span>
-              </div>
-              {{ ch.area_chart("mon-ram", {
-                "ram": {"label": "RAM MB", "color": "oklch(0.6 0.118 184.704)", "fill_color": "rgba(14,116,144,0.14)"}
-              }, class="flex-1 min-h-0", height=110) }}
-            </div>
-
-            {# Net RX #}
-            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-muted-foreground">Net In</span>
-                <span class="text-[11px] font-mono" id="mon-rx-val">—</span>
-              </div>
-              {{ ch.area_chart("mon-netrx", {
-                "net_rx": {"label": "RX KB/s", "color": "oklch(0.696 0.17 162.48)", "fill_color": "rgba(16,185,129,0.14)"}
-              }, class="flex-1 min-h-0", height=110) }}
-            </div>
-
-            {# Net TX #}
-            <div class="bg-background flex flex-col gap-1 p-3 min-h-0">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-medium text-muted-foreground">Net Out</span>
-                <span class="text-[11px] font-mono" id="mon-tx-val">—</span>
-              </div>
-              {{ ch.area_chart("mon-nettx", {
-                "net_tx": {"label": "TX KB/s", "color": "oklch(0.627 0.265 303.9)", "fill_color": "rgba(139,92,246,0.14)"}
-              }, class="flex-1 min-h-0", height=110) }}
-            </div>
-
-          </div>{# /charts grid #}
-
-        </div>{# /monitor-panel #}
-      </div>{# /monitor-overlay #}
 
     {% endif %}
 
@@ -1269,6 +1258,13 @@ function fileIcon(name) {
 }
 
 // ── Tab bar ─────────────────────────────────────────────────────────────────
+// activeView: 'file' shows Monaco for activeFile; 'monitor' shows the
+// real-time monitor pane. Both share the same tab strip (#editor-tabs).
+var activeView = 'file';
+var monitorAvailable = false;
+
+var MONITOR_TAB_ICON = '<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v4"/><path d="m14.305 7.53.923-.382"/><path d="m15.228 4.852-.923-.383"/><path d="m16.852 3.228-.383-.924"/><path d="m16.852 8.772-.383.923"/><path d="m19.148 3.228.383-.924"/><path d="m19.53 9.696-.382-.924"/><path d="m20.772 4.852.924-.383"/><path d="m20.772 7.148.924.383"/><path d="M22 13v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><path d="M8 21h8"/><circle cx="18" cy="6" r="3"/></svg>';
+
 function renderTabs() {
   var bar = document.getElementById('editor-tabs');
   if (!bar) return;
@@ -1277,7 +1273,7 @@ function renderTabs() {
     var name = path.split('/').pop();
     var tab = document.createElement('div');
     tab.className = 'flex items-center gap-1.5 px-3 h-full border-r text-xs cursor-pointer shrink-0 transition-colors ' +
-      (activeFile === path ? 'bg-background text-foreground border-b-2 border-b-primary' : 'text-muted-foreground hover:text-foreground bg-muted/40');
+      (activeView === 'file' && activeFile === path ? 'bg-background text-foreground border-b-2 border-b-primary' : 'text-muted-foreground hover:text-foreground bg-muted/40');
     tab.innerHTML = fileIcon(name)
       + '<span>' + esc(name) + '</span>'
       + '<button class="ml-1 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-muted/80" data-close-tab="' + esc(path) + '" title="Close">'
@@ -1289,11 +1285,22 @@ function renderTabs() {
     });
     bar.appendChild(tab);
   });
+
+  if (monitorAvailable) {
+    var mtab = document.createElement('div');
+    mtab.className = 'flex items-center gap-1.5 px-3 h-full border-r text-xs cursor-pointer shrink-0 transition-colors ' +
+      (activeView === 'monitor' ? 'bg-background text-foreground border-b-2 border-b-primary' : 'text-muted-foreground hover:text-foreground bg-muted/40');
+    mtab.innerHTML = MONITOR_TAB_ICON + '<span>Monitor</span>';
+    mtab.addEventListener('click', function() { switchToMonitorView(); });
+    bar.appendChild(mtab);
+  }
+
   toggleEmptyState();
 }
 
 // ── Open / Switch file ──────────────────────────────────────────────────────
 function openFile(path) {
+  activeView = 'file';
   if (!openTabs.includes(path)) openTabs.push(path);
   activeFile = path;
 
@@ -1308,7 +1315,46 @@ function openFile(path) {
   renderTabs();
   renderTree();
   toggleEmptyState();
+  // Coming back from the monitor pane (or any hidden state), Monaco's
+  // automaticLayout can miss the resize — force a re-measure.
+  if (editor) setTimeout(function(){ editor.layout(); }, 0);
 }
+
+// ── Open / Switch to the real-time monitor pane ─────────────────────────────
+var monitorChartsInitialized = false;
+
+function switchToMonitorView() {
+  if (!monitorAvailable) return;
+  activeView = 'monitor';
+  renderTabs();
+  toggleEmptyState();
+  // Charts must be created while their container is actually visible (see
+  // chart.html) — the container was `hidden` on page load, so create them
+  // the first time we reveal it, once the layout has settled.
+  if (!monitorChartsInitialized) {
+    monitorChartsInitialized = true;
+    requestAnimationFrame(function() {
+      ['mon-cpu', 'mon-ram', 'mon-netrx', 'mon-nettx'].forEach(function(id) {
+        window.csInitChart && window.csInitChart(id);
+      });
+    });
+  }
+}
+
+// Called by the Test Launch / monitor script (different closure) to reveal
+// or hide the Monitor tab + bottom-toolbar indicator.
+window.csSetMonitorAvailable = function(available) {
+  monitorAvailable = available;
+  var toolbarBtn = document.getElementById('ide-monitor-toggle');
+  if (toolbarBtn) { if (available) toolbarBtn.removeAttribute('hidden'); else toolbarBtn.setAttribute('hidden', ''); }
+  if (!available && activeView === 'monitor') {
+    if (activeFile) openFile(activeFile);
+    else { activeView = 'file'; renderTabs(); toggleEmptyState(); }
+  } else {
+    renderTabs();
+  }
+};
+window.csSwitchToMonitorView = switchToMonitorView;
 
 function closeTab(path) {
   openTabs = openTabs.filter(function(t) { return t !== path; });
@@ -1463,7 +1509,16 @@ function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').re
 function toggleEmptyState() {
   var empty = document.getElementById('editor-empty');
   var mount = document.getElementById('monaco-mount');
+  var monContent = document.getElementById('monitor-content');
   if (!empty || !mount) return;
+
+  if (activeView === 'monitor') {
+    mount.classList.add('hidden');
+    empty.classList.add('hidden');
+    if (monContent) { monContent.classList.remove('hidden'); monContent.classList.add('flex'); }
+    return;
+  }
+  if (monContent) { monContent.classList.add('hidden'); monContent.classList.remove('flex'); }
   if (activeFile) { mount.classList.remove('hidden'); empty.classList.add('hidden'); }
   else { mount.classList.add('hidden'); empty.classList.remove('hidden'); }
 }
@@ -1513,6 +1568,13 @@ function toggleEmptyState() {
       if (editor) editor.layout();
     }
   });
+})();
+
+// ── Monitor toggle (bottom toolbar) ─────────────────────────────────────────
+(function(){
+  var btn = document.getElementById('ide-monitor-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', function() { switchToMonitorView(); });
 })();
 
 // ── Event wiring ────────────────────────────────────────────────────────────
@@ -1743,21 +1805,27 @@ loaderScript.onload = function() {
 document.head.appendChild(loaderScript);
 
 // ── Terminal panel ─────────────────────────────────────────────────────────
+// Real, isolated PTY-backed terminal tied to the currently running Test Launch
+// instance (see worker/worker.py + asgi.py's ws_sandbox_terminal). There's no
+// terminal without a running test instance — start one from the play button.
 var termPanel     = document.getElementById('term-panel');
 var termResizeH   = document.getElementById('term-resize-handle');
 var termCloseBtn  = document.getElementById('term-close-btn');
 var termToggleBtn = document.getElementById('ide-term-toggle');
 var xtermInstance = null;
 var xtermReady    = false;
+var xtermFit      = null;
 var termWs        = null;
+var termInstanceId = null;
 
 function openTermPanel() {
   if (!termPanel) return;
   termPanel.style.display = '';
   if (termResizeH) termResizeH.classList.remove('hidden');
   if (editor) editor.layout();
-  if (!xtermReady) loadXterm();
-  else if (xtermInstance) { setTimeout(function(){ xtermInstance.fit && xtermInstance.fit(); }, 50); }
+  if (!xtermReady) { loadXterm(); return; }
+  if (xtermInstance) setTimeout(function(){ xtermFit && xtermFit(); }, 50);
+  connectTerminal();
 }
 
 function closeTermPanel() {
@@ -1767,21 +1835,41 @@ function closeTermPanel() {
   if (editor) editor.layout();
 }
 
+// Monaco's loader.js installs a global AMD `define`/`require` on this page.
+// xterm.js's UMD bundle detects that and tries to register itself as an AMD
+// module through it, which collides with Monaco's own loader ("Can only have
+// one anonymous define call per script file") and silently aborts — xterm
+// never attaches to `window.Terminal`, so nothing renders and no error
+// reaches our code. Hiding `define` while xterm's script executes forces its
+// UMD wrapper down the plain browser-global path instead.
+function _loadScriptNoAmd(src, cb) {
+  var savedDefine = window.define;
+  var savedRequire = window.require;
+  window.define = undefined;
+  var s = document.createElement('script');
+  s.src = src;
+  s.onload = function() {
+    window.define = savedDefine;
+    window.require = savedRequire;
+    cb();
+  };
+  s.onerror = function() {
+    window.define = savedDefine;
+    window.require = savedRequire;
+    xtermInstance && xtermInstance.writeln('\x1b[31mFailed to load ' + src + '\x1b[0m');
+  };
+  document.head.appendChild(s);
+}
+
 function loadXterm() {
   if (xtermReady) return;
-  var s = document.createElement('script');
-  s.src = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js';
-  s.onload = function() {
+  _loadScriptNoAmd('https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js', function() {
     var css = document.createElement('link');
     css.rel = 'stylesheet';
     css.href = 'https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css';
     document.head.appendChild(css);
-    var fitScript = document.createElement('script');
-    fitScript.src = 'https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js';
-    fitScript.onload = function() { initXterm(); };
-    document.head.appendChild(fitScript);
-  };
-  document.head.appendChild(s);
+    _loadScriptNoAmd('https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js', initXterm);
+  });
 }
 
 function initXterm() {
@@ -1789,7 +1877,6 @@ function initXterm() {
   var mount = document.getElementById('xterm-mount');
   if (!mount || typeof Terminal === 'undefined') return;
 
-  var isDark = document.documentElement.classList.contains('dark');
   var term = new Terminal({
     fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
     fontSize: 13,
@@ -1808,32 +1895,85 @@ function initXterm() {
   term.open(mount);
   fitAddon.fit();
   xtermInstance = term;
-  xtermInstance.fit = function() { fitAddon.fit(); };
+  xtermFit = function() { fitAddon.fit(); };
 
+  term.onData(function(data) {
+    if (termWs && termWs.readyState === WebSocket.OPEN) {
+      termWs.send(JSON.stringify({ type: 'data', data: data }));
+    }
+  });
+
+  var ro = new ResizeObserver(function() {
+    try { fitAddon.fit(); } catch(e){}
+    if (termWs && termWs.readyState === WebSocket.OPEN) {
+      termWs.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    }
+  });
+  ro.observe(mount);
+
+  connectTerminal();
+}
+
+function connectTerminal() {
+  if (!xtermInstance) return;
+  var instanceId = window.__csTestInstanceId;
+  if (!instanceId) {
+    xtermInstance.reset();
+    xtermInstance.writeln('\x1b[33mNo test instance running.\x1b[0m');
+    xtermInstance.writeln('\x1b[90mClick the play button (Test Launch) above, then reopen the terminal.\x1b[0m');
+    return;
+  }
+  if (termInstanceId === instanceId && termWs && termWs.readyState === WebSocket.OPEN) return; // already connected to this instance
+
+  if (termWs) { try { termWs.close(); } catch(e){} termWs = null; }
+  termInstanceId = instanceId;
+  xtermInstance.reset();
+  xtermInstance.writeln('\x1b[90mConnecting to sandbox terminal…\x1b[0m');
+
+  fetch('/instances/' + instanceId + '/monitor-token?purpose=terminal')
+    .then(function(r) {
+      if (!r.ok) throw new Error('token request failed (' + r.status + ')');
+      return r.json();
+    })
+    .then(function(data) { openTerminalWs(instanceId, data.token); })
+    .catch(function(err) { xtermInstance.writeln('\x1b[31mCould not authenticate terminal: ' + err.message + '\x1b[0m'); });
+}
+
+function openTerminalWs(instanceId, token) {
   var wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-  var wsUrl = wsProto + '://' + location.host + '/platform/sandboxes/' + TEMPLATE_ID + '/terminal-ws';
-  term.writeln('\x1b[90mConnecting to sandbox terminal…\x1b[0m');
+  var wsUrl = wsProto + '://' + location.host + '/ws/sandbox/' + instanceId + '/terminal?token=' + encodeURIComponent(token);
 
   try {
     termWs = new WebSocket(wsUrl);
-    termWs.onopen = function() {
-      term.writeln('\x1b[32mConnected.\x1b[0m');
-      term.write('\x1b[90m$ \x1b[0m');
-    };
-    termWs.onmessage = function(e) { term.write(e.data); };
-    termWs.onerror = function() { term.writeln('\x1b[31mNo terminal backend available for this template.\x1b[0m'); };
-    termWs.onclose = function() { term.writeln('\r\n\x1b[90m[disconnected]\x1b[0m'); };
   } catch(e) {
-    term.writeln('\x1b[31mWebSocket not available.\x1b[0m');
+    xtermInstance.writeln('\x1b[31mWebSocket not available.\x1b[0m');
+    return;
   }
 
-  term.onData(function(data) {
-    if (termWs && termWs.readyState === WebSocket.OPEN) termWs.send(data);
-  });
-
-  var ro = new ResizeObserver(function() { try { fitAddon.fit(); } catch(e){} });
-  ro.observe(mount);
+  termWs.onmessage = function(e) {
+    var msg;
+    try { msg = JSON.parse(e.data); } catch(ex) { return; }
+    if (msg.type === 'ready') {
+      if (xtermFit) xtermFit();
+      if (termWs.readyState === WebSocket.OPEN) {
+        termWs.send(JSON.stringify({ type: 'resize', cols: xtermInstance.cols, rows: xtermInstance.rows }));
+      }
+    } else if (msg.type === 'output') {
+      xtermInstance.write(msg.data);
+    } else if (msg.type === 'closed') {
+      xtermInstance.writeln('\r\n\x1b[90m[session closed]\x1b[0m');
+    } else if (msg.type === 'error') {
+      xtermInstance.writeln('\x1b[31m' + (msg.message || 'terminal error') + '\x1b[0m');
+    }
+  };
+  termWs.onerror = function() { xtermInstance.writeln('\x1b[31mNo terminal backend available.\x1b[0m'); };
+  termWs.onclose = function() { xtermInstance.writeln('\r\n\x1b[90m[disconnected]\x1b[0m'); };
 }
+
+// Follow the active Test Launch instance so the terminal auto-(re)connects.
+document.addEventListener('cs:test-instance-changed', function() {
+  if (termPanel && termPanel.style.display !== 'none' && xtermInstance) connectTerminal();
+});
 
 if (termToggleBtn) {
   termToggleBtn.addEventListener('click', function() {
@@ -1843,18 +1983,15 @@ if (termToggleBtn) {
 }
 if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
 
-// ── Test Launch + Real-time Monitor ───────────────────────────────────────
+// ── Test Launch + Real-time Monitor (lives in the "Monitor" editor tab) ────
 (function(){
-  var overlay   = document.getElementById('monitor-overlay');
-  var panel     = document.getElementById('monitor-panel');
-  var backdrop  = document.getElementById('monitor-backdrop');
-  var monDot    = document.getElementById('mon-dot');
-  var monStatus = document.getElementById('mon-status');
-  var monIid    = document.getElementById('mon-iid');
-  var monUptime = document.getElementById('mon-uptime');
-  var stopBtn   = document.getElementById('mon-stop-btn');
-  var closeBtn  = document.getElementById('mon-close-btn');
-  var launchBtn = document.getElementById('test-launch-btn');
+  var monDot     = document.getElementById('mon-dot');
+  var monStatus  = document.getElementById('mon-status');
+  var monIid     = document.getElementById('mon-iid');
+  var monUptime  = document.getElementById('mon-uptime');
+  var stopBtn    = document.getElementById('mon-stop-btn');
+  var launchBtn  = document.getElementById('test-launch-btn');
+  var toolbarDot = document.getElementById('ide-monitor-dot');
 
   var monitorWs = null;
   var uptimeTimer = null;
@@ -1865,7 +2002,39 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
   var csrfInput = document.querySelector('input[name="_csrf_token"]');
   var csrfToken = csrfInput ? csrfInput.value : '';
 
+  var currentState = 'idle';
+
+  function updateLaunchIcon(state) {
+    if (!launchBtn) return;
+    var icons = {
+      play:     document.getElementById('launch-icon-play'),
+      spinner:  document.getElementById('launch-icon-spinner'),
+      pause:    document.getElementById('launch-icon-pause'),
+      stopping: document.getElementById('launch-icon-stopping'),
+    };
+    Object.keys(icons).forEach(function(k) { icons[k] && icons[k].setAttribute('hidden', ''); });
+
+    if (state === 'connecting' || state === 'provisioning') {
+      icons.spinner && icons.spinner.removeAttribute('hidden');
+      launchBtn.disabled = true;
+      launchBtn.title = 'Provisioning…';
+    } else if (state === 'running') {
+      icons.pause && icons.pause.removeAttribute('hidden');
+      launchBtn.disabled = false;
+      launchBtn.title = 'Running — click to stop';
+    } else if (state === 'stopping') {
+      icons.stopping && icons.stopping.removeAttribute('hidden');
+      launchBtn.disabled = true;
+      launchBtn.title = 'Stopping…';
+    } else {
+      icons.play && icons.play.removeAttribute('hidden');
+      launchBtn.disabled = false;
+      launchBtn.title = 'Test Launch';
+    }
+  }
+
   function setStatus(state) {
+    currentState = state;
     var map = {
       provisioning: { label: 'Provisioning…', dot: 'bg-yellow-400 animate-pulse', btn: false },
       running:      { label: 'Running',        dot: 'bg-green-500',                btn: true  },
@@ -1877,10 +2046,10 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
     };
     var s = map[state] || map.connecting;
     if (monStatus) monStatus.textContent = s.label;
-    if (monDot) {
-      monDot.className = 'size-2 rounded-full ' + s.dot;
-    }
+    if (monDot) monDot.className = 'size-2 rounded-full ' + s.dot;
+    if (toolbarDot) toolbarDot.className = 'size-1.5 rounded-full ' + s.dot;
     if (stopBtn) stopBtn.disabled = !s.btn;
+    updateLaunchIcon(state);
     if (state === 'running' && !uptimeTimer) {
       uptimeStart = Date.now();
       uptimeTimer = setInterval(function() {
@@ -1898,19 +2067,23 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
     if (state !== 'running') {
       clearInterval(uptimeTimer); uptimeTimer = null;
     }
+    if (state === 'stopped' || state === 'failed' || state === 'killed') {
+      window.__csTestInstanceId = null;
+      document.dispatchEvent(new CustomEvent('cs:test-instance-changed', { detail: { instanceId: null } }));
+      window.csSetMonitorAvailable && window.csSetMonitorAvailable(false);
+    }
   }
 
   function openMonitor(instanceId) {
     currentInstanceId = instanceId;
+    window.__csTestInstanceId = instanceId;
+    document.dispatchEvent(new CustomEvent('cs:test-instance-changed', { detail: { instanceId: instanceId } }));
     if (monIid) monIid.textContent = instanceId.substring(0, 8) + '…';
     if (monUptime) monUptime.textContent = '0s';
 
-    // Show overlay
-    overlay.setAttribute('aria-hidden', 'false');
-    overlay.style.pointerEvents = 'auto';
-    backdrop.style.pointerEvents = 'auto';
-    backdrop.style.opacity = '1';
-    panel.style.transform = 'translateY(0)';
+    // Reveal the Monitor tab + toolbar indicator and switch to it.
+    window.csSetMonitorAvailable && window.csSetMonitorAvailable(true);
+    window.csSwitchToMonitorView && window.csSwitchToMonitorView();
 
     setStatus('connecting');
 
@@ -1982,71 +2155,60 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
     };
   }
 
-  function closeMonitor() {
-    panel.style.transform = 'translateY(100%)';
-    backdrop.style.opacity = '0';
-    setTimeout(function() {
-      overlay.setAttribute('aria-hidden', 'true');
-      overlay.style.pointerEvents = 'none';
-      backdrop.style.pointerEvents = 'none';
-    }, 260);
-    if (monitorWs) { try { monitorWs.close(); } catch(e){} monitorWs = null; }
-    clearInterval(uptimeTimer); uptimeTimer = null;
-    currentInstanceId = null;
-  }
-
-  if (launchBtn) {
-    launchBtn.addEventListener('click', function() {
-      launchBtn.disabled = true;
-      launchBtn.textContent = 'Launching…';
-      fetch('/platform/sandboxes/{{ tid }}/test-run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
+  function launchTestInstance() {
+    launchBtn.disabled = true;
+    fetch('/platform/sandboxes/{{ tid }}/test-run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.ok) {
+        openMonitor(data.instance_id);
+      } else {
         launchBtn.disabled = false;
-        launchBtn.innerHTML = '<svg class="size-3.5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Test Launch';
-        if (data.ok) {
-          openMonitor(data.instance_id);
-        } else {
-          window.Toast && window.Toast.create({
-            title: 'Launch failed',
-            description: data.error || 'Unknown error',
-            type: 'error',
-          });
-        }
-      })
-      .catch(function(err) {
-        launchBtn.disabled = false;
-        launchBtn.innerHTML = '<svg class="size-3.5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Test Launch';
         window.Toast && window.Toast.create({
-          title: 'Network error',
-          description: err.message,
+          title: 'Launch failed',
+          description: data.error || 'Unknown error',
           type: 'error',
         });
+      }
+    })
+    .catch(function(err) {
+      launchBtn.disabled = false;
+      window.Toast && window.Toast.create({
+        title: 'Network error',
+        description: err.message,
+        type: 'error',
       });
     });
   }
 
-  if (closeBtn) closeBtn.addEventListener('click', closeMonitor);
+  function stopTestInstance() {
+    if (!currentInstanceId) return;
+    setStatus('stopping'); // optimistic — disables both buttons immediately
+    fetch('/instances/' + currentInstanceId + '/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: '_csrf_token=' + encodeURIComponent(csrfToken),
+    }).catch(function() {});
+  }
 
-  if (backdrop) backdrop.addEventListener('click', closeMonitor);
-
-  if (stopBtn) {
-    stopBtn.addEventListener('click', function() {
-      if (!currentInstanceId) return;
-      stopBtn.disabled = true;
-      fetch('/instances/' + currentInstanceId + '/stop', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: '_csrf_token=' + encodeURIComponent(csrfToken),
-      }).then(function() {
-        setStatus('stopping');
-      }).catch(function() {});
+  if (launchBtn) {
+    launchBtn.addEventListener('click', function() {
+      if (currentState === 'running') stopTestInstance();
+      else launchTestInstance();
     });
   }
+
+  if (stopBtn) {
+    stopBtn.addEventListener('click', stopTestInstance);
+  }
+
+  window.addEventListener('beforeunload', function() {
+    if (monitorWs) { try { monitorWs.close(); } catch(e){} }
+  });
 })();
 
 // Vertical resize handle for terminal panel

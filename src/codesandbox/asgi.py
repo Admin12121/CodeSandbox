@@ -60,8 +60,12 @@ async def lifespan(app: Starlette):
         await _nc.drain()
 
 
-def _verify_ws_token(token: str, instance_id: str) -> bool:
-    """Validate the short-lived signed token issued by GET .../monitor-token."""
+def _verify_ws_token(token: str, instance_id: str, required_purpose: str = "monitor") -> bool:
+    """Validate the short-lived signed token issued by GET .../monitor-token.
+
+    Tokens issued before the `purpose` field existed have no such key — treat
+    that as "monitor" so already-open monitor sessions don't break.
+    """
     if not token:
         return False
     secret = get_settings().secret_key
@@ -71,7 +75,9 @@ def _verify_ws_token(token: str, instance_id: str) -> bool:
         )
     except (BadSignature, SignatureExpired):
         return False
-    return isinstance(payload, dict) and payload.get("instance_id") == instance_id
+    if not isinstance(payload, dict) or payload.get("instance_id") != instance_id:
+        return False
+    return payload.get("purpose", "monitor") == required_purpose
 
 
 # ── Per-instance NATS fan-out (one subscription serves every connected viewer) ─
@@ -176,13 +182,102 @@ async def ws_sandbox_monitor(websocket: WebSocket) -> None:
         while True:
             try:
                 data = await asyncio.wait_for(queue.get(), timeout=25)
-                await websocket.send_bytes(data)
+                # Send as text, not send_bytes: browsers deliver binary WS
+                # frames as a Blob in e.data, and JSON.parse(blob) throws —
+                # the client's try/catch silently swallowed every metrics
+                # and lifecycle-event message. data is already UTF-8 JSON
+                # from NATS, so this is just a decode, no reshaping needed.
+                await websocket.send_text(data.decode())
             except asyncio.TimeoutError:
                 await websocket.send_text(json.dumps({"type": "heartbeat"}))
     except (WebSocketDisconnect, Exception):
         pass
     finally:
         await _release_fanout(instance_id, queue)
+
+
+# ── WebSocket: real, isolated terminal for a running Test Launch instance ──────
+
+async def ws_sandbox_terminal(websocket: WebSocket) -> None:
+    """
+    Bridges the browser to a real PTY spawned per-instance in the worker
+    container (see worker/worker.py). Not (yet) an exec into the template's
+    own container image — that requires the real container runtime worker
+    (Phase 6a). Isolated per instance_id: its own PTY, its own process group.
+
+    Auth: same short-lived signed token pattern as ws_sandbox_monitor, scoped
+    to purpose="terminal" so a monitor token can't be replayed here.
+
+    Bridges to the worker over NATS:
+      publish   codesandbox.sandbox.terminal.<id>.ctl    {"action":"open"|"close"|"resize",...}
+      publish   codesandbox.sandbox.terminal.<id>.input  {"data": "<keystrokes>"}
+      subscribe codesandbox.sandbox.terminal.<id>.output {"type":"ready"|"output"|"closed",...}
+    """
+    instance_id: str = websocket.path_params["instance_id"]
+    token = websocket.query_params.get("token", "")
+
+    if not _verify_ws_token(token, instance_id, required_purpose="terminal"):
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+
+    try:
+        nc = await _get_nats()
+    except Exception:
+        await websocket.send_text(json.dumps({"type": "error", "message": "NATS unavailable"}))
+        await websocket.close()
+        return
+
+    ctl_subject = f"codesandbox.sandbox.terminal.{instance_id}.ctl"
+    input_subject = f"codesandbox.sandbox.terminal.{instance_id}.input"
+    output_subject = f"codesandbox.sandbox.terminal.{instance_id}.output"
+
+    queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=500)
+
+    async def _enqueue(msg: "_nats.aio.msg.Msg") -> None:
+        try:
+            queue.put_nowait(msg.data)
+        except asyncio.QueueFull:
+            pass
+
+    sub = await nc.subscribe(output_subject, cb=_enqueue)
+    await nc.publish(ctl_subject, json.dumps({"action": "open"}).encode())
+
+    async def _pump_output() -> None:
+        while True:
+            data = await queue.get()
+            await websocket.send_text(data.decode())
+
+    pump_task = asyncio.create_task(_pump_output())
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                body = json.loads(raw)
+            except Exception:
+                continue
+            if body.get("type") == "data":
+                await nc.publish(input_subject, json.dumps({"data": body.get("data", "")}).encode())
+            elif body.get("type") == "resize":
+                await nc.publish(ctl_subject, json.dumps({
+                    "action": "resize",
+                    "cols": int(body.get("cols", 80)),
+                    "rows": int(body.get("rows", 24)),
+                }).encode())
+    except (WebSocketDisconnect, Exception):
+        pass
+    finally:
+        pump_task.cancel()
+        try:
+            await sub.unsubscribe()
+        except Exception:
+            pass
+        try:
+            await nc.publish(ctl_subject, json.dumps({"action": "close"}).encode())
+        except Exception:
+            pass
 
 
 # ── Build the ASGI app ────────────────────────────────────────────────────────
@@ -194,6 +289,7 @@ def _make_app() -> Starlette:
         lifespan=lifespan,
         routes=[
             WebSocketRoute("/ws/sandbox/{instance_id}/monitor", ws_sandbox_monitor),
+            WebSocketRoute("/ws/sandbox/{instance_id}/terminal", ws_sandbox_terminal),
             Mount("/", WSGIMiddleware(flask_wsgi)),
         ],
     )

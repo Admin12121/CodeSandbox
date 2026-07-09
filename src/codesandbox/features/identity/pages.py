@@ -64,7 +64,8 @@ def settings():
     if redirect:
         return redirect
     user = session.user
-    nav = build_nav("/settings", user)
+    ws_ctx = _workspaces_ctx(user)
+    nav = build_nav("/settings", user, ws_ctx.get("active_workspace"))
 
     totp = identity_repo.get_totp_method(user.id)
     accounts = identity_repo.get_user_auth_accounts(user.id)
@@ -136,7 +137,7 @@ def settings():
             "created_at": user.created_at,
             "updated_at": user.updated_at,
         },
-        **_workspaces_ctx(user),
+        **ws_ctx,
     }
 
 
@@ -146,7 +147,8 @@ def settings_2fa():
     if redir:
         return redir
     totp = identity_repo.get_totp_method(cs.user.id)
-    nav = build_nav("/settings", cs.user)
+    ws_ctx = _workspaces_ctx(cs.user)
+    nav = build_nav("/settings", cs.user, ws_ctx.get("active_workspace"))
     secret = flask_session.get("_2fa_setup_secret") if request.args.get("setup") else None
     uri = flask_session.get("_2fa_setup_uri") if request.args.get("setup") else None
     backup_raw = flask_session.pop("_2fa_backup_codes", "") if request.args.get("enabled") else ""
@@ -162,5 +164,5 @@ def settings_2fa():
         "backup": backup,
         "error": request.args.get("error"),
         "totp_enabled": totp.is_enabled if totp else False,
-        **_workspaces_ctx(cs.user),
+        **ws_ctx,
     }

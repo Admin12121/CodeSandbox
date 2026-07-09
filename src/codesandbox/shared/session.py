@@ -73,7 +73,7 @@ def require_sandbox_user(
     return session, None
 
 
-def build_nav(current_path: str, user: User) -> dict[str, Any]:
+def build_nav(current_path: str, user: User, active_workspace: dict | None = None) -> dict[str, Any]:
     role = user.platform_role
 
     def item(label: str, href: str, permission: str | None = None) -> dict:
@@ -102,8 +102,6 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
             separator(),
             item("Sandboxes", "/platform/sandboxes", "platform.sandboxes.manage"),
             item("Sandbox Plans", "/platform/sandbox-plans", "platform.sandbox_plans.manage"),
-            separator(),
-            item("Hub", "/hub"),
         ]
         if role != "system_admin":
             from codesandbox.features.platform_admin import repository as rbac_repo
@@ -121,8 +119,11 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
         item("Dashboard", "/dashboard"),
         item("Hub", "/hub"),
         item("My Instances", "/my-instances"),
-        item("Private Instances", "/private_instances"),
     ]
+    if active_workspace:
+        # Only meaningful inside an org workspace — instances assigned to you
+        # by an org. In personal space there's nothing this page could show.
+        user_items.append(item("Private Instances", "/private_instances"))
     return {
         "sections": [{"label": "Workspace", "items": user_items}],
         "secondary": secondary_items,

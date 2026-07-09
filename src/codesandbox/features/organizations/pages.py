@@ -59,11 +59,11 @@ def my_organization_detail(slug: str):
     if tab in ("members", "roles", "settings"):
         return {"_redirect": f"/my/organizations/{slug}/{tab}"}
     user = session.user
-    nav = build_nav("/my/organizations", user)
     org = _load_org(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
     _set_active_workspace(org)
+    nav = build_nav("/my/organizations", user, org)
 
     return {
         "_meta": {"title": f"{org['name']} — CodeSandbox"},
@@ -83,11 +83,11 @@ def my_organization_members(slug: str):
     if redir:
         return redir
     user = session.user
-    nav = build_nav("/my/organizations", user)
     org = _load_org(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
     _set_active_workspace(org)
+    nav = build_nav("/my/organizations", user, org)
 
     search = request.args.get("search", "").strip()
     role_filter = request.args.get("role", "all")
@@ -139,13 +139,13 @@ def my_organization_roles(slug: str):
     if redir:
         return redir
     user = session.user
-    nav = build_nav("/my/organizations", user)
     org = _load_org(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
     if not org["is_owner"] and not org["can_manage_roles"] and not org["can_assign_roles"]:
         return {"_redirect": f"/my/organizations/{slug}"}
     _set_active_workspace(org)
+    nav = build_nav("/my/organizations", user, org)
 
     from codesandbox.features.organizations.repository import (
         ensure_org_permissions_seeded,
@@ -221,13 +221,13 @@ def my_organization_settings(slug: str):
     if redir:
         return redir
     user = session.user
-    nav = build_nav("/my/organizations", user)
     org = _load_org(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
     if not org["can_edit_settings"]:
         return {"_redirect": f"/my/organizations/{slug}"}
     _set_active_workspace(org)
+    nav = build_nav("/my/organizations", user, org)
 
     return {
         "_meta": {"title": f"Settings — {org['name']}"},

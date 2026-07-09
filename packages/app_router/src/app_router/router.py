@@ -1043,9 +1043,13 @@ def _inject_or_replace_metadata(html: str, meta: Mapping[str, str]) -> str:
     if title:
         title_tag = f"<title>{quote_attr(title)}</title>"
         if re.search(r"<title>.*?</title>", html, flags=re.IGNORECASE | re.DOTALL):
+            # Replacement function, not a string: re.sub's string form treats
+            # backslashes as escape/backreference syntax (\1, \g<name>, ...); a
+            # title containing a literal backslash would raise "bad escape" or
+            # mangle output. A function's return value is inserted verbatim.
             html = re.sub(
                 r"<title>.*?</title>",
-                title_tag,
+                lambda _m: title_tag,
                 html,
                 count=1,
                 flags=re.IGNORECASE | re.DOTALL,
@@ -1080,7 +1084,9 @@ def _replace_or_inject_meta(html: str, name: str, content: str) -> str:
     pattern = rf'<meta\s+name=["\']{escaped_name}["\'][^>]*>'
     tag = f'<meta name="{quote_attr(name)}" content="{quote_attr(content)}">'
     if re.search(pattern, html, flags=re.IGNORECASE):
-        return re.sub(pattern, tag, html, count=1, flags=re.IGNORECASE)
+        # Replacement function: see _inject_head's docstring note on why a bare
+        # string is unsafe here (content may contain literal backslashes).
+        return re.sub(pattern, lambda _m: tag, html, count=1, flags=re.IGNORECASE)
     return _inject_head(html, tag)
 
 
@@ -1089,13 +1095,18 @@ def _replace_or_inject_property(html: str, name: str, content: str) -> str:
     pattern = rf'<meta\s+property=["\']{escaped_name}["\'][^>]*>'
     tag = f'<meta property="{quote_attr(name)}" content="{quote_attr(content)}">'
     if re.search(pattern, html, flags=re.IGNORECASE):
-        return re.sub(pattern, tag, html, count=1, flags=re.IGNORECASE)
+        return re.sub(pattern, lambda _m: tag, html, count=1, flags=re.IGNORECASE)
     return _inject_head(html, tag)
 
 
 def _inject_head(html: str, fragment: str) -> str:
+    # Replacement function, not an f-string: re.sub's string replacement form
+    # treats backslashes as escape/backreference syntax (\1, \g<name>, ...), so
+    # a fragment containing a literal backslash (e.g. a title/description with
+    # one) would raise "bad escape" or silently mangle output. A function's
+    # return value is inserted verbatim, with no such processing.
     if re.search(r"</head>", html, flags=re.IGNORECASE):
-        return re.sub(r"</head>", f"{fragment}\n</head>", html, count=1, flags=re.IGNORECASE)
+        return re.sub(r"</head>", lambda _m: f"{fragment}\n</head>", html, count=1, flags=re.IGNORECASE)
     return f"{fragment}\n{html}"
 
 
@@ -1107,7 +1118,7 @@ def _inject_client_script(html: str, client_url_path: str) -> str:
         "data-app-router-client></script>"
     )
     if re.search(r"</body>", html, flags=re.IGNORECASE):
-        return re.sub(r"</body>", f"{script}\n</body>", html, count=1, flags=re.IGNORECASE)
+        return re.sub(r"</body>", lambda _m: f"{script}\n</body>", html, count=1, flags=re.IGNORECASE)
     return f"{html}\n{script}"
 
 
@@ -1173,7 +1184,12 @@ def _inject_inline_app_scripts(
     block = "\n".join(fragments)
 
     if re.search(r"</body>", html, flags=re.IGNORECASE):
-        return re.sub(r"</body>", f"{block}\n</body>", html, count=1, flags=re.IGNORECASE)
+        # Use a replacement function, not a string: re.sub's string form treats
+        # backslashes in the replacement as escape/backreference syntax (\1, \g<name>,
+        # ...), so any app_script containing literal backslashes (e.g. ANSI codes
+        # like "\x1b[32m", "\r\n") would raise "bad escape" or silently mangle output.
+        # A function's return value is inserted verbatim, with no such processing.
+        return re.sub(r"</body>", lambda _m: f"{block}\n</body>", html, count=1, flags=re.IGNORECASE)
     return f"{html}\n{block}"
 
 

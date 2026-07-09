@@ -36,6 +36,15 @@
   Each key maps to one dataset; the data is injected via JS after init:
     window.csCharts["chart-id"].addPoint("key", value)
     window.csCharts["chart-id"].reset()
+
+  Lazy init: charts inside a container that starts hidden (e.g. a tab pane
+  toggled with the `hidden` class) must NOT be created while display:none —
+  Chart.js reads a 0×0 size at creation time and never recovers, even after
+  the container becomes visible. Either:
+    - leave the container visible at creation time (default), or
+    - call window.csInitChart("chart-id") yourself the first time the
+      container becomes visible (chart creation is deferred automatically
+      when the canvas's offsetParent is null at script-execution time).
 #}
 
 {# ── ChartStyle ─────────────────────────────────────────────────────────── #}
@@ -103,7 +112,7 @@
   <canvas id="{{ chart_id }}-canvas" style="width:100%;height:100%"></canvas>
   <script type="application/json" id="{{ chart_id }}-seed">{{ ds_list | tojson }}</script>
 </div>
-<script>
+{% app_script "chart-" ~ chart_id %}
 (function(){
   function initChart() {
     var canvas = document.getElementById('{{ chart_id }}-canvas');
@@ -256,19 +265,53 @@
       return;
     }
     window._csChartJsLoading = true;
+    // Monaco's loader.js installs a global AMD `define`/`require` on this
+    // page (Config IDE). Chart.js's UMD bundle detects that and registers
+    // itself as an AMD module through it instead of attaching to
+    // `window.Chart` — the script loads and runs fine (200, onload fires)
+    // but window.Chart stays undefined forever. Hiding `define` while the
+    // script executes forces the plain browser-global attachment path.
+    var savedDefine = window.define;
+    var savedRequire = window.require;
+    window.define = undefined;
     var s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';
     s.onload = function() {
+      window.define = savedDefine;
+      window.require = savedRequire;
       cb();
       (window._csChartJsCallbacks || []).forEach(function(fn){ fn(); });
       window._csChartJsCallbacks = [];
     };
+    s.onerror = function() {
+      window.define = savedDefine;
+      window.require = savedRequire;
+      window._csChartJsLoading = false;
+    };
     document.head.appendChild(s);
   }
 
-  loadChartJs(initChart);
+  // Register this chart's init rather than running it unconditionally: a
+  // canvas created while its container is display:none gets measured at 0×0
+  // by Chart.js and never recovers, even once shown later. If it's already
+  // visible right now, initialize immediately (default/back-compat path);
+  // otherwise the caller must invoke window.csInitChart(chart_id) once the
+  // container actually becomes visible.
+  window._csChartInit = window._csChartInit || {};
+  window._csChartInit['{{ chart_id }}'] = function() { loadChartJs(initChart); };
+  if (!window.csInitChart) {
+    window.csInitChart = function(id) {
+      var fn = window._csChartInit && window._csChartInit[id];
+      if (fn) { window._csChartInit[id] = null; fn(); }
+    };
+  }
+
+  var _canvasEl = document.getElementById('{{ chart_id }}-canvas');
+  if (_canvasEl && _canvasEl.offsetParent !== null) {
+    window.csInitChart('{{ chart_id }}');
+  }
 })();
-</script>
+{% end_app_script %}
 {% endmacro %}
 
 

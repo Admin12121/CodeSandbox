@@ -42,7 +42,6 @@ import pty
 import random
 import signal
 import struct
-import subprocess
 import sys
 import termios
 import threading
@@ -84,8 +83,11 @@ def _start_nats_loop() -> None:
         try:
             _nats_client = await nats.connect(NATS_URL, name="mock-worker")
             log.info("NATS connected: %s", NATS_URL)
+            await _nats_client.subscribe("codesandbox.sandbox.terminal.*.ctl", cb=_on_terminal_ctl)
+            await _nats_client.subscribe("codesandbox.sandbox.terminal.*.input", cb=_on_terminal_input)
+            log.info("terminal control channel ready")
         except Exception as exc:
-            log.warning("NATS unavailable (%s) — metrics will not be streamed", exc)
+            log.warning("NATS unavailable (%s) — metrics/terminal will not work", exc)
 
     loop = asyncio.new_event_loop()
     _nats_loop = loop

@@ -196,23 +196,31 @@ def stop_instance_action(instance_id: str):
     return redirect("/my-instances", 303)
 
 
-# ── Instance monitor WS token ─────────────────────────────────────────────────
+# ── Instance monitor / terminal WS token ──────────────────────────────────────
+
+_WS_TOKEN_PURPOSES = {"monitor", "terminal"}
+
 
 @web_bp.get("/instances/<instance_id>/monitor-token")
 def instance_monitor_token(instance_id: str):
-    """Issues a short-lived signed token gating the real-time monitor WebSocket.
+    """Issues a short-lived signed token gating a real-time WebSocket (monitor or terminal).
 
-    That WS route lives on the Starlette layer, outside this blueprint, so it
-    never sees the session cookie — this token is how the session's authorization
+    Those WS routes live on the Starlette layer, outside this blueprint, so they
+    never see the session cookie — this token is how the session's authorization
     decision (made here, with full access to it) is carried over to that layer.
+    The token is scoped to both instance_id and purpose so a monitor token can't
+    be replayed against the terminal route (or vice versa).
     """
     cs = get_current_session()
     if not cs:
         abort(401)
     if not can_view_instance(instance_id, str(cs.user.id)):
         abort(403)
+    purpose = request.args.get("purpose", "monitor")
+    if purpose not in _WS_TOKEN_PURPOSES:
+        abort(400)
     token = URLSafeTimedSerializer(get_settings().secret_key, salt=_WS_TOKEN_SALT).dumps(
-        {"instance_id": instance_id}
+        {"instance_id": instance_id, "purpose": purpose}
     )
     return {"token": token}
 
