@@ -32,6 +32,7 @@ from .service import (
     regenerate_org_invite_link,
     remove_org_member,
     remove_role_from_org_member,
+    reorder_org_role_positions,
     toggle_org_role_permission,
     transfer_org_ownership,
     update_organization_details,
@@ -197,7 +198,7 @@ def join_org_by_code(code: str):
 
 
 @web_bp.post("/my/organizations/<slug>/update-field")
-@org_owner
+@org_perm("org.settings.edit")
 def user_update_org_field_action(slug: str):
     cs = get_current_session()
     data = request.get_json(silent=True) or {}
@@ -232,7 +233,7 @@ def user_update_org_field_action(slug: str):
 
 
 @web_bp.post("/my/organizations/<slug>/upload-logo")
-@org_owner
+@org_perm("org.settings.edit")
 def user_upload_org_logo_action(slug: str):
     cs = get_current_session()
     from .service import get_org_for_user
@@ -248,7 +249,7 @@ def user_upload_org_logo_action(slug: str):
 
 
 @web_bp.post("/my/organizations/<slug>/update")
-@org_owner
+@org_perm("org.settings.edit")
 def user_update_org_action(slug: str):
     cs = get_current_session()
     from .service import get_org_for_user
@@ -291,7 +292,10 @@ def user_invite_org_action(slug: str):
     if not email:
         err = urllib.parse.quote("Email address is required.")
         return redirect(f"/my/organizations/{slug}/members?error={err}", code=303)
-    invitation, raw_token = invite_to_org(org_id=org_data["id"], email=email, invited_by=cs.user.id)
+    try:
+        invitation, raw_token = invite_to_org(org_id=org_data["id"], email=email, invited_by=cs.user.id)
+    except ValueError as exc:
+        return redirect(f"/my/organizations/{slug}/members?error={urllib.parse.quote(str(exc))}", code=303)
     from codesandbox.config import get_settings
     settings = get_settings()
     invite_url = f"{settings.app_url}/my/organizations/join/{raw_token}"
@@ -464,6 +468,20 @@ def user_org_role_permission_action(slug: str, role_id: str):
             code=303,
         )
     return redirect(f"/my/organizations/{slug}/roles?role={role_id}&tab=permissions", code=303)
+
+
+@web_bp.post("/my/organizations/<slug>/roles/reorder")
+@org_perm("org.roles.manage")
+def user_org_roles_reorder_action(slug: str):
+    cs = get_current_session()
+    data = request.get_json(silent=True) or {}
+    role_ids = data.get("role_ids", [])
+    if not isinstance(role_ids, list):
+        return jsonify({"ok": False, "error": "role_ids must be a list."}), 400
+    ok, msg = reorder_org_role_positions(slug, [str(rid) for rid in role_ids], cs.user.id)
+    if not ok:
+        return jsonify({"ok": False, "error": msg}), 403
+    return jsonify({"ok": True})
 
 
 @web_bp.post("/my/organizations/<slug>/roles/<role_id>/members/add")

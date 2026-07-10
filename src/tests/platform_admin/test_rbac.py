@@ -186,6 +186,56 @@ def test_role_permissions_cleaned_on_role_delete(ctx: TestContext) -> None:
     )
 
 
+def test_staff_cannot_assign_equal_or_higher_platform_role(ctx: TestContext) -> None:
+    from codesandbox.features.platform_admin import service
+
+    actor = _make_user(ctx, "ph_actor")
+    target = _make_user(ctx, "ph_target")
+    _id_repo().update_user(str(actor.id), platform_role="system_staff")
+    _id_repo().update_user(str(target.id), platform_role="system_staff")
+
+    actor_role = _pa().create_role(name=unique("actor_high"))
+    peer_role = _pa().create_role(name=unique("peer_high"))
+    ctx.defer(lambda rid=str(actor_role.id): _pa().delete_role(rid))
+    ctx.defer(lambda rid=str(peer_role.id): _pa().delete_role(rid))
+    actor_role.position = "80"
+    actor_role.save()
+    peer_role.position = "80"
+    peer_role.save()
+
+    _pa().assign_role_to_user(str(actor.id), str(actor_role.id), granted_by=None)
+
+    err = service.add_role_member(str(peer_role.id), str(target.id), granted_by=str(actor.id))
+    assert err is not None
+    assert "equal to or higher" in err
+
+
+def test_staff_cannot_manage_equal_platform_member(ctx: TestContext) -> None:
+    from codesandbox.features.platform_admin import service
+
+    actor = _make_user(ctx, "pm_actor")
+    target = _make_user(ctx, "pm_target")
+    _id_repo().update_user(str(actor.id), platform_role="system_staff")
+    _id_repo().update_user(str(target.id), platform_role="system_staff")
+
+    high_role = _pa().create_role(name=unique("highrole"))
+    low_role = _pa().create_role(name=unique("lowrole"))
+    ctx.defer(lambda rid=str(high_role.id): _pa().delete_role(rid))
+    ctx.defer(lambda rid=str(low_role.id): _pa().delete_role(rid))
+    high_role.position = "80"
+    high_role.save()
+    low_role.position = "10"
+    low_role.save()
+
+    _pa().assign_role_to_user(str(actor.id), str(high_role.id), granted_by=None)
+    _pa().assign_role_to_user(str(target.id), str(high_role.id), granted_by=None)
+    _pa().assign_role_to_user(str(target.id), str(low_role.id), granted_by=None)
+
+    err = service.remove_role_member(str(low_role.id), str(target.id), actor_user_id=str(actor.id))
+    assert err is not None
+    assert "staff member equal to or higher" in err
+
+
 TESTS: list[TestCase] = [
     TestCase("create platform role",                  "platform_admin", test_create_platform_role),
     TestCase("set role permissions",                  "platform_admin", test_set_role_permissions),
@@ -195,4 +245,6 @@ TESTS: list[TestCase] = [
     TestCase("seed removes orphaned perms",           "platform_admin", test_seed_removes_orphaned_permissions),
     TestCase("set permissions replaces previous",     "platform_admin", test_set_role_permissions_replaces_previous),
     TestCase("perms cleaned on role delete",          "platform_admin", test_role_permissions_cleaned_on_role_delete),
+    TestCase("cannot assign peer platform role",      "platform_admin", test_staff_cannot_assign_equal_or_higher_platform_role),
+    TestCase("cannot manage peer platform member",    "platform_admin", test_staff_cannot_manage_equal_platform_member),
 ]

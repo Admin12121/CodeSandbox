@@ -162,6 +162,8 @@ def platform_organizations():
     if redirect:
         return redirect
     user = session.user
+    if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.organizations.read"):
+        return {"_redirect": "/dashboard"}
     nav = build_nav("/platform/organizations", user)
 
     search = request.args.get("search", "").strip()
@@ -287,10 +289,12 @@ def platform_staff():
 
 @router.page("/platform/roles")
 def platform_roles():
-    session, redirect = require_platform_role("system_admin")
+    session, redirect = require_platform_role("system_admin", "system_staff")
     if redirect:
         return redirect
     user = session.user
+    if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.roles.read"):
+        return {"_redirect": "/dashboard"}
     nav = build_nav("/platform/roles", user)
     platform_admin_repo.seed_default_permissions()
     rbac = get_platform_rbac()

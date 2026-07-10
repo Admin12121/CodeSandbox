@@ -97,7 +97,7 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
         platform_items = [
             item("Dashboard", "/dashboard"),
             item("Users", "/platform/users", "platform.users.read"),
-            item("Organizations", "/platform/organizations"),
+            item("Organizations", "/platform/organizations", "platform.organizations.read"),
             item("Application Staff", "/platform/staff", "platform.staff.read"),
             item("Staff Roles", "/platform/roles", "platform.roles.read"),
             separator(),

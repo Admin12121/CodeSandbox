@@ -158,6 +158,10 @@ def create_org_instance(
     plan_id: str,
     assigned_to_user_id: str | None = None,
 ) -> tuple[dict | None, str | None]:
+    from codesandbox.features.organizations import repository as org_repo
+    org = org_repo.get_organization(org_id)
+    if org is None or org.status != "active":
+        return None, "Organization is not active."
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
@@ -237,6 +241,10 @@ def submit_instance_request(
     plan_id: str,
     note: str | None = None,
 ) -> tuple[dict | None, str | None]:
+    from codesandbox.features.organizations import repository as org_repo
+    org = org_repo.get_organization(org_id)
+    if org is None or org.status != "active":
+        return None, "Organization is not active."
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
@@ -273,6 +281,10 @@ def review_instance_request(
 
     instance_id = None
     if action == "approved":
+        from codesandbox.features.organizations import repository as org_repo
+        org = org_repo.get_organization(str(req.org_id))
+        if org is None or org.status != "active":
+            return None, "Organization is not active."
         tmpl = repository.get_template(str(req.template_id))
         if not tmpl:
             return None, "Template no longer exists; cannot approve."
@@ -612,11 +624,33 @@ def can_manage_instance(inst, actor_user_id: str | None) -> bool:
 
 
 def can_view_instance(instance_id: str, actor_user_id: str | None) -> bool:
-    """Same authorization bar as managing it — used to gate the monitor WS token."""
     inst = repository.get_instance(instance_id)
-    if inst is None:
+    if inst is None or not actor_user_id:
         return False
-    return can_manage_instance(inst, actor_user_id)
+
+    from codesandbox.features.identity.models import User
+    from codesandbox.shared.permissions import has_org_permission, is_platform_staff
+
+    if inst.workspace_user_id and str(inst.workspace_user_id) == actor_user_id:
+        return True
+    if inst.workspace_type == "org" and inst.assigned_to_user_id and str(inst.assigned_to_user_id) == actor_user_id:
+        return True
+    user = User.objects.filter(id=actor_user_id).first()
+    if user is None:
+        return False
+    if is_platform_staff(user):
+        return True
+    if inst.workspace_type == "org" and inst.workspace_org_id:
+        from codesandbox.features.organizations import repository as org_repo
+        org_id = str(inst.workspace_org_id)
+        org = org_repo.get_organization(org_id)
+        if org is None or org.status != "active":
+            return False
+        return (
+            has_org_permission(org_id, user, "sandbox.instances.view_all")
+            or has_org_permission(org_id, user, "sandbox.instances.create")
+        )
+    return False
 
 
 # Admin test launches are a no-billing preview run — they don't need a real
@@ -638,8 +672,15 @@ def start_instance(
     inst = repository.get_instance(instance_id)
     if inst is None:
         return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to start this instance."
     if inst.status != "idle":
         return None, f"Cannot start an instance in '{inst.status}' state."
+    if inst.workspace_type == "org" and inst.workspace_org_id:
+        from codesandbox.features.organizations import repository as org_repo
+        org = org_repo.get_organization(str(inst.workspace_org_id))
+        if org is None or org.status != "active":
+            return None, "Organization is not active."
 
     t = repository.get_template(str(inst.template_id))
     if not t:

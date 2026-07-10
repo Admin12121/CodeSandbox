@@ -29,6 +29,8 @@ def platform_sandboxes():
         return redirect
     user = session.user
     can_manage = user.platform_role == "system_admin" or has_platform_permission(user, "platform.sandboxes.manage")
+    if not can_manage:
+        return {"_redirect": "/dashboard"}
     nav = build_nav("/platform/sandboxes", user)
 
     search = request.args.get("search", "").strip()
@@ -97,6 +99,8 @@ def platform_sandbox_plans():
         return redirect
     user = session.user
     can_manage = user.platform_role == "system_admin" or has_platform_permission(user, "platform.sandbox_plans.manage")
+    if not can_manage:
+        return {"_redirect": "/dashboard"}
     nav = build_nav("/platform/sandbox-plans", user)
 
     plans = get_platform_plans()

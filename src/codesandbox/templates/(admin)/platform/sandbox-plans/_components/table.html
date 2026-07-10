@@ -44,7 +44,7 @@
       {% call table.table_body() %}
         {% if not plans %}
           {% call table.table_row() %}
-            {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "10"}) %}No plans configured yet.{% endcall %}
+            {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "11"}) %}No plans configured yet.{% endcall %}
           {% endcall %}
         {% else %}
           {% for plan in plans %}

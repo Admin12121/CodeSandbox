@@ -130,6 +130,8 @@ def org_perm(*keys: str):
                 abort(404)
             if not get_member(org.id, str(cs.user.id)):
                 return _forbidden("You are not a member of this organization.")
+            if org.status != "active" and not set(keys).issubset({"org.settings.edit"}):
+                return _forbidden("This organization is not active.")
             if not is_org_owner(org.id, str(cs.user.id)):
                 for key in keys:
                     if not has_org_permission(org.id, cs.user, key):

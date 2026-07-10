@@ -460,6 +460,55 @@ def test_member_cannot_grant_org_roles_manage(ctx: TestContext) -> None:
     assert "owner" in msg.lower() or "grant" in msg.lower()
 
 
+def test_member_cannot_remove_equal_position_member(ctx: TestContext) -> None:
+    from codesandbox.features.organizations.service import remove_org_member
+
+    owner = _make_user(ctx, "mcrp_o")
+    actor = _make_user(ctx, "mcrp_a")
+    target = _make_user(ctx, "mcrp_t")
+    org = _make_org(ctx, owner)
+    _seed_perms()
+    _org().add_member(str(org.id), str(actor.id))
+    _org().add_member(str(org.id), str(target.id))
+
+    admin_role = next(r for r in _org().list_org_roles(str(org.id)) if r.name == "admin")
+    _org().set_org_role_permission(str(admin_role.id), "org.members.remove", enabled=True)
+    actor_member = _org().get_member(str(org.id), str(actor.id))
+    target_member = _org().get_member(str(org.id), str(target.id))
+    _org().assign_role_to_member(str(actor_member.id), str(admin_role.id))
+    _org().assign_role_to_member(str(target_member.id), str(admin_role.id))
+
+    ok, msg = remove_org_member(str(org.id), str(target_member.id), str(actor.id))
+    assert not ok
+    assert "equal to or higher" in msg
+
+
+def test_member_cannot_remove_low_role_from_equal_position_member(ctx: TestContext) -> None:
+    from codesandbox.features.organizations.service import remove_role_from_org_member
+
+    owner = _make_user(ctx, "mcrl_o")
+    actor = _make_user(ctx, "mcrl_a")
+    target = _make_user(ctx, "mcrl_t")
+    org = _make_org(ctx, owner)
+    _seed_perms()
+    _org().add_member(str(org.id), str(actor.id))
+    _org().add_member(str(org.id), str(target.id))
+
+    roles = _org().list_org_roles(str(org.id))
+    admin_role = next(r for r in roles if r.name == "admin")
+    member_role = next(r for r in roles if r.name == "member")
+    _org().set_org_role_permission(str(admin_role.id), "org.roles.assign", enabled=True)
+    actor_member = _org().get_member(str(org.id), str(actor.id))
+    target_member = _org().get_member(str(org.id), str(target.id))
+    _org().assign_role_to_member(str(actor_member.id), str(admin_role.id))
+    _org().assign_role_to_member(str(target_member.id), str(admin_role.id))
+    _org().assign_role_to_member(str(target_member.id), str(member_role.id))
+
+    ok, msg = remove_role_from_org_member(org.slug, str(target_member.id), str(member_role.id), str(actor.id))
+    assert not ok
+    assert "equal to or higher" in msg
+
+
 TESTS: list[TestCase] = [
     TestCase("assign role to member",              "org_rbac", test_assign_role_to_member),
     TestCase("assign role idempotent",             "org_rbac", test_assign_role_idempotent),
@@ -488,4 +537,6 @@ TESTS: list[TestCase] = [
     TestCase("perm key injection rejected",        "org_rbac", test_permission_key_injection_rejected),
     TestCase("cannot grant perm you don't hold",   "org_rbac", test_member_cannot_grant_perm_they_dont_hold),
     TestCase("cannot grant org.roles.manage",      "org_rbac", test_member_cannot_grant_org_roles_manage),
+    TestCase("cannot remove equal member",         "org_rbac", test_member_cannot_remove_equal_position_member),
+    TestCase("cannot remove low role from peer",   "org_rbac", test_member_cannot_remove_low_role_from_equal_position_member),
 ]

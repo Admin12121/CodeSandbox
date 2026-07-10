@@ -14,6 +14,15 @@ def list_roles() -> list[PlatformRole]:
     return PlatformRole.objects.all()
 
 
+def _role_position(role: PlatformRole | None) -> int:
+    if role is None:
+        return 0
+    try:
+        return int(role.position or "0")
+    except (TypeError, ValueError):
+        return 0
+
+
 def get_role(role_id: str) -> PlatformRole | None:
     try:
         return PlatformRole.objects.get(id=role_id)
@@ -41,6 +50,15 @@ def create_role(
     )
     role.save()
     return role
+
+
+def update_role_position(role_id: str, position: int) -> bool:
+    role = get_role(role_id)
+    if not role:
+        return False
+    role.position = str(position)
+    role.save()
+    return True
 
 
 def delete_role(role_id: str) -> bool:
@@ -83,6 +101,36 @@ def get_user_platform_roles(user_id: str) -> list[PlatformRole]:
         return []
     all_roles = list_roles()
     return [r for r in all_roles if r.id in role_ids]
+
+
+def get_user_highest_role_position(user_id: str) -> int:
+    user = find_user_by_id(user_id)
+    if not user:
+        return 0
+    if user.platform_role == "system_admin":
+        import sys
+        return sys.maxsize
+    roles = get_user_platform_roles(user_id)
+    return max((_role_position(r) for r in roles), default=0)
+
+
+def can_actor_manage_role(actor_user_id: str, role_id: str) -> bool:
+    actor = find_user_by_id(actor_user_id)
+    if actor and actor.platform_role == "system_admin":
+        return True
+    role = get_role(role_id)
+    if not role:
+        return False
+    return get_user_highest_role_position(actor_user_id) > _role_position(role)
+
+
+def can_actor_manage_user(actor_user_id: str, target_user_id: str) -> bool:
+    actor = find_user_by_id(actor_user_id)
+    if actor and actor.platform_role == "system_admin":
+        return True
+    if str(actor_user_id) == str(target_user_id):
+        return False
+    return get_user_highest_role_position(actor_user_id) > get_user_highest_role_position(target_user_id)
 
 
 def get_user_permission_keys(user_id: str) -> set[str]:
@@ -153,7 +201,14 @@ def seed_default_roles() -> None:
         role.is_system = False
         role.save()
 
-    if not get_role_by_name("system_admin"):
-        create_role(name="system_admin", color="#ef4444", description="Full platform access")
-    if not get_role_by_name("system_staff"):
-        create_role(name="system_staff", color="#f59e0b", description="Platform staff access")
+    admin = get_role_by_name("system_admin")
+    if not admin:
+        admin = create_role(name="system_admin", color="#ef4444", description="Full platform access")
+    staff = get_role_by_name("system_staff")
+    if not staff:
+        staff = create_role(name="system_staff", color="#f59e0b", description="Platform staff access")
+    defaults = [(admin, 100), (staff, 50)]
+    for role, position in defaults:
+        if _role_position(role) == 0:
+            role.position = str(position)
+            role.save()

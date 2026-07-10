@@ -7,6 +7,7 @@ from flask import abort, redirect, request, send_from_directory, session as flas
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.organizations import repository as org_repo
 from codesandbox.features.sandbox.service import (
+    create_org_instance,
     create_personal_instance,
     get_active_hub_instance,
     get_hub_template_by_slug,
@@ -99,12 +100,13 @@ def hub():
     active_workspace = ws_ctx.get("active_workspace")
     if active_workspace:
         org_id = str(active_workspace["id"])
+        org_active = active_workspace.get("status") == "active"
         user_perms = org_repo.get_member_permissions(org_id, str(user.id))
         is_owner = org_repo.is_org_owner(org_id, str(user.id))
-        can_manage = is_owner or "sandbox.instances.create" in user_perms
-        can_review = is_owner or "sandbox.requests.review" in user_perms
+        can_manage = org_active and (is_owner or "sandbox.instances.create" in user_perms)
+        can_review = org_active and (is_owner or "sandbox.requests.review" in user_perms)
         org_ctx = {
-            "org_pool_instances": get_org_instances(org_id) if (can_manage or "sandbox.instances.view_all" in user_perms or is_owner) else [],
+            "org_pool_instances": get_org_instances(org_id) if (org_active and (can_manage or "sandbox.instances.view_all" in user_perms or is_owner)) else [],
             "my_org_requests": get_user_requests_in_org(str(user.id), org_id),
             "pending_requests": get_org_requests(org_id, status="pending") if can_review else [],
             "can_manage_instances": can_manage,
@@ -143,7 +145,7 @@ def hub_template(instance: str):
         org_id = str(active_workspace["id"])
         user_perms = org_repo.get_member_permissions(org_id, str(user.id))
         is_owner = org_repo.is_org_owner(org_id, str(user.id))
-        can_start = is_owner or "sandbox.instances.create" in user_perms
+        can_start = active_workspace.get("status") == "active" and (is_owner or "sandbox.instances.create" in user_perms)
 
     user_balance = None
     if user.platform_role == "user":
@@ -187,6 +189,8 @@ def hub_sandbox(instance: str, slug: str):
     ws_ctx = _workspaces_ctx(user)
     active_workspace = ws_ctx.get("active_workspace")
     org_id = str(active_workspace["id"]) if active_workspace else None
+    if active_workspace and active_workspace.get("status") != "active":
+        return {"_redirect": f"/hub/{instance}?error=Organization+is+not+active."}
     sandbox_instance = get_active_hub_instance(
         template["id"], slug, user_id=str(user.id), org_id=org_id
     )
@@ -241,6 +245,8 @@ def private_instances():
 
     assigned = []
     if active_workspace:
+        if active_workspace.get("status") != "active":
+            return {"_redirect": "/dashboard"}
         org_id = str(active_workspace["id"])
         assigned = get_user_assigned_instances(str(user.id), org_id)
 
@@ -268,6 +274,8 @@ def billing():
 
     if active_workspace:
         org_id = str(active_workspace["id"])
+        if active_workspace.get("status") != "active":
+            return {"_redirect": "/dashboard"}
         if not org_repo.is_org_owner(org_id, str(user.id)):
             return {"_redirect": "/dashboard"}
         billing_data = get_org_billing(org_id)
@@ -315,13 +323,31 @@ def billing_topup_action():
 
 @web_bp.post("/hub/<instance>/start")
 def hub_start(instance: str):
-    """Create a personal SandboxInstance and redirect to the sandbox IDE."""
+    """Create a workspace SandboxInstance and redirect to the sandbox IDE."""
     session, redir = require_sandbox_user()
     if redir:
         return redirect("/login", 303)
     user = session.user
     plan_id = request.form.get("plan_id", "")
-    result, err = create_personal_instance(str(user.id), instance, plan_id)
+    ws_ctx = _workspaces_ctx(user)
+    active_workspace = ws_ctx.get("active_workspace")
+    if active_workspace:
+        if active_workspace.get("status") != "active":
+            return redirect(f"/hub/{instance}?error=Organization+is+not+active.", 303)
+        org_id = str(active_workspace["id"])
+        user_perms = org_repo.get_member_permissions(org_id, str(user.id))
+        is_owner = org_repo.is_org_owner(org_id, str(user.id))
+        if not is_owner and "sandbox.instances.create" not in user_perms:
+            return redirect(f"/hub/{instance}?error=Permission+denied.", 303)
+        result, err = create_org_instance(
+            org_id,
+            str(user.id),
+            instance,
+            plan_id,
+            assigned_to_user_id=str(user.id),
+        )
+    else:
+        result, err = create_personal_instance(str(user.id), instance, plan_id)
     if err:
         return redirect(f"/hub/{instance}?error={err}", 303)
     _, err = start_instance(result["id"], actor_user_id=str(user.id))
@@ -341,6 +367,8 @@ def hub_request(instance: str):
     active_workspace = ws_ctx.get("active_workspace")
     if not active_workspace:
         return redirect("/hub", 303)
+    if active_workspace.get("status") != "active":
+        return redirect("/hub?error=Organization+is+not+active.", 303)
 
     plan_id = request.form.get("plan_id", "")
     note = request.form.get("note", "").strip()
@@ -362,6 +390,8 @@ def hub_review_request(request_id: str):
     active_workspace = ws_ctx.get("active_workspace")
     if not active_workspace:
         return redirect("/hub", 303)
+    if active_workspace.get("status") != "active":
+        return redirect("/hub?error=Organization+is+not+active.", 303)
 
     org_id = str(active_workspace["id"])
     user_perms = org_repo.get_member_permissions(org_id, str(user.id))

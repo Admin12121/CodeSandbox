@@ -51,7 +51,7 @@
           {% if can_manage_roles %}{{ table.table_head("Actions", class="w-10") }}{% endif %}
         {% endcall %}
       {% endcall %}
-      {% call table.table_body() %}
+      {% call table.table_body(attrs={"data-role-reorder-list": "", "data-reorder-url": "/my/organizations/" ~ slug ~ "/roles/reorder"}) %}
         {% if not visible_roles %}
           {% call table.table_row() %}
             {% call table.table_cell(class="h-24 text-center text-muted-foreground", attrs={"colspan": "3"}) %}
@@ -60,7 +60,7 @@
           {% endcall %}
         {% else %}
           {% for role in visible_roles %}
-            {% call table.table_row(class="cursor-pointer", attrs={"data-cs-href": "/my/organizations/" ~ slug ~ "/roles?role=" ~ role.id}) %}
+            {% call table.table_row(class="cursor-pointer", attrs={"data-cs-href": "/my/organizations/" ~ slug ~ "/roles?role=" ~ role.id, "data-role-id": role.id, "draggable": "true"}) %}
               {% call table.table_cell() %}
                 <div class="flex min-w-0 items-center gap-3">
                   {{ role_dot(role.color) }}
@@ -109,6 +109,65 @@
   {% endif %}
 
 </div>
+{% if can_manage_roles %}
+{% app_script "org-role-reorder" %}
+(function () {
+  function init(list) {
+    if (list._roleReorder) return;
+    list._roleReorder = true;
+    var dragging = null;
+
+    function rows() {
+      return Array.prototype.slice.call(list.querySelectorAll('[data-role-id]'));
+    }
+
+    function persist() {
+      fetch(list.dataset.reorderUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role_ids: rows().map(function (row) { return row.dataset.roleId; })})
+      }).then(function (response) {
+        return response.ok ? response.json() : response.json().catch(function () { return {ok: false}; });
+      }).then(function (body) {
+        if (!body.ok && window.Toast) window.Toast.create({title: body.error || 'Could not reorder roles.', type: 'error'});
+      }).catch(function () {
+        if (window.Toast) window.Toast.create({title: 'Could not reorder roles.', type: 'error'});
+      });
+    }
+
+    list.addEventListener('dragstart', function (event) {
+      dragging = event.target.closest('[data-role-id]');
+      if (!dragging) return;
+      dragging.dataset.dragging = 'true';
+      event.dataTransfer.effectAllowed = 'move';
+    });
+
+    list.addEventListener('dragover', function (event) {
+      if (!dragging) return;
+      event.preventDefault();
+      var over = event.target.closest('[data-role-id]');
+      if (!over || over === dragging) return;
+      var rect = over.getBoundingClientRect();
+      var after = event.clientY > rect.top + rect.height / 2;
+      list.insertBefore(dragging, after ? over.nextSibling : over);
+    });
+
+    list.addEventListener('dragend', function () {
+      if (!dragging) return;
+      delete dragging.dataset.dragging;
+      dragging = null;
+      persist();
+    });
+  }
+
+  function scan() {
+    document.querySelectorAll('[data-role-reorder-list]').forEach(init);
+  }
+  scan();
+  window.addEventListener('app-router:patch', scan);
+})();
+{% end_app_script %}
+{% endif %}
 {% endmacro %}
 
 

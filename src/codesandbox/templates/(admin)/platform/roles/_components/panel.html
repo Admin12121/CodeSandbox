@@ -65,14 +65,14 @@
             {{ table.table_head("Actions", class="w-36 text-right") }}
           {% endcall %}
         {% endcall %}
-        {% call table.table_body() %}
+        {% call table.table_body(attrs={"data-platform-role-reorder-list": "", "data-reorder-url": "/platform/roles/reorder"}) %}
           {% if not visible_roles %}
             {% call table.table_row() %}
               {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "5"}) %}No roles found.{% endcall %}
             {% endcall %}
           {% else %}
             {% for role in visible_roles %}
-              {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/platform/roles?role=" ~ role.id}) %}
+              {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/platform/roles?role=" ~ role.id, "data-role-id": role.id, "draggable": "true"}) %}
                 {% call table.table_cell() %}
                   <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
                 {% endcall %}
@@ -143,6 +143,63 @@
       action="/platform/roles/" ~ role.id ~ "/delete"
     ) }}
   {% endfor %}
+  {% app_script "platform-role-reorder" %}
+  (function () {
+    function init(list) {
+      if (list._platformRoleReorder) return;
+      list._platformRoleReorder = true;
+      var dragging = null;
+
+      function rows() {
+        return Array.prototype.slice.call(list.querySelectorAll('[data-role-id]'));
+      }
+
+      function persist() {
+        fetch(list.dataset.reorderUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({role_ids: rows().map(function (row) { return row.dataset.roleId; })})
+        }).then(function (response) {
+          return response.ok ? response.json() : response.json().catch(function () { return {ok: false}; });
+        }).then(function (body) {
+          if (!body.ok && window.Toast) window.Toast.create({title: body.error || 'Could not reorder roles.', type: 'error'});
+        }).catch(function () {
+          if (window.Toast) window.Toast.create({title: 'Could not reorder roles.', type: 'error'});
+        });
+      }
+
+      list.addEventListener('dragstart', function (event) {
+        dragging = event.target.closest('[data-role-id]');
+        if (!dragging) return;
+        dragging.dataset.dragging = 'true';
+        event.dataTransfer.effectAllowed = 'move';
+      });
+
+      list.addEventListener('dragover', function (event) {
+        if (!dragging) return;
+        event.preventDefault();
+        var over = event.target.closest('[data-role-id]');
+        if (!over || over === dragging) return;
+        var rect = over.getBoundingClientRect();
+        var after = event.clientY > rect.top + rect.height / 2;
+        list.insertBefore(dragging, after ? over.nextSibling : over);
+      });
+
+      list.addEventListener('dragend', function () {
+        if (!dragging) return;
+        delete dragging.dataset.dragging;
+        dragging = null;
+        persist();
+      });
+    }
+
+    function scan() {
+      document.querySelectorAll('[data-platform-role-reorder-list]').forEach(init);
+    }
+    scan();
+    window.addEventListener('app-router:patch', scan);
+  })();
+  {% end_app_script %}
 {% endmacro %}
 
 

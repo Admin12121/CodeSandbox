@@ -15,6 +15,7 @@ from .service import (
     delete_platform_role,
     duplicate_platform_role,
     remove_role_member,
+    reorder_platform_roles,
     save_staff_member,
     search_platform_role_member_candidates,
     toggle_role_permission,
@@ -190,11 +191,13 @@ def create_role_action():
 @web_bp.post("/platform/roles/<role_id>/update")
 @platform_perm("platform.roles.manage")
 def update_role_action(role_id: str):
+    cs = get_current_session()
     error = update_platform_role(
         role_id,
         name=request.form.get("name"),
         color=request.form.get("color"),
         description=request.form.get("description", ""),
+        actor_user_id=str(cs.user.id),
     )
     return _roles_redirect(role_id, "display", error)
 
@@ -202,7 +205,8 @@ def update_role_action(role_id: str):
 @web_bp.post("/platform/roles/<role_id>/duplicate")
 @platform_perm("platform.roles.manage")
 def duplicate_role_action(role_id: str):
-    new_id, error = duplicate_platform_role(role_id)
+    cs = get_current_session()
+    new_id, error = duplicate_platform_role(role_id, actor_user_id=str(cs.user.id))
     if error:
         return _roles_redirect(None, error=error)
     return _roles_redirect(new_id, "display")
@@ -211,18 +215,34 @@ def duplicate_role_action(role_id: str):
 @web_bp.post("/platform/roles/<role_id>/delete")
 @platform_perm("platform.roles.manage")
 def delete_role_action(role_id: str):
-    error = delete_platform_role(role_id)
+    cs = get_current_session()
+    error = delete_platform_role(role_id, actor_user_id=str(cs.user.id))
     return _roles_redirect(None, error=error)
 
 
 @web_bp.post("/platform/roles/<role_id>/permission")
 @platform_perm("platform.roles.manage")
 def toggle_permission_action(role_id: str):
+    cs = get_current_session()
     key = request.form.get("key", "")
     enabled = request.form.get("enabled") == "1"
     tab = request.form.get("tab", "permissions")
-    error = toggle_role_permission(role_id, key, enabled)
+    error = toggle_role_permission(role_id, key, enabled, actor_user_id=str(cs.user.id))
     return _roles_redirect(role_id, tab, error)
+
+
+@web_bp.post("/platform/roles/reorder")
+@platform_perm("platform.roles.manage")
+def reorder_roles_action():
+    cs = get_current_session()
+    data = request.get_json(silent=True) or {}
+    role_ids = data.get("role_ids", [])
+    if not isinstance(role_ids, list):
+        return jsonify({"ok": False, "error": "role_ids must be a list."}), 400
+    error = reorder_platform_roles([str(rid) for rid in role_ids], str(cs.user.id))
+    if error:
+        return jsonify({"ok": False, "error": error}), 403
+    return jsonify({"ok": True})
 
 
 @web_bp.get("/platform/roles/<role_id>/members/search")
@@ -257,8 +277,9 @@ def add_role_member_action(role_id: str):
 @web_bp.post("/platform/roles/<role_id>/members/<user_id>/remove")
 @platform_perm("platform.roles.manage")
 def remove_role_member_action(role_id: str, user_id: str):
-    remove_role_member(role_id, user_id)
-    return _roles_redirect(role_id, "members")
+    cs = get_current_session()
+    error = remove_role_member(role_id, user_id, actor_user_id=str(cs.user.id))
+    return _roles_redirect(role_id, "members", error)
 
 
 # ── Staff ─────────────────────────────────────────────────────────────────────
