@@ -23,10 +23,17 @@ TAILWIND_CDN_CSP = (
     # packages end up with different, incompatible copies of the same
     # class (e.g. two non-identical `EditorState`) and the editor silently
     # fails to mount.
-    "script-src 'self' https://cdn.jsdelivr.net https://esm.sh; "
+    # js.stripe.com: Stripe's embedded CardElement (billing top-up). Stripe
+    # requires loading their script directly from this host (no self-hosting
+    # / SRI — it's part of their PCI-DSS SAQ A compliance story), it opens a
+    # frame for the actual card input (frame-src), and confirmCardPayment
+    # calls out to their API directly from the browser (connect-src).
+    "script-src 'self' https://cdn.jsdelivr.net https://esm.sh https://js.stripe.com; "
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "img-src 'self' data:; "
     "font-src 'self' https://cdn.jsdelivr.net; "
+    "frame-src https://js.stripe.com; "
+    "connect-src 'self' https://api.stripe.com; "
     "object-src 'none'; "
     "base-uri 'self'; "
     "frame-ancestors 'none'"

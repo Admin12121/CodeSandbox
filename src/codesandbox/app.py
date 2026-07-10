@@ -48,6 +48,7 @@ def create_app() -> Flask:
     from codesandbox.features.organizations import pages as _org_pages  # noqa: F401
     from codesandbox.features.sandbox import routes as _sandbox_routes  # noqa: F401
     from codesandbox.features.sandbox import pages as _sandbox_pages  # noqa: F401
+    from codesandbox.features.billing import routes as _billing_routes  # noqa: F401
 
     app.register_blueprint(web_bp)
     init_limiter(app, settings.redis_url)
@@ -58,6 +59,27 @@ def create_app() -> Flask:
     # a process restart, fixing the mtime-resolution issue on Docker overlayfs.
     if app.debug:
         app.jinja_env.cache = None  # type: ignore[assignment]
+
+    def _header_balance_global():
+        # A Jinja global function, not a Flask @app.context_processor: this
+        # app's router (app_router.AppRouter) renders templates via
+        # `jinja_env.get_template(...).render(dict(context))` directly,
+        # bypassing flask.render_template — so Flask context processors,
+        # which only hook into render_template, never fire here. Jinja
+        # globals are merged into every Template.render() call by Jinja
+        # itself regardless of how render() was reached, so this is the
+        # mechanism that actually reaches every page without threading it
+        # through every route's individual context dict.
+        from codesandbox.shared.session import get_current_session
+        session = get_current_session()
+        if not session:
+            return None
+        from codesandbox.features.billing.service import get_header_balance
+        from codesandbox.web._ctx import _workspaces_ctx
+        active_workspace = _workspaces_ctx(session.user).get("active_workspace")
+        return get_header_balance(session.user, active_workspace)
+
+    app.jinja_env.globals["header_balance"] = _header_balance_global
 
     return app
 

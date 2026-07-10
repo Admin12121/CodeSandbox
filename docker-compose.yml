@@ -31,6 +31,15 @@ services:
       - .:/app
     environment:
       UV_PROJECT_ENVIRONMENT: /opt/codesandbox/.venv
+      # The image already has a complete venv (Dockerfile.dev installs the
+      # full project, not just deps, at build time with real network
+      # access). Without this, `uv run`'s startup sync check treats the
+      # bind-mounted src/ (a different inode/mtime set than what was in the
+      # build context) as reason to reinstall the editable local packages —
+      # which then needs network the running container doesn't have. This
+      # makes uv trust the image's venv as-is; re-run `docker compose build
+      # app` after any pyproject.toml/uv.lock change instead.
+      UV_NO_SYNC: "1"
       DATABASE_URL: mysql://codesandbox:codesandbox@mysql:3306/codesandbox
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
@@ -41,7 +50,13 @@ services:
       SESSION_COOKIE_NAME: cs_session
       SESSION_TTL_HOURS: "24"
       WORKER_CALLBACK_TOKEN_TTL_SECONDS: "900"
-      APP_URL: http://app:5000
+      # Public, browser-facing base URL — used only for user-visible links
+      # (email verification, OAuth redirect_uri, org invites, Stripe/eSewa
+      # return URLs). Never the internal container hostname: every one of
+      # its call sites builds a URL the user's own browser must reach.
+      # Container-to-container calls (e.g. the worker's callback) use their
+      # own CONTROL_PLANE_URL, not this.
+      APP_URL: http://localhost
       NATS_URL: nats://nats:4222
       # Dev only — enables Jinja2 template auto-reload (see app.py). Do NOT set in prod.
       FLASK_DEBUG: "1"

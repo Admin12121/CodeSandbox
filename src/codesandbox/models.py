@@ -23,6 +23,7 @@ from codesandbox.features.sandbox.models import (
     SandboxPlan,
     SandboxTemplate,
     SandboxTemplatePlan,
+    TopupIntent,
 )
 
 __all__ = [
@@ -49,6 +50,7 @@ __all__ = [
     "InstanceRequest",
     "Balance",
     "BalanceTransaction",
+    "TopupIntent",
     "SandboxAuditLog",
 ]
 

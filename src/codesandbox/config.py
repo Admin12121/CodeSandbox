@@ -42,6 +42,29 @@ class Settings:
         # since the app is served via `uvicorn` (ASGI) in dev, which never sets it.
         self.debug = os.environ.get("FLASK_DEBUG", "0") == "1"
 
+        # ── Billing: Stripe (GBP topups) ──────────────────────────────────
+        self.stripe_secret_key = os.environ.get("STRIPE_SECRET_KEY", "")
+        self.stripe_publishable_key = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
+        self.stripe_webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+        # ── Billing: eSewa ePay v2 (NPR topups) ───────────────────────────
+        # Defaults are eSewa's published UAT test credentials — fine for
+        # dev, must be overridden via env in production.
+        self.esewa_product_code = os.environ.get("ESEWA_PRODUCT_CODE", "EPAYTEST")
+        self.esewa_secret_key = os.environ.get("ESEWA_SECRET_KEY", "8gBm/:&EnhH.1/q")
+        self.esewa_form_url = os.environ.get(
+            "ESEWA_FORM_URL", "https://rc-epay.esewa.com.np/api/epay/main/v2/form"
+        )
+        self.esewa_status_url = os.environ.get(
+            "ESEWA_STATUS_URL", "https://rc.esewa.com.np/api/epay/transaction/status/"
+        )
+
+        # ── Billing: NRB forex (GBP/NPR display rate) ─────────────────────
+        self.nrb_forex_url = os.environ.get(
+            "NRB_FOREX_URL", "https://www.nrb.org.np/api/forex/v1/rates"
+        )
+        self.nrb_forex_cache_ttl_seconds = int(os.environ.get("NRB_FOREX_CACHE_TTL_SECONDS", "21600"))  # 6h
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

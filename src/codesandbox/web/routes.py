@@ -276,6 +276,16 @@ def billing():
         billing_data = get_user_billing(str(user.id))
         billing_label = user.name or user.email
 
+    from decimal import Decimal
+    from codesandbox.config import get_settings
+    from codesandbox.features.billing import esewa_gateway, fx, stripe_gateway
+
+    npr_display = None
+    try:
+        npr_display = fx.gbp_to_npr(Decimal(str(billing_data["balance"]["amount"])))
+    except Exception:
+        pass
+
     nav = build_nav("/billing", user, active_workspace)
     return {
         "_meta": {"title": "Billing — CodeSandbox"},
@@ -283,6 +293,10 @@ def billing():
         "nav": nav,
         "page_title": "Billing",
         "billing_label": billing_label,
+        "balance_npr": npr_display,
+        "stripe_publishable_key": get_settings().stripe_publishable_key,
+        "min_topup_gbp": stripe_gateway.MIN_TOPUP_GBP,
+        "min_topup_npr": esewa_gateway.MIN_TOPUP_NPR,
         **billing_data,
         **ws_ctx,
     }

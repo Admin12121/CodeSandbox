@@ -198,6 +198,18 @@
           <h1 class="truncate text-sm font-medium text-foreground">{{ page_title }}</h1>
         {% endif %}
       </div>
+
+      {% set _hb = header_balance() %}
+      {% if _hb %}
+        <a href="/billing" title="Balance"
+           class="ml-auto flex shrink-0 items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-mono tabular-nums text-foreground hover:bg-accent transition-colors">
+          <span>£&nbsp;{{ _hb.gbp }}</span>
+          {% if _hb.npr %}
+            <span class="text-muted-foreground/50">·</span>
+            <span class="text-muted-foreground">रु&nbsp;{{ _hb.npr }}</span>
+          {% endif %}
+        </a>
+      {% endif %}
     </header>
 
     <main class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden relative">

@@ -50,7 +50,7 @@
               {% set specs_vcpu = plan.org_vcpu if is_org else plan.ind_vcpu %}
               {% set specs_ram  = (plan.org_ram_gb if is_org else plan.ind_ram_gb) | string ~ " GB" %}
               {% set specs_disk = (plan.org_disk_gb if is_org else plan.ind_disk_gb) | string ~ " GB SSD" %}
-              {% set specs_cost = "$" ~ (plan.org_cost_hr if is_org else plan.ind_cost_hr) ~ "/hr" %}
+              {% set specs_cost = "£" ~ (plan.org_cost_hr if is_org else plan.ind_cost_hr) ~ "/hr" %}
               {% call table.table_row(
                 selected=loop.first,
                 class="cursor-pointer select-none",
@@ -120,7 +120,7 @@
           {% if user_balance is not none %}
           {% call table.table_row(class="border-0") %}
             {{ table.table_cell("Balance", class="text-muted-foreground") }}
-            {{ table.table_cell("$" ~ user_balance, class="text-right font-medium " ~ ("text-destructive" if user_balance | float <= 0 else "")) }}
+            {{ table.table_cell("£" ~ user_balance, class="text-right font-medium " ~ ("text-destructive" if user_balance | float <= 0 else "")) }}
           {% endcall %}
           {% endif %}
         {% endcall %}

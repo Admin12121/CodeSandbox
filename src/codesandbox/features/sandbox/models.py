@@ -174,6 +174,38 @@ class BalanceTransaction(Model):
         table_name = "balance_transactions"
 
 
+class TopupIntent(Model):
+    """Tracks a gateway payment from creation through confirmation.
+
+    BalanceTransaction has no status field and represents money already
+    settled — it must only ever be created once a payment is confirmed.
+    This model is the pending/in-flight side: created before redirecting
+    the user to the gateway, and resolved (completed/failed) by the
+    webhook (Stripe) or the mandatory status-check call (eSewa) — never by
+    trusting a client-supplied redirect alone.
+    """
+    id = StringField(primary_key=True, max_length=36)
+    entity_type = StringField(max_length=10)   # user|org
+    entity_id = StringField(max_length=36)
+    gateway = StringField(max_length=20)        # stripe|esewa
+    status = StringField(max_length=20, default="pending")  # pending|completed|failed
+    # Amount actually charged, in the gateway's own currency (GBP for
+    # Stripe, NPR for eSewa) — kept alongside the converted GBP credit
+    # amount so the ledger entry and the receipt agree with what the user
+    # was actually charged.
+    charge_currency = StringField(max_length=3)   # GBP|NPR
+    charge_amount = DecimalField(max_digits=12, decimal_places=4)
+    credit_amount_gbp = DecimalField(max_digits=12, decimal_places=4, nullable=True)
+    fx_rate = DecimalField(max_digits=12, decimal_places=6, nullable=True)
+    external_ref = StringField(max_length=120, unique=True)  # Stripe session id | eSewa transaction_uuid
+    balance_transaction_id = ForeignKey(to=BalanceTransaction, on_delete="SET NULL", nullable=True)
+    created_at = DateTimeField(default=_now)
+    resolved_at = DateTimeField(nullable=True)
+
+    class Meta:
+        table_name = "topup_intents"
+
+
 class SandboxAuditLog(Model):
     """Immutable record of every status transition on a SandboxInstance."""
     id = StringField(primary_key=True, max_length=36)

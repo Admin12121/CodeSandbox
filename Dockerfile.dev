@@ -5,17 +5,28 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Copy only the dependency manifest + local packages so Docker layer cache is
-# reused when only source code changes (not deps).
+# Copy the dependency manifest + local packages + src so `uv sync` can fully
+# install the project (including editable installs of the two local
+# workspace packages) here, with real network access. src/ is ALSO
+# bind-mounted at runtime (see `volumes:` in docker-compose.yml) so live
+# edits still work with no rebuild — editable installs point at the source
+# tree directly and don't need reinstalling when it changes; this COPY only
+# exists so the editable install has something to link against during build.
 COPY pyproject.toml uv.lock ./
 COPY packages/ ./packages/
+COPY src/ ./src/
 
-# Install dependencies into a container-local virtualenv outside /app, so the
+# Install into a container-local virtualenv outside /app, so the
 # bind-mounted project directory never uses or hides the host .venv.
-# --no-install-project: don't install the top-level package yet (source is
-# bind-mounted at runtime).
+# Full `uv sync` (not --no-install-project): the container's own entrypoint
+# used to run `uv run nexorm ...` as its first command in a fresh container,
+# which — with only deps pre-installed — triggered an on-the-fly editable
+# install of app-router/nexorm requiring their build-system requirements
+# (setuptools, wheel) from PyPI. That's fine at build time (--network=host)
+# but fails at container runtime, where there's no egress — every full
+# container recreation (as opposed to a plain restart) hung/failed here.
 ENV UV_PROJECT_ENVIRONMENT=/opt/codesandbox/.venv
-RUN --network=host uv sync --frozen --no-install-project
+RUN --network=host uv sync --frozen
 
 ENV PYTHONPATH=/app/src
 ENV FLASK_APP=codesandbox.app:app
