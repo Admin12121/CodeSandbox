@@ -273,7 +273,11 @@
   }
   html {
     @apply font-sans antialiased;
-  }
+  } 
+}
+
+::-webkit-scrollbar {
+    display: none;
 }
 
 @layer components {

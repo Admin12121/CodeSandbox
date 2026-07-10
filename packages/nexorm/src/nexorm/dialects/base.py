@@ -39,9 +39,16 @@ class BaseDialect:
     def sql_type_from_state(self, column):
         field = column.get("field", column)
         field_type = field.get("type") or column.get("type")
-        if field_type == "ForeignKey" and field.get("target_field"):
-            field = field["target_field"]
-            field_type = field.get("type")
+        if field_type == "ForeignKey":
+            # Runtime field.deconstruct() puts target_field directly on the
+            # field dict; the migration writer nests FK metadata (including
+            # target_field) under a "foreign_key" sub-dict instead. Accept
+            # either shape so a ForeignKey column always takes on its target
+            # column's real type instead of silently defaulting to INTEGER.
+            target_field = field.get("target_field") or (field.get("foreign_key") or {}).get("target_field")
+            if target_field:
+                field = target_field
+                field_type = field.get("type")
         type_name = self.field_type_map.get(
             field_type, field.get("type_name") or column.get("type_name")
         )

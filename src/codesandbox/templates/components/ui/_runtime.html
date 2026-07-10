@@ -13,6 +13,7 @@ function setState(element, open) {
   if (!element) return;
   element.hidden = !open;
   element.dataset.state = open ? "open" : "closed";
+  if (!open && element.__csRepositionCleanup) element.__csRepositionCleanup();
 }
 
 function controlledBy(trigger, targetSlot) {
@@ -54,6 +55,67 @@ function closeDialog(dialog) {
   } else {
     dialog.hidden = true;
   }
+}
+
+// Form-field-style popups (select/combobox/autocomplete) need real viewport
+// positioning rather than plain `position: absolute` + CSS top-full: they
+// commonly live inside a horizontally-scrolling table container
+// (`overflow-x-auto`), and per the CSS spec, setting only overflow-x forces
+// the *other* axis to clip too — so an absolutely-positioned popup that needs
+// to render below the container's bottom edge gets silently cut off. Escape
+// that by positioning in the viewport (`position: fixed`, computed from the
+// trigger's own getBoundingClientRect, which is already viewport-relative),
+// flipping above the trigger when there isn't room below, and re-measuring on
+// scroll/resize so it stays glued to the trigger instead of drifting.
+const FLOATING_MATCH_WIDTH_SLOTS = ["select-popup", "combobox-popup", "autocomplete-popup"];
+
+function positionFloatingPopup(trigger, popup) {
+  if (!popup || !trigger) return;
+  if (!FLOATING_MATCH_WIDTH_SLOTS.includes(popup.dataset.slot)) return;
+
+  popup.style.position = "fixed";
+  popup.style.margin = "0";
+  popup.style.left = "0";
+  popup.style.top = "0";
+  popup.style.minWidth = trigger.offsetWidth + "px";
+
+  function reposition() {
+    const triggerRect = trigger.getBoundingClientRect();
+    const viewportH = document.documentElement.clientHeight;
+    const spaceBelow = viewportH - triggerRect.bottom;
+    const spaceAbove = triggerRect.top;
+    const popupHeight = popup.getBoundingClientRect().height;
+    const flipUp = spaceBelow < popupHeight + 8 && spaceAbove > spaceBelow;
+
+    popup.style.left = triggerRect.left + "px";
+    if (flipUp) {
+      popup.style.top = "auto";
+      popup.style.bottom = (viewportH - triggerRect.top + 4) + "px";
+    } else {
+      popup.style.top = (triggerRect.bottom + 4) + "px";
+      popup.style.bottom = "auto";
+    }
+  }
+
+  // Measure/position while still invisible so there's no flash at (0, 0).
+  const prevVisibility = popup.style.visibility;
+  const prevHidden = popup.hidden;
+  popup.style.visibility = "hidden";
+  popup.hidden = false;
+  reposition();
+  popup.hidden = prevHidden;
+  popup.style.visibility = prevVisibility;
+
+  // Keep it glued to the trigger while open — `true` (capture) so scrolling
+  // *any* ancestor scroll container (not just window) is picked up.
+  if (popup.__csRepositionCleanup) popup.__csRepositionCleanup();
+  window.addEventListener("scroll", reposition, true);
+  window.addEventListener("resize", reposition);
+  popup.__csRepositionCleanup = () => {
+    window.removeEventListener("scroll", reposition, true);
+    window.removeEventListener("resize", reposition);
+    popup.__csRepositionCleanup = null;
+  };
 }
 
 function closeFloating(except) {
@@ -139,6 +201,8 @@ function moveTabIndicator(tab) {
 function initDisclosure(root, itemSlot) {
   all(root, itemSlot).forEach((item) => {
     if (!(item instanceof HTMLDetailsElement)) return;
+    if (item.dataset[UI_READY]) return;
+    item.dataset[UI_READY] = "disclosure";
     item.dataset.state = item.open ? "open" : "closed";
     item.addEventListener("toggle", () => {
       item.dataset.state = item.open ? "open" : "closed";
@@ -182,90 +246,105 @@ function initToast(toast) {
   }
 }
 
-document.addEventListener("click", (event) => {
-  const target = event.target;
+// This script is an app-script block: the server re-captures and re-emits it on
+// every soft-navigation page render (the capture cache is per-request, not
+// per-client-session), and the router's inline-script loader always removes +
+// recreates the <script> tag for a given key, which re-executes this whole module.
+// scanUiRuntime() below needs to re-run every time (it initializes any newly
+// swapped-in tabs/comboboxes/etc.), but the two document.addEventListener calls
+// must NOT — attaching them again on every soft nav stacks duplicate listeners on
+// the (persistent, cross-navigation) document object, so a single click fires
+// the handler N times and toggles state back off. Guard registration with a
+// window flag so it only ever happens once per page lifetime.
+if (!window.__csUiRuntimeBound) {
+  window.__csUiRuntimeBound = true;
 
-  const modalTrigger = target.closest(`[data-dialog-trigger], ${slot("dialog-trigger")}, ${slot("alert-dialog-trigger")}, ${slot("sheet-trigger")}, ${slot("drawer-trigger")}, ${slot("command-dialog-trigger")}`);
-  if (modalTrigger) {
-    const triggerSlot = modalTrigger.dataset.slot;
-    const targetSlot = modalTrigger.hasAttribute("data-dialog-trigger") ? "dialog" : triggerSlot.replace("-trigger", "");
-    openDialog(controlledBy(modalTrigger, targetSlot));
-    return;
-  }
+  document.addEventListener("click", (event) => {
+    const target = event.target;
 
-  const close = target.closest(`${slot("dialog-close")}, ${slot("alert-dialog-close")}, ${slot("sheet-close")}, ${slot("drawer-close")}, ${slot("command-dialog-close")}, ${slot("popover-close")}`);
-  if (close) {
-    const dialog = close.closest("dialog, [data-slot='sheet'], [data-slot='drawer'], [data-slot='dialog'], [data-slot='alert-dialog'], [data-slot='command-dialog']");
-    if (dialog) {
-      closeDialog(dialog);
-    } else {
-      setState(close.closest(slot("popover-popup")), false);
+    const modalTrigger = target.closest(`[data-dialog-trigger], ${slot("dialog-trigger")}, ${slot("alert-dialog-trigger")}, ${slot("sheet-trigger")}, ${slot("drawer-trigger")}, ${slot("command-dialog-trigger")}`);
+    if (modalTrigger) {
+      const triggerSlot = modalTrigger.dataset.slot;
+      const targetSlot = modalTrigger.hasAttribute("data-dialog-trigger") ? "dialog" : triggerSlot.replace("-trigger", "");
+      openDialog(controlledBy(modalTrigger, targetSlot));
+      return;
     }
-    return;
-  }
 
-  const floatingTrigger = target.closest(`${slot("menu-trigger")}, ${slot("menu-sub-trigger")}, ${slot("popover-trigger")}, ${slot("select-trigger")}, ${slot("select-button")}, ${slot("combobox-trigger")}, ${slot("autocomplete-trigger")}, ${slot("tooltip-trigger")}`);
-  if (floatingTrigger) {
-    const map = {
-      "menu-trigger": "menu-popup",
-      "menu-sub-trigger": "menu-sub-popup",
-      "popover-trigger": "popover-popup",
-      "select-trigger": "select-popup",
-      "select-button": "select-popup",
-      "combobox-trigger": "combobox-popup",
-      "autocomplete-trigger": "autocomplete-popup",
-      "tooltip-trigger": "tooltip-popup",
-    };
-    const popup = controlledBy(floatingTrigger, map[floatingTrigger.dataset.slot]);
-    const open = popup?.hidden;
-    closeFloating(popup);
-    setState(popup, Boolean(open));
-    floatingTrigger.setAttribute("aria-expanded", Boolean(open).toString());
-    return;
-  }
-
-  const selectItem = target.closest(slot("select-item"));
-  if (selectItem) {
-    const select = selectItem.closest(slot("select"));
-    const value = selectItem.dataset.value || selectItem.textContent.trim();
-    all(select || document, slot("select-item")).forEach((item) => {
-      const selected = item === selectItem;
-      item.toggleAttribute("data-selected", selected);
-      item.setAttribute("aria-selected", selected ? "true" : "false");
-    });
-    const display = select?.querySelector(slot("select-value"));
-    if (display) display.textContent = selectItem.textContent.trim();
-    const hidden = select?.querySelector("input[type='hidden']");
-    if (hidden) {
-      hidden.value = value;
-      hidden.dispatchEvent(new Event('change', { bubbles: true }));
+    const close = target.closest(`${slot("dialog-close")}, ${slot("alert-dialog-close")}, ${slot("sheet-close")}, ${slot("drawer-close")}, ${slot("command-dialog-close")}, ${slot("popover-close")}`);
+    if (close) {
+      const dialog = close.closest("dialog, [data-slot='sheet'], [data-slot='drawer'], [data-slot='dialog'], [data-slot='alert-dialog'], [data-slot='command-dialog']");
+      if (dialog) {
+        closeDialog(dialog);
+      } else {
+        setState(close.closest(slot("popover-popup")), false);
+      }
+      return;
     }
+
+    const floatingTrigger = target.closest(`${slot("menu-trigger")}, ${slot("menu-sub-trigger")}, ${slot("popover-trigger")}, ${slot("select-trigger")}, ${slot("select-button")}, ${slot("combobox-trigger")}, ${slot("autocomplete-trigger")}, ${slot("tooltip-trigger")}`);
+    if (floatingTrigger) {
+      const map = {
+        "menu-trigger": "menu-popup",
+        "menu-sub-trigger": "menu-sub-popup",
+        "popover-trigger": "popover-popup",
+        "select-trigger": "select-popup",
+        "select-button": "select-popup",
+        "combobox-trigger": "combobox-popup",
+        "autocomplete-trigger": "autocomplete-popup",
+        "tooltip-trigger": "tooltip-popup",
+      };
+      const popup = controlledBy(floatingTrigger, map[floatingTrigger.dataset.slot]);
+      const open = popup?.hidden;
+      closeFloating(popup);
+      if (open) positionFloatingPopup(floatingTrigger, popup);
+      setState(popup, Boolean(open));
+      floatingTrigger.setAttribute("aria-expanded", Boolean(open).toString());
+      return;
+    }
+
+    const selectItem = target.closest(slot("select-item"));
+    if (selectItem) {
+      const select = selectItem.closest(slot("select"));
+      const value = selectItem.dataset.value || selectItem.textContent.trim();
+      all(select || document, slot("select-item")).forEach((item) => {
+        const selected = item === selectItem;
+        item.toggleAttribute("data-selected", selected);
+        item.setAttribute("aria-selected", selected ? "true" : "false");
+      });
+      const display = select?.querySelector(slot("select-value"));
+      if (display) display.textContent = selectItem.textContent.trim();
+      const hidden = select?.querySelector("input[type='hidden']");
+      if (hidden) {
+        hidden.value = value;
+        hidden.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      closeFloating();
+      return;
+    }
+
+    const clear = target.closest(`${slot("combobox-clear")}, ${slot("autocomplete-clear")}`);
+    if (clear) {
+      const root = clear.closest(`${slot("combobox")}, ${slot("autocomplete")}`);
+      const input = root?.querySelector("input");
+      if (input) {
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.focus();
+      }
+      return;
+    }
+
+    if (!target.closest("[data-slot$='-popup'], [data-slot$='-trigger']")) {
+      closeFloating();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
     closeFloating();
-    return;
-  }
-
-  const clear = target.closest(`${slot("combobox-clear")}, ${slot("autocomplete-clear")}`);
-  if (clear) {
-    const root = clear.closest(`${slot("combobox")}, ${slot("autocomplete")}`);
-    const input = root?.querySelector("input");
-    if (input) {
-      input.value = "";
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.focus();
-    }
-    return;
-  }
-
-  if (!target.closest("[data-slot$='-popup'], [data-slot$='-trigger']")) {
-    closeFloating();
-  }
-});
-
-document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape") return;
-  closeFloating();
-  all(document, "dialog[data-state='open'], dialog[open]").forEach(closeDialog);
-});
+    all(document, "dialog[data-state='open'], dialog[open]").forEach(closeDialog);
+  });
+}
 
 function scanUiRuntime() {
   all(document, slot("tabs")).forEach(initTabs);
@@ -281,5 +360,8 @@ function scanUiRuntime() {
 }
 
 scanUiRuntime();
-window.addEventListener("app-router:patch", scanUiRuntime);
+if (!window.__csUiRuntimePatchBound) {
+  window.__csUiRuntimePatchBound = true;
+  window.addEventListener("app-router:patch", scanUiRuntime);
+}
 {% end_app_script %}

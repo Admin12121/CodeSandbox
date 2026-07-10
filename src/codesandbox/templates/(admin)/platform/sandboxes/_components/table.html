@@ -209,28 +209,12 @@
             action="/platform/sandboxes/" ~ tid ~ "/delete",
           ) }}
         {% endif %}
-        {% if can_manage %}
-          {% if is_create or active_tab == "identity" %}
-            <button type="submit" form="identity-form"
-              class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-              <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              {{ "Create Template" if is_create else "Save Changes" }}
-            </button>
-          {% elif active_tab == "config" %}
-            <button type="button" id="test-launch-btn" title="Test Launch"
-              class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-              <svg id="launch-icon-play" class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
-              <svg id="launch-icon-spinner" hidden class="size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              <svg id="launch-icon-pause" hidden class="size-4 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>
-              <svg id="launch-icon-stopping" hidden class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
-            </button>
-            <button type="button" id="ide-save-btn" title="Save Config"
-              class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-              <svg id="ide-save-icon" class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-              <svg id="ide-save-spinner" hidden class="size-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              <svg id="ide-save-check" hidden class="size-4 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-            </button>
-          {% endif %}
+        {% if can_manage and (is_create or active_tab == "identity") %}
+          <button type="submit" form="identity-form"
+            class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            {{ "Create Template" if is_create else "Save Changes" }}
+          </button>
         {% endif %}
       </div>
     </div>
@@ -356,13 +340,20 @@
                         "android":            {"label": "Android",             "desc": "Android emulator for APK testing and mobile research"},
                         "ctf":                {"label": "CTF / Challenge",     "desc": "Capture-the-flag competition or challenge environment"},
                       } %}
-                      <select name="sandbox_type"
-                        class="h-9 w-64 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer">
-                        {% for t in sandbox_types %}
-                          {% set m = type_meta.get(t, {"label": t | title, "desc": ""}) %}
-                          <option value="{{ t }}" {% if t == selected_template.sandbox_type %}selected{% endif %}>{{ m.label }}</option>
-                        {% endfor %}
-                      </select>
+                      {% set current_type = selected_template.sandbox_type %}
+                      {% set current_type_meta = type_meta.get(current_type, {"label": current_type | title, "desc": ""}) %}
+                      {% call sel.select(name="sandbox_type", value=current_type, class="w-64") %}
+                        {% call sel.select_trigger(target="sandbox-type-popup") %}
+                          {{ sel.select_value(current_type_meta.label) }}
+                          <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                        {% endcall %}
+                        {% call sel.select_popup(attrs={"id": "sandbox-type-popup"}) %}
+                          {% for t in sandbox_types %}
+                            {% set m = type_meta.get(t, {"label": t | title, "desc": ""}) %}
+                            {% call sel.select_item(value=t, selected=(t == current_type)) %}{{ m.label }}{% endcall %}
+                          {% endfor %}
+                        {% endcall %}
+                      {% endcall %}
                     {% endcall %}
                   {% endcall %}
                 {% endcall %}
@@ -507,12 +498,18 @@
                   {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Network Mode{% endcall %}
                     {% call table.table_cell() %}
-                      <select name="network_mode"
-                        class="h-9 w-64 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer">
-                        {% for m in network_modes %}
-                          <option value="{{ m }}" {% if m == selected_template.network_mode %}selected{% endif %}>{{ m | replace("_", " ") | title }}</option>
-                        {% endfor %}
-                      </select>
+                      {% set current_net_mode = selected_template.network_mode %}
+                      {% call sel.select(name="network_mode", value=current_net_mode, class="w-64") %}
+                        {% call sel.select_trigger(target="network-mode-popup") %}
+                          {{ sel.select_value(current_net_mode | replace("_", " ") | title) }}
+                          <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                        {% endcall %}
+                        {% call sel.select_popup(attrs={"id": "network-mode-popup"}) %}
+                          {% for m in network_modes %}
+                            {% call sel.select_item(value=m, selected=(m == current_net_mode)) %}{{ m | replace("_", " ") | title }}{% endcall %}
+                          {% endfor %}
+                        {% endcall %}
+                      {% endcall %}
                     {% endcall %}
                   {% endcall %}
                   {% call table.table_row() %}
@@ -560,9 +557,9 @@
           <thead data-slot="table-header" class="[&_tr]:border-b">
             <tr data-slot="table-row" class="border-b">
               <th rowspan="2" class="w-36 px-3 py-2 text-left align-middle text-sm font-medium text-muted-foreground">Plan</th>
-              <th rowspan="2" class="w-20 px-3 py-2 text-center align-middle text-sm font-medium text-muted-foreground">Enabled</th>
               <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Individual Tier</th>
               <th colspan="4" class="px-3 py-1.5 text-center text-xs font-medium text-muted-foreground border-l">Org Tier</th>
+              <th rowspan="2" class="w-20 px-3 py-2 text-center align-middle text-sm font-medium text-muted-foreground border-l">Enabled</th>
             </tr>
             <tr data-slot="table-row" class="border-b bg-muted/30">
               <th class="w-16 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground/70 border-l">vCPU</th>
@@ -584,9 +581,6 @@
                     <div class="font-medium text-sm">{{ gp.name }}</div>
                     <code class="text-[10px] text-muted-foreground">{{ gp.id }}</code>
                   {% endcall %}
-                  {% call table.table_cell(class="text-center") %}
-                    {{ badge.badge("Yes" if cfg.is_enabled else "No", variant=("outline" if cfg.is_enabled else "secondary")) }}
-                  {% endcall %}
                   {% call table.table_cell(class="border-l text-center text-xs tabular-nums") %}{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else gp.ind_vcpu }}{% endcall %}
                   {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else gp.ind_ram_gb }}{% endcall %}
                   {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else gp.ind_disk_gb }}{% endcall %}
@@ -595,6 +589,11 @@
                   {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else gp.org_ram_gb }}{% endcall %}
                   {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else gp.org_disk_gb }}{% endcall %}
                   {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else gp.org_cost_hr }}{% endcall %}
+                  {% call table.table_cell(class="border-l text-center") %}
+                    <div class="flex justify-center">
+                      {{ sw.switch(checked=cfg.is_enabled, attrs={"data-plan-toggle": "", "data-plan-id": gp.id, "data-template-id": tid}) }}
+                    </div>
+                  {% endcall %}
                 {% endcall %}
               {% endfor %}
             {% else %}
@@ -610,10 +609,53 @@
       {% endcall %}
     </div>
 
+    {% app_script "sandbox-plan-toggle" %}
+    // Guarded like the shared UI runtime: this app-script block gets
+    // re-captured and re-executed on every soft-navigation re-render (the
+    // capture cache is per-request), so an unguarded document-level listener
+    // would stack a duplicate on every visit to this tab and double-fire.
+    if (!window.__csPlanToggleBound) {
+      window.__csPlanToggleBound = true;
+      document.addEventListener('change', function(e) {
+        // `[data-plan-toggle]` and `[data-slot="switch"]` are the same
+        // <label> element — attrs on the switch() macro land on the label,
+        // not the checkbox it wraps, so .checked/.disabled must go through
+        // the actual <input> inside it.
+        var toggle = e.target.closest('[data-plan-toggle]');
+        if (!toggle) return;
+        var input = toggle.querySelector('input[type="checkbox"]');
+        if (!input) return;
+        var templateId = toggle.dataset.templateId;
+        var planId = toggle.dataset.planId;
+        var isEnabled = input.checked;
+        toggle.dataset.state = isEnabled ? 'checked' : 'unchecked';
+        input.disabled = true;
+        fetch('/platform/sandboxes/' + encodeURIComponent(templateId) + '/plans/' + encodeURIComponent(planId) + '/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_enabled: isEnabled }),
+        })
+        .then(function(r) { return r.json().then(function(body) { return { ok: r.ok, body: body }; }); })
+        .then(function(result) {
+          if (!result.ok || !result.body.ok) throw new Error((result.body && result.body.error) || 'Failed to update plan.');
+        })
+        .catch(function(err) {
+          // Revert on failure so the switch never lies about server state.
+          input.checked = !isEnabled;
+          toggle.dataset.state = !isEnabled ? 'checked' : 'unchecked';
+          window.Toast && window.Toast.create({ title: 'Could not update plan', description: err.message, type: 'error' });
+        })
+        .finally(function() {
+          input.disabled = false;
+        });
+      });
+    }
+    {% end_app_script %}
+
     {% else %}
 
       {# ── Config IDE ── #}
-      <div class="flex flex-col flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden" id="config-ide">
+      <div class="flex flex-col flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden" id="config-ide" data-ide-theme="dark">
 
       <div class="flex flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden">
 
@@ -642,18 +684,18 @@
         </div>
 
         {# Resize handle #}
-        <div id="ft-resize" class="w-0.5 shrink-0 bg-border cursor-col-resize hover:bg-ring transition-colors relative z-10">
+        <div id="ft-resize" class="shrink-0 bg-border cursor-col-resize hover:bg-ring transition-colors relative z-10">
           <div class="absolute inset-y-0 -inset-x-1.5"></div>
         </div>
 
         {# Editor area #}
         <div class="flex flex-col flex-1 min-w-0 max-w-full overflow-hidden bg-background">
           {# Open file tabs #}
-          <div id="editor-tabs" class="flex h-9 shrink-0 items-stretch border-b overflow-x-auto" style="scrollbar-width:none"></div>
+          <div id="editor-tabs" class="flex h-9 shrink-0 items-stretch overflow-x-auto   " style="scrollbar-width:none"></div>
           {# Monaco mount #}
           <div id="monaco-mount" class="flex-1 overflow-hidden"></div>
           {# Empty state when no file open #}
-          <div id="editor-empty" class="flex-1 flex flex-col items-center justify-center text-muted-foreground hidden">
+          <div id="editor-empty" class="flex-1 flex flex-col items-center justify-center text-muted-foreground hidden dark:bg-[#141414]">
             <svg class="size-12 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
             <p class="text-sm">Select a file to edit</p>
           </div>
@@ -743,27 +785,26 @@
       </div>{# /inner panels row #}
 
       {# ── Terminal resize handle ── #}
-      <div id="term-resize-handle" class="h-0.5 shrink-0 bg-border cursor-row-resize hover:bg-ring transition-colors relative z-10 hidden">
+      <div id="term-resize-handle" class="ide-resize-handle shrink-0 cursor-row-resize transition-colors relative z-10 hidden">
         <div class="absolute inset-x-0 -inset-y-1.5"></div>
       </div>
 
       {# ── Terminal panel ── #}
-      <div id="term-panel" class="flex min-w-0 w-full max-w-full flex-col shrink-0 border-t overflow-hidden" style="height:200px;display:none">
-        <div class="flex min-w-0 h-7 shrink-0 items-center justify-between border-b bg-sidebar px-2">
-          <div class="flex min-w-0 items-center gap-1.5">
-            <svg class="size-3.5 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
-            <span class="truncate text-[11px] font-medium text-muted-foreground select-none">Terminal</span>
-            <span title="This is a shell in the worker container, not the template's own Docker image. Exec into the actual sandbox image requires the real container-runtime worker (Phase 6a) — not yet built."
-              class="inline-flex items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 size-4 text-amber-600 dark:text-amber-400 cursor-help select-none">
-              <svg class="size-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
-            </span>
+      {# Header reuses the exact .ide-tab / .ide-tab-active chip styling as the
+         editor tab strip, so the terminal reads as "one active tab" sitting on
+         the bar — same component, same look, instead of a separate design. #}
+      <div id="term-panel" class="flex min-w-0 w-full max-w-full flex-col shrink-0 overflow-hidden" style="height:200px;display:none">
+        <div class="ide-term-header flex min-w-0 h-9 shrink-0 items-stretch">
+          <div class="ide-tab ide-tab-active flex min-w-0 items-center gap-1.5 px-3 h-full border-r text-xs shrink-0">
+            <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            <span class="truncate select-none">Terminal</span>
+            <button id="term-close-btn" title="Close terminal"
+              class="ml-1 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-muted/80 transition-colors shrink-0">
+              <svg class="size-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
           </div>
-          <button id="term-close-btn" title="Close terminal"
-            class="inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-            <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
         </div>
-        <div id="xterm-mount" class="min-w-0 w-full max-w-full flex-1 overflow-hidden" style="background:#09090b"></div>
+        <div id="xterm-mount" class="min-w-0 w-full max-w-full flex-1 overflow-hidden bg-[#141414]"></div>
       </div>
 
       {# ── Config IDE bottom toolbar ── #}
@@ -771,20 +812,31 @@
         <div class="flex h-full items-center gap-1">
           <button id="ide-ft-toggle" title="Toggle file tree"
             class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
+            <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/></svg>
           </button>
           <button id="ide-term-toggle" title="Toggle terminal"
             class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
+            <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
           </button>
         </div>
         <div class="flex h-full items-center gap-1.5 px-1">
           <button id="ide-monitor-toggle" title="Sandbox Monitor" hidden
             class="flex items-center gap-1 rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
             <span id="ide-monitor-dot" class="size-1.5 rounded-full bg-muted-foreground"></span>
-            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v4"/><path d="m14.305 7.53.923-.382"/><path d="m15.228 4.852-.923-.383"/><path d="m16.852 3.228-.383-.924"/><path d="m16.852 8.772-.383.923"/><path d="m19.148 3.228.383-.924"/><path d="m19.53 9.696-.382-.924"/><path d="m20.772 4.852.924-.383"/><path d="m20.772 7.148.924.383"/><path d="M22 13v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><path d="M8 21h8"/><circle cx="18" cy="6" r="3"/></svg>
+            <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v4"/><path d="m14.305 7.53.923-.382"/><path d="m15.228 4.852-.923-.383"/><path d="m16.852 3.228-.383-.924"/><path d="m16.852 8.772-.383.923"/><path d="m19.148 3.228.383-.924"/><path d="m19.53 9.696-.382-.924"/><path d="m20.772 4.852.924-.383"/><path d="m20.772 7.148.924.383"/><path d="M22 13v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><path d="M8 21h8"/><circle cx="18" cy="6" r="3"/></svg>
           </button>
+          <span id="ide-save-status" class="opacity-60"></span>
           <span id="ide-active-file" class="font-mono opacity-60"></span>
+          {% if can_manage %}
+            <div class="w-px h-3.5 bg-border mx-0.5"></div>
+            <button type="button" id="test-launch-btn" title="Test Launch"
+              class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
+              <svg id="launch-icon-play" class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
+              <svg id="launch-icon-spinner" hidden class="size-3 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              <svg id="launch-icon-pause" hidden class="size-3 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>
+              <svg id="launch-icon-stopping" hidden class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+            </button>
+          {% endif %}
         </div>
       </div>
 
@@ -879,6 +931,86 @@
 
         #config-ide #xterm-mount .xterm-viewport {
           overflow-x: hidden !important;
+        }
+
+        /* IDE theme tokens — Dark = "Darkmatter" (Zed), Light = "Ayu Light" (Zed) */
+        #config-ide[data-ide-theme="dark"] {
+          --ide-editor-bg: #121113;
+          --ide-editor-fg: #c1c1c1;
+          --ide-bar-bg: #141414;
+          --ide-tab-active-bg: #121113;
+          --ide-tab-active-fg: #d8d8d8;
+          --ide-tab-inactive-fg: #6e6e73;
+          --ide-tab-border: #29292c;
+          --ide-accent: #5f8787;
+          --ide-scrollbar-thumb: rgba(193,193,193,.18);
+          --ide-scrollbar-thumb-hover: rgba(193,193,193,.32);
+        }
+        #config-ide[data-ide-theme="light"] {
+          --ide-editor-bg: #fcfcfc;
+          --ide-editor-fg: #5c6166;
+          --ide-bar-bg: #eeeeef;
+          --ide-tab-active-bg: #fcfcfc;
+          --ide-tab-active-fg: #26262a;
+          --ide-tab-inactive-fg: #8c8d91;
+          --ide-tab-border: #d8d9db;
+          --ide-accent: #3b9ee5;
+          --ide-scrollbar-thumb: rgba(92,97,102,.18);
+          --ide-scrollbar-thumb-hover: rgba(92,97,102,.32);
+        }
+
+        #config-ide #editor-tabs {
+          background: var(--ide-bar-bg);
+          border-color: var(--ide-tab-border);
+          border-bottom: 1px solid var(--ide-tab-border);
+        }
+        #config-ide .ide-tab {
+          background: transparent;
+          color: var(--ide-tab-inactive-fg);
+          border-color: var(--ide-tab-border);
+        }
+        #config-ide .ide-tab:hover {
+          color: var(--ide-tab-active-fg);
+        }
+        #config-ide .ide-tab.ide-tab-active {
+          background: var(--ide-tab-active-bg);
+          color: var(--ide-tab-active-fg);
+        }
+        #config-ide #xterm-mount,
+        #config-ide #term-panel {
+          background: var(--ide-editor-bg);
+        }
+        #config-ide #term-panel {
+          border-top: 1px solid var(--ide-tab-border);
+        }
+        #config-ide .ide-term-header {
+          background: var(--ide-bar-bg);
+          border-bottom: 1px solid var(--ide-tab-border);
+        }
+        #config-ide .ide-resize-handle {
+          background: var(--ide-tab-border);
+        }
+        #config-ide .ide-resize-handle:hover {
+          background: var(--ide-accent);
+        }
+
+        /* Thin terminal scrollbar in the theme's own tone (native OS scrollbar looked out of place) */
+        #config-ide #xterm-mount .xterm-viewport {
+          scrollbar-width: thin;
+          scrollbar-color: var(--ide-scrollbar-thumb) transparent;
+        }
+        #config-ide #xterm-mount .xterm-viewport::-webkit-scrollbar {
+          width: 8px;
+        }
+        #config-ide #xterm-mount .xterm-viewport::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        #config-ide #xterm-mount .xterm-viewport::-webkit-scrollbar-thumb {
+          background-color: var(--ide-scrollbar-thumb);
+          border-radius: 4px;
+        }
+        #config-ide #xterm-mount .xterm-viewport::-webkit-scrollbar-thumb:hover {
+          background-color: var(--ide-scrollbar-thumb-hover);
         }
       </style>
 
@@ -994,29 +1126,62 @@
       });
     }
 
+    // Flips above the input when there isn't room below (mirrors native
+    // <select> / the shared runtime's positionFloatingPopup — this combobox
+    // predates that and has its own bespoke fixed-position logic, so it needs
+    // the same fix applied locally rather than delegating cross-module).
     function positionCombo() {
       if (!comboPopup || !comboInput) return;
       var rect = comboInput.getBoundingClientRect();
+      var viewportH = document.documentElement.clientHeight;
+      var popupH = comboPopup.getBoundingClientRect().height;
+      var spaceBelow = viewportH - rect.bottom;
+      var spaceAbove = rect.top;
+      var flipUp = spaceBelow < popupH + 8 && spaceAbove > spaceBelow;
+
       comboPopup.style.position = 'fixed';
-      comboPopup.style.top = (rect.bottom + 2) + 'px';
       comboPopup.style.left = rect.left + 'px';
       comboPopup.style.width = rect.width + 'px';
       comboPopup.style.zIndex = '9999';
+      if (flipUp) {
+        comboPopup.style.top = 'auto';
+        comboPopup.style.bottom = (viewportH - rect.top + 2) + 'px';
+      } else {
+        comboPopup.style.top = (rect.bottom + 2) + 'px';
+        comboPopup.style.bottom = 'auto';
+      }
+    }
+
+    function trackComboOnScroll() {
+      window.addEventListener('scroll', positionCombo, true);
+      window.addEventListener('resize', positionCombo);
+    }
+
+    function untrackComboOnScroll() {
+      window.removeEventListener('scroll', positionCombo, true);
+      window.removeEventListener('resize', positionCombo);
     }
 
     function showCombo() {
       if (!comboPopup) return;
       buildComboOptions(currentRuntime());
       if (!comboList || comboList.children.length === 0) return;
-      positionCombo();
+      // Unhide-but-invisible so positionCombo() can measure real height
+      // (a `hidden` popup lays out at 0×0), then reveal in the right spot —
+      // avoids a flash at the wrong position.
+      comboPopup.style.visibility = 'hidden';
       comboPopup.removeAttribute('hidden');
+      positionCombo();
+      comboPopup.style.visibility = '';
       comboPopup.setAttribute('data-state', 'open');
+      trackComboOnScroll();
     }
 
     function hideCombo() {
       if (!comboPopup) return;
       comboPopup.setAttribute('hidden', '');
       comboPopup.setAttribute('data-state', 'closed');
+      untrackComboOnScroll();
     }
 
     function updateImageField(rcVal) {
@@ -1372,7 +1537,7 @@ function renderNode(container, node, prefix, depth) {
 }
 
 function folderIcon(expanded) {
-  return '<span class="' + NERD_ICON_CLASS + ' text-amber-300" aria-hidden="true">' + (expanded ? '&#xF07C;' : '&#xF07B;') + '</span>';
+  return '<span class="' + NERD_ICON_CLASS + ' text-muted-foreground" aria-hidden="true">' + (expanded ? '&#xF07C;' : '&#xF07B;') + '</span>';
 }
 
 function fileIconMeta(name) {
@@ -1391,7 +1556,7 @@ function fileIconMeta(name) {
 
 function fileIcon(name) {
   var meta = fileIconMeta(name);
-  return '<span class="' + NERD_ICON_CLASS + ' ' + meta[1] + '" aria-hidden="true">' + meta[0] + '</span>';
+  return '<span class="' + NERD_ICON_CLASS + ' text-muted-foreground" aria-hidden="true">' + meta[0] + '</span>';
 }
 
 // ── Tab bar ─────────────────────────────────────────────────────────────────
@@ -1409,8 +1574,8 @@ function renderTabs() {
   openTabs.forEach(function(path) {
     var name = path.split('/').pop();
     var tab = document.createElement('div');
-    tab.className = 'flex items-center gap-1.5 px-3 h-full border-r text-xs cursor-pointer shrink-0 transition-colors ' +
-      (activeView === 'file' && activeFile === path ? 'bg-background text-foreground border-b-2 border-b-primary' : 'text-muted-foreground hover:text-foreground bg-muted/40');
+    tab.className = 'ide-tab flex items-center gap-1.5 px-3 h-full border-r text-xs cursor-pointer shrink-0 transition-colors' +
+      (activeView === 'file' && activeFile === path ? ' ide-tab-active' : '');
     tab.innerHTML = fileIcon(name)
       + '<span>' + esc(name) + '</span>'
       + '<button class="ml-1 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-muted/80" data-close-tab="' + esc(path) + '" title="Close">'
@@ -1425,13 +1590,14 @@ function renderTabs() {
 
   if (monitorAvailable) {
     var mtab = document.createElement('div');
-    mtab.className = 'flex items-center gap-1.5 px-3 h-full border-r text-xs cursor-pointer shrink-0 transition-colors ' +
-      (activeView === 'monitor' ? 'bg-background text-foreground border-b-2 border-b-primary' : 'text-muted-foreground hover:text-foreground bg-muted/40');
+    mtab.className = 'ide-tab flex items-center gap-1.5 px-3 h-full border-r text-xs cursor-pointer shrink-0 transition-colors' +
+      (activeView === 'monitor' ? ' ide-tab-active' : '');
     mtab.innerHTML = MONITOR_TAB_ICON + '<span>Monitor</span>';
     mtab.addEventListener('click', function() { switchToMonitorView(); });
     bar.appendChild(mtab);
   }
 
+  bar.hidden = openTabs.length === 0 && !monitorAvailable;
   toggleEmptyState();
 }
 
@@ -1452,6 +1618,7 @@ function openFile(path) {
   renderTabs();
   renderTree();
   toggleEmptyState();
+  saveIdeState();
   // Coming back from the monitor pane (or any hidden state), Monaco's
   // automaticLayout can miss the resize — force a re-measure.
   if (editor) setTimeout(function(){ editor.layout(); }, 0);
@@ -1502,6 +1669,10 @@ function closeTab(path) {
   }
   renderTabs();
   renderTree();
+  toggleEmptyState();
+  var activeLabel = document.getElementById('ide-active-file');
+  if (activeLabel) activeLabel.textContent = activeFile || '';
+  saveIdeState();
 }
 
 // ── Create file / folder ────────────────────────────────────────────────────
@@ -1588,16 +1759,12 @@ function scheduleAutosave() {
 }
 
 function setSaveIcon(state) {
-  var iconEl = document.getElementById('ide-save-icon');
-  var spinEl = document.getElementById('ide-save-spinner');
-  var checkEl = document.getElementById('ide-save-check');
-  if (!iconEl || !spinEl || !checkEl) return;
-  iconEl.setAttribute('hidden', '');
-  spinEl.setAttribute('hidden', '');
-  checkEl.setAttribute('hidden', '');
-  if (state === 'saving') spinEl.removeAttribute('hidden');
-  else if (state === 'saved') checkEl.removeAttribute('hidden');
-  else iconEl.removeAttribute('hidden'); // 'dirty' or 'idle' both show the plain save glyph
+  var statusEl = document.getElementById('ide-save-status');
+  if (!statusEl) return;
+  if (state === 'saving') statusEl.textContent = 'Saving…';
+  else if (state === 'saved') statusEl.textContent = 'Saved';
+  else if (state === 'dirty') statusEl.textContent = 'Unsaved changes';
+  else statusEl.textContent = ''; // 'idle'
 }
 
 function saveConfig() {
@@ -1873,19 +2040,100 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') hideCtxMenu();
 });
 
-var saveBtn = document.getElementById('ide-save-btn');
-if (saveBtn) saveBtn.addEventListener('click', saveConfig);
-
 // Ctrl+S / Cmd+S to save
 document.addEventListener('keydown', function(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveConfig(); }
 });
 
+// ── Remember open tabs / active file / terminal open-state per template ────
+var IDE_STATE_KEY = 'cs-ide-state:' + TEMPLATE_ID;
+
+function saveIdeState() {
+  try {
+    localStorage.setItem(IDE_STATE_KEY, JSON.stringify({
+      openTabs: openTabs,
+      activeFile: activeFile,
+      termOpen: !!(termPanel && termPanel.style.display !== 'none'),
+    }));
+  } catch (e) {}
+}
+
+function loadIdeState() {
+  try {
+    var raw = localStorage.getItem(IDE_STATE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
 // ── Bootstrap Monaco ──────────────────────────────────────────────────────
 renderTree();
-// Auto-open Sandbox file if it exists
-if (FS['Sandbox'] !== undefined) openFile('Sandbox');
-else if (FS['resources.toml'] !== undefined) openFile('resources.toml');
+
+// Restore previously open tabs / active file (no file opens by default).
+var _restoredIdeState = loadIdeState();
+if (_restoredIdeState) {
+  (_restoredIdeState.openTabs || []).forEach(function(p) {
+    if (FS[p] !== undefined && openTabs.indexOf(p) === -1) openTabs.push(p);
+  });
+  if (_restoredIdeState.activeFile && FS[_restoredIdeState.activeFile] !== undefined) {
+    openFile(_restoredIdeState.activeFile);
+  } else if (openTabs.length) {
+    openFile(openTabs[openTabs.length - 1]);
+  } else {
+    renderTabs();
+  }
+}
+
+// ── IDE theme (shared by tabs + terminal) ────────────────────────────────────
+// Dark = "Darkmatter" (Zed, by Steve Simkins) · Light = "Ayu Light" (Zed)
+var IDE_TERM_THEMES = {
+  dark: {
+    background: '#121113', foreground: '#c1c1c1',
+    cursor: '#c1c1c1', cursorAccent: '#121113', selectionBackground: '#22222299',
+    black: '#121113', red: '#5f8787', green: '#fbcb97', yellow: '#e78a53',
+    blue: '#888888', magenta: '#999999', cyan: '#aaaaaa', white: '#c1c1c1',
+    brightBlack: '#333333', brightRed: '#5f8787', brightGreen: '#fbcb97', brightYellow: '#e78a53',
+    brightBlue: '#888888', brightMagenta: '#999999', brightCyan: '#aaaaaa', brightWhite: '#c1c1c1',
+  },
+  light: {
+    background: '#fcfcfc', foreground: '#5c6166',
+    cursor: '#3b9ee5', cursorAccent: '#fcfcfc', selectionBackground: '#3b9ee53d',
+    black: '#5c6166', red: '#ef7271', green: '#85b304', yellow: '#f1ad49',
+    blue: '#3b9ee5', magenta: '#55b4d3', cyan: '#4dbf99', white: '#fcfcfc',
+    brightBlack: '#3b9ee5', brightRed: '#febab6', brightGreen: '#c7d98f', brightYellow: '#fed5a3',
+    brightBlue: '#abcdf2', brightMagenta: '#b1d8e8', brightCyan: '#ace0cb', brightWhite: '#ffffff',
+  },
+};
+
+function ideThemeMode() {
+  return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+}
+
+function applyIdeThemeAttr() {
+  var root = document.getElementById('config-ide');
+  if (root) root.setAttribute('data-ide-theme', ideThemeMode());
+}
+
+function applyTerminalTheme() {
+  if (!xtermInstance) return;
+  xtermInstance.options.theme = IDE_TERM_THEMES[ideThemeMode()];
+}
+
+var _monacoRef = null;
+function syncIdeTheme() {
+  applyIdeThemeAttr();
+  applyTerminalTheme();
+  if (_monacoRef) _monacoRef.editor.setTheme(ideThemeMode() === 'dark' ? 'cs-dark' : 'cs-light');
+}
+
+// The global dark-mode class is added to <html> by a separate layout script
+// (admin-layout-globals) that may run *after* this inline block in document
+// order, so an immediate check here can race and read the pre-dark-class
+// state. Re-check once the current synchronous script pass has fully
+// finished (rAF fires after all same-tick <script> execution) — and keep
+// watching for the manual theme-toggle switch afterwards.
+syncIdeTheme();
+requestAnimationFrame(syncIdeTheme);
+new MutationObserver(syncIdeTheme).observe(document.documentElement, { attributeFilter: ['class'] });
 
 var loaderScript = document.createElement('script');
 loaderScript.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.46.0/min/vs/loader.js';
@@ -1893,18 +2141,206 @@ loaderScript.onload = function() {
   require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.46.0/min/vs' } });
   require(['vs/editor/editor.main'], function(monaco) {
     window._monaco = monaco;
+    _monacoRef = monaco;
 
+    // Dark = "Darkmatter" (Zed, by Steve Simkins) · Light = "Ayu Light" (Zed)
     monaco.editor.defineTheme('cs-dark', {
-      base: 'vs-dark', inherit: true, rules: [],
-      colors: { 'editor.background': '#09090b' }
+      base: 'vs-dark', inherit: false,
+      rules: [
+        { token: '', foreground: 'c1c1c1', background: '121113' },
+        { token: 'invalid', foreground: 'e78a53' },
+        { token: 'emphasis', fontStyle: 'italic' },
+        { token: 'strong', fontStyle: 'bold' },
+
+        { token: 'variable', foreground: '5f8787' },
+        { token: 'variable.predefined', foreground: '5f8787', fontStyle: 'italic' },
+        { token: 'constant', foreground: 'aaaaaa' },
+        { token: 'comment', foreground: '5c5c5c', fontStyle: 'italic' },
+        { token: 'number', foreground: 'aaaaaa' },
+        { token: 'number.hex', foreground: 'aaaaaa' },
+        { token: 'regexp', foreground: 'fbcb97' },
+        { token: 'annotation', foreground: '888888' },
+        { token: 'type', foreground: 'e78a53' },
+
+        { token: 'delimiter', foreground: 'c1c1c1' },
+        { token: 'delimiter.html', foreground: 'c1c1c1' },
+        { token: 'delimiter.xml', foreground: 'c1c1c1' },
+
+        { token: 'tag', foreground: '5f8787' },
+        { token: 'tag.id.pug', foreground: '5f8787' },
+        { token: 'tag.class.pug', foreground: '5f8787' },
+        { token: 'meta.scss', foreground: '5f8787' },
+        { token: 'metatag', foreground: 'e78a53' },
+        { token: 'metatag.content.html', foreground: 'fbcb97' },
+        { token: 'metatag.html', foreground: '888888' },
+        { token: 'metatag.xml', foreground: '888888' },
+        { token: 'metatag.php', foreground: '999999', fontStyle: 'bold' },
+
+        { token: 'key', foreground: '888888' },
+        { token: 'string.key.json', foreground: '888888' },
+        { token: 'string.value.json', foreground: 'fbcb97' },
+
+        { token: 'attribute.name', foreground: '888888' },
+        { token: 'attribute.value', foreground: 'fbcb97' },
+        { token: 'attribute.value.number', foreground: 'aaaaaa' },
+        { token: 'attribute.value.unit', foreground: 'aaaaaa' },
+        { token: 'attribute.value.html', foreground: 'fbcb97' },
+        { token: 'attribute.value.xml', foreground: 'fbcb97' },
+
+        { token: 'string', foreground: 'fbcb97' },
+        { token: 'string.html', foreground: 'fbcb97' },
+        { token: 'string.sql', foreground: 'fbcb97' },
+        { token: 'string.yaml', foreground: 'fbcb97' },
+
+        { token: 'keyword', foreground: '999999' },
+        { token: 'keyword.json', foreground: '999999' },
+        { token: 'keyword.flow', foreground: '999999' },
+        { token: 'keyword.flow.scss', foreground: '999999' },
+
+        { token: 'operator.scss', foreground: 'c1c1c1' },
+        { token: 'operator.sql', foreground: 'c1c1c1' },
+        { token: 'operator.swift', foreground: 'c1c1c1' },
+        { token: 'predefined.sql', foreground: 'aaaaaa' },
+      ],
+      colors: {
+        'editor.background': '#121113',
+        'editor.foreground': '#c1c1c1',
+        'editorLineNumber.foreground': '#333333',
+        'editorLineNumber.activeForeground': '#c1c1c1',
+        'editor.lineHighlightBackground': '#121212',
+        'editor.lineHighlightBorder': '#00000000',
+        'editorCursor.foreground': '#c1c1c1',
+        'editor.selectionBackground': '#222222',
+        'editor.inactiveSelectionBackground': '#1a1a1a',
+        'editor.selectionHighlightBackground': '#22222299',
+        'editor.wordHighlightBackground': '#22222266',
+        'editor.wordHighlightStrongBackground': '#22222299',
+        'editorIndentGuide.background1': '#222222',
+        'editorIndentGuide.activeBackground1': '#333333',
+        'editorWhitespace.foreground': '#2a2a2a',
+        'editorGutter.background': '#121113',
+        'scrollbarSlider.background': '#ffffff1f',
+        'scrollbarSlider.hoverBackground': '#3333336f',
+        'scrollbarSlider.activeBackground': '#444444aa',
+        'editorBracketMatch.background': '#22222266',
+        'editorBracketMatch.border': '#5f8787',
+        'editorBracketHighlight.foreground1': '#5f8787',
+        'editorBracketHighlight.foreground2': '#e78a53',
+        'editorBracketHighlight.foreground3': '#999999',
+        'editorWidget.background': '#121113',
+        'editorWidget.border': '#222222',
+        'editorSuggestWidget.background': '#121113',
+        'editorSuggestWidget.border': '#222222',
+        'editorSuggestWidget.selectedBackground': '#222222',
+        'editorHoverWidget.background': '#121113',
+        'editorHoverWidget.border': '#222222',
+        'editorError.foreground': '#e78a53',
+        'editorWarning.foreground': '#fbcb97',
+        'editorInfo.foreground': '#aaaaaa',
+        'diffEditor.insertedTextBackground': '#5f878722',
+        'diffEditor.removedTextBackground': '#e78a5322',
+      }
     });
     monaco.editor.defineTheme('cs-light', {
-      base: 'vs', inherit: true, rules: [],
-      colors: { 'editor.background': '#ffffff' }
+      base: 'vs', inherit: false,
+      rules: [
+        { token: '', foreground: '5c6166', background: 'fcfcfc' },
+        { token: 'invalid', foreground: 'e65050' },
+        { token: 'emphasis', fontStyle: 'italic' },
+        { token: 'strong', fontStyle: 'bold' },
+
+        { token: 'variable', foreground: '5c6166' },
+        { token: 'variable.predefined', foreground: '3b9ee5', fontStyle: 'italic' },
+        { token: 'constant', foreground: 'a37acc' },
+        { token: 'comment', foreground: 'abb0b6', fontStyle: 'italic' },
+        { token: 'number', foreground: 'a37acc' },
+        { token: 'number.hex', foreground: 'a37acc' },
+        { token: 'regexp', foreground: '4bbf98' },
+        { token: 'annotation', foreground: '3b9ee5' },
+        { token: 'type', foreground: '389ee6' },
+
+        { token: 'delimiter', foreground: '73777b' },
+        { token: 'delimiter.html', foreground: '73777b' },
+        { token: 'delimiter.xml', foreground: '73777b' },
+
+        { token: 'tag', foreground: '3b9ee5' },
+        { token: 'tag.id.pug', foreground: '3b9ee5' },
+        { token: 'tag.class.pug', foreground: '3b9ee5' },
+        { token: 'meta.scss', foreground: '3b9ee5' },
+        { token: 'metatag', foreground: 'fa8d3e' },
+        { token: 'metatag.content.html', foreground: 'e6ba7e' },
+        { token: 'metatag.html', foreground: '3b9ee5' },
+        { token: 'metatag.xml', foreground: '3b9ee5' },
+        { token: 'metatag.php', foreground: 'fa8d3e', fontStyle: 'bold' },
+
+        { token: 'key', foreground: '3b9ee5' },
+        { token: 'string.key.json', foreground: '3b9ee5' },
+        { token: 'string.value.json', foreground: '86b300' },
+
+        { token: 'attribute.name', foreground: '3b9ee5' },
+        { token: 'attribute.value', foreground: '86b300' },
+        { token: 'attribute.value.number', foreground: 'a37acc' },
+        { token: 'attribute.value.unit', foreground: 'a37acc' },
+        { token: 'attribute.value.html', foreground: '86b300' },
+        { token: 'attribute.value.xml', foreground: '86b300' },
+
+        { token: 'string', foreground: '86b300' },
+        { token: 'string.html', foreground: '86b300' },
+        { token: 'string.sql', foreground: '86b300' },
+        { token: 'string.yaml', foreground: '86b300' },
+
+        { token: 'keyword', foreground: 'fa8d3e' },
+        { token: 'keyword.json', foreground: 'fa8d3e' },
+        { token: 'keyword.flow', foreground: 'fa8d3e' },
+        { token: 'keyword.flow.scss', foreground: 'fa8d3e' },
+
+        { token: 'operator.scss', foreground: 'ed9365' },
+        { token: 'operator.sql', foreground: 'ed9365' },
+        { token: 'operator.swift', foreground: 'ed9365' },
+        { token: 'predefined.sql', foreground: 'a37acc' },
+      ],
+      colors: {
+        'editor.background': '#fcfcfc',
+        'editor.foreground': '#5c6166',
+        'editorLineNumber.foreground': '#b0b3b5',
+        'editorLineNumber.activeForeground': '#313435',
+        'editor.lineHighlightBackground': '#ececedbf',
+        'editor.lineHighlightBorder': '#00000000',
+        'editorCursor.foreground': '#3b9ee5',
+        'editor.selectionBackground': '#3b9ee53d',
+        'editor.inactiveSelectionBackground': '#3b9ee51f',
+        'editor.selectionHighlightBackground': '#3b9ee52a',
+        'editor.wordHighlightBackground': '#3b9ee522',
+        'editor.wordHighlightStrongBackground': '#3b9ee53a',
+        'editorIndentGuide.background1': '#e3e4e5',
+        'editorIndentGuide.activeBackground1': '#c8cacb',
+        'editorWhitespace.foreground': '#d8d9da',
+        'editorGutter.background': '#fcfcfc',
+        'scrollbarSlider.background': '#00000014',
+        'scrollbarSlider.hoverBackground': '#00000024',
+        'scrollbarSlider.activeBackground': '#00000034',
+        'editorBracketMatch.background': '#3b9ee51a',
+        'editorBracketMatch.border': '#3b9ee5',
+        'editorBracketHighlight.foreground1': '#3b9ee5',
+        'editorBracketHighlight.foreground2': '#fa8d3e',
+        'editorBracketHighlight.foreground3': '#86b300',
+        'editorWidget.background': '#ececed',
+        'editorWidget.border': '#dcdddf',
+        'editorSuggestWidget.background': '#fcfcfc',
+        'editorSuggestWidget.border': '#dcdddf',
+        'editorSuggestWidget.selectedBackground': '#ececed',
+        'editorHoverWidget.background': '#ececed',
+        'editorHoverWidget.border': '#dcdddf',
+        'editorError.foreground': '#e65050',
+        'editorWarning.foreground': '#fa8d3e',
+        'editorInfo.foreground': '#3b9ee5',
+        'diffEditor.insertedTextBackground': '#86b30022',
+        'diffEditor.removedTextBackground': '#e6505022',
+      }
     });
 
     editor = monaco.editor.create(document.getElementById('monaco-mount'), {
-      theme: document.documentElement.classList.contains('dark') ? 'cs-dark' : 'cs-light',
+      theme: ideThemeMode() === 'dark' ? 'cs-dark' : 'cs-light',
       automaticLayout: true,
       fontSize: 13,
       lineHeight: 22,
@@ -1933,10 +2369,20 @@ loaderScript.onload = function() {
       scheduleAutosave();
     });
 
-    // Follow app-level theme changes
-    new MutationObserver(function() {
-      monaco.editor.setTheme(document.documentElement.classList.contains('dark') ? 'cs-dark' : 'cs-light');
-    }).observe(document.documentElement, { attributeFilter: ['class'] });
+    // Monaco just finished loading — re-sync once more now that _monacoRef is set
+    // (the shared observer set up at bootstrap already watches for future toggles).
+    syncIdeTheme();
+
+    // Restore terminal open-state from the last session. This MUST wait until
+    // Monaco has fully finished loading: xterm.js's UMD loader and Monaco's
+    // AMD loader.js both fight over a global `define`, and the workaround in
+    // _loadScriptNoAmd() below only works when they load strictly one after
+    // the other. Kicking off xterm's script tag while Monaco's loader.js is
+    // still mid-flight silently corrupts *both* — this was the cause of the
+    // editor and terminal sometimes coming up blank until a hard reload.
+    if (typeof _restoredIdeState !== 'undefined' && _restoredIdeState && _restoredIdeState.termOpen) {
+      openTermPanel();
+    }
   });
 };
 document.head.appendChild(loaderScript);
@@ -1970,6 +2416,7 @@ function openTermPanel() {
   termPanel.style.display = '';
   if (termResizeH) termResizeH.classList.remove('hidden');
   if (editor) editor.layout();
+  saveIdeState();
   if (!xtermReady) { loadXterm(); return; }
   if (xtermInstance) fitTerminalSoon();
   connectTerminal();
@@ -1980,6 +2427,7 @@ function closeTermPanel() {
   termPanel.style.display = 'none';
   if (termResizeH) termResizeH.classList.add('hidden');
   if (editor) editor.layout();
+  saveIdeState();
 }
 
 // Monaco's loader.js installs a global AMD `define`/`require` on this page.
@@ -2030,12 +2478,7 @@ function initXterm() {
     lineHeight: 1.5,
     cursorBlink: true,
     cursorStyle: 'bar',
-    theme: {
-      background: '#09090b',
-      foreground: '#e4e4e7',
-      cursor: '#a1a1aa',
-      selectionBackground: 'rgba(255,255,255,0.15)',
-    },
+    theme: IDE_TERM_THEMES[ideThemeMode()],
   });
   var fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);

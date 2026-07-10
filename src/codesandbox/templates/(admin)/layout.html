@@ -72,8 +72,8 @@
       {% if user['platform_role'] == 'user' %}
       {%- set _ws_btn = active_workspace -%}
       {%- set _ws_btn_name = _ws_btn['name'] if _ws_btn else (user['name'] + "'s Space") -%}
-      {%- set _ws_btn_logo = _ws_btn['logo_url'] if (_ws_btn and _ws_btn['logo_url']) else '' -%}
-      {%- set _ws_btn_bind = ('org:' ~ _ws_btn['id']) if _ws_btn else '' -%}
+      {%- set _ws_btn_logo = _ws_btn['logo_url'] if (_ws_btn and _ws_btn['logo_url']) else (user['avatar_url'] if not _ws_btn else '') -%}
+      {%- set _ws_btn_bind = ('org:' ~ _ws_btn['id']) if _ws_btn else ('user:' ~ user['id']) -%}
       <button type="button" id="ws-trigger" data-cs-menu="ws-menu" data-cs-menu-dir="down-left"
         class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 hover:bg-sidebar-accent transition-colors">
         {{ media_avatar.image_avatar(_ws_btn_name, _ws_btn_logo, size="sm", class="bg-primary text-primary-foreground", bind_key=_ws_btn_bind) }}
@@ -169,7 +169,7 @@
     <div class="border-t border-sidebar-border p-2">
       <button type="button" id="nav-user-btn" data-cs-menu="nav-user-menu" data-cs-menu-dir="up" data-cs-menu-match
         class="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors group-data-[state=collapsed]:justify-center group-data-[state=collapsed]:px-0">
-        <span class="pointer-events-none flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold uppercase select-none">{{ (user['name'] or "?")[:2] }}</span>
+        <span class="pointer-events-none">{{ media_avatar.image_avatar(user['name'], user['avatar_url'], size="md", class="bg-muted text-muted-foreground", bind_key="user:" ~ user['id']) }}</span>
         <div class="pointer-events-none grid min-w-0 flex-1 text-left leading-tight group-data-[state=collapsed]:hidden">
           <span class="truncate text-sm font-medium">{{ user['name'] }}</span>
           <span class="truncate text-xs text-muted-foreground">{{ user['email'] }}</span>
@@ -228,7 +228,7 @@
 <div id="nav-user-menu" role="menu"
   class="hidden fixed z-[200] min-w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
   <div class="mb-1 flex items-center gap-2.5 rounded-md bg-muted p-2">
-    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground text-xs font-semibold uppercase select-none">{{ (user['name'] or "?")[:2] }}</span>
+    {{ media_avatar.image_avatar(user['name'], user['avatar_url'], size="md", class="bg-background text-muted-foreground", bind_key="user:" ~ user['id']) }}
     <div class="grid min-w-0 flex-1">
       <span class="truncate text-sm font-medium">{{ user['name'] }}</span>
       <span class="truncate text-xs text-muted-foreground">{{ user['email'] }}</span>
@@ -263,8 +263,8 @@
 {%- set _ws = active_workspace -%}
 {%- set _ws_name = _ws['name'] if _ws else (user['name'] + "'s Space") -%}
 {%- set _ws_member_count = _ws['member_count'] if _ws else 1 -%}
-{%- set _ws_logo = _ws['logo_url'] if (_ws and _ws['logo_url']) else '' -%}
-{%- set _ws_bind = ('org:' ~ _ws['id']) if _ws else '' -%}
+{%- set _ws_logo = _ws['logo_url'] if (_ws and _ws['logo_url']) else (user['avatar_url'] if not _ws else '') -%}
+{%- set _ws_bind = ('org:' ~ _ws['id']) if _ws else ('user:' ~ user['id']) -%}
 <div id="ws-menu" role="menu"
   class="hidden fixed z-[200] w-72 rounded-xl border bg-popover text-sm text-popover-foreground shadow-xl overflow-hidden">
 
@@ -312,7 +312,7 @@
     {# Personal space (always first) #}
     <a href="/my/workspace/personal" data-router-reload="true"
        class="flex items-center gap-2.5 px-3 py-2 hover:bg-accent hover:text-accent-foreground transition-colors">
-      <span class="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground text-xs font-semibold select-none">{{ (user['name'][:1] or '?') | upper }}</span>
+      {{ media_avatar.image_avatar(user['name'], user['avatar_url'], size="size-6 rounded-md text-xs", class="bg-muted text-muted-foreground", bind_key="user:" ~ user['id']) }}
       <span class="flex-1 text-sm truncate">{{ user['name'] }}'s Space</span>
       {% if not _ws %}
       <svg class="size-3.5 text-primary shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>

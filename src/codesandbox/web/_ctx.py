@@ -8,6 +8,7 @@ def _user_ctx(user) -> dict:
         "id": user.id,
         "name": user.name,
         "email": user.email,
+        "avatar_url": getattr(user, "avatar_url", None) or "",
         "platform_role": user.platform_role,
         "role_label": format_role_label(user.platform_role),
         "status": user.status,

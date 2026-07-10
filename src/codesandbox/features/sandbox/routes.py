@@ -25,6 +25,7 @@ from .service import (
     start_test_instance,
     stop_instance,
     toggle_plan_active,
+    toggle_template_plan_enabled,
 )
 
 # Must match the salt asgi.py verifies the token with.
@@ -127,6 +128,18 @@ def save_template_plans_action(template_id: str):
         return _sandboxes_redirect(template_id, "Invalid plans data.")
     save_template_plan_configs(template_id, plan_data)
     return redirect(f"/platform/sandboxes?template={template_id}&tab=plans", 303)
+
+
+@web_bp.post("/platform/sandboxes/<template_id>/plans/<plan_id>/toggle")
+@platform_perm("platform.sandboxes.manage")
+def toggle_template_plan_action(template_id: str, plan_id: str):
+    from flask import jsonify
+    data = request.get_json(silent=True) or {}
+    is_enabled = bool(data.get("is_enabled", True))
+    error = toggle_template_plan_enabled(template_id, plan_id, is_enabled)
+    if error:
+        return jsonify({"ok": False, "error": error}), 400
+    return jsonify({"ok": True})
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/delete")

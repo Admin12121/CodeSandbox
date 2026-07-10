@@ -574,6 +574,16 @@ def get_template_plan_configs(template_id: str) -> list[dict]:
     return result
 
 
+def toggle_template_plan_enabled(template_id: str, plan_id: str, is_enabled: bool) -> str | None:
+    """Flip whether a global plan is available on this template. Returns an
+    error message, or None on success. Only touches is_enabled — any existing
+    per-template overrides (ind_vcpu, etc.) are left untouched."""
+    if not repository.get_plan(plan_id):
+        return "Plan not found."
+    repository.upsert_template_plan(template_id=template_id, plan_id=plan_id, is_enabled=is_enabled)
+    return None
+
+
 def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> None:
     """Upsert per-template plan overrides from the admin Plans tab."""
     for row in plan_data:
