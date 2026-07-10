@@ -4,15 +4,23 @@ import json
 import os
 import re
 import uuid as _uuid
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_UP
 
 from itsdangerous import URLSafeTimedSerializer
 
 from codesandbox.config import get_settings
 
 from . import repository
-from .policy import PolicyBuilder
+from .runtime.policy import (
+    EffectivePlan,
+    PolicyBuilder,
+    RuntimePolicyError,
+    normalize_network_mode,
+    resolve_effective_plan,
+)
+from .runtime.scheduler import get_runtime_driver
+from .runtime.drivers.base import UnsupportedRuntimeError
 
 _WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 
@@ -30,26 +38,39 @@ def _parse_decimal(value: str) -> Decimal | None:
         return None
 
 
-def _runtime_fields_changed(
-    existing_t, runtime_class: str, docker_image: str, interface_mode: str,
-    network_mode: str, allow_root: bool, max_timeout_hr: int,
-) -> bool:
-    return (
-        existing_t.runtime_class != runtime_class
-        or existing_t.docker_image != docker_image
-        or existing_t.interface_mode != interface_mode
-        or existing_t.network_mode != network_mode
-        or bool(existing_t.allow_root) != allow_root
-        or int(existing_t.max_timeout_hr) != max_timeout_hr
-    )
+def _runtime_fields_changed(existing_t, values: dict) -> bool:
+    return any(getattr(existing_t, key, None) != value for key, value in values.items())
+
+
+def _image_allowed(image: str) -> bool:
+    settings = get_settings()
+    if not settings.sandbox_allowed_images:
+        return not settings.sandbox_require_image_allowlist
+    return image in settings.sandbox_allowed_images
 
 
 # ── SandboxTemplate ───────────────────────────────────────────────────────────
 
 SANDBOX_TYPES = ("interactive", "malware", "reverse_engineering", "android", "ctf")
-RUNTIME_CLASSES = ("container", "microvm", "fullvm", "android_emulator")
-INTERFACE_MODES = ("terminal", "full_ui", "background", "android_ui", "gui")
-NETWORK_MODES = ("disabled", "isolated", "fake_internet", "controlled_proxy", "allowlist")
+RUNTIME_CLASSES = (
+    "container",
+    "tool_job",
+    "microvm",
+    "firecracker_microvm",
+    "fullvm",
+    "qemu_vm",
+    "android_emulator",
+)
+INTERFACE_MODES = ("terminal", "editor", "full_ui", "background", "android_ui", "gui")
+NETWORK_MODES = (
+    "disabled",
+    "restricted",
+    "full_internet",
+    "isolated",
+    "fake_internet",
+    "controlled_proxy",
+    "allowlist",
+)
 TEMPLATE_STATUSES = ("active", "maintenance", "disabled")
 
 
@@ -114,6 +135,22 @@ def _instance_dict(inst, template_cache: dict | None = None) -> dict:
         "assigned_to_user_id": str(inst.assigned_to_user_id) if inst.assigned_to_user_id else None,
         "status": inst.status,
         "billing_entity": inst.billing_entity,
+        "runtime_provider": inst.runtime_provider,
+        "runtime_id": inst.runtime_id,
+        "runtime_node_id": inst.runtime_node_id,
+        "workspace_volume_id": inst.workspace_volume_id,
+        "allocated_vcpu": inst.allocated_vcpu,
+        "allocated_ram_gb": inst.allocated_ram_gb,
+        "allocated_disk_gb": inst.allocated_disk_gb,
+        "effective_network_mode": inst.effective_network_mode,
+        "cost_hr_snapshot": str(inst.cost_hr_snapshot or "0"),
+        "billing_currency": inst.billing_currency or "GBP",
+        "billing_status": inst.billing_status or "unbilled",
+        "charged_amount": str(inst.charged_amount or "0"),
+        "total_runtime_sec": int(inst.total_runtime_sec or 0),
+        "last_heartbeat_at": inst.last_heartbeat_at,
+        "exit_code": inst.exit_code,
+        "exit_reason": inst.exit_reason or "",
         "created_at": inst.created_at,
         "started_at": inst.started_at,
         "stopped_at": inst.stopped_at,
@@ -133,12 +170,17 @@ def create_personal_instance(
     template_slug: str,
     plan_id: str,
 ) -> tuple[dict | None, str | None]:
+    from codesandbox.features.identity.models import User
+
+    actor = User.objects.filter(id=user_id).first()
+    if actor is None or actor.status != "active":
+        return None, "Authenticated user is not active."
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
-    p = repository.get_plan(plan_id)
-    if not p or not p.is_active:
-        return None, "Plan not found or inactive."
+    _, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error:
+        return None, plan_error
     inst = repository.create_instance(
         template_id=str(t.id),
         plan_id=plan_id,
@@ -159,15 +201,27 @@ def create_org_instance(
     assigned_to_user_id: str | None = None,
 ) -> tuple[dict | None, str | None]:
     from codesandbox.features.organizations import repository as org_repo
+    from codesandbox.features.identity.models import User
+
+    actor = User.objects.filter(id=creator_user_id).first()
+    if actor is None or actor.status != "active":
+        return None, "Authenticated user is not active."
     org = org_repo.get_organization(org_id)
     if org is None or org.status != "active":
         return None, "Organization is not active."
+    if org_repo.get_member(org_id, creator_user_id) is None:
+        return None, "You are not a member of this organization."
+    permissions = org_repo.get_member_permissions(org_id, creator_user_id)
+    if not org_repo.is_org_owner(org_id, creator_user_id) and "sandbox.instances.create" not in permissions:
+        return None, "You do not have permission to create organization instances."
+    if assigned_to_user_id and org_repo.get_member(org_id, assigned_to_user_id) is None:
+        return None, "Assigned user is not a member of this organization."
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
-    p = repository.get_plan(plan_id)
-    if not p or not p.is_active:
-        return None, "Plan not found or inactive."
+    _, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error:
+        return None, plan_error
     inst = repository.create_instance(
         template_id=str(t.id),
         plan_id=plan_id,
@@ -245,12 +299,14 @@ def submit_instance_request(
     org = org_repo.get_organization(org_id)
     if org is None or org.status != "active":
         return None, "Organization is not active."
+    if org_repo.get_member(org_id, user_id) is None:
+        return None, "You are not a member of this organization."
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
-    p = repository.get_plan(plan_id)
-    if not p or not p.is_active:
-        return None, "Plan not found or inactive."
+    _, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error:
+        return None, plan_error
     req = repository.create_instance_request(
         org_id=org_id,
         requested_by=user_id,
@@ -269,6 +325,10 @@ def review_instance_request(
     review_note: str | None = None,
 ) -> tuple[dict | None, str | None]:
     from datetime import datetime, timezone
+    from codesandbox.features.organizations import repository as org_repo
+
+    if not org_repo.is_org_owner(org_id, reviewer_id) and "sandbox.requests.review" not in org_repo.get_member_permissions(org_id, reviewer_id):
+        return None, "You do not have permission to review sandbox requests."
     req = repository.get_instance_request(request_id)
     if not req:
         return None, "Request not found."
@@ -281,7 +341,6 @@ def review_instance_request(
 
     instance_id = None
     if action == "approved":
-        from codesandbox.features.organizations import repository as org_repo
         org = org_repo.get_organization(str(req.org_id))
         if org is None or org.status != "active":
             return None, "Organization is not active."
@@ -330,11 +389,22 @@ def _template_dict(t) -> dict:
         "description": t.description or "",
         "icon_path": t.icon_path or "",
         "docker_image": t.docker_image,
+        "default_command": t.default_command or "",
+        "working_dir": t.working_dir or "/workspace",
+        "input_mount_path": t.input_mount_path or "/input",
+        "output_mount_path": t.output_mount_path or "/output",
+        "artifact_paths": t.artifact_paths or "",
+        "input_required": bool(t.input_required),
+        "max_upload_mb": int(t.max_upload_mb or 50),
         "sandbox_type": t.sandbox_type,
         "runtime_class": t.runtime_class,
         "interface_mode": t.interface_mode,
         "network_mode": t.network_mode,
         "allow_root": bool(t.allow_root),
+        "read_only_root": bool(t.read_only_root),
+        "run_as_user": t.run_as_user or "",
+        "pids_limit": int(t.pids_limit or 256),
+        "allow_full_internet": bool(t.allow_full_internet),
         "max_timeout_hr": int(t.max_timeout_hr),
         "status": t.status,
         "last_test_status": t.last_test_status or "untested",
@@ -361,34 +431,98 @@ def save_template(
     network_mode: str = "disabled",
     allow_root: bool = False,
     max_timeout_hr: int = 2,
+    default_command: str = "",
+    working_dir: str = "/workspace",
+    input_mount_path: str = "/input",
+    output_mount_path: str = "/output",
+    artifact_paths: str | list[str] = "",
+    input_required: bool = False,
+    max_upload_mb: int = 50,
+    read_only_root: bool = True,
+    run_as_user: str = "",
+    pids_limit: int = 256,
+    allow_full_internet: bool = False,
 ) -> tuple[dict | None, str | None]:
     name = name.strip()
     if not name:
         return None, "Name is required."
     if sandbox_type not in SANDBOX_TYPES:
         return None, "Invalid sandbox type."
-    if not docker_image.strip():
+    docker_image = docker_image.strip()
+    if not docker_image:
         return None, "Docker image is required."
+    if not _image_allowed(docker_image):
+        return None, "Docker image is not in the configured runtime allowlist."
     runtime_class = runtime_class if runtime_class in RUNTIME_CLASSES else "container"
     _modes = [m.strip() for m in interface_mode.split(",") if m.strip() in INTERFACE_MODES]
     interface_mode = ",".join(_modes) if _modes else "terminal"
-    network_mode = network_mode if network_mode in NETWORK_MODES else "disabled"
+    network_mode = normalize_network_mode(
+        network_mode if network_mode in NETWORK_MODES else "disabled"
+    )
+    if network_mode == "full_internet" and not allow_full_internet:
+        return None, "Enable full internet explicitly before selecting that network mode."
+    if sandbox_type in {"malware", "reverse_engineering"} and network_mode == "full_internet":
+        return None, "Full internet is disabled for malware and reverse-engineering templates."
     max_timeout_hr = max(1, min(72, int(max_timeout_hr or 2)))
+    max_upload_mb = max(1, min(1024, int(max_upload_mb or 50)))
+    pids_limit = max(32, min(4096, int(pids_limit or 256)))
+    default_command = default_command.strip()
+    if (slug == "reverse-decompile" or (not slug and _slugify(name) == "reverse-decompile")) and default_command and "--no-ai" not in default_command:
+        return None, "Reverse decompile must use --no-ai."
+    mounts = [working_dir.strip(), input_mount_path.strip(), output_mount_path.strip()]
+    if any(not path.startswith("/") for path in mounts) or len(set(mounts)) != 3:
+        return None, "Workspace, input, and output mounts must be distinct absolute paths."
+    if isinstance(artifact_paths, str):
+        raw_artifacts = artifact_paths.strip()
+        try:
+            artifact_values = json.loads(raw_artifacts) if raw_artifacts else [output_mount_path]
+        except ValueError:
+            artifact_values = [line.strip() for line in raw_artifacts.splitlines() if line.strip()]
+    else:
+        artifact_values = artifact_paths
+    if not isinstance(artifact_values, list) or any(
+        not str(path).startswith("/") for path in artifact_values
+    ):
+        return None, "Artifact paths must be absolute container paths."
+    artifact_paths_json = json.dumps(
+        [str(path) for path in artifact_values], separators=(",", ":")
+    )
+
+    runtime_values = dict(
+        docker_image=docker_image,
+        default_command=default_command or None,
+        working_dir=working_dir.strip(),
+        input_mount_path=input_mount_path.strip(),
+        output_mount_path=output_mount_path.strip(),
+        artifact_paths=artifact_paths_json,
+        input_required=bool(input_required),
+        max_upload_mb=max_upload_mb,
+        sandbox_type=sandbox_type,
+        runtime_class=runtime_class,
+        interface_mode=interface_mode,
+        network_mode=network_mode,
+        allow_root=allow_root,
+        read_only_root=read_only_root,
+        run_as_user=run_as_user.strip() or None,
+        pids_limit=pids_limit,
+        allow_full_internet=allow_full_internet,
+        max_timeout_hr=max_timeout_hr,
+    )
 
     if template_id:
         existing_t = repository.get_template(template_id)
+        if existing_t is None:
+            return None, "Template not found."
         slug = existing_t.slug if existing_t else (slug.strip() or _slugify(name))
 
         update_kwargs = dict(
             name=name, slug=slug, description=description or None,
-            icon_path=icon_path or None, docker_image=docker_image.strip(),
-            sandbox_type=sandbox_type, runtime_class=runtime_class,
-            interface_mode=interface_mode, network_mode=network_mode,
-            allow_root=allow_root, max_timeout_hr=max_timeout_hr,
+            icon_path=icon_path or None,
             type_config=type_config.strip() or None,
+            **runtime_values,
         )
 
-        if existing_t is not None and _runtime_fields_changed(existing_t, runtime_class, docker_image.strip(), interface_mode, network_mode, allow_root, max_timeout_hr):
+        if _runtime_fields_changed(existing_t, runtime_values):
             # A Runtime-affecting edit invalidates any prior test pass. If the
             # template was live, take it out of rotation until it's retested.
             update_kwargs["last_test_status"] = "untested"
@@ -404,13 +538,22 @@ def save_template(
             return None, f"Slug '{slug}' is already taken."
         t = repository.create_template(
             name=name, slug=slug, description=description or None,
-            icon_path=icon_path or None, docker_image=docker_image.strip(),
-            sandbox_type=sandbox_type, runtime_class=runtime_class,
-            interface_mode=interface_mode, network_mode=network_mode,
-            allow_root=allow_root, max_timeout_hr=max_timeout_hr,
+            icon_path=icon_path or None,
             type_config=type_config.strip() or None,
             created_by_id=created_by_id,
+            **runtime_values,
         )
+    repository.log_instance_event(
+        None,
+        "template.runtime_updated",
+        actor=f"user:{created_by_id}" if created_by_id else "system",
+        detail=json.dumps({
+            "runtime_class": runtime_class,
+            "network_mode": network_mode,
+            "allow_full_internet": allow_full_internet,
+        }),
+        template_id=str(t.id),
+    )
     return _template_dict(t), None
 
 
@@ -452,6 +595,8 @@ def _plan_dict(p) -> dict:
         "ind_cost_hr": str(p.ind_cost_hr),
         "org_vcpu": int(p.org_vcpu), "org_ram_gb": int(p.org_ram_gb), "org_disk_gb": int(p.org_disk_gb),
         "org_cost_hr": str(p.org_cost_hr),
+        "min_billable_minutes": int(p.min_billable_minutes or 0),
+        "allowed_network_modes": p.allowed_network_modes or '["disabled","restricted"]',
         "is_active": bool(p.is_active),
         "updated_at": p.updated_at,
     }
@@ -463,6 +608,8 @@ def save_plan(
     ind_vcpu: int, ind_ram_gb: int, ind_disk_gb: int, ind_cost_hr: str,
     org_vcpu: int, org_ram_gb: int, org_disk_gb: int, org_cost_hr: str,
     updated_by_id: str | None,
+    min_billable_minutes: int = 1,
+    allowed_network_modes: list[str] | str | None = None,
 ) -> tuple[dict | None, str | None]:
     name = name.strip()
     if not name:
@@ -475,6 +622,23 @@ def save_plan(
     org_cost = _parse_decimal(org_cost_hr)
     if ind_cost is None or org_cost is None:
         return None, "Invalid cost per hour value."
+    min_billable_minutes = max(0, min(1440, int(min_billable_minutes or 0)))
+    if isinstance(allowed_network_modes, str):
+        try:
+            allowed_values = json.loads(allowed_network_modes)
+        except ValueError:
+            allowed_values = allowed_network_modes.split(",")
+    else:
+        allowed_values = allowed_network_modes or ["disabled", "restricted"]
+    allowed_values = list(
+        dict.fromkeys(normalize_network_mode(value) for value in allowed_values)
+    )
+    if not allowed_values or any(
+        value not in {"disabled", "restricted", "full_internet"}
+        for value in allowed_values
+    ):
+        return None, "Select at least one valid network mode."
+    allowed_network_json = json.dumps(allowed_values, separators=(",", ":"))
 
     existing = repository.get_plan(plan_id)
     if existing:
@@ -483,6 +647,8 @@ def save_plan(
             name=name,
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
             org_vcpu=org_vcpu, org_ram_gb=org_ram_gb, org_disk_gb=org_disk_gb, org_cost_hr=org_cost,
+            min_billable_minutes=min_billable_minutes,
+            allowed_network_modes=allowed_network_json,
             updated_by=updated_by_id,
         )
     else:
@@ -491,6 +657,8 @@ def save_plan(
             plan_id=plan_id, name=name, sort_order=sort_order,
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
             org_vcpu=org_vcpu, org_ram_gb=org_ram_gb, org_disk_gb=org_disk_gb, org_cost_hr=org_cost,
+            min_billable_minutes=min_billable_minutes,
+            allowed_network_modes=allowed_network_json,
             updated_by_id=updated_by_id,
         )
     return _plan_dict(p), None
@@ -512,42 +680,48 @@ def _int_or_none(v) -> int | None:
         return None
 
 
-def _resolve_plan_specs(global_plan: dict, tp) -> dict:
-    """Merge template-level overrides onto the global plan. tp may be None."""
-    result = dict(global_plan)
-    if tp is None:
-        return result
-    if tp.ind_vcpu is not None:
-        result["ind_vcpu"] = int(tp.ind_vcpu)
-    if tp.ind_ram_gb is not None:
-        result["ind_ram_gb"] = int(tp.ind_ram_gb)
-    if tp.ind_disk_gb is not None:
-        result["ind_disk_gb"] = int(tp.ind_disk_gb)
-    if tp.ind_cost_hr is not None:
-        result["ind_cost_hr"] = str(tp.ind_cost_hr)
-    if tp.org_vcpu is not None:
-        result["org_vcpu"] = int(tp.org_vcpu)
-    if tp.org_ram_gb is not None:
-        result["org_ram_gb"] = int(tp.org_ram_gb)
-    if tp.org_disk_gb is not None:
-        result["org_disk_gb"] = int(tp.org_disk_gb)
-    if tp.org_cost_hr is not None:
-        result["org_cost_hr"] = str(tp.org_cost_hr)
-    result["is_enabled"] = bool(tp.is_enabled)
-    return result
+def _resolve_plan_specs(template, global_plan, template_plan) -> dict:
+    return resolve_effective_plan(template, global_plan, template_plan).to_dict()
+
+
+def get_effective_plan(
+    template_id: str,
+    plan_id: str,
+    *,
+    require_active: bool = True,
+) -> tuple[EffectivePlan | None, str | None]:
+    template = repository.get_template(template_id)
+    if template is None:
+        return None, "Template not found."
+    plan = repository.get_plan(plan_id)
+    if plan is None or (require_active and not plan.is_active):
+        return None, "Plan not found or inactive."
+    template_plan = repository.get_template_plan(template_id, plan_id)
+    if template_plan is not None and not template_plan.is_enabled:
+        return None, "This plan is disabled for the selected template."
+    try:
+        return resolve_effective_plan(template, plan, template_plan), None
+    except RuntimePolicyError as exc:
+        return None, str(exc)
 
 
 def get_template_plans_for_hub(template_id: str) -> list[dict]:
     """Active global plans merged with template-level overrides, in sort order."""
-    global_plans = [p for p in get_platform_plans() if p["is_active"]]
+    template = repository.get_template(template_id)
+    if template is None:
+        return []
+    global_plans = [p for p in repository.list_plans() if p.is_active]
     tp_rows = repository.list_template_plans(template_id)
     tp_by_plan = {str(tp.plan_id): tp for tp in tp_rows}
     result = []
     for gp in global_plans:
-        tp = tp_by_plan.get(gp["id"])
+        tp = tp_by_plan.get(str(gp.id))
         if tp is not None and not tp.is_enabled:
             continue
-        result.append(_resolve_plan_specs(gp, tp))
+        try:
+            result.append(_resolve_plan_specs(template, gp, tp))
+        except RuntimePolicyError:
+            continue
     return result
 
 
@@ -570,6 +744,10 @@ def get_template_plan_configs(template_id: str) -> list[dict]:
             "org_ram_gb": int(tp.org_ram_gb) if (tp is not None and tp.org_ram_gb is not None) else None,
             "org_disk_gb": int(tp.org_disk_gb) if (tp is not None and tp.org_disk_gb is not None) else None,
             "org_cost_hr": str(tp.org_cost_hr) if (tp is not None and tp.org_cost_hr is not None) else None,
+            "max_timeout_hr": int(tp.max_timeout_hr) if (tp is not None and tp.max_timeout_hr is not None) else None,
+            "network_mode": tp.network_mode if tp is not None else None,
+            "min_billable_minutes": int(tp.min_billable_minutes) if (tp is not None and tp.min_billable_minutes is not None) else None,
+            "full_internet_enabled": bool(tp.full_internet_enabled) if (tp is not None and tp.full_internet_enabled is not None) else None,
         })
     return result
 
@@ -602,6 +780,10 @@ def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> None:
             org_ram_gb=_int_or_none(row.get("org_ram_gb")),
             org_disk_gb=_int_or_none(row.get("org_disk_gb")),
             org_cost_hr=_parse_decimal(str(row["org_cost_hr"]).strip()) if row.get("org_cost_hr") else None,
+            max_timeout_hr=_int_or_none(row.get("max_timeout_hr")),
+            network_mode=(normalize_network_mode(row.get("network_mode")) if row.get("network_mode") else None),
+            min_billable_minutes=_int_or_none(row.get("min_billable_minutes")),
+            full_internet_enabled=(bool(row.get("full_internet_enabled")) if row.get("full_internet_enabled") is not None else None),
         )
 
 
@@ -661,6 +843,31 @@ def can_view_instance(instance_id: str, actor_user_id: str | None) -> bool:
             or has_org_permission(org_id, user, "sandbox.instances.create")
         )
     return False
+
+
+def get_instance_for_view(
+    instance_id: str,
+    actor_user_id: str | None,
+) -> tuple[dict | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to view this instance."
+    inst = repository.get_instance(instance_id)
+    return (_instance_dict(inst), None) if inst else (None, "Instance not found.")
+
+
+def can_open_instance_channel(
+    instance_id: str,
+    actor_user_id: str | None,
+    purpose: str,
+) -> bool:
+    if not can_view_instance(instance_id, actor_user_id):
+        return False
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return False
+    if purpose in {"terminal", "fs"}:
+        return inst.status == "running" and bool(inst.runtime_id)
+    return purpose == "monitor"
 
 
 # Admin test launches are a no-billing preview run — they don't need a real

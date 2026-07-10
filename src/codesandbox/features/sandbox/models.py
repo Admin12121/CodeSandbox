@@ -30,6 +30,13 @@ class SandboxTemplate(Model):
     icon_path = StringField(max_length=500, nullable=True)
 
     docker_image = StringField(max_length=500)
+    default_command = TextField(nullable=True)
+    working_dir = StringField(max_length=255, default="/workspace")
+    input_mount_path = StringField(max_length=255, default="/input")
+    output_mount_path = StringField(max_length=255, default="/output")
+    artifact_paths = TextField(nullable=True)
+    input_required = BooleanField(default=False)
+    max_upload_mb = IntegerField(default=50)
 
     # Classification — drives policy builder logic
     sandbox_type = StringField(max_length=40)   # interactive|malware|reverse_engineering|android|ctf
@@ -40,7 +47,11 @@ class SandboxTemplate(Model):
     network_mode = StringField(max_length=40, default="disabled")     # disabled|isolated|fake_internet|controlled_proxy|allowlist
 
     # Security defaults
-    allow_root = BooleanField(default=True)
+    allow_root = BooleanField(default=False)
+    read_only_root = BooleanField(default=True)
+    run_as_user = StringField(max_length=80, nullable=True)
+    pids_limit = IntegerField(default=256)
+    allow_full_internet = BooleanField(default=False)
     max_timeout_hr = IntegerField(default=2)
 
     # Visibility
@@ -79,6 +90,9 @@ class SandboxPlan(Model):
     org_disk_gb = IntegerField(default=20)
     org_cost_hr = DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.00"))
 
+    min_billable_minutes = IntegerField(default=1)
+    allowed_network_modes = TextField(default='["disabled","restricted"]')
+
     is_active = BooleanField(default=True)
     updated_by = ForeignKey(to=User, on_delete="SET NULL", nullable=True)
     updated_at = DateTimeField(nullable=True)
@@ -101,11 +115,17 @@ class SandboxInstance(Model):
     created_by_user_id = ForeignKey(to=User, on_delete="SET NULL", nullable=True, related_name="created_instances")
 
     # Status lifecycle
-    status = StringField(max_length=20, default="idle")  # idle|provisioning|running|stopping|stopped|failed|killed
+    status = StringField(max_length=20, default="idle")  # idle|provisioning|running|stopping|cleanup|stopped|failed|expired|killed
+    status_changed_at = DateTimeField(nullable=True)
 
     # Worker tracking
     worker_id = StringField(max_length=255, nullable=True)
     worker_job_id = StringField(max_length=255, nullable=True)
+    runtime_provider = StringField(max_length=40, nullable=True)
+    runtime_id = StringField(max_length=255, nullable=True)
+    runtime_node_id = StringField(max_length=255, nullable=True)
+    workspace_volume_id = StringField(max_length=255, nullable=True)
+    artifact_prefix = StringField(max_length=500, nullable=True)
 
     # Billing
     billing_entity = StringField(max_length=10)          # user|org
@@ -116,10 +136,26 @@ class SandboxInstance(Model):
     user_config = TextField(nullable=True)
     runtime_policy = TextField(nullable=True)
 
+    allocated_vcpu = IntegerField(nullable=True)
+    allocated_ram_gb = IntegerField(nullable=True)
+    allocated_disk_gb = IntegerField(nullable=True)
+    effective_network_mode = StringField(max_length=40, nullable=True)
+    cost_hr_snapshot = DecimalField(max_digits=12, decimal_places=4, nullable=True)
+    billing_currency = StringField(max_length=3, default="GBP")
+    billing_status = StringField(max_length=20, default="unbilled")
+    charged_amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
+    billing_reserved_amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
+    min_billable_sec = IntegerField(default=0)
+
     # Timing + billing
     started_at = DateTimeField(nullable=True)
     stopped_at = DateTimeField(nullable=True)
     total_runtime_sec = IntegerField(default=0)
+    last_heartbeat_at = DateTimeField(nullable=True)
+    expires_at = DateTimeField(nullable=True)
+    cleanup_started_at = DateTimeField(nullable=True)
+    exit_code = IntegerField(nullable=True)
+    exit_reason = StringField(max_length=500, nullable=True)
 
     created_at = DateTimeField(default=_now)
 
@@ -154,19 +190,25 @@ class Balance(Model):
     entity_type = StringField(max_length=10)  # user|org
     entity_id = StringField(max_length=36)
     amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
+    reserved_amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
     updated_at = DateTimeField(nullable=True)
 
     class Meta:
         table_name = "balances"
+        unique_together = [("entity_type", "entity_id")]
 
 
 class BalanceTransaction(Model):
     id = StringField(primary_key=True, max_length=36)
     entity_type = StringField(max_length=10)  # user|org
     entity_id = StringField(max_length=36)
-    type = StringField(max_length=20)          # topup|deduction|refund
+    type = StringField(max_length=30)          # topup|usage_charge|refund|adjustment|failed_payment
     amount = DecimalField(max_digits=12, decimal_places=4)
     instance_id = ForeignKey(to=SandboxInstance, on_delete="SET NULL", nullable=True)
+    topup_intent_id = ForeignKey(to="TopupIntent", on_delete="SET NULL", nullable=True)
+    provider = StringField(max_length=30, nullable=True)
+    reference = StringField(max_length=255, nullable=True)
+    idempotency_key = StringField(max_length=255, nullable=True, unique=True)
     description = StringField(max_length=500, nullable=True)
     created_at = DateTimeField(default=_now)
 
@@ -188,7 +230,7 @@ class TopupIntent(Model):
     entity_type = StringField(max_length=10)   # user|org
     entity_id = StringField(max_length=36)
     gateway = StringField(max_length=20)        # stripe|esewa
-    status = StringField(max_length=20, default="pending")  # pending|completed|failed
+    status = StringField(max_length=20, default="pending")  # pending|processing|completed|failed|expired
     # Amount actually charged, in the gateway's own currency (GBP for
     # Stripe, NPR for eSewa) — kept alongside the converted GBP credit
     # amount so the ledger entry and the receipt agree with what the user
@@ -198,8 +240,12 @@ class TopupIntent(Model):
     credit_amount_gbp = DecimalField(max_digits=12, decimal_places=4, nullable=True)
     fx_rate = DecimalField(max_digits=12, decimal_places=6, nullable=True)
     external_ref = StringField(max_length=120, unique=True)  # Stripe session id | eSewa transaction_uuid
+    idempotency_key = StringField(max_length=255, nullable=True, unique=True)
+    provider_event_id = StringField(max_length=255, nullable=True, unique=True)
     balance_transaction_id = ForeignKey(to=BalanceTransaction, on_delete="SET NULL", nullable=True)
     created_at = DateTimeField(default=_now)
+    updated_at = DateTimeField(nullable=True)
+    expires_at = DateTimeField(nullable=True)
     resolved_at = DateTimeField(nullable=True)
 
     class Meta:
@@ -209,7 +255,8 @@ class TopupIntent(Model):
 class SandboxAuditLog(Model):
     """Immutable record of every status transition on a SandboxInstance."""
     id = StringField(primary_key=True, max_length=36)
-    instance_id = ForeignKey(to=SandboxInstance, on_delete="CASCADE")
+    instance_id = ForeignKey(to=SandboxInstance, on_delete="CASCADE", nullable=True)
+    template_id = ForeignKey(to=SandboxTemplate, on_delete="SET NULL", nullable=True)
     event = StringField(max_length=60)    # queued|started|stopped|failed|killed|escape_attempt
     old_status = StringField(max_length=20, nullable=True)
     new_status = StringField(max_length=20, nullable=True)
@@ -239,8 +286,48 @@ class SandboxTemplatePlan(Model):
     org_disk_gb = IntegerField(nullable=True)
     org_cost_hr = DecimalField(max_digits=10, decimal_places=4, nullable=True)
 
+    max_timeout_hr = IntegerField(nullable=True)
+    network_mode = StringField(max_length=40, nullable=True)
+    min_billable_minutes = IntegerField(nullable=True)
+    full_internet_enabled = BooleanField(nullable=True)
+
     is_enabled = BooleanField(default=True)
     sort_order = IntegerField(default=0)
 
     class Meta:
         table_name = "sandbox_template_plans"
+        unique_together = [("template_id", "plan_id")]
+
+
+class SandboxInput(Model):
+    id = StringField(primary_key=True, max_length=36)
+    instance_id = ForeignKey(to=SandboxInstance, on_delete="CASCADE")
+    name = StringField(max_length=255)
+    storage_key = StringField(max_length=700, unique=True)
+    size_bytes = IntegerField(default=0)
+    checksum = StringField(max_length=64)
+    created_at = DateTimeField(default=_now)
+
+    class Meta:
+        table_name = "sandbox_inputs"
+
+
+class SandboxArtifact(Model):
+    id = StringField(primary_key=True, max_length=36)
+    instance_id = ForeignKey(to=SandboxInstance, on_delete="CASCADE")
+    name = StringField(max_length=500)
+    artifact_type = StringField(max_length=80, default="file")
+    storage_key = StringField(max_length=700, unique=True)
+    size_bytes = IntegerField(default=0)
+    checksum = StringField(max_length=64)
+    created_at = DateTimeField(default=_now)
+
+    class Meta:
+        table_name = "sandbox_artifacts"
+        indexes = [
+            {
+                "name": "idx_sandbox_artifacts_instance_created",
+                "fields": ["instance_id", "created_at"],
+                "unique": False,
+            }
+        ]

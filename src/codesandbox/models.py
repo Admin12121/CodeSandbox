@@ -19,6 +19,8 @@ from codesandbox.features.sandbox.models import (
     BalanceTransaction,
     InstanceRequest,
     SandboxAuditLog,
+    SandboxArtifact,
+    SandboxInput,
     SandboxInstance,
     SandboxPlan,
     SandboxTemplate,
@@ -52,6 +54,8 @@ __all__ = [
     "BalanceTransaction",
     "TopupIntent",
     "SandboxAuditLog",
+    "SandboxInput",
+    "SandboxArtifact",
 ]
 
 # Auth extensions — imported here so NexORM registers them for migrations

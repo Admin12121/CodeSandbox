@@ -19,7 +19,14 @@ class ModelBase(type):
             return cls
 
         table_name = getattr(meta_opts, "table_name", None) if meta_opts else None
-        cls._meta = Options(cls, table_name)
+        indexes = getattr(meta_opts, "indexes", None) if meta_opts else None
+        unique_together = getattr(meta_opts, "unique_together", None) if meta_opts else None
+        cls._meta = Options(
+            cls,
+            table_name,
+            indexes=indexes,
+            unique_together=unique_together,
+        )
         inherited = {}
         for base in bases:
             if hasattr(base, "_meta"):
@@ -30,6 +37,7 @@ class ModelBase(type):
             cls._meta.add_field(key, field)
         if cls._meta.primary_key is None:
             cls._meta.add_field("id", UUIDField(primary_key=True, default=uuid7))
+        cls._meta.finalize_indexes()
         cls.objects = Manager()
         register_model(cls)
         return cls
