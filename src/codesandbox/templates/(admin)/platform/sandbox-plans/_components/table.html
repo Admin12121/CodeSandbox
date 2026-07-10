@@ -283,6 +283,45 @@
 
             </div>
 
+            {% call frame.frame() %}
+              {% call table.table(variant="card") %}
+                {% call table.table_header() %}
+                  {% call table.table_row() %}
+                    {{ table.table_head("Runtime Policy", class="w-44") }}
+                    {{ table.table_head("") }}
+                  {% endcall %}
+                {% endcall %}
+                {% call table.table_body() %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Minimum Billing{% endcall %}
+                    {% call table.table_cell() %}
+                      <div class="flex items-center gap-2">
+                        <input name="min_billable_minutes" type="text" inputmode="numeric" pattern="[0-9]*"
+                          value="{{ selected_plan.min_billable_minutes or 0 }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <span class="text-xs text-muted-foreground">minutes</span>
+                      </div>
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Network Modes{% endcall %}
+                    {% call table.table_cell() %}
+                      <div class="flex flex-wrap gap-3">
+                        {% for mode in ["disabled", "restricted", "full_internet"] %}
+                          <label class="inline-flex items-center gap-2 text-sm">
+                            <input type="checkbox" name="allowed_network_modes" value="{{ mode }}"
+                              {% if mode in selected_plan.allowed_network_mode_values %}checked{% endif %}
+                              class="size-4 rounded border-input accent-primary">
+                            <span>{{ mode | replace("_", " ") | title }}</span>
+                          </label>
+                        {% endfor %}
+                      </div>
+                    {% endcall %}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+
             <div class="flex gap-2 pb-2">
               {% call button.button(type="submit") %}{{ "Create Plan" if is_create else "Save Changes" }}{% endcall %}
               {% call button.button(type="button", variant="outline", attrs={"data-cs-href": "/platform/sandbox-plans"}) %}Cancel{% endcall %}
@@ -317,6 +356,14 @@
                 {% call table.table_row() %}
                   {% call table.table_cell(class="font-medium text-sm") %}Organization{% endcall %}
                   {% call table.table_cell(class="text-sm text-muted-foreground tabular-nums") %}{{ selected_plan.org_vcpu }}vCPU · {{ selected_plan.org_ram_gb }}GB RAM · {{ selected_plan.org_disk_gb }}GB disk · £{{ selected_plan.org_cost_hr }}/hr{% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Minimum Billing{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ selected_plan.min_billable_minutes }} minutes{% endcall %}
+                {% endcall %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm") %}Network Modes{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ selected_plan.allowed_network_mode_values | join(", ") | replace("_", " ") }}{% endcall %}
                 {% endcall %}
               {% endcall %}
             {% endcall %}

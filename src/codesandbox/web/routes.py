@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import quote_plus
 
 from flask import abort, redirect, request, send_from_directory, session as flask_session
 
@@ -12,6 +13,7 @@ from codesandbox.features.sandbox.service import (
     get_active_hub_instance,
     get_hub_template_by_slug,
     get_hub_templates,
+    get_instance_artifacts_for_view,
     get_org_billing,
     get_org_instances,
     get_org_requests,
@@ -23,6 +25,7 @@ from codesandbox.features.sandbox.service import (
     review_instance_request,
     start_instance,
     submit_instance_request,
+    upload_instance_input,
 )
 from codesandbox.shared.session import build_nav, require_sandbox_user, require_session
 from codesandbox.shared.guards import verified_email
@@ -199,6 +202,10 @@ def hub_sandbox(instance: str, slug: str):
         # to attach to (e.g. a stale bookmark after the instance stopped).
         return {"_redirect": f"/hub/{instance}?error=No+running+instance+for+this+plan.+Start+one+first."}
 
+    artifacts, _ = get_instance_artifacts_for_view(
+        sandbox_instance["id"], str(user.id)
+    )
+
     nav = build_nav("/hub", user, active_workspace)
     return {
         "_meta": {"title": f"{template['name']} Sandbox — CodeSandbox"},
@@ -207,6 +214,7 @@ def hub_sandbox(instance: str, slug: str):
         "template": template,
         "plan": plan,
         "instance": sandbox_instance,
+        "artifacts": artifacts or [],
         **ws_ctx,
     }
 
@@ -349,10 +357,16 @@ def hub_start(instance: str):
     else:
         result, err = create_personal_instance(str(user.id), instance, plan_id)
     if err:
-        return redirect(f"/hub/{instance}?error={err}", 303)
+        return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
+
+    input_file = request.files.get("input_file")
+    if input_file and input_file.filename:
+        _, err = upload_instance_input(result["id"], str(user.id), input_file)
+        if err:
+            return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
     _, err = start_instance(result["id"], actor_user_id=str(user.id))
     if err:
-        return redirect(f"/hub/{instance}?error={err}", 303)
+        return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
     return redirect(f"/hub/{instance}/{plan_id}", 303)
 
 

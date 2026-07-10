@@ -10,6 +10,10 @@ from decimal import Decimal, InvalidOperation, ROUND_UP
 from itsdangerous import URLSafeTimedSerializer
 
 from codesandbox.config import get_settings
+from codesandbox.shared.storage import (
+    delete_private_object,
+    upload_private_filestorage,
+)
 
 from . import repository
 from .runtime.policy import (
@@ -21,6 +25,8 @@ from .runtime.policy import (
 )
 from .runtime.scheduler import get_runtime_driver
 from .runtime.drivers.base import UnsupportedRuntimeError
+from .runtime.artifacts import safe_artifact_name
+from .runtime.metrics import runtime_seconds
 
 _WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 
@@ -587,6 +593,12 @@ def get_platform_plans() -> list[dict]:
 
 
 def _plan_dict(p) -> dict:
+    try:
+        allowed_network_modes = json.loads(
+            p.allowed_network_modes or '["disabled","restricted"]'
+        )
+    except (TypeError, ValueError):
+        allowed_network_modes = ["disabled", "restricted"]
     return {
         "id": p.id,
         "name": p.name,
@@ -597,6 +609,7 @@ def _plan_dict(p) -> dict:
         "org_cost_hr": str(p.org_cost_hr),
         "min_billable_minutes": int(p.min_billable_minutes or 0),
         "allowed_network_modes": p.allowed_network_modes or '["disabled","restricted"]',
+        "allowed_network_mode_values": allowed_network_modes,
         "is_active": bool(p.is_active),
         "updated_at": p.updated_at,
     }
@@ -870,12 +883,107 @@ def can_open_instance_channel(
     return purpose == "monitor"
 
 
+def upload_instance_input(
+    instance_id: str,
+    actor_user_id: str | None,
+    file_storage,
+) -> tuple[dict | None, str | None]:
+    """Store a start-time input without ever writing it to the web host."""
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to upload to this instance."
+    if inst.status != "idle":
+        return None, "Inputs can only be uploaded before the instance starts."
+
+    template = repository.get_template(str(inst.template_id))
+    if template is None:
+        return None, "Template not found."
+    configured_mb = int(template.max_upload_mb or 50)
+    max_upload_bytes = min(
+        configured_mb * 1024 * 1024,
+        get_settings().sandbox_max_upload_bytes,
+    )
+    uploaded = upload_private_filestorage(
+        file_storage,
+        prefix=f"sandboxes/{instance_id}/inputs",
+        max_bytes=max_upload_bytes,
+    )
+    if uploaded is None:
+        return None, f"Select a non-empty file no larger than {max_upload_bytes // (1024 * 1024)} MB."
+
+    try:
+        item = repository.create_instance_input(
+            instance_id=instance_id,
+            name=uploaded["name"],
+            storage_key=uploaded["storage_key"],
+            size_bytes=uploaded["size_bytes"],
+            checksum=uploaded["checksum"],
+        )
+    except Exception:
+        delete_private_object(uploaded["storage_key"])
+        raise
+
+    repository.log_instance_event(
+        instance_id,
+        "input.uploaded",
+        actor=f"user:{actor_user_id}",
+        detail=json.dumps({
+            "name": item.name,
+            "size_bytes": int(item.size_bytes),
+            "checksum": item.checksum,
+        }),
+    )
+    return {
+        "id": str(item.id),
+        "name": item.name,
+        "size_bytes": int(item.size_bytes),
+        "checksum": item.checksum,
+        "created_at": item.created_at,
+    }, None
+
+
+def get_instance_artifacts_for_view(
+    instance_id: str,
+    actor_user_id: str | None,
+) -> tuple[list[dict] | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to view this instance."
+    return [
+        {
+            "id": str(item.id),
+            "name": item.name,
+            "artifact_type": item.artifact_type,
+            "size_bytes": int(item.size_bytes),
+            "checksum": item.checksum,
+            "created_at": item.created_at,
+        }
+        for item in repository.list_instance_artifacts(instance_id)
+    ], None
+
+
+def get_artifact_for_download(
+    artifact_id: str,
+    actor_user_id: str | None,
+):
+    artifact = repository.get_artifact(artifact_id)
+    if artifact is None:
+        return None, "Artifact not found."
+    if not can_view_instance(str(artifact.instance_id), actor_user_id):
+        return None, "You do not have permission to download this artifact."
+    return artifact, None
+
+
 # Admin test launches are a no-billing preview run — they don't need a real
 # SandboxPlan to exist, so a minimal fixed resource envelope stands in for one.
 _TEST_PLAN = {
     "id": "__test__", "name": "Test",
     "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 5, "ind_cost_hr": "0",
     "org_vcpu": 1, "org_ram_gb": 1, "org_disk_gb": 5, "org_cost_hr": "0",
+    "min_billable_minutes": 0,
+    "allowed_network_modes": '["disabled","restricted","full_internet"]',
+    "is_active": True,
 }
 
 
@@ -902,21 +1010,55 @@ def start_instance(
     t = repository.get_template(str(inst.template_id))
     if not t:
         return None, "Template no longer exists."
+    if inst.workspace_type != "test" and t.status != "active":
+        return None, "Template is not active."
+    if not _image_allowed(t.docker_image):
+        return None, "Docker image is not in the configured runtime allowlist."
 
     if inst.workspace_type == "test":
-        plan_dict = dict(_TEST_PLAN)
+        try:
+            effective_plan = resolve_effective_plan(t, _TEST_PLAN, None)
+        except RuntimePolicyError as exc:
+            return None, str(exc)
     else:
-        p = repository.get_plan(inst.plan_id)
-        if not p:
-            return None, "Plan no longer exists."
-        plan_dict = _plan_dict(p)
+        effective_plan, plan_error = get_effective_plan(str(t.id), inst.plan_id)
+        if plan_error or effective_plan is None:
+            return None, plan_error or "Plan is unavailable."
 
     workspace_type = inst.workspace_type or "personal"
     template_dict = _template_dict(t)
-    runtime_policy = _policy_builder.build(template_dict, plan_dict, workspace_type)
+    try:
+        user_config = json.loads(inst.user_config) if inst.user_config else None
+        runtime_policy = _policy_builder.build(
+            template_dict,
+            effective_plan,
+            workspace_type,
+            user_config,
+        )
+        runtime_policy = get_runtime_driver(runtime_policy["runtime_class"]).prepare(
+            _instance_dict(inst), runtime_policy
+        )
+    except (RuntimePolicyError, UnsupportedRuntimeError, ValueError, TypeError) as exc:
+        return None, str(exc)
+
+    inputs = repository.list_instance_inputs(instance_id)
+    if runtime_policy.get("input_required") and not inputs:
+        return None, "This sandbox requires an input file before it can start."
+    runtime_policy["inputs"] = [
+        {
+            "name": item.name,
+            "storage_key": item.storage_key,
+            "size_bytes": int(item.size_bytes),
+            "checksum": item.checksum,
+        }
+        for item in inputs
+    ]
+    artifact_prefix = f"sandboxes/{instance_id}/artifacts"
+    runtime_policy["artifact_prefix"] = artifact_prefix
 
     actor = f"user:{actor_user_id}" if actor_user_id else "system"
-    callback_url = os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback"
+    settings = get_settings()
+    callback_url = settings.control_plane_internal_url + "/internal/worker/callback"
     job_id = str(_uuid.uuid4())
     callback_token = make_worker_callback_token(job_id, instance_id, "start")
 
@@ -929,14 +1071,44 @@ def start_instance(
         "callback_token": callback_token,
     }
 
-    inst = repository.transition_instance_status(
+    tier = effective_plan.tier(workspace_type)
+    minimum_required = (
+        Decimal(str(tier["cost_hr"]))
+        * Decimal(int(runtime_policy["min_billable_sec"]))
+        / Decimal(3600)
+    ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+    now = datetime.now(timezone.utc)
+    inst, begin_error = repository.begin_instance_start(
         instance_id,
-        new_status="provisioning",
         actor=actor,
-        runtime_policy=json.dumps(runtime_policy),
         worker_job_id=job_id,
+        runtime_policy=json.dumps(runtime_policy, separators=(",", ":")),
+        runtime_provider=str(runtime_policy["runtime_provider"]),
+        artifact_prefix=artifact_prefix,
+        allocated_vcpu=int(tier["vcpu"]),
+        allocated_ram_gb=int(tier["ram_gb"]),
+        allocated_disk_gb=int(tier["disk_gb"]),
+        effective_network_mode=str(runtime_policy["network_mode"]),
+        cost_hr_snapshot=Decimal(str(tier["cost_hr"])),
+        billing_currency=str(runtime_policy["currency"]),
+        min_billable_sec=int(runtime_policy["min_billable_sec"]),
+        expires_at=now + timedelta(seconds=int(runtime_policy["max_timeout_sec"])),
+        minimum_required=minimum_required,
     )
-    enqueue_job(job_payload)
+    if begin_error or inst is None:
+        return None, begin_error or "Could not start instance."
+    try:
+        enqueue_job(job_payload)
+    except Exception:
+        repository.release_instance_reservation(instance_id)
+        repository.transition_instance_status(
+            instance_id,
+            new_status="failed",
+            actor="system",
+            expected_statuses=("provisioning",),
+            exit_reason="queue_unavailable",
+        )
+        return None, "Runtime queue is unavailable. Try again shortly."
     return _instance_dict(inst), None
 
 
@@ -956,24 +1128,38 @@ def stop_instance(
         return None, f"Cannot stop an instance in '{inst.status}' state."
 
     actor = f"user:{actor_user_id}" if actor_user_id else "system"
-    callback_url = os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback"
+    callback_url = get_settings().control_plane_internal_url + "/internal/worker/callback"
     job_id = str(_uuid.uuid4())
     callback_token = make_worker_callback_token(job_id, instance_id, "stop")
 
-    enqueue_job({
-        "job_id": job_id,
-        "action": "stop",
-        "instance_id": instance_id,
-        "callback_url": callback_url,
-        "callback_token": callback_token,
-    })
-    inst = repository.transition_instance_status(
+    transitioned = repository.transition_instance_status(
         instance_id,
         new_status="stopping",
         actor=actor,
+        expected_statuses=("running", "provisioning"),
         worker_job_id=job_id,
     )
-    return _instance_dict(inst), None
+    if transitioned is None:
+        return None, "Instance state changed before it could be stopped."
+    try:
+        enqueue_job({
+            "job_id": job_id,
+            "action": "stop",
+            "instance_id": instance_id,
+            "reason": "user_stop",
+            "callback_url": callback_url,
+            "callback_token": callback_token,
+        })
+    except Exception:
+        repository.transition_instance_status(
+            instance_id,
+            new_status="failed",
+            actor="system",
+            expected_statuses=("stopping",),
+            exit_reason="stop_queue_unavailable",
+        )
+        return None, "Runtime queue is unavailable. Reconciliation will retry cleanup."
+    return _instance_dict(transitioned), None
 
 
 def _mark_template_test_result(inst, status: str) -> None:
@@ -987,80 +1173,231 @@ def _mark_template_test_result(inst, status: str) -> None:
     )
 
 
+def _safe_int(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _charge_completed_instance(inst) -> None:
+    runtime_sec = max(int(inst.total_runtime_sec or 0), int(inst.min_billable_sec or 0))
+    amount = (
+        Decimal(str(inst.cost_hr_snapshot or "0"))
+        * Decimal(runtime_sec)
+        / Decimal(3600)
+    ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+    tx, charged, status = repository.charge_instance_balance(
+        str(inst.id),
+        amount,
+        f"Sandbox usage ({runtime_sec}s at {inst.billing_currency or 'GBP'} {inst.cost_hr_snapshot or 0}/hr)",
+    )
+    if tx is not None:
+        repository.log_instance_event(
+            str(inst.id),
+            "usage_charged",
+            actor="system",
+            detail=json.dumps({
+                "due": str(amount),
+                "charged": str(charged),
+                "billing_status": status,
+            }),
+        )
+
+
 def handle_worker_callback(
     instance_id: str,
     job_id: str,
     event: str,
     data: dict | None = None,
-) -> str | None:
-    """Process a worker callback event and advance the instance state machine."""
+) -> tuple[dict, str | None]:
+    """Process an authenticated worker event and return worker directives."""
     inst = repository.get_instance(instance_id)
     if inst is None:
-        return "Instance not found."
+        return {}, "Instance not found."
     if str(inst.worker_job_id or "") != job_id:
-        return "Callback job does not match the active worker job."
+        return {}, "Callback job does not match the active worker job."
 
+    data = data or {}
     now = datetime.now(timezone.utc)
     detail = json.dumps(data) if data else None
+    response: dict = {}
 
     if event == "started":
-        repository.transition_instance_status(
-            instance_id, new_status="running", actor="worker",
-            started_at=now,
+        runtime_id = str(data.get("runtime_id") or "").strip()
+        if not runtime_id:
+            return {}, "Worker did not provide a runtime ID."
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status="running",
+            actor="worker",
+            expected_statuses=("provisioning", "running"),
+            started_at=inst.started_at or now,
+            last_heartbeat_at=now,
+            runtime_provider=str(data.get("runtime_provider") or inst.runtime_provider or "docker"),
+            runtime_id=runtime_id,
+            runtime_node_id=str(data.get("runtime_node_id") or "") or None,
+            worker_id=str(data.get("worker_id") or "") or None,
+            workspace_volume_id=str(data.get("workspace_volume_id") or "") or None,
         )
+        if updated is None:
+            return {}, f"Cannot accept started event in '{inst.status}' state."
         repository.log_instance_event(instance_id, "started", actor="worker", detail=detail)
         _mark_template_test_result(inst, "passed")
 
-    elif event == "stopped":
-        prev = inst.started_at
-        # started_at round-trips through MySQL DATETIME (no tz stored) and comes back
-        # naive; assume it was written as UTC (see _now() in repository.py) to compare.
-        if prev is not None and prev.tzinfo is None:
-            prev = prev.replace(tzinfo=timezone.utc)
-        runtime_sec = int((now - prev).total_seconds()) if prev else 0
-        repository.transition_instance_status(
-            instance_id, new_status="stopped", actor="worker",
-            stopped_at=now, total_runtime_sec=runtime_sec,
+    elif event == "heartbeat":
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status=inst.status,
+            actor="worker",
+            expected_statuses=("provisioning", "running", "stopping", "cleanup"),
+            last_heartbeat_at=now,
+            runtime_id=str(data.get("runtime_id") or inst.runtime_id or "") or None,
+            runtime_node_id=str(data.get("runtime_node_id") or inst.runtime_node_id or "") or None,
+            worker_id=str(data.get("worker_id") or inst.worker_id or "") or None,
         )
-        repository.log_instance_event(instance_id, "stopped", actor="worker", detail=detail)
+        if updated is None:
+            return {}, f"Cannot accept heartbeat in '{inst.status}' state."
+        if inst.status == "running" and inst.billing_entity != "test":
+            elapsed = runtime_seconds(inst.started_at, now)
+            reserve_seconds = max(int(inst.min_billable_sec or 0), elapsed + 60)
+            desired = (
+                Decimal(str(inst.cost_hr_snapshot or "0"))
+                * Decimal(reserve_seconds)
+                / Decimal(3600)
+            ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+            if not repository.reserve_instance_balance(instance_id, desired):
+                repository.transition_instance_status(
+                    instance_id,
+                    new_status="stopping",
+                    actor="system",
+                    expected_statuses=("running",),
+                    exit_reason="insufficient_balance",
+                )
+                response["command"] = "stop"
+                response["reason"] = "insufficient_balance"
+
+    elif event == "cleanup_started":
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status="cleanup",
+            actor="worker",
+            expected_statuses=("provisioning", "running", "stopping", "failed", "expired", "killed", "cleanup"),
+            cleanup_started_at=now,
+            last_heartbeat_at=now,
+        )
+        if updated is None:
+            return {}, f"Cannot begin cleanup in '{inst.status}' state."
+        repository.log_instance_event(instance_id, "cleanup_started", actor="worker", detail=detail)
+
+    elif event in {"stopped", "expired", "killed"}:
+        current = repository.get_instance(instance_id)
+        if current and current.status not in {"cleanup", "stopping"}:
+            repository.transition_instance_status(
+                instance_id,
+                new_status="cleanup",
+                actor="worker",
+                expected_statuses=("provisioning", "running", "failed", "expired", "killed"),
+                cleanup_started_at=now,
+            )
+        current = repository.get_instance(instance_id)
+        final_status = "expired" if event == "expired" or data.get("reason") == "timeout" else event
+        if final_status not in {"stopped", "expired", "killed"}:
+            final_status = "stopped"
+        elapsed = runtime_seconds(current.started_at if current else inst.started_at, now)
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status=final_status,
+            actor="worker",
+            expected_statuses=("stopping", "cleanup", final_status),
+            stopped_at=now,
+            total_runtime_sec=elapsed,
+            last_heartbeat_at=now,
+            exit_code=_safe_int(data.get("exit_code")),
+            exit_reason=str(data.get("reason") or final_status)[:500],
+        )
+        if updated is None:
+            return {}, f"Cannot finalize instance in '{current.status if current else inst.status}' state."
+        _charge_completed_instance(updated)
+        repository.log_instance_event(instance_id, final_status, actor="worker", detail=detail)
+        if final_status != "stopped":
+            _mark_template_test_result(inst, "failed")
 
     elif event == "failed":
-        repository.transition_instance_status(instance_id, new_status="failed", actor="worker")
+        elapsed = runtime_seconds(inst.started_at, now)
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status="failed",
+            actor="worker",
+            expected_statuses=("provisioning", "running", "stopping", "cleanup", "failed"),
+            stopped_at=now if inst.started_at else None,
+            total_runtime_sec=elapsed,
+            last_heartbeat_at=now,
+            exit_code=_safe_int(data.get("exit_code")),
+            exit_reason=str(data.get("reason") or data.get("error") or "runtime_failed")[:500],
+        )
+        if updated is None:
+            return {}, f"Cannot fail instance in '{inst.status}' state."
+        if inst.started_at:
+            _charge_completed_instance(updated)
+        else:
+            repository.release_instance_reservation(instance_id)
+            updated.billing_reserved_amount = Decimal("0")
+            updated.billing_status = "not_charged"
+            updated.charged_amount = Decimal("0")
+            updated.save()
         repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)
-        _mark_template_test_result(inst, "failed")
-
-    elif event == "killed":
-        repository.transition_instance_status(instance_id, new_status="killed", actor="worker")
-        repository.log_instance_event(instance_id, "killed", actor="worker", detail=detail)
         _mark_template_test_result(inst, "failed")
 
     elif event == "escape_attempt":
         repository.log_instance_event(instance_id, "escape_attempt", actor="worker", detail=detail)
-        # Auto-kill on escape attempt
         from .queue import enqueue_job
         kill_job_id = str(_uuid.uuid4())
         callback_token = make_worker_callback_token(kill_job_id, instance_id, "kill")
-        repository.transition_instance_status(
+        transitioned = repository.transition_instance_status(
             instance_id,
-            new_status="killed",
+            new_status="stopping",
             actor="system",
+            expected_statuses=("running", "provisioning"),
             worker_job_id=kill_job_id,
+            exit_reason="escape_attempt",
         )
+        if transitioned is None:
+            return {}, f"Cannot kill instance in '{inst.status}' state."
         enqueue_job({
             "job_id": kill_job_id,
             "action": "kill",
             "instance_id": instance_id,
-            "callback_url": os.environ.get("APP_URL", "http://app:5000") + "/internal/worker/callback",
+            "reason": "escape_attempt",
+            "callback_url": get_settings().control_plane_internal_url + "/internal/worker/callback",
             "callback_token": callback_token,
         })
 
     elif event == "artifact_ready":
+        storage_key = str(data.get("storage_key") or "")
+        prefix = str(inst.artifact_prefix or "")
+        if not storage_key or not prefix or not storage_key.startswith(prefix + "/"):
+            return {}, "Artifact key is outside this instance prefix."
+        try:
+            name = safe_artifact_name(str(data.get("name") or "artifact"))
+        except ValueError as exc:
+            return {}, str(exc)
+        repository.create_or_get_artifact(
+            instance_id=instance_id,
+            name=name,
+            artifact_type=str(data.get("artifact_type") or "file")[:80],
+            storage_key=storage_key,
+            size_bytes=max(0, int(data.get("size_bytes") or 0)),
+            checksum=str(data.get("checksum") or "")[:64],
+        )
         repository.log_instance_event(instance_id, "artifact_ready", actor="worker", detail=detail)
 
     else:
-        return f"Unknown event: {event}"
+        return {}, f"Unknown event: {event}"
 
-    return None
+    return response, None
 
 
 # ── Admin Test Run ────────────────────────────────────────────────────────────

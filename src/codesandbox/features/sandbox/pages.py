@@ -54,7 +54,12 @@ def platform_sandboxes():
             "id": None, "slug": "", "name": "", "description": "",
             "icon_path": "", "docker_image": "", "sandbox_type": "interactive",
             "runtime_class": "container", "interface_mode": "terminal",
-            "network_mode": "disabled", "allow_root": True,
+            "network_mode": "disabled", "allow_root": False,
+            "default_command": "", "working_dir": "/workspace",
+            "input_mount_path": "/input", "output_mount_path": "/output",
+            "artifact_paths": '["/output"]', "input_required": False,
+            "max_upload_mb": 50, "read_only_root": True, "run_as_user": "",
+            "pids_limit": 256, "allow_full_internet": False,
             "max_timeout_hr": 2, "status": "active", "type_config": "",
             "active_instances": 0,
         }
@@ -112,6 +117,8 @@ def platform_sandbox_plans():
             "id": "", "name": "", "sort_order": len(plans),
             "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 10, "ind_cost_hr": "0.0000",
             "org_vcpu": 2, "org_ram_gb": 2, "org_disk_gb": 20, "org_cost_hr": "0.0000",
+            "min_billable_minutes": 1,
+            "allowed_network_modes": '["disabled","restricted"]',
             "is_active": True,
         }
     elif plan_param:

@@ -3,20 +3,24 @@ from __future__ import annotations
 import json as _json
 from urllib.parse import quote
 
-from flask import abort, redirect, request
+from flask import Response, abort, redirect, request, stream_with_context
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from werkzeug.utils import secure_filename
 
 from codesandbox.config import get_settings
 from codesandbox.shared.guards import platform_perm
 from codesandbox.shared.session import get_current_session
-from codesandbox.shared.storage import upload_image_from_filestorage
+from codesandbox.shared.storage import get_private_object, upload_image_from_filestorage
 from codesandbox.web.blueprint import web_bp
 from codesandbox.web.csrf import csrf_exempt
 
 from .service import (
-    can_view_instance,
+    can_open_instance_channel,
     delete_template,
+    get_artifact_for_download,
+    get_instance_artifacts_for_view,
     handle_worker_callback,
+    make_worker_callback_token,
     save_plan,
     save_template,
     save_template_config,
@@ -26,15 +30,17 @@ from .service import (
     stop_instance,
     toggle_plan_active,
     toggle_template_plan_enabled,
+    upload_instance_input,
 )
 
 # Must match the salt asgi.py verifies the token with.
 _WS_TOKEN_SALT = "sandbox.monitor-ws"
 _WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 _WORKER_ACTION_EVENTS = {
-    "start": {"started", "stopped", "failed", "escape_attempt", "artifact_ready"},
-    "stop": {"stopped", "failed"},
-    "kill": {"killed", "failed"},
+    "start": {"started", "heartbeat", "cleanup_started", "stopped", "expired", "failed", "escape_attempt", "artifact_ready"},
+    "stop": {"heartbeat", "cleanup_started", "artifact_ready", "stopped", "expired", "failed"},
+    "kill": {"cleanup_started", "artifact_ready", "killed", "failed"},
+    "reconcile": {"started", "heartbeat", "cleanup_started", "artifact_ready", "stopped", "expired", "killed", "failed"},
 }
 
 def _save_thumbnail(file_storage) -> str | None:
@@ -92,6 +98,17 @@ def save_template_action():
         network_mode=request.form.get("network_mode", "disabled"),
         allow_root=request.form.get("allow_root") == "1",
         max_timeout_hr=int(request.form.get("max_timeout_hr") or 2),
+        default_command=request.form.get("default_command", ""),
+        working_dir=request.form.get("working_dir", "/workspace"),
+        input_mount_path=request.form.get("input_mount_path", "/input"),
+        output_mount_path=request.form.get("output_mount_path", "/output"),
+        artifact_paths=request.form.get("artifact_paths", ""),
+        input_required=request.form.get("input_required") == "1",
+        max_upload_mb=int(request.form.get("max_upload_mb") or 50),
+        read_only_root=request.form.get("read_only_root") == "1",
+        run_as_user=request.form.get("run_as_user", ""),
+        pids_limit=int(request.form.get("pids_limit") or 256),
+        allow_full_internet=request.form.get("allow_full_internet") == "1",
     )
     if error:
         return _sandboxes_redirect(template_id or "new", error)
@@ -170,6 +187,8 @@ def save_plan_action():
         org_disk_gb=int(request.form.get("org_disk_gb") or 20),
         org_cost_hr=request.form.get("org_cost_hr", "0"),
         updated_by_id=str(cs.user.id),
+        min_billable_minutes=int(request.form.get("min_billable_minutes") or 0),
+        allowed_network_modes=request.form.getlist("allowed_network_modes"),
     )
     if error:
         return _plans_redirect(request.form.get("plan_id") or "new", error)
@@ -228,15 +247,66 @@ def instance_monitor_token(instance_id: str):
     cs = get_current_session()
     if not cs:
         abort(401)
-    if not can_view_instance(instance_id, str(cs.user.id)):
-        abort(403)
     purpose = request.args.get("purpose", "monitor")
     if purpose not in _WS_TOKEN_PURPOSES:
         abort(400)
+    if not can_open_instance_channel(instance_id, str(cs.user.id), purpose):
+        abort(403)
     token = URLSafeTimedSerializer(get_settings().secret_key, salt=_WS_TOKEN_SALT).dumps(
         {"instance_id": instance_id, "purpose": purpose}
     )
     return {"token": token}
+
+
+@web_bp.post("/instances/<instance_id>/inputs")
+def instance_input_upload(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        abort(401)
+    result, error = upload_instance_input(
+        instance_id,
+        str(cs.user.id),
+        request.files.get("file"),
+    )
+    if error:
+        return {"ok": False, "error": error}, 400
+    return {"ok": True, "input": result}, 201
+
+
+@web_bp.get("/instances/<instance_id>/artifacts")
+def instance_artifact_list(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        abort(401)
+    artifacts, error = get_instance_artifacts_for_view(instance_id, str(cs.user.id))
+    if error:
+        abort(403)
+    return {"ok": True, "artifacts": artifacts}
+
+
+@web_bp.get("/artifacts/<artifact_id>/download")
+def artifact_download(artifact_id: str):
+    cs = get_current_session()
+    if not cs:
+        abort(401)
+    artifact, error = get_artifact_for_download(artifact_id, str(cs.user.id))
+    if error or artifact is None:
+        abort(404 if error == "Artifact not found." else 403)
+    try:
+        obj = get_private_object(artifact.storage_key)
+    except Exception:
+        abort(404)
+
+    filename = secure_filename(artifact.name.rsplit("/", 1)[-1]) or "artifact"
+    response = Response(
+        stream_with_context(obj["Body"].iter_chunks(chunk_size=64 * 1024)),
+        mimetype=obj.get("ContentType") or "application/octet-stream",
+        direct_passthrough=True,
+    )
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Content-Length"] = str(int(artifact.size_bytes or 0))
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 # ── Internal worker callback ──────────────────────────────────────────────────
@@ -279,7 +349,12 @@ def worker_callback():
     if event not in allowed_events:
         abort(401)
 
-    err = handle_worker_callback(instance_id, job_id, event, data)
+    result, err = handle_worker_callback(instance_id, job_id, event, data)
     if err:
         return {"ok": False, "error": err}, 400
-    return {"ok": True}
+    refreshed = make_worker_callback_token(
+        job_id,
+        instance_id,
+        str(claims.get("action") or ""),
+    )
+    return {"ok": True, "callback_token": refreshed, **result}

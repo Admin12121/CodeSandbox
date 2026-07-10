@@ -390,6 +390,18 @@
                           </div>
                         </label>
 
+                        <label class="rc-card relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border border-input p-4 transition-colors hover:bg-accent/20" data-rc="tool_job">
+                          <input type="radio" name="runtime_class" value="tool_job" class="sr-only" {% if selected_template.runtime_class == "tool_job" %}checked{% endif %}>
+                          <div class="rc-indicator absolute right-3 top-3 size-4 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
+                            <div class="rc-dot size-1.5 rounded-full bg-primary transition-transform" style="transform:scale(0)"></div>
+                          </div>
+                          <svg class="size-4 text-emerald-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17 10 11 4 5"/><path d="M12 19h8"/></svg>
+                          <div class="pr-6">
+                            <p class="text-sm font-semibold">Tool Job</p>
+                            <p class="text-xs text-muted-foreground">Command and artifacts</p>
+                          </div>
+                        </label>
+
                         <label class="rc-card relative flex cursor-pointer flex-col gap-2.5 rounded-2xl border border-input p-4 transition-colors hover:bg-accent/20" data-rc="microvm">
                           <input type="radio" name="runtime_class" value="microvm" class="sr-only" {% if selected_template.runtime_class == "microvm" %}checked{% endif %}>
                           <div class="rc-indicator absolute right-3 top-3 size-4 shrink-0 rounded-full border-2 border-muted-foreground/25 flex items-center justify-center transition-all">
@@ -481,6 +493,39 @@
                     {% endcall %}
                   {% endcall %}
 
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Command{% endcall %}
+                    {% call table.table_cell() %}
+                      <textarea name="default_command" rows="2" spellcheck="false" placeholder="/bin/sh"
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y">{{ selected_template.default_command or '' }}</textarea>
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Working Directory{% endcall %}
+                    {% call table.table_cell() %}
+                      <input name="working_dir" type="text" value="{{ selected_template.working_dir or '/workspace' }}" required
+                        class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Input / Output Mounts{% endcall %}
+                    {% call table.table_cell() %}
+                      <div class="grid grid-cols-2 gap-2">
+                        <input name="input_mount_path" type="text" value="{{ selected_template.input_mount_path or '/input' }}" required
+                          class="h-8 rounded-md border border-input bg-background px-3 py-1 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <input name="output_mount_path" type="text" value="{{ selected_template.output_mount_path or '/output' }}" required
+                          class="h-8 rounded-md border border-input bg-background px-3 py-1 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      </div>
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Artifact Paths{% endcall %}
+                    {% call table.table_cell() %}
+                      <textarea name="artifact_paths" rows="2" spellcheck="false"
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y">{{ selected_template.artifact_paths or '["/output"]' }}</textarea>
+                    {% endcall %}
+                  {% endcall %}
+
                 {% endcall %}
               {% endcall %}
             {% endcall %}
@@ -513,9 +558,51 @@
                     {% endcall %}
                   {% endcall %}
                   {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Full Internet{% endcall %}
+                    {% call table.table_cell() %}
+                      {{ sw.switch(name="allow_full_internet", checked=selected_template.allow_full_internet, attrs={"value": "1"}) }}
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Allow Root{% endcall %}
                     {% call table.table_cell() %}
                       {{ sw.switch(name="allow_root", checked=selected_template.allow_root, attrs={"value": "1"}) }}
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Read-only Root{% endcall %}
+                    {% call table.table_cell() %}
+                      {{ sw.switch(name="read_only_root", checked=selected_template.read_only_root, attrs={"value": "1"}) }}
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Container User{% endcall %}
+                    {% call table.table_cell() %}
+                      <input name="run_as_user" type="text" value="{{ selected_template.run_as_user or '' }}" placeholder="65532:65532"
+                        class="h-8 w-40 rounded-md border border-input bg-background px-3 py-1 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}PID Limit{% endcall %}
+                    {% call table.table_cell() %}
+                      <input name="pids_limit" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_template.pids_limit or 256 }}"
+                        class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Require Input{% endcall %}
+                    {% call table.table_cell() %}
+                      {{ sw.switch(name="input_required", checked=selected_template.input_required, attrs={"value": "1"}) }}
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Upload Limit{% endcall %}
+                    {% call table.table_cell() %}
+                      <div class="flex items-center gap-2">
+                        <input name="max_upload_mb" type="text" inputmode="numeric" pattern="[0-9]*" value="{{ selected_template.max_upload_mb or 50 }}"
+                          class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <span class="text-xs text-muted-foreground">MB</span>
+                      </div>
                     {% endcall %}
                   {% endcall %}
                   {% call table.table_row() %}
@@ -543,13 +630,22 @@
     <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
 
       {# Header — outside frame #}
-      <div>
-        <h2 class="text-sm font-semibold">Plans</h2>
-        <p class="text-xs text-muted-foreground mt-0.5">
-          Resolved specs for plans available on this template.
-          <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Manage plans</a>.
-        </p>
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold">Plans</h2>
+          <p class="text-xs text-muted-foreground mt-0.5">
+            Per-template values override the global plan.
+            <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Manage plans</a>.
+          </p>
+        </div>
+        {% if can_manage and template_plan_configs %}
+          {% call button.button(type="submit", size="sm", attrs={"form": "template-plans-form"}) %}Save Overrides{% endcall %}
+        {% endif %}
       </div>
+
+      <form id="template-plans-form" method="post" action="/platform/sandboxes/{{ tid }}/plans">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="plans_json" id="template-plans-json" value="[]">
 
       {# Table — inside frame #}
       {% call frame.frame() %}
@@ -607,6 +703,7 @@
           {% endcall %}
         {% endcall %}
       {% endcall %}
+      </form>
     </div>
 
     {% app_script "sandbox-plan-toggle" %}

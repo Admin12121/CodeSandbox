@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import threading
 import uuid
+import hashlib
 from io import BytesIO
 
 import boto3
 from botocore.client import Config
 from PIL import Image, ImageOps, UnidentifiedImageError
+from werkzeug.utils import secure_filename
 
 from codesandbox.config import get_settings
 
@@ -18,7 +20,7 @@ _MAX_PIXELS = 12_000_000
 
 _s3_lock = threading.Lock()
 _s3_client = None
-_bucket_ready: set[str] = set()
+_bucket_ready: set[tuple[str, bool]] = set()
 
 
 def _s3():
@@ -38,26 +40,28 @@ def _s3():
     return _s3_client
 
 
-def _ensure_bucket(client, bucket: str) -> None:
-    """Create bucket and set public-read policy on first use only."""
-    if bucket in _bucket_ready:
+def _ensure_bucket(client, bucket: str, *, public: bool = False) -> None:
+    """Create a bucket once; public access is opt-in for image media only."""
+    cache_key = (bucket, public)
+    if cache_key in _bucket_ready:
         return
     with _s3_lock:
-        if bucket in _bucket_ready:
+        if cache_key in _bucket_ready:
             return
         try:
             client.head_bucket(Bucket=bucket)
         except Exception:
             client.create_bucket(Bucket=bucket)
-        client.put_bucket_policy(
-            Bucket=bucket,
-            Policy=(
-                '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
-                f'"Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::{bucket}/*"'
-                '}]}'
-            ),
-        )
-        _bucket_ready.add(bucket)
+        if public:
+            client.put_bucket_policy(
+                Bucket=bucket,
+                Policy=(
+                    '{"Version":"2012-10-17","Statement":[{"Effect":"Allow",'
+                    f'"Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::{bucket}/*"'
+                    '}]}'
+                ),
+            )
+        _bucket_ready.add(cache_key)
 
 
 def upload_image(data: bytes, mime: str, prefix: str = "uploads") -> str | None:
@@ -70,7 +74,7 @@ def upload_image(data: bytes, mime: str, prefix: str = "uploads") -> str | None:
     bucket = s.s3_bucket
     try:
         client = _s3()
-        _ensure_bucket(client, bucket)
+        _ensure_bucket(client, bucket, public=True)
         ext = _EXTS[mime]
         key = f"{prefix}/{uuid.uuid4().hex}.{ext}"
         client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=mime)
@@ -89,6 +93,71 @@ def upload_image_from_filestorage(file_storage, prefix: str = "uploads") -> str 
         return None
     safe_data, safe_mime = validated
     return upload_image(safe_data, safe_mime, prefix=prefix)
+
+
+def upload_private_bytes(
+    data: bytes,
+    *,
+    name: str,
+    prefix: str,
+    content_type: str = "application/octet-stream",
+    bucket: str | None = None,
+) -> dict | None:
+    settings = get_settings()
+    target_bucket = bucket or settings.s3_artifact_bucket
+    safe_name = secure_filename(name or "file")[:180] or "file"
+    if not data:
+        return None
+    key = f"{prefix.strip('/')}/{uuid.uuid4().hex}-{safe_name}"
+    try:
+        client = _s3()
+        _ensure_bucket(client, target_bucket, public=False)
+        client.put_object(
+            Bucket=target_bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type or "application/octet-stream",
+        )
+    except Exception:
+        return None
+    return {
+        "bucket": target_bucket,
+        "storage_key": key,
+        "name": safe_name,
+        "size_bytes": len(data),
+        "checksum": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def upload_private_filestorage(
+    file_storage,
+    *,
+    prefix: str,
+    max_bytes: int,
+) -> dict | None:
+    if not file_storage or not file_storage.filename:
+        return None
+    data = file_storage.stream.read(max_bytes + 1)
+    if not data or len(data) > max_bytes:
+        return None
+    return upload_private_bytes(
+        data,
+        name=file_storage.filename,
+        prefix=prefix,
+        content_type=file_storage.mimetype or "application/octet-stream",
+    )
+
+
+def get_private_object(storage_key: str, *, bucket: str | None = None):
+    settings = get_settings()
+    target_bucket = bucket or settings.s3_artifact_bucket
+    return _s3().get_object(Bucket=target_bucket, Key=storage_key)
+
+
+def delete_private_object(storage_key: str, *, bucket: str | None = None) -> None:
+    settings = get_settings()
+    target_bucket = bucket or settings.s3_artifact_bucket
+    _s3().delete_object(Bucket=target_bucket, Key=storage_key)
 
 
 def _validate_and_normalize_image(data: bytes) -> tuple[bytes, str] | None:
