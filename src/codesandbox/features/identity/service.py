@@ -117,7 +117,7 @@ def sign_in(
             succeeded=False,
             failure_reason=user.status,
         )
-        return AuthResult(False, "This account cannot sign in.")
+        return AuthResult(False, "This account is suspended or banned.")
 
     if not check_password_hash(user.password_hash, password):
         repository.record_login_attempt(

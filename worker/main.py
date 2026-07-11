@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import os
+import platform
 import signal
 import threading
 import time
@@ -253,7 +254,7 @@ class WorkerApp:
                 if now >= next_heartbeat:
                     directive = callback.try_send("heartbeat", {
                         "runtime_id": runner.container.id,
-                        "worker_id": os.environ.get("WORKER_ID", os.uname().nodename),
+                        "worker_id": os.environ.get("WORKER_ID", platform.node()),
                     })
                     next_heartbeat = now + 10
                     if directive.get("command") == "stop":

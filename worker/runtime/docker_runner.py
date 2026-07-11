@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import platform
 import re
 import threading
 import time
@@ -139,8 +140,9 @@ class DockerRunner(RuntimeRunner):
         helper_image = os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36")
         self._ensure_image(helper_image)
         mounts = [
-            Mount("/workspace", self.workspace_volume.name, type="volume"),
-            Mount("/input", self.input_volume.name, type="volume"),
+            Mount("/workspace", self.workspace_volume.name, type="volume", no_copy=True),
+            Mount("/output", self.workspace_volume.name, type="volume", no_copy=True),
+            Mount("/input", self.input_volume.name, type="volume", no_copy=True),
         ]
         helper = self.client.containers.create(
             helper_image,
@@ -173,10 +175,16 @@ class DockerRunner(RuntimeRunner):
             if numeric:
                 uid = numeric.group(1)
                 gid = numeric.group(2) or uid
-                helper.exec_run([
+                ownership = helper.exec_run([
                     "sh", "-c",
-                    f"chown -R {uid}:{gid} /workspace && chmod 0770 /workspace && chmod -R a-w /input",
+                    (
+                        f"chown -R {uid}:{gid} /workspace /output "
+                        f"&& chmod 0770 /workspace /output "
+                        "&& chmod -R a-w /input"
+                    ),
                 ])
+                if ownership.exit_code != 0:
+                    raise ValueError("Workspace ownership could not be prepared.")
         finally:
             helper.remove(force=True)
 
@@ -225,17 +233,20 @@ class DockerRunner(RuntimeRunner):
                 self.policy["working_dir"],
                 self.workspace_volume.name,
                 type="volume",
+                no_copy=True,
             ),
             Mount(
                 self.policy["output_mount_path"],
                 self.workspace_volume.name,
                 type="volume",
+                no_copy=True,
             ),
             Mount(
                 self.policy["input_mount_path"],
                 self.input_volume.name,
                 type="volume",
                 read_only=True,
+                no_copy=True,
             ),
         ]
         kwargs: dict[str, Any] = {
@@ -277,9 +288,9 @@ class DockerRunner(RuntimeRunner):
         return {
             "runtime_provider": "docker",
             "runtime_id": self.container.id,
-            "runtime_node_id": os.environ.get("RUNTIME_NODE_ID", os.uname().nodename),
+            "runtime_node_id": os.environ.get("RUNTIME_NODE_ID", platform.node()),
             "workspace_volume_id": self.workspace_volume.name,
-            "worker_id": os.environ.get("WORKER_ID", os.uname().nodename),
+            "worker_id": os.environ.get("WORKER_ID", platform.node()),
         }
 
     def exec(self, command: list[str]) -> tuple[int, bytes]:
@@ -363,12 +374,14 @@ class DockerRunner(RuntimeRunner):
                         self.workspace_volume.name,
                         type="volume",
                         read_only=True,
+                        no_copy=True,
                     ),
                     Mount(
                         self.policy["output_mount_path"],
                         self.workspace_volume.name,
                         type="volume",
                         read_only=True,
+                        no_copy=True,
                     ),
                 ],
                 labels={

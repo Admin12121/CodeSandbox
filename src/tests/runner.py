@@ -1,4 +1,4 @@
- """
+"""
 CodeSandbox Test Runner
 Feature-first test suite with interactive TUI.
 
@@ -10,14 +10,18 @@ from __future__ import annotations
 
 import importlib
 import os
-import select
 import sys
-import termios
 import threading
 import time
-import tty
 from dataclasses import dataclass, field
 from typing import Callable
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import select
+    import termios
+    import tty
 
 _TESTS_DIR   = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_DIR = os.path.dirname(_TESTS_DIR)
@@ -51,6 +55,17 @@ def _bar(pct: float, color: str = "") -> str:
     return filled + empty
 
 def _getch() -> str:
+    if os.name == "nt":
+        ch = msvcrt.getwch()
+        if ch in ("\x00", "\xe0"):
+            key = msvcrt.getwch()
+            if key == "H":
+                return "UP"
+            if key == "P":
+                return "DOWN"
+            return "ESC"
+        return ch
+
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
     try:
@@ -73,6 +88,7 @@ _SUITE_MODULES = [
     ("org_rbac",      "tests.organizations.test_rbac"),
     ("system_rbac",   "tests.platform_admin.test_system_rbac"),
     ("platform_admin","tests.platform_admin.test_rbac"),
+    ("sandbox",       "tests.sandbox.test_runtime_policy"),
 ]
 
 
@@ -101,6 +117,20 @@ def _selector(suites: dict[str, list]) -> str | None:
     counts = [(k, len(v)) for k, v in suites.items()]
     all_count = sum(c for _, c in counts)
     options: list[tuple[str, int]] = [("All", all_count)] + counts
+    if not sys.stdin.isatty():
+        for index, (name, count) in enumerate(options):
+            print(f"  {index}. {name} [{count} tests]")
+        raw = input("  Select a test suite number: ").strip()
+        if raw.lower() in {"q", "quit", "exit"}:
+            return None
+        try:
+            selected_index = int(raw)
+        except ValueError:
+            selected_index = 0
+        if selected_index < 0 or selected_index >= len(options):
+            selected_index = 0
+        return "all" if selected_index == 0 else options[selected_index][0]
+
     cursor = 0
     n_opts = len(options)
     _LINES = n_opts + 5
