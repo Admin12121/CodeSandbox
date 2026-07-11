@@ -22,8 +22,6 @@ import requests
 
 from codesandbox.config import get_settings
 from codesandbox.features.billing import fx, repository as billing_repo
-from codesandbox.features.sandbox.repository import add_balance_transaction
-
 log = logging.getLogger(__name__)
 
 MIN_TOPUP_NPR = Decimal("200")
@@ -72,6 +70,7 @@ def build_payment_form(
         charge_currency="NPR",
         charge_amount=amount_npr,
         external_ref=transaction_uuid,
+        idempotency_key=f"esewa:{transaction_uuid}",
     )
 
     return {
@@ -135,7 +134,7 @@ def confirm_by_transaction_uuid(transaction_uuid: str) -> tuple[bool, str]:
 
     if status.get("status") != "COMPLETE":
         if status.get("status") in ("CANCELED", "NOT_FOUND"):
-            billing_repo.mark_topup_failed(intent)
+            billing_repo.mark_topup_failed("esewa", transaction_uuid)
         return False, f"Payment not completed (status: {status.get('status', 'unknown')})."
 
     # Re-derive the credited amount from OUR stored intent, not from the
@@ -158,14 +157,13 @@ def confirm_by_transaction_uuid(transaction_uuid: str) -> tuple[bool, str]:
     rate = fx.get_gbp_npr_rate()
     amount_gbp = fx.npr_to_gbp(amount_npr)
 
-    tx = add_balance_transaction(
-        entity_type=intent.entity_type,
-        entity_id=intent.entity_id,
-        tx_type="topup",
-        amount=amount_gbp,
-        description=f"eSewa top-up (रु{amount_npr}, ref {status.get('ref_id', transaction_uuid)})",
-    )
-    billing_repo.mark_topup_completed(
-        intent, credit_amount_gbp=amount_gbp, fx_rate=rate, balance_transaction_id=tx.id
+    billing_repo.complete_topup(
+        gateway="esewa",
+        external_ref=transaction_uuid,
+        credit_amount_gbp=amount_gbp,
+        fx_rate=rate,
+        provider_event_id=None,
+        provider_reference=str(status.get("ref_id") or transaction_uuid),
+        description=f"eSewa top-up (NPR {amount_npr}, ref {status.get('ref_id', transaction_uuid)})",
     )
     return True, "Payment confirmed."

@@ -775,29 +775,68 @@ def toggle_template_plan_enabled(template_id: str, plan_id: str, is_enabled: boo
     return None
 
 
-def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> None:
+def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> str | None:
     """Upsert per-template plan overrides from the admin Plans tab."""
+    template = repository.get_template(template_id)
+    if template is None:
+        return "Template not found."
+    normalized_rows: list[dict] = []
     for row in plan_data:
         plan_id = str(row.get("plan_id", "")).strip()
         if not plan_id or not repository.get_plan(plan_id):
-            continue
-        repository.upsert_template_plan(
-            template_id=template_id,
-            plan_id=plan_id,
-            is_enabled=bool(row.get("is_enabled", True)),
-            ind_vcpu=_int_or_none(row.get("ind_vcpu")),
-            ind_ram_gb=_int_or_none(row.get("ind_ram_gb")),
-            ind_disk_gb=_int_or_none(row.get("ind_disk_gb")),
-            ind_cost_hr=_parse_decimal(str(row["ind_cost_hr"]).strip()) if row.get("ind_cost_hr") else None,
-            org_vcpu=_int_or_none(row.get("org_vcpu")),
-            org_ram_gb=_int_or_none(row.get("org_ram_gb")),
-            org_disk_gb=_int_or_none(row.get("org_disk_gb")),
-            org_cost_hr=_parse_decimal(str(row["org_cost_hr"]).strip()) if row.get("org_cost_hr") else None,
-            max_timeout_hr=_int_or_none(row.get("max_timeout_hr")),
-            network_mode=(normalize_network_mode(row.get("network_mode")) if row.get("network_mode") else None),
-            min_billable_minutes=_int_or_none(row.get("min_billable_minutes")),
-            full_internet_enabled=(bool(row.get("full_internet_enabled")) if row.get("full_internet_enabled") is not None else None),
+            return "A selected plan no longer exists."
+        normalized = {
+            "plan_id": plan_id,
+            "is_enabled": bool(row.get("is_enabled", True)),
+            "ind_vcpu": _int_or_none(row.get("ind_vcpu")),
+            "ind_ram_gb": _int_or_none(row.get("ind_ram_gb")),
+            "ind_disk_gb": _int_or_none(row.get("ind_disk_gb")),
+            "ind_cost_hr": _parse_decimal(str(row["ind_cost_hr"]).strip()) if row.get("ind_cost_hr") else None,
+            "org_vcpu": _int_or_none(row.get("org_vcpu")),
+            "org_ram_gb": _int_or_none(row.get("org_ram_gb")),
+            "org_disk_gb": _int_or_none(row.get("org_disk_gb")),
+            "org_cost_hr": _parse_decimal(str(row["org_cost_hr"]).strip()) if row.get("org_cost_hr") else None,
+            "max_timeout_hr": _int_or_none(row.get("max_timeout_hr")),
+            "network_mode": normalize_network_mode(row.get("network_mode")) if row.get("network_mode") else None,
+            "min_billable_minutes": _int_or_none(row.get("min_billable_minutes")),
+            "full_internet_enabled": row.get("full_internet_enabled"),
+        }
+        if any(
+            row.get(field) not in (None, "") and normalized[field] is None
+            for field in ("ind_cost_hr", "org_cost_hr")
+        ):
+            return "Cost overrides must be valid decimal values."
+        if normalized["full_internet_enabled"] not in (None, True, False):
+            return "Invalid full internet override."
+        resource_fields = (
+            "ind_vcpu", "ind_ram_gb", "ind_disk_gb",
+            "org_vcpu", "org_ram_gb", "org_disk_gb",
         )
+        if any(normalized[field] is not None and normalized[field] <= 0 for field in resource_fields):
+            return "Resource overrides must be positive values."
+        if any(
+            normalized[field] is not None and normalized[field] < 0
+            for field in ("ind_cost_hr", "org_cost_hr")
+        ):
+            return "Cost overrides cannot be negative."
+        if normalized["max_timeout_hr"] is not None and not 1 <= normalized["max_timeout_hr"] <= 72:
+            return "Timeout overrides must be between 1 and 72 hours."
+        if normalized["min_billable_minutes"] is not None and not 0 <= normalized["min_billable_minutes"] <= 1440:
+            return "Minimum billing must be between 0 and 1440 minutes."
+        if normalized["network_mode"] not in {None, "disabled", "restricted", "full_internet"}:
+            return "Invalid network override."
+        requests_internet = (
+            normalized["network_mode"] == "full_internet"
+            or normalized["full_internet_enabled"] is True
+        )
+        if requests_internet and (
+            not template.allow_full_internet
+            or template.sandbox_type in {"malware", "reverse_engineering"}
+        ):
+            return "Full internet is not permitted for this template."
+        normalized_rows.append(normalized)
+    repository.save_template_plan_overrides(template_id, normalized_rows)
+    return None
 
 
 # ── Instance lifecycle (Phase 5) ──────────────────────────────────────────────
@@ -1107,6 +1146,8 @@ def start_instance(
             actor="system",
             expected_statuses=("provisioning",),
             exit_reason="queue_unavailable",
+            billing_status="not_charged",
+            charged_amount=Decimal("0"),
         )
         return None, "Runtime queue is unavailable. Try again shortly."
     return _instance_dict(inst), None
@@ -1147,16 +1188,19 @@ def stop_instance(
             "action": "stop",
             "instance_id": instance_id,
             "reason": "user_stop",
+            "runtime_id": transitioned.runtime_id,
+            "runtime_provider": transitioned.runtime_provider,
+            "workspace_volume_id": transitioned.workspace_volume_id,
+            "runtime_policy": json.loads(transitioned.runtime_policy or "{}"),
             "callback_url": callback_url,
             "callback_token": callback_token,
         })
     except Exception:
-        repository.transition_instance_status(
+        repository.log_instance_event(
             instance_id,
-            new_status="failed",
+            "stop.queue_failed",
             actor="system",
-            expected_statuses=("stopping",),
-            exit_reason="stop_queue_unavailable",
+            detail=json.dumps({"job_id": job_id}),
         )
         return None, "Runtime queue is unavailable. Reconciliation will retry cleanup."
     return _instance_dict(transitioned), None
@@ -1428,19 +1472,26 @@ def start_test_instance(
 # ── Balance / Billing ─────────────────────────────────────────────────────────
 
 def _balance_dict(b) -> dict:
+    amount = Decimal(str(b.amount or "0"))
+    reserved = Decimal(str(b.reserved_amount or "0"))
     return {
         "entity_type": b.entity_type,
         "entity_id": str(b.entity_id),
-        "amount": str(b.amount),
+        "amount": str(amount),
+        "reserved_amount": str(reserved),
+        "available_amount": str(max(Decimal("0"), amount - reserved)),
         "updated_at": b.updated_at,
     }
 
 
 def _transaction_dict(tx) -> dict:
+    amount = Decimal(str(tx.amount or "0"))
     return {
         "id": str(tx.id),
         "type": tx.type,
-        "amount": str(tx.amount),
+        "amount": str(amount),
+        "absolute_amount": str(abs(amount)),
+        "is_credit": amount >= 0,
         "description": tx.description or "",
         "instance_id": str(tx.instance_id) if tx.instance_id else None,
         "created_at": tx.created_at,

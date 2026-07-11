@@ -672,19 +672,19 @@
             {% if template_plan_configs %}
               {% for cfg in template_plan_configs %}
                 {% set gp = cfg['global'] %}
-                {% call table.table_row() %}
+                {% call table.table_row(attrs={"data-plan-config-row": "", "data-plan-id": gp.id}) %}
                   {% call table.table_cell() %}
                     <div class="font-medium text-sm">{{ gp.name }}</div>
                     <code class="text-[10px] text-muted-foreground">{{ gp.id }}</code>
                   {% endcall %}
-                  {% call table.table_cell(class="border-l text-center text-xs tabular-nums") %}{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else gp.ind_vcpu }}{% endcall %}
-                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else gp.ind_ram_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else gp.ind_disk_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else gp.ind_cost_hr }}{% endcall %}
-                  {% call table.table_cell(class="border-l text-center text-xs tabular-nums") %}{{ cfg.org_vcpu if cfg.org_vcpu is not none else gp.org_vcpu }}{% endcall %}
-                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else gp.org_ram_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else gp.org_disk_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else gp.org_cost_hr }}{% endcall %}
+                  {% call table.table_cell(class="border-l p-1") %}<input data-plan-field="ind_vcpu" value="{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else '' }}" placeholder="{{ gp.ind_vcpu }}" inputmode="numeric" class="h-7 w-full rounded border border-input bg-background px-1 text-center text-xs">{% endcall %}
+                  {% call table.table_cell(class="p-1") %}<input data-plan-field="ind_ram_gb" value="{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else '' }}" placeholder="{{ gp.ind_ram_gb }}" inputmode="numeric" class="h-7 w-full rounded border border-input bg-background px-1 text-center text-xs">{% endcall %}
+                  {% call table.table_cell(class="p-1") %}<input data-plan-field="ind_disk_gb" value="{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else '' }}" placeholder="{{ gp.ind_disk_gb }}" inputmode="numeric" class="h-7 w-full rounded border border-input bg-background px-1 text-center text-xs">{% endcall %}
+                  {% call table.table_cell(class="p-1") %}<input data-plan-field="ind_cost_hr" value="{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else '' }}" placeholder="{{ gp.ind_cost_hr }}" inputmode="decimal" class="h-7 w-full rounded border border-input bg-background px-1 text-center font-mono text-xs">{% endcall %}
+                  {% call table.table_cell(class="border-l p-1") %}<input data-plan-field="org_vcpu" value="{{ cfg.org_vcpu if cfg.org_vcpu is not none else '' }}" placeholder="{{ gp.org_vcpu }}" inputmode="numeric" class="h-7 w-full rounded border border-input bg-background px-1 text-center text-xs">{% endcall %}
+                  {% call table.table_cell(class="p-1") %}<input data-plan-field="org_ram_gb" value="{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else '' }}" placeholder="{{ gp.org_ram_gb }}" inputmode="numeric" class="h-7 w-full rounded border border-input bg-background px-1 text-center text-xs">{% endcall %}
+                  {% call table.table_cell(class="p-1") %}<input data-plan-field="org_disk_gb" value="{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else '' }}" placeholder="{{ gp.org_disk_gb }}" inputmode="numeric" class="h-7 w-full rounded border border-input bg-background px-1 text-center text-xs">{% endcall %}
+                  {% call table.table_cell(class="p-1") %}<input data-plan-field="org_cost_hr" value="{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else '' }}" placeholder="{{ gp.org_cost_hr }}" inputmode="decimal" class="h-7 w-full rounded border border-input bg-background px-1 text-center font-mono text-xs">{% endcall %}
                   {% call table.table_cell(class="border-l text-center") %}
                     <div class="flex justify-center">
                       {{ sw.switch(checked=cfg.is_enabled, attrs={"data-plan-toggle": "", "data-plan-id": gp.id, "data-template-id": tid}) }}
@@ -703,8 +703,84 @@
           {% endcall %}
         {% endcall %}
       {% endcall %}
+
+      {% if template_plan_configs %}
+      {% call frame.frame() %}
+        {% call table.table(variant="card") %}
+          {% call table.table_header() %}
+            {% call table.table_row() %}
+              {{ table.table_head("Policy Override") }}
+              {{ table.table_head("Timeout", class="w-36") }}
+              {{ table.table_head("Network", class="w-48") }}
+              {{ table.table_head("Minimum Billing", class="w-40") }}
+              {{ table.table_head("Full Internet", class="w-40") }}
+            {% endcall %}
+          {% endcall %}
+          {% call table.table_body() %}
+            {% for cfg in template_plan_configs %}
+              {% set gp = cfg['global'] %}
+              {% call table.table_row(attrs={"data-plan-policy-row": "", "data-plan-id": gp.id}) %}
+                {% call table.table_cell() %}<span class="text-sm font-medium">{{ gp.name }}</span>{% endcall %}
+                {% call table.table_cell() %}<input data-plan-field="max_timeout_hr" value="{{ cfg.max_timeout_hr if cfg.max_timeout_hr is not none else '' }}" placeholder="Template" inputmode="numeric" class="h-7 w-24 rounded border border-input bg-background px-2 text-xs">{% endcall %}
+                {% call table.table_cell() %}
+                  <select data-plan-field="network_mode" class="h-7 w-full rounded border border-input bg-background px-2 text-xs">
+                    <option value="">Template default</option>
+                    {% for mode in ["disabled", "restricted", "full_internet"] %}<option value="{{ mode }}" {% if cfg.network_mode == mode %}selected{% endif %}>{{ mode | replace("_", " ") | title }}</option>{% endfor %}
+                  </select>
+                {% endcall %}
+                {% call table.table_cell() %}<input data-plan-field="min_billable_minutes" value="{{ cfg.min_billable_minutes if cfg.min_billable_minutes is not none else '' }}" placeholder="{{ gp.min_billable_minutes }}" inputmode="numeric" class="h-7 w-24 rounded border border-input bg-background px-2 text-xs">{% endcall %}
+                {% call table.table_cell() %}
+                  <select data-plan-field="full_internet_enabled" class="h-7 w-full rounded border border-input bg-background px-2 text-xs">
+                    <option value="" {% if cfg.full_internet_enabled is none %}selected{% endif %}>Inherit</option>
+                    <option value="false" {% if cfg.full_internet_enabled is sameas false %}selected{% endif %}>Disabled</option>
+                    <option value="true" {% if cfg.full_internet_enabled is sameas true %}selected{% endif %}>Enabled</option>
+                  </select>
+                {% endcall %}
+              {% endcall %}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+      {% endif %}
       </form>
     </div>
+
+    {% app_script "sandbox-plan-overrides" %}
+    (function () {
+      var form = document.getElementById('template-plans-form');
+      var output = document.getElementById('template-plans-json');
+      if (!form || !output || form.dataset.serializerBound) return;
+      form.dataset.serializerBound = '1';
+      form.addEventListener('submit', function () {
+        var values = {};
+        function rowFor(el) {
+          var id = el.dataset.planId;
+          if (!values[id]) values[id] = { plan_id: id };
+          return values[id];
+        }
+        form.querySelectorAll('[data-plan-config-row]').forEach(function (row) {
+          var value = rowFor(row);
+          row.querySelectorAll('[data-plan-field]').forEach(function (field) {
+            value[field.dataset.planField] = field.value.trim() || null;
+          });
+          var toggle = row.querySelector('[data-plan-toggle] input[type="checkbox"]');
+          value.is_enabled = !!(toggle && toggle.checked);
+        });
+        form.querySelectorAll('[data-plan-policy-row]').forEach(function (row) {
+          var value = rowFor(row);
+          row.querySelectorAll('[data-plan-field]').forEach(function (field) {
+            var fieldValue = field.value.trim();
+            if (field.dataset.planField === 'full_internet_enabled') {
+              value.full_internet_enabled = fieldValue === '' ? null : fieldValue === 'true';
+            } else {
+              value[field.dataset.planField] = fieldValue || null;
+            }
+          });
+        });
+        output.value = JSON.stringify(Object.keys(values).map(function (id) { return values[id]; }));
+      });
+    })();
+    {% end_app_script %}
 
     {% app_script "sandbox-plan-toggle" %}
     // Guarded like the shared UI runtime: this app-script block gets

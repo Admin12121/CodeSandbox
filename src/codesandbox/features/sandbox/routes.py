@@ -26,6 +26,7 @@ from .service import (
     save_template_config,
     save_template_plan_configs,
     set_template_status,
+    start_instance,
     start_test_instance,
     stop_instance,
     toggle_plan_active,
@@ -143,7 +144,11 @@ def save_template_plans_action(template_id: str):
         plan_data = _json.loads(plans_json)
     except Exception:
         return _sandboxes_redirect(template_id, "Invalid plans data.")
-    save_template_plan_configs(template_id, plan_data)
+    if not isinstance(plan_data, list):
+        return _sandboxes_redirect(template_id, "Invalid plans data.")
+    error = save_template_plan_configs(template_id, plan_data)
+    if error:
+        return _sandboxes_redirect(template_id, error)
     return redirect(f"/platform/sandboxes?template={template_id}&tab=plans", 303)
 
 
@@ -216,6 +221,17 @@ def test_run_action(template_id: str):
 
 
 # ── Instance stop (user-facing) ───────────────────────────────────────────────
+
+@web_bp.post("/instances/<instance_id>/start")
+def start_instance_action(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        return redirect("/login", 303)
+    _, err = start_instance(instance_id, actor_user_id=str(cs.user.id))
+    if err:
+        return redirect(f"/instances/{instance_id}?error={quote(err)}", 303)
+    return redirect(f"/instances/{instance_id}", 303)
+
 
 @web_bp.post("/instances/<instance_id>/stop")
 def stop_instance_action(instance_id: str):

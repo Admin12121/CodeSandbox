@@ -14,6 +14,7 @@ from codesandbox.features.sandbox.service import (
     get_hub_template_by_slug,
     get_hub_templates,
     get_instance_artifacts_for_view,
+    get_instance_for_view,
     get_org_billing,
     get_org_instances,
     get_org_requests,
@@ -156,7 +157,7 @@ def hub_template(instance: str):
             billing = get_org_billing(str(active_workspace["id"]))
         else:
             billing = get_user_billing(str(user.id))
-        user_balance = billing["balance"]["amount"]
+        user_balance = billing["balance"]["available_amount"]
 
     nav = build_nav("/hub", user, active_workspace)
     return {
@@ -240,6 +241,29 @@ def my_instances():
     }
 
 
+@router.page("/instances/<instance_id>")
+def instance_detail(instance_id: str):
+    session, redir = require_sandbox_user()
+    if redir:
+        return redir
+    user = session.user
+    instance, error = get_instance_for_view(instance_id, str(user.id))
+    if error or instance is None:
+        return {"_redirect": "/my-instances"}
+    artifacts, _ = get_instance_artifacts_for_view(instance_id, str(user.id))
+    ws_ctx = _workspaces_ctx(user)
+    return {
+        "_meta": {"title": f"{instance['template_name']} - CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": build_nav("/my-instances", user, ws_ctx.get("active_workspace")),
+        "page_title": instance["template_name"],
+        "instance": instance,
+        "artifacts": artifacts or [],
+        "error": request.args.get("error"),
+        **ws_ctx,
+    }
+
+
 # ── Private Instances (org-assigned) ─────────────────────────────────────────
 
 @router.page("/private_instances")
@@ -311,6 +335,7 @@ def billing():
         "billing_label": billing_label,
         "balance_npr": npr_display,
         "stripe_publishable_key": get_settings().stripe_publishable_key,
+        "billing_dev_topup_enabled": get_settings().billing_dev_topup_enabled,
         "min_topup_gbp": stripe_gateway.MIN_TOPUP_GBP,
         "min_topup_npr": esewa_gateway.MIN_TOPUP_NPR,
         **billing_data,

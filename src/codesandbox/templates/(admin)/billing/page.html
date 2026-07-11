@@ -158,6 +158,21 @@
           </div>
         </div>
 
+        {% if billing_dev_topup_enabled %}
+        <div class="overflow-hidden rounded-xl border bg-card" data-topup-item="dev">
+          <label class="flex cursor-pointer items-center gap-3 p-4">
+            {{ radio.radio(name="topup_method", value="dev", attrs={"data-topup-method": "dev"}) }}
+            <span class="flex-1 text-sm font-medium">Development Credit</span>
+          </label>
+          <div data-topup-panel="dev" class="hidden border-t bg-muted/20 p-4">
+            {% call form.form(action="/billing/topup/dev", method="post", attrs={"id": "dev-topup-form"}) %}
+              <input type="hidden" name="amount" id="dev-amount-field">
+              {% call button.button(type="submit", class="w-full") %}Add Test Funds{% endcall %}
+            {% endcall %}
+          </div>
+        </div>
+        {% endif %}
+
       {% endcall %}
         {% endcall %}
       {% endcall %}
@@ -187,7 +202,7 @@
                 {% call table.table_cell() %}
                   {% if tx.type in ("topup", "refund") %}
                     {{ badge.badge(tx.type | capitalize, variant="success") }}
-                  {% elif tx.type in ("charge", "usage") %}
+                  {% elif tx.type in ("charge", "usage", "usage_charge") %}
                     {{ badge.badge(tx.type | capitalize, variant="warning") }}
                   {% else %}
                     {{ badge.badge(tx.type | capitalize, variant="secondary") }}
@@ -195,8 +210,8 @@
                 {% endcall %}
                 {{ table.table_cell(tx.description or "-", class="max-w-[28rem] truncate") }}
                 {% call table.table_cell(class="text-right font-mono font-medium") %}
-                  <span class="{{ 'text-success-foreground' if tx.type in ('topup', 'refund') else 'text-destructive' }}">
-                    {{ '+' if tx.type in ('topup', 'refund') else '-' }}£{{ tx.amount }}
+                  <span class="{{ 'text-success-foreground' if tx.is_credit else 'text-destructive' }}">
+                    {{ '+' if tx.is_credit else '-' }}£{{ tx.absolute_amount }}
                   </span>
                 {% endcall %}
               {% endcall %}
@@ -326,6 +341,16 @@
     });
   }
 
+  var devForm = document.getElementById("dev-topup-form");
+  var devAmountField = document.getElementById("dev-amount-field");
+  if (devForm) {
+    devForm.addEventListener("submit", function (e) {
+      var value = validAmount();
+      if (value === null) { e.preventDefault(); return; }
+      devAmountField.value = value;
+    });
+  }
+
   // ── Card: Stripe Elements (CardElement) + PaymentIntent ───────────────
   var stripeInstance = null, cardElement = null, stripeMounted = false;
 
@@ -373,6 +398,8 @@
       .catch(function () { cardPayBtn.disabled = false; });
   }
 
+  var activeTopupKey = null;
+  var activeTopupAmount = null;
   if (cardPayBtn) {
     cardPayBtn.addEventListener("click", function () {
       var value = validAmount();
@@ -383,11 +410,17 @@
       }
       setCardError(null);
       cardPayBtn.disabled = true;
+      if (!activeTopupKey || activeTopupAmount !== value) {
+        activeTopupKey = (window.crypto && window.crypto.randomUUID)
+          ? window.crypto.randomUUID()
+          : String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+        activeTopupAmount = value;
+      }
 
       fetch("/billing/topup/stripe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: value }),
+        body: JSON.stringify({ amount: value, idempotency_key: activeTopupKey }),
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {

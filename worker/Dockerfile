@@ -8,6 +8,7 @@ WORKDIR /worker
 COPY pyproject.toml .
 RUN uv sync --no-dev
 
-COPY worker.py .
+COPY worker.py main.py ./
+COPY runtime ./runtime
 
-CMD ["uv", "run", "python", "-u", "worker.py"]
+CMD ["uv", "run", "python", "-u", "main.py"]

@@ -4,6 +4,7 @@ import base64
 import html
 import json
 import logging
+import uuid
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
@@ -59,7 +60,13 @@ def billing_topup_stripe_action():
         return {"ok": False, "error": "Invalid amount."}, 400
 
     try:
-        client_secret = stripe_gateway.create_payment_intent(entity_type, entity_id, amount)
+        request_key = str(body.get("idempotency_key") or "")[:100]
+        client_secret = stripe_gateway.create_payment_intent(
+            entity_type,
+            entity_id,
+            amount,
+            request_key=request_key or None,
+        )
     except stripe_gateway.StripeTopupError as exc:
         return {"ok": False, "error": str(exc)}, 400
     except Exception:
@@ -87,6 +94,46 @@ def billing_topup_status_action(gateway: str, external_ref: str):
         return {"ok": False, "error": "Not found."}, 404  # don't leak existence
 
     return {"ok": True, "status": intent.status}
+
+
+@web_bp.post("/billing/topup/dev")
+@verified_email("adding funds")
+def billing_topup_dev_action():
+    settings = get_settings()
+    if not settings.billing_dev_topup_enabled:
+        return {"ok": False, "error": "Development top-ups are disabled."}, 404
+    session, redir = require_sandbox_user()
+    if redir:
+        return redirect("/login", 303)
+    entity_type, entity_id = _resolve_billing_entity(session.user)
+    if entity_type is None:
+        return redirect("/billing?error=Only+the+organization+owner+can+add+funds.", 303)
+    try:
+        amount = Decimal(str(request.form.get("amount", ""))).quantize(Decimal("0.01"))
+    except InvalidOperation:
+        return redirect("/billing?error=Invalid+amount.", 303)
+    if amount < Decimal("1") or amount > Decimal("10000"):
+        return redirect("/billing?error=Amount+must+be+between+1+and+10000+GBP.", 303)
+    external_ref = f"dev-{uuid.uuid4()}"
+    billing_repo.create_topup_intent(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        gateway="dev",
+        charge_currency="GBP",
+        charge_amount=amount,
+        external_ref=external_ref,
+        idempotency_key=f"dev:{external_ref}",
+    )
+    billing_repo.complete_topup(
+        gateway="dev",
+        external_ref=external_ref,
+        credit_amount_gbp=amount,
+        fx_rate=None,
+        provider_event_id=None,
+        provider_reference=external_ref,
+        description=f"Development top-up ({external_ref})",
+    )
+    return redirect("/billing?topup=success", 303)
 
 
 @web_bp.post("/webhooks/stripe")

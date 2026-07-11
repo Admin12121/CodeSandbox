@@ -25,7 +25,13 @@ def get_header_balance(user: User, active_workspace: dict | None) -> dict | None
         else:
             entity_type, entity_id = "user", str(user.id)
         balance = get_balance(entity_type, entity_id)
-        amount_gbp = Decimal(str(balance.amount)) if balance else Decimal("0")
+        amount_gbp = (
+            Decimal(str(balance.amount or "0"))
+            - Decimal(str(balance.reserved_amount or "0"))
+            if balance
+            else Decimal("0")
+        )
+        amount_gbp = max(Decimal("0"), amount_gbp)
     except Exception:
         log.exception("Failed to load balance for header widget")
         return None

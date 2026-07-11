@@ -242,6 +242,14 @@ class PolicyBuilder:
             _absolute_container_path(path, "Artifact path")
             for path in _json_list(_value(template, "artifact_paths"), [output_mount])
         ]
+        if any(
+            path != working_dir
+            and not path.startswith(working_dir + "/")
+            and path != output_mount
+            and not path.startswith(output_mount + "/")
+            for path in artifact_paths
+        ):
+            raise RuntimePolicyError("Artifact paths must be inside workspace or output mounts.")
         interface_modes = [
             mode.strip()
             for mode in str(_value(template, "interface_mode", "terminal")).split(",")

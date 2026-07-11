@@ -9,6 +9,7 @@ Run with: uvicorn codesandbox.asgi:app --host 0.0.0.0 --port 5000 --reload
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -19,7 +20,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from starlette.applications import Starlette
 from starlette.middleware.wsgi import WSGIMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -387,6 +388,50 @@ async def fs_rename(request: Request) -> JSONResponse:
     return await _fs_endpoint(request, build)
 
 
+async def fs_upload(request: Request) -> JSONResponse:
+    async def build(r: Request) -> dict:
+        data = await r.body()
+        max_bytes = min(get_settings().sandbox_max_upload_bytes, 2 * 1024 * 1024)
+        if not data or len(data) > max_bytes:
+            raise ValueError("upload exceeds editor limit")
+        return {
+            "op": "write",
+            "path": r.query_params.get("path", ""),
+            "content": base64.b64encode(data).decode("ascii"),
+            "encoding": "base64",
+        }
+    return await _fs_endpoint(request, build)
+
+
+async def fs_download(request: Request) -> Response:
+    instance_id = request.path_params["instance_id"]
+    if not _fs_auth(request, instance_id):
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    path = request.query_params.get("path", "")
+    result, status = await _fs_request(instance_id, {"op": "read", "path": path})
+    if result is None:
+        return JSONResponse({"ok": False, "error": "sandbox unavailable"}, status_code=status)
+    if not result.get("ok"):
+        return JSONResponse(result, status_code=status)
+    try:
+        data = (
+            base64.b64decode(result.get("content", ""), validate=True)
+            if result.get("encoding") == "base64"
+            else str(result.get("content", "")).encode()
+        )
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid worker response"}, status_code=502)
+    filename = os.path.basename(path.replace("\\", "/")) or "download"
+    return Response(
+        data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename.replace(chr(34), "")}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 # ── Build the ASGI app ────────────────────────────────────────────────────────
 
 def _make_app() -> Starlette:
@@ -403,6 +448,8 @@ def _make_app() -> Starlette:
             Route("/api/sandbox/{instance_id}/file", fs_file_delete, methods=["DELETE"]),
             Route("/api/sandbox/{instance_id}/file/mkdir", fs_mkdir, methods=["POST"]),
             Route("/api/sandbox/{instance_id}/file/rename", fs_rename, methods=["POST"]),
+            Route("/api/sandbox/{instance_id}/file/upload", fs_upload, methods=["POST"]),
+            Route("/api/sandbox/{instance_id}/file/download", fs_download, methods=["GET"]),
             Mount("/", WSGIMiddleware(flask_wsgi)),
         ],
     )
