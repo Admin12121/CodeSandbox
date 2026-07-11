@@ -90,17 +90,19 @@ def test_new_migration_applies_to_existing_database(ctx: TestContext) -> None:
     engine.db.commit()
 
     engine.ensure_history()
+    baseline_cutoff = "0016_add_column_default_command_to_sandbox_templates.py"
     already_applied = [
-        path.name
-        for path in engine.migration_files()
-        if path.name <= "0016_add_column_default_command_to_sandbox_templates.py"
+        path.name for path in engine.migration_files() if path.name <= baseline_cutoff
+    ]
+    expected_pending = [
+        path.name for path in engine.migration_files() if path.name > baseline_cutoff
     ]
     for name in already_applied:
         engine.db.execute(engine._history_insert_sql(), [name])
     engine.db.commit()
 
     applied = engine.apply_pending()
-    assert applied == ["0017_create_table_worker_nodes.py"], applied
+    assert applied == expected_pending, applied
 
     row = engine.db.fetchone(
         f"SELECT * FROM {engine.dialect.quote_identifier('worker_nodes')} LIMIT 1"

@@ -7987,6 +7987,30 @@
           "type": "StringField",
           "unique": false
         },
+        "runtime_config": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "runtime_config",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
         "sandbox_type": {
           "auto_increment": false,
           "decimal_places": null,
@@ -8057,30 +8081,6 @@
           "nullable": false,
           "primary_key": false,
           "type": "StringField",
-          "unique": false
-        },
-        "type_config": {
-          "auto_increment": false,
-          "decimal_places": null,
-          "default": null,
-          "field": {
-            "auto_increment": false,
-            "default": null,
-            "index": false,
-            "max_length": null,
-            "nullable": true,
-            "primary_key": false,
-            "type": "TextField",
-            "unique": false
-          },
-          "foreign_key": null,
-          "index": false,
-          "max_digits": null,
-          "max_length": null,
-          "name": "type_config",
-          "nullable": true,
-          "primary_key": false,
-          "type": "TextField",
           "unique": false
         },
         "updated_at": {

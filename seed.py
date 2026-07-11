@@ -2,6 +2,7 @@
 """One-time seed: default platform permissions, roles, and first system_admin user."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from decimal import Decimal
@@ -53,6 +54,18 @@ def seed_reverse_decompile(admin_user_id: str) -> None:
 
     template = sandbox_repo.get_template_by_slug("reverse-decompile")
     if template is None:
+        # This is an example seed template only, created through the exact
+        # same dynamic runtime_config mechanism any admin-authored template
+        # uses — nothing about "reverse-decompile" is special-cased in code.
+        # Its "--no-ai" requirement lives in runtime.json below (see
+        # runtime/policy.py:validate_command_args), not a slug check.
+        runtime_config = json.dumps({
+            "runtime.json": json.dumps({
+                "required_args": ["--no-ai"],
+                "allowed_file_types": ["exe", "elf", "apk", "jar", "dex", "dll", "so", "ipa"],
+                "max_input_size_mb": 500,
+            }),
+        })
         template = sandbox_repo.create_template(
             name="Reverse Engineering - Decompile",
             slug="reverse-decompile",
@@ -65,7 +78,7 @@ def seed_reverse_decompile(admin_user_id: str) -> None:
             output_mount_path="/output",
             artifact_paths='["/output"]',
             input_required=True,
-            max_upload_mb=100,
+            max_upload_mb=500,
             sandbox_type="reverse_engineering",
             runtime_class="tool_job",
             interface_mode="terminal,background",
@@ -76,12 +89,13 @@ def seed_reverse_decompile(admin_user_id: str) -> None:
             pids_limit=256,
             allow_full_internet=False,
             max_timeout_hr=2,
-            type_config=None,
+            runtime_config=runtime_config,
             created_by_id=admin_user_id,
-            status="active",
-        )
-        sandbox_repo.update_template(
-            str(template.id), last_test_status="passed"
+            # Seeded as maintenance/untested, same as any admin-created
+            # template — an admin must run a real Test Launch from the UI
+            # before this becomes selectable, since a test pass can't be
+            # honestly claimed without one actually running.
+            status="maintenance",
         )
     sandbox_repo.upsert_template_plan(
         str(template.id), str(plan.id), is_enabled=True

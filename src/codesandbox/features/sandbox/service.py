@@ -947,7 +947,16 @@ def upload_instance_input(
     template = repository.get_template(str(inst.template_id))
     if template is None:
         return None, "Template not found."
-    configured_mb = int(template.max_upload_mb or 50)
+    template_runtime_config = parse_runtime_config(template.runtime_config)
+    allowed_file_types = [
+        str(t).lower().lstrip(".") for t in template_runtime_config.get("allowed_file_types") or []
+    ]
+    if allowed_file_types:
+        filename = str(getattr(file_storage, "filename", "") or "")
+        extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if extension not in allowed_file_types:
+            return None, f"This sandbox only accepts: {', '.join(allowed_file_types)}."
+    configured_mb = int(template_runtime_config.get("max_input_size_mb") or template.max_upload_mb or 50)
     max_upload_bytes = min(
         configured_mb * 1024 * 1024,
         get_settings().sandbox_max_upload_bytes,

@@ -24,9 +24,12 @@ else:
     import tty
 
 _TESTS_DIR   = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_DIR = os.path.dirname(_TESTS_DIR)
-_SRC_DIR     = os.path.join(_PROJECT_DIR, "src")
-for _p in (_SRC_DIR, _PROJECT_DIR):
+_SRC_DIR     = os.path.dirname(_TESTS_DIR)
+_REPO_ROOT   = os.path.dirname(_SRC_DIR)
+# _REPO_ROOT is what lets tests import the standalone `worker/` package
+# (worker/runtime/docker_client.py etc.) — it has its own pyproject.toml
+# and isn't part of the `codesandbox` package under src/.
+for _p in (_SRC_DIR, _REPO_ROOT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -89,9 +92,14 @@ _SUITE_MODULES = [
     ("system_rbac",   "tests.platform_admin.test_system_rbac"),
     ("platform_admin","tests.platform_admin.test_rbac"),
     ("sandbox",       "tests.sandbox.test_runtime_policy"),
-    ("worker",        "tests.worker.test_migrations"),
-    ("worker_routing", "tests.worker.test_multi_worker_routing"),
-    ("worker_registry", "tests.worker.test_registry"),
+    ("sandbox_templates", "tests.sandbox.test_dynamic_templates"),
+    ("billing",       "tests.sandbox.test_billing_idempotency"),
+    ("worker",        "tests.fleet.test_migrations"),
+    ("worker_routing", "tests.fleet.test_multi_worker_routing"),
+    ("worker_registry", "tests.fleet.test_registry"),
+    ("security_slugs", "tests.fleet.test_no_hardcoded_slugs"),
+    ("security_docker", "tests.fleet.test_docker_backend_guard"),
+    ("security_nats", "tests.fleet.test_nats_auth_guard"),
 ]
 
 

@@ -31,6 +31,7 @@ def _template(**overrides):
         "run_as_user": "65532:65532",
         "pids_limit": 256,
         "max_timeout_hr": 2,
+        "runtime_config": None,
     }
     data.update(overrides)
     return SimpleNamespace(**data)
@@ -157,7 +158,17 @@ def test_full_internet_blocked_for_reverse_engineering(ctx: TestContext) -> None
         raise AssertionError("Reverse-engineering templates must not resolve full internet access.")
 
 
-def test_reverse_decompile_requires_no_ai(ctx: TestContext) -> None:
+def _runtime_config(**settings) -> str:
+    import json as _json
+
+    return _json.dumps({"runtime.json": _json.dumps(settings)})
+
+
+def test_required_args_enforced_generically(ctx: TestContext) -> None:
+    """Any template can require a command-line flag via its own
+    runtime_config — this used to be a hardcoded `slug == "reverse-decompile"`
+    check; proving it works for an unrelated slug/template shows the
+    behavior is now entirely data-driven, not special-cased in code."""
     from codesandbox.features.sandbox.runtime.policy import (
         PolicyBuilder,
         RuntimePolicyError,
@@ -165,23 +176,72 @@ def test_reverse_decompile_requires_no_ai(ctx: TestContext) -> None:
     )
 
     effective = resolve_effective_plan(
-        _template(slug="reverse-decompile", sandbox_type="reverse_engineering"),
+        _template(slug="totally-unrelated-template", sandbox_type="reverse_engineering"),
         _plan(),
     )
     try:
         PolicyBuilder().build(
             _template(
-                slug="reverse-decompile",
+                slug="totally-unrelated-template",
                 sandbox_type="reverse_engineering",
                 docker_image="docker.io/admin12121/decompile:stable",
                 default_command="decompile /input/sample /output",
+                runtime_config=_runtime_config(required_args=["--no-ai"]),
             ),
             effective,
         )
     except RuntimePolicyError as exc:
         assert "--no-ai" in str(exc)
     else:
-        raise AssertionError("reverse-decompile must require the --no-ai command flag.")
+        raise AssertionError("required_args from runtime_config must be enforced regardless of slug.")
+
+    # And it must pass once the command actually includes the required flag —
+    # again, driven purely by this template's own config, not its name.
+    policy = PolicyBuilder().build(
+        _template(
+            slug="totally-unrelated-template",
+            sandbox_type="reverse_engineering",
+            docker_image="docker.io/admin12121/decompile:stable",
+            default_command="decompile --no-ai /input/sample /output",
+            runtime_config=_runtime_config(required_args=["--no-ai"]),
+        ),
+        effective,
+    )
+    assert policy["required_args"] == ["--no-ai"]
+
+
+def test_forbidden_args_enforced_generically(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.runtime.policy import (
+        PolicyBuilder,
+        RuntimePolicyError,
+        resolve_effective_plan,
+    )
+
+    effective = resolve_effective_plan(_template(), _plan())
+    try:
+        PolicyBuilder().build(
+            _template(
+                default_command="/bin/sh --danger-flag",
+                runtime_config=_runtime_config(forbidden_args=["--danger-flag"]),
+            ),
+            effective,
+        )
+    except RuntimePolicyError as exc:
+        assert "--danger-flag" in str(exc)
+    else:
+        raise AssertionError("forbidden_args from runtime_config must be enforced.")
+
+
+def test_no_hardcoded_template_slug_in_policy_builder(ctx: TestContext) -> None:
+    """Regression guard: PolicyBuilder must never branch on a literal
+    template slug/name again."""
+    import inspect
+
+    from codesandbox.features.sandbox.runtime import policy as policy_module
+
+    source = inspect.getsource(policy_module)
+    assert "reverse-decompile" not in source
+    assert "reverse_decompile" not in source
 
 
 def test_worker_filesystem_paths_stay_in_workspace(ctx: TestContext) -> None:
@@ -243,6 +303,8 @@ TESTS: list[TestCase] = [
     TestCase("effective plan merges overrides", "sandbox", test_effective_plan_merges_template_overrides),
     TestCase("disabled template plan rejected", "sandbox", test_disabled_template_plan_rejected_by_service),
     TestCase("reverse engineering no internet", "sandbox", test_full_internet_blocked_for_reverse_engineering),
-    TestCase("reverse decompile requires no-ai", "sandbox", test_reverse_decompile_requires_no_ai),
+    TestCase("required_args enforced generically", "sandbox", test_required_args_enforced_generically),
+    TestCase("forbidden_args enforced generically", "sandbox", test_forbidden_args_enforced_generically),
+    TestCase("no hardcoded slug in policy builder", "sandbox", test_no_hardcoded_template_slug_in_policy_builder),
     TestCase("worker filesystem path confinement", "sandbox", test_worker_filesystem_paths_stay_in_workspace),
 ]

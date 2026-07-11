@@ -22,8 +22,8 @@ PROTECTED_MOUNT_PREFIXES = ("/dev", "/etc", "/proc", "/run", "/sys", "/var/run")
 # map of virtual filename -> raw text content (the Config IDE is a generic
 # multi-file editor, not tied to any one template). This one reserved
 # filename is where a template's *validation* config lives — the generic,
-# data-driven replacement for what used to be hardcoded per-slug checks
-# (e.g. reverse-decompile's "--no-ai" requirement).
+# data-driven replacement for what used to be hardcoded per-slug checks on
+# a template's required/forbidden command-line flags.
 RUNTIME_CONFIG_FILE = "runtime.json"
 
 
@@ -49,7 +49,7 @@ def validate_command_args(
 ) -> str | None:
     """Generic required/forbidden-argument check for a template's
     default_command, sourced entirely from that template's own
-    runtime_config — replaces the old slug=="reverse-decompile" special
+    runtime_config — replaces what used to be a hardcoded per-slug special
     case with the same behavior driven by data instead of code."""
     if not required_args and not forbidden_args:
         return None
