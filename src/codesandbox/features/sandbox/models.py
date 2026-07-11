@@ -63,7 +63,7 @@ class SandboxTemplate(Model):
     last_tested_at = DateTimeField(nullable=True)
 
     # Type-specific config JSON — admin editable, worker reads
-    type_config = TextField(nullable=True)
+    runtime_config = TextField(nullable=True)
 
     created_by = ForeignKey(to=User, on_delete="SET NULL", nullable=True)
     created_at = DateTimeField(default=_now)

@@ -20,6 +20,14 @@ class MySQLDialect(BaseDialect):
     def auto_primary_key_sql(self):
         return "INT PRIMARY KEY AUTO_INCREMENT"
 
+    def default_clause(self, type_name, literal_sql):
+        # MySQL rejects a bare `DEFAULT 'literal'` on TEXT/BLOB/JSON columns —
+        # it only accepts a default there via the expression-default syntax
+        # (parenthesized), added in 8.0.13.
+        if type_name == "text":
+            return f"DEFAULT ({literal_sql})"
+        return f"DEFAULT {literal_sql}"
+
     def create_index_sql(self, table, name, columns, unique=False):
         kind = "UNIQUE INDEX" if unique else "INDEX"
         quoted_columns = ", ".join(self.quote_identifier(column) for column in columns)

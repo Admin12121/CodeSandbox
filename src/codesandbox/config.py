@@ -73,6 +73,9 @@ class Settings:
         self.sandbox_reconcile_interval_seconds = int(
             os.environ.get("SANDBOX_RECONCILE_INTERVAL_SECONDS", "30")
         )
+        self.worker_offline_timeout_seconds = int(
+            os.environ.get("WORKER_OFFLINE_TIMEOUT_SECONDS", "30")
+        )
         self.sandbox_artifact_retention_days = int(
             os.environ.get("SANDBOX_ARTIFACT_RETENTION_DAYS", "30")
         )

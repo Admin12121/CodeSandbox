@@ -20,6 +20,7 @@ from .service import (
     get_artifact_for_download,
     get_instance_artifacts_for_view,
     handle_worker_callback,
+    list_reconcile_candidates,
     make_worker_callback_token,
     save_plan,
     save_template,
@@ -92,7 +93,7 @@ def save_template_action():
         icon_path=icon_path,
         docker_image=request.form.get("docker_image", ""),
         sandbox_type=request.form.get("sandbox_type", "interactive"),
-        type_config=request.form.get("type_config", ""),
+        runtime_config=request.form.get("runtime_config", ""),
         created_by_id=str(cs.user.id),
         runtime_class=request.form.get("runtime_class", "container"),
         interface_mode=",".join(request.form.getlist("interface_mode")) or "terminal",
@@ -374,3 +375,51 @@ def worker_callback():
         str(claims.get("action") or ""),
     )
     return {"ok": True, "callback_token": refreshed, **result}
+
+
+@web_bp.post("/internal/worker/register")
+@csrf_exempt
+def worker_register():
+    """Worker fleet registration — called once at worker boot.
+
+    Not scoped to any one job, so it can't use the per-job callback token;
+    instead it's signed with the same shared SANDBOX_JOB_SIGNING_KEY already
+    used to sign/verify Redis job payloads.
+    """
+    from codesandbox.features.worker.service import register_worker, verify_worker_signature
+
+    body = request.get_json(silent=True) or {}
+    if not verify_worker_signature(body) or not str(body.get("worker_id") or ""):
+        abort(401)
+    node = register_worker(body)
+    return {"ok": True, "worker_id": node.worker_id, "status": node.status}
+
+
+@web_bp.post("/internal/worker/heartbeat")
+@csrf_exempt
+def worker_heartbeat():
+    from codesandbox.features.worker.service import record_heartbeat, verify_worker_signature
+
+    body = request.get_json(silent=True) or {}
+    if not verify_worker_signature(body) or not str(body.get("worker_id") or ""):
+        abort(401)
+    node = record_heartbeat(body)
+    if node is None:
+        abort(404)
+    return {"ok": True, "worker_id": node.worker_id, "status": node.status}
+
+
+@web_bp.post("/internal/worker/instances")
+@csrf_exempt
+def worker_instances():
+    """Called once at worker boot: everything the DB thinks this worker_id
+    still owns, so it can rebuild its in-memory registry against whatever
+    containers are still actually running (see docs/runtime-architecture.md,
+    "worker restart recovery")."""
+    from codesandbox.features.worker.service import verify_worker_signature
+
+    body = request.get_json(silent=True) or {}
+    worker_id = str(body.get("worker_id") or "")
+    if not verify_worker_signature(body) or not worker_id:
+        abort(401)
+    return {"ok": True, "instances": list_reconcile_candidates(worker_id)}

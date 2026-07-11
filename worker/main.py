@@ -16,8 +16,10 @@ import redis
 
 from runtime.artifacts import ObjectStore
 from runtime.callbacks import CallbackClient
+from runtime.docker_client import DockerClientFactory
 from runtime.docker_runner import DockerRunner
 from runtime.process import RuntimeRegistry
+from runtime.registry_client import WorkerRegistryClient
 from runtime.terminal import DockerTerminalManager
 
 logging.basicConfig(
@@ -28,8 +30,39 @@ log = logging.getLogger("codesandbox-worker")
 
 REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/0")
 NATS_URL = os.environ.get("NATS_URL", "nats://nats:4222")
+NATS_USER = os.environ.get("NATS_USER", "")
+NATS_PASSWORD = os.environ.get("NATS_PASSWORD", "")
 CONTROL_PLANE_URL = os.environ.get("CONTROL_PLANE_URL", "http://app:5000")
-QUEUE_KEY = "codesandbox:sandbox-jobs"
+
+if "WORKER_ID" in os.environ:
+    WORKER_ID = os.environ["WORKER_ID"]
+else:
+    WORKER_ID = platform.node()
+    log.warning(
+        "WORKER_ID is not set — falling back to the container hostname (%s), "
+        "which is not guaranteed stable across restarts. Set WORKER_ID "
+        "explicitly for any multi-worker or production deployment.",
+        WORKER_ID,
+    )
+
+QUEUE_KEY = f"codesandbox:sandbox-jobs:{WORKER_ID}"
+_TERMINAL_CTL_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.terminal.ctl"
+_TERMINAL_INPUT_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.terminal.input"
+_FS_REQUEST_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.fs.request"
+_TOTAL_VCPU = int(os.environ.get("SANDBOX_WORKER_TOTAL_VCPU", "8"))
+_TOTAL_RAM_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_RAM_GB", "16"))
+_TOTAL_DISK_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_DISK_GB", "100"))
+_HEARTBEAT_INTERVAL_SECONDS = int(os.environ.get("SANDBOX_WORKER_HEARTBEAT_SECONDS", "10"))
+
+
+def _require_nats_auth_in_production() -> None:
+    if os.environ.get("ENVIRONMENT", "development").strip().lower() == "production" and not (
+        NATS_USER and NATS_PASSWORD
+    ):
+        raise RuntimeError(
+            "NATS_USER/NATS_PASSWORD are required when ENVIRONMENT=production — "
+            "refusing to start the worker unauthenticated against NATS."
+        )
 
 
 def verify_job(job: dict) -> None:
@@ -64,7 +97,8 @@ class WorkerApp:
         self.nc = None
         self._store = None
         self._store_lock = threading.Lock()
-        self.terminal = DockerTerminalManager(self.registry, self.publish)
+        self.terminal = DockerTerminalManager(self.registry, self.publish, WORKER_ID)
+        self.registry_client = WorkerRegistryClient(CONTROL_PLANE_URL, WORKER_ID)
 
     @property
     def store(self) -> ObjectStore:
@@ -88,8 +122,11 @@ class WorkerApp:
 
     @staticmethod
     def _instance_id(subject: str) -> str | None:
+        # codesandbox.worker.<worker_id>.sandbox.<instance_id>.terminal.ctl (etc)
         parts = subject.split(".")
-        return parts[3] if len(parts) >= 5 else None
+        if len(parts) >= 7 and parts[1] == "worker" and parts[3] == "sandbox":
+            return parts[4]
+        return None
 
     async def _terminal_control(self, message) -> None:
         instance_id = self._instance_id(message.subject)
@@ -140,17 +177,26 @@ class WorkerApp:
         async def run() -> None:
             while self.running:
                 try:
-                    self.nc = await nats.connect(NATS_URL, name="codesandbox-docker-worker")
+                    self.nc = await nats.connect(
+                        NATS_URL,
+                        name="codesandbox-docker-worker",
+                        user=NATS_USER or None,
+                        password=NATS_PASSWORD or None,
+                    )
+                    # Worker-scoped subjects (not a global wildcard): this worker
+                    # process can only ever receive terminal/fs traffic addressed
+                    # to its own worker_id — a structural fix, not just the old
+                    # self-filter-via-registry-lookup pattern.
                     await self.nc.subscribe(
-                        "codesandbox.sandbox.terminal.*.ctl", cb=self._terminal_control
+                        _TERMINAL_CTL_SUBJECT, cb=self._terminal_control
                     )
                     await self.nc.subscribe(
-                        "codesandbox.sandbox.terminal.*.input", cb=self._terminal_input
+                        _TERMINAL_INPUT_SUBJECT, cb=self._terminal_input
                     )
                     await self.nc.subscribe(
-                        "codesandbox.sandbox.fs.*.request", cb=self._filesystem
+                        _FS_REQUEST_SUBJECT, cb=self._filesystem
                     )
-                    log.info("NATS connected url=%s", NATS_URL)
+                    log.info("NATS connected url=%s worker_id=%s", NATS_URL, WORKER_ID)
                     return
                 except Exception as exc:
                     log.warning("NATS connection failed error=%s", exc)
@@ -215,6 +261,46 @@ class WorkerApp:
         callback.try_send(event, {"reason": reason, "exit_code": exit_code})
         self._publish_event(runner.instance_id, event, {"reason": reason, "exit_code": exit_code})
 
+    def _monitor_loop(self, runner: DockerRunner, callback: CallbackClient, instance_id: str) -> None:
+        """Poll a running container until it exits, times out, breaches its
+        disk quota, or is told to stop — shared by freshly-started jobs and
+        containers reattached at worker boot (see _reattach_running)."""
+        timeout_at = runner.started_monotonic + int(runner.policy["max_timeout_sec"])
+        next_heartbeat = 0.0
+        while not runner.external_control.wait(1):
+            if not runner.is_running:
+                runner.container.reload()
+                exit_code = runner.container.attrs.get("State", {}).get("ExitCode")
+                self._finish(runner, callback, "stopped", "process_exited", exit_code)
+                return
+            metrics = runner.stats()
+            self.publish(f"codesandbox.sandbox.metrics.{instance_id}", metrics)
+            if metrics["disk_used_bytes"] > metrics["disk_limit_bytes"]:
+                runner.kill()
+                self._finish(runner, callback, "failed", "workspace_limit_exceeded", 137)
+                return
+            now = time.monotonic()
+            if now >= timeout_at:
+                result = runner.stop()
+                self._finish(runner, callback, "expired", "timeout", result.get("exit_code"))
+                return
+            if now >= next_heartbeat:
+                directive = callback.try_send("heartbeat", {
+                    "runtime_id": runner.container.id,
+                    "worker_id": WORKER_ID,
+                })
+                next_heartbeat = now + 10
+                if directive.get("command") == "stop":
+                    result = runner.stop()
+                    self._finish(
+                        runner,
+                        callback,
+                        "stopped",
+                        str(directive.get("reason") or "control_plane_stop"),
+                        result.get("exit_code"),
+                    )
+                    return
+
     def _start_job(self, job: dict) -> None:
         callback = self._callback(job)
         instance_id = str(job["instance_id"])
@@ -231,42 +317,7 @@ class WorkerApp:
             callback.send("started", runtime_data)
             self._publish_event(instance_id, "started", runtime_data)
             threading.Thread(target=self._stream_logs, args=(runner,), daemon=True).start()
-
-            timeout_at = time.monotonic() + int(runner.policy["max_timeout_sec"])
-            next_heartbeat = 0.0
-            while not runner.external_control.wait(1):
-                if not runner.is_running:
-                    runner.container.reload()
-                    exit_code = runner.container.attrs.get("State", {}).get("ExitCode")
-                    self._finish(runner, callback, "stopped", "process_exited", exit_code)
-                    return
-                metrics = runner.stats()
-                self.publish(f"codesandbox.sandbox.metrics.{instance_id}", metrics)
-                if metrics["disk_used_bytes"] > metrics["disk_limit_bytes"]:
-                    runner.kill()
-                    self._finish(runner, callback, "failed", "workspace_limit_exceeded", 137)
-                    return
-                now = time.monotonic()
-                if now >= timeout_at:
-                    result = runner.stop()
-                    self._finish(runner, callback, "expired", "timeout", result.get("exit_code"))
-                    return
-                if now >= next_heartbeat:
-                    directive = callback.try_send("heartbeat", {
-                        "runtime_id": runner.container.id,
-                        "worker_id": os.environ.get("WORKER_ID", platform.node()),
-                    })
-                    next_heartbeat = now + 10
-                    if directive.get("command") == "stop":
-                        result = runner.stop()
-                        self._finish(
-                            runner,
-                            callback,
-                            "stopped",
-                            str(directive.get("reason") or "control_plane_stop"),
-                            result.get("exit_code"),
-                        )
-                        return
+            self._monitor_loop(runner, callback, instance_id)
         except Exception as exc:
             log.exception("start failed instance=%s", instance_id[:8])
             if runner is not None:
@@ -329,16 +380,110 @@ class WorkerApp:
         target = self._start_job if job["action"] == "start" else self._control_job
         threading.Thread(target=target, args=(job,), daemon=True).start()
 
-    def run(self) -> None:
-        threading.Thread(target=self._start_nats, daemon=True).start()
-        client = redis.from_url(REDIS_URL, decode_responses=True)
+    def _current_load(self) -> tuple[int, int, int]:
+        runners = [runner for _, runner in self.registry.all()]
+        used_vcpu = sum(int(runner.policy.get("vcpu") or 0) for runner in runners)
+        used_ram_gb = sum(int(runner.policy.get("ram_gb") or 0) for runner in runners)
+        return used_vcpu, used_ram_gb, len(runners)
 
+    def _reattach_running(self) -> None:
+        """Boot-time registry rebuild (Phase 5): discover containers this
+        worker_id created (by Docker label) and cross-reference them against
+        what the control plane's DB thinks is still running, so a worker
+        restart doesn't strand terminal/filesystem attachment or leave a
+        container's lifecycle unmonitored."""
+        try:
+            docker_client = DockerClientFactory.create()
+            containers = docker_client.containers.list(
+                all=True, filters={"label": f"codesandbox.worker_id={WORKER_ID}"}
+            )
+        except Exception as exc:
+            log.warning("container discovery failed error=%s", exc)
+            return
+        if not containers:
+            return
+
+        candidates = {
+            str(item["instance_id"]): item for item in self.registry_client.list_instances()
+        }
+        for container in containers:
+            instance_id = container.labels.get("codesandbox.instance_id")
+            if not instance_id:
+                continue
+            candidate = candidates.get(instance_id)
+            if candidate is None:
+                log.warning(
+                    "orphaned container found instance=%s container=%s — no matching "
+                    "live DB record for this worker; leaving it for manual/reconciler cleanup",
+                    instance_id[:8], container.name,
+                )
+                continue
+            job = {
+                "instance_id": instance_id,
+                "job_id": candidate["job_id"],
+                "runtime_id": candidate["runtime_id"],
+                "runtime_provider": candidate.get("runtime_provider") or "docker",
+                "workspace_volume_id": candidate.get("workspace_volume_id"),
+                "runtime_policy": candidate.get("runtime_policy") or {},
+                "callback_token": candidate["callback_token"],
+            }
+            try:
+                runner = DockerRunner.recover(job, self.publish, self.store)
+            except Exception as exc:
+                log.warning("reattach failed instance=%s error=%s", instance_id[:8], exc)
+                continue
+            callback = self._callback(job)
+            if not runner.is_running:
+                runner.container.reload()
+                exit_code = runner.container.attrs.get("State", {}).get("ExitCode")
+                self._finish(runner, callback, "stopped", "process_exited_while_worker_offline", exit_code)
+                continue
+            self.registry.register(instance_id, runner)
+            self._publish_event(instance_id, "started", {"reason": "worker_restart_reattach"})
+            log.info("reattached instance=%s runtime_id=%s", instance_id[:8], job["runtime_id"][:12])
+            threading.Thread(target=self._stream_logs, args=(runner,), daemon=True).start()
+            threading.Thread(
+                target=self._monitor_loop, args=(runner, callback, instance_id), daemon=True
+            ).start()
+
+    def _register_loop(self) -> None:
+        capabilities = {"runtime_class": ["container", "tool_job"]}
+        while self.running:
+            ok = self.registry_client.register(
+                hostname=platform.node(),
+                capabilities=capabilities,
+                total_vcpu=_TOTAL_VCPU,
+                total_ram_gb=_TOTAL_RAM_GB,
+                total_disk_gb=_TOTAL_DISK_GB,
+            )
+            if ok:
+                log.info("registered with control plane worker_id=%s", WORKER_ID)
+                return
+            time.sleep(5)
+
+    def _heartbeat_loop(self) -> None:
+        while self.running:
+            used_vcpu, used_ram_gb, running_instances = self._current_load()
+            self.registry_client.heartbeat(
+                used_vcpu=used_vcpu,
+                used_ram_gb=used_ram_gb,
+                running_instances=running_instances,
+            )
+            time.sleep(_HEARTBEAT_INTERVAL_SECONDS)
+
+    def run(self) -> None:
         def shutdown(_signal, _frame) -> None:
             self.running = False
 
         signal.signal(signal.SIGTERM, shutdown)
         signal.signal(signal.SIGINT, shutdown)
-        log.info("worker starting redis=%s nats=%s", REDIS_URL, NATS_URL)
+
+        threading.Thread(target=self._start_nats, daemon=True).start()
+        self._register_loop()
+        self._reattach_running()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
+        client = redis.from_url(REDIS_URL, decode_responses=True)
+        log.info("worker starting redis=%s nats=%s worker_id=%s", REDIS_URL, NATS_URL, WORKER_ID)
         while self.running:
             try:
                 result = client.brpop(QUEUE_KEY, timeout=2)
@@ -362,6 +507,8 @@ class WorkerApp:
 
 
 def main() -> None:
+    DockerClientFactory.validate_production_safety()
+    _require_nats_auth_in_production()
     WorkerApp().run()
 
 

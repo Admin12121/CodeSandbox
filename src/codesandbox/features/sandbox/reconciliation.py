@@ -78,6 +78,7 @@ def _queue_cleanup(instance, now: datetime, reason: str, final_status: str) -> b
         "job_id": job_id,
         "action": "reconcile",
         "instance_id": instance_id,
+        "worker_id": updated.worker_id,
         "runtime_id": updated.runtime_id,
         "runtime_provider": updated.runtime_provider,
         "workspace_volume_id": updated.workspace_volume_id,
@@ -114,10 +115,21 @@ def _queue_cleanup(instance, now: datetime, reason: str, final_status: str) -> b
     return True
 
 
+def mark_stale_workers_offline() -> int:
+    """Flip any WorkerNode whose heartbeat has gone quiet to offline, so the
+    scheduler stops assigning new instances to it and routing code (asgi.py)
+    starts returning a clear error instead of publishing into the void."""
+    from codesandbox.features.worker import repository as worker_repository
+
+    settings = get_settings()
+    stale = worker_repository.mark_stale_workers_offline(settings.worker_offline_timeout_seconds)
+    return len(stale)
+
+
 def reconcile_stuck_instances(now: datetime | None = None) -> dict[str, int]:
     now = now or datetime.now(timezone.utc)
     settings = get_settings()
-    counts = {"checked": 0, "queued": 0, "finalized": 0}
+    counts = {"checked": 0, "queued": 0, "finalized": 0, "workers_marked_offline": mark_stale_workers_offline()}
 
     for instance in repository.list_live_instances():
         counts["checked"] += 1

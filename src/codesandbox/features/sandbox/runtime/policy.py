@@ -18,6 +18,50 @@ NETWORK_ALIASES = {
 SUPPORTED_NETWORK_MODES = {"disabled", "restricted", "full_internet"}
 PROTECTED_MOUNT_PREFIXES = ("/dev", "/etc", "/proc", "/run", "/sys", "/var/run")
 
+# The admin "Config" tab persists `SandboxTemplate.runtime_config` as a JSON
+# map of virtual filename -> raw text content (the Config IDE is a generic
+# multi-file editor, not tied to any one template). This one reserved
+# filename is where a template's *validation* config lives — the generic,
+# data-driven replacement for what used to be hardcoded per-slug checks
+# (e.g. reverse-decompile's "--no-ai" requirement).
+RUNTIME_CONFIG_FILE = "runtime.json"
+
+
+def parse_runtime_config(runtime_config: Any) -> dict:
+    """Extract the structured validation config (required_args,
+    forbidden_args, allowed_file_types, max_input_size_mb) from a template's
+    runtime_config files blob. Malformed/absent config fails open to "no
+    extra restrictions" — it's admin-authored convenience validation, not a
+    security boundary (those stay as fixed worker-side invariants)."""
+    if not runtime_config:
+        return {}
+    try:
+        files = json.loads(runtime_config) if isinstance(runtime_config, str) else runtime_config
+        raw = files.get(RUNTIME_CONFIG_FILE) if isinstance(files, dict) else None
+        parsed = json.loads(raw) if raw else {}
+        return parsed if isinstance(parsed, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def validate_command_args(
+    command: str | list[str] | None, required_args: list[str], forbidden_args: list[str]
+) -> str | None:
+    """Generic required/forbidden-argument check for a template's
+    default_command, sourced entirely from that template's own
+    runtime_config — replaces the old slug=="reverse-decompile" special
+    case with the same behavior driven by data instead of code."""
+    if not required_args and not forbidden_args:
+        return None
+    text = " ".join(command) if isinstance(command, list) else str(command or "")
+    missing = [arg for arg in required_args if arg not in text]
+    if missing:
+        return f"Default command must include: {', '.join(missing)}."
+    present = [arg for arg in forbidden_args if arg in text]
+    if present:
+        return f"Default command must not include: {', '.join(present)}."
+    return None
+
 
 class RuntimePolicyError(ValueError):
     pass
@@ -260,8 +304,16 @@ class PolicyBuilder:
 
         command = _command(_value(template, "default_command"))
         slug = str(_value(template, "slug", ""))
-        if slug == "reverse-decompile" and command and "--no-ai" not in command:
-            raise RuntimePolicyError("The reverse-decompile command must include --no-ai.")
+        template_runtime_config = parse_runtime_config(_value(template, "runtime_config"))
+        required_args = [str(a) for a in template_runtime_config.get("required_args") or []]
+        forbidden_args = [str(a) for a in template_runtime_config.get("forbidden_args") or []]
+        command_error = validate_command_args(command, required_args, forbidden_args)
+        if command_error:
+            raise RuntimePolicyError(command_error)
+        allowed_file_types = [
+            str(t).lower() for t in template_runtime_config.get("allowed_file_types") or []
+        ]
+        max_input_size_mb = template_runtime_config.get("max_input_size_mb")
 
         return {
             "version": POLICY_VERSION,
@@ -287,7 +339,12 @@ class PolicyBuilder:
             "output_mount_path": output_mount,
             "artifact_paths": artifact_paths,
             "input_required": bool(_value(template, "input_required", False)),
-            "max_upload_bytes": max(1, int(_value(template, "max_upload_mb", 50))) * 1024 * 1024,
+            "max_upload_bytes": max(
+                1, int(max_input_size_mb or _value(template, "max_upload_mb", 50) or 50)
+            ) * 1024 * 1024,
+            "allowed_file_types": allowed_file_types,
+            "required_args": required_args,
+            "forbidden_args": forbidden_args,
             "allow_root": bool(_value(template, "allow_root", False)),
             "read_only_root": bool(_value(template, "read_only_root", True)),
             "run_as_user": str(_value(template, "run_as_user", "") or ""),

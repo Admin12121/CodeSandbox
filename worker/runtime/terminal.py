@@ -7,9 +7,10 @@ log = logging.getLogger("codesandbox-worker.terminal")
 
 
 class DockerTerminalManager:
-    def __init__(self, registry, publish) -> None:
+    def __init__(self, registry, publish, worker_id: str) -> None:
         self.registry = registry
         self.publish = publish
+        self.worker_id = worker_id
         self._sessions: dict[str, dict] = {}
         self._lock = threading.RLock()
 
@@ -18,7 +19,7 @@ class DockerTerminalManager:
         return getattr(wrapper, "_sock", wrapper)
 
     def _subject(self, instance_id: str) -> str:
-        return f"codesandbox.sandbox.terminal.{instance_id}.output"
+        return f"codesandbox.worker.{self.worker_id}.sandbox.{instance_id}.terminal.output"
 
     def open(self, instance_id: str) -> None:
         with self._lock:

@@ -29,6 +29,16 @@ from codesandbox.config import get_settings
 log = logging.getLogger(__name__)
 
 NATS_URL = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
+NATS_USER = os.environ.get("NATS_USER", "")
+NATS_PASSWORD = os.environ.get("NATS_PASSWORD", "")
+
+if os.environ.get("ENVIRONMENT", "development").strip().lower() == "production" and not (
+    NATS_USER and NATS_PASSWORD
+):
+    raise RuntimeError(
+        "NATS_USER/NATS_PASSWORD are required when ENVIRONMENT=production — "
+        "refusing to start the control plane unauthenticated against NATS."
+    )
 
 # Must match the salt used by the token-issuing route in features/sandbox/routes.py.
 _WS_TOKEN_SALT = "sandbox.monitor-ws"
@@ -47,7 +57,12 @@ async def _get_nats() -> "_nats.aio.client.Client":
         async with _nc_lock:
             if _nc is None or _nc.is_closed:
                 try:
-                    _nc = await _nats.connect(NATS_URL, name="control-plane-ws")
+                    _nc = await _nats.connect(
+                        NATS_URL,
+                        name="control-plane-ws",
+                        user=NATS_USER or None,
+                        password=NATS_PASSWORD or None,
+                    )
                     log.info("NATS connected: %s", NATS_URL)
                 except Exception as exc:
                     log.warning("NATS unavailable (%s) — monitor WS will not receive metrics", exc)
@@ -86,6 +101,27 @@ def _verify_ws_token(
     if not isinstance(payload, dict) or payload.get("instance_id") != instance_id:
         return False
     return payload.get("purpose", "monitor") == required_purpose
+
+
+def _lookup_owning_worker_sync(instance_id: str) -> tuple[str | None, str | None]:
+    """Returns (worker_id, error) — error is a human-readable reason the
+    terminal/filesystem request cannot be routed (missing/offline worker)."""
+    from codesandbox.features.sandbox import repository as sandbox_repository
+    from codesandbox.features.worker.service import is_worker_online
+
+    inst = sandbox_repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Sandbox instance not found."
+    worker_id = str(inst.worker_id or "")
+    if not worker_id:
+        return None, "This instance has no assigned worker yet."
+    if not is_worker_online(worker_id):
+        return None, f"Worker '{worker_id}' is offline."
+    return worker_id, None
+
+
+async def _lookup_owning_worker(instance_id: str) -> tuple[str | None, str | None]:
+    return await asyncio.to_thread(_lookup_owning_worker_sync, instance_id)
 
 
 # ── Per-instance NATS fan-out (one subscription serves every connected viewer) ─
@@ -216,16 +252,25 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
     Auth: same short-lived signed token pattern as ws_sandbox_monitor, scoped
     to purpose="terminal" so a monitor token can't be replayed here.
 
-    Bridges to the worker over NATS:
-      publish   codesandbox.sandbox.terminal.<id>.ctl    {"action":"open"|"close"|"resize",...}
-      publish   codesandbox.sandbox.terminal.<id>.input  {"data": "<keystrokes>"}
-      subscribe codesandbox.sandbox.terminal.<id>.output {"type":"ready"|"output"|"closed",...}
+    Routed to the exact worker that owns the instance (looked up before
+    anything is published — see _lookup_owning_worker) rather than
+    broadcast, since more than one worker process may be running:
+      publish   codesandbox.worker.<worker_id>.sandbox.<id>.terminal.ctl    {"action":"open"|"close"|"resize",...}
+      publish   codesandbox.worker.<worker_id>.sandbox.<id>.terminal.input  {"data": "<keystrokes>"}
+      subscribe codesandbox.worker.<worker_id>.sandbox.<id>.terminal.output {"type":"ready"|"output"|"closed",...}
     """
     instance_id: str = websocket.path_params["instance_id"]
     token = websocket.query_params.get("token", "")
 
     if not _verify_ws_token(token, instance_id, required_purpose="terminal"):
         await websocket.close(code=1008)
+        return
+
+    worker_id, worker_error = await _lookup_owning_worker(instance_id)
+    if worker_error:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"type": "error", "message": worker_error}))
+        await websocket.close()
         return
 
     await websocket.accept()
@@ -237,9 +282,9 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
         await websocket.close()
         return
 
-    ctl_subject = f"codesandbox.sandbox.terminal.{instance_id}.ctl"
-    input_subject = f"codesandbox.sandbox.terminal.{instance_id}.input"
-    output_subject = f"codesandbox.sandbox.terminal.{instance_id}.output"
+    ctl_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.terminal.ctl"
+    input_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.terminal.input"
+    output_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.terminal.output"
 
     queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=500)
 
@@ -302,20 +347,25 @@ _FS_REQUEST_TIMEOUT = 5  # seconds — worker should reply near-instantly (local
 
 
 async def _fs_request(instance_id: str, payload: dict) -> tuple[dict | None, int]:
-    """Round-trip a filesystem op to the worker over NATS request-reply.
+    """Round-trip a filesystem op to the exact worker that owns this
+    instance over NATS request-reply (looked up first — see
+    _lookup_owning_worker — rather than broadcast to every worker).
 
     Returns (result, http_status). result is None only when the worker never
     replied at all (not running / NATS down) — actual op failures (bad path,
     file too large, ...) come back as a normal {"ok": false, "error": ...}
     body from the worker.
     """
+    worker_id, worker_error = await _lookup_owning_worker(instance_id)
+    if worker_error:
+        return {"ok": False, "error": worker_error}, 409
     try:
         nc = await _get_nats()
     except Exception:
         return None, 503
     try:
         msg = await nc.request(
-            f"codesandbox.sandbox.fs.{instance_id}.request",
+            f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.fs.request",
             json.dumps(payload).encode(),
             timeout=_FS_REQUEST_TIMEOUT,
         )

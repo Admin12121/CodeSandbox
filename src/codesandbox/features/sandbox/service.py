@@ -21,7 +21,9 @@ from .runtime.policy import (
     PolicyBuilder,
     RuntimePolicyError,
     normalize_network_mode,
+    parse_runtime_config,
     resolve_effective_plan,
+    validate_command_args,
 )
 from .runtime.scheduler import get_runtime_driver
 from .runtime.drivers.base import UnsupportedRuntimeError
@@ -415,7 +417,7 @@ def _template_dict(t) -> dict:
         "status": t.status,
         "last_test_status": t.last_test_status or "untested",
         "last_tested_at": t.last_tested_at,
-        "type_config": t.type_config or "",
+        "runtime_config": t.runtime_config or "",
         "created_at": t.created_at,
         "updated_at": t.updated_at,
         "active_instances": repository.count_active_instances_for_template(str(t.id)),
@@ -429,7 +431,7 @@ def save_template(
     icon_path: str,
     docker_image: str,
     sandbox_type: str,
-    type_config: str,
+    runtime_config: str,
     created_by_id: str | None,
     slug: str = "",
     runtime_class: str = "container",
@@ -473,8 +475,14 @@ def save_template(
     max_upload_mb = max(1, min(1024, int(max_upload_mb or 50)))
     pids_limit = max(32, min(4096, int(pids_limit or 256)))
     default_command = default_command.strip()
-    if (slug == "reverse-decompile" or (not slug and _slugify(name) == "reverse-decompile")) and default_command and "--no-ai" not in default_command:
-        return None, "Reverse decompile must use --no-ai."
+    parsed_runtime_config = parse_runtime_config(runtime_config)
+    command_error = validate_command_args(
+        default_command,
+        [str(a) for a in parsed_runtime_config.get("required_args") or []],
+        [str(a) for a in parsed_runtime_config.get("forbidden_args") or []],
+    )
+    if command_error:
+        return None, command_error
     mounts = [working_dir.strip(), input_mount_path.strip(), output_mount_path.strip()]
     if any(not path.startswith("/") for path in mounts) or len(set(mounts)) != 3:
         return None, "Workspace, input, and output mounts must be distinct absolute paths."
@@ -524,7 +532,7 @@ def save_template(
         update_kwargs = dict(
             name=name, slug=slug, description=description or None,
             icon_path=icon_path or None,
-            type_config=type_config.strip() or None,
+            runtime_config=runtime_config.strip() or None,
             **runtime_values,
         )
 
@@ -545,7 +553,7 @@ def save_template(
         t = repository.create_template(
             name=name, slug=slug, description=description or None,
             icon_path=icon_path or None,
-            type_config=type_config.strip() or None,
+            runtime_config=runtime_config.strip() or None,
             created_by_id=created_by_id,
             **runtime_values,
         )
@@ -579,7 +587,7 @@ def set_template_status(template_id: str, status: str) -> str | None:
 
 
 def save_template_config(template_id: str, config_json: str) -> None:
-    repository.update_template(template_id, type_config=config_json.strip() or None)
+    repository.update_template(template_id, runtime_config=config_json.strip() or None)
 
 
 def delete_template(template_id: str) -> str | None:
@@ -1101,25 +1109,48 @@ def start_instance(
     job_id = str(_uuid.uuid4())
     callback_token = make_worker_callback_token(job_id, instance_id, "start")
 
+    tier = effective_plan.tier(workspace_type)
+
+    from codesandbox.features.worker.service import (
+        release_worker_capacity,
+        reserve_worker_capacity,
+        select_worker_for_instance,
+    )
+
+    worker_node = select_worker_for_instance(int(tier["vcpu"]), int(tier["ram_gb"]))
+    if worker_node is None:
+        return None, "No worker capacity is currently available. Try again shortly."
+    worker_id = worker_node.worker_id
+
     job_payload = {
         "job_id": job_id,
         "action": "start",
         "instance_id": instance_id,
+        "worker_id": worker_id,
         "runtime_policy": runtime_policy,
         "callback_url": callback_url,
         "callback_token": callback_token,
+        # Container label metadata only (Phase 5 fleet reconciliation) — not
+        # runtime-policy-affecting, so it lives on the job, not the policy.
+        "labels": {
+            "template_id": str(inst.template_id),
+            "plan_id": str(inst.plan_id or ""),
+            "owner_type": workspace_type,
+            "owner_id": str(inst.workspace_org_id or inst.workspace_user_id or ""),
+        },
     }
 
-    tier = effective_plan.tier(workspace_type)
     minimum_required = (
         Decimal(str(tier["cost_hr"]))
         * Decimal(int(runtime_policy["min_billable_sec"]))
         / Decimal(3600)
     ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
     now = datetime.now(timezone.utc)
+    reserve_worker_capacity(worker_id, vcpu=int(tier["vcpu"]), ram_gb=int(tier["ram_gb"]))
     inst, begin_error = repository.begin_instance_start(
         instance_id,
         actor=actor,
+        worker_id=worker_id,
         worker_job_id=job_id,
         runtime_policy=json.dumps(runtime_policy, separators=(",", ":")),
         runtime_provider=str(runtime_policy["runtime_provider"]),
@@ -1135,10 +1166,12 @@ def start_instance(
         minimum_required=minimum_required,
     )
     if begin_error or inst is None:
+        release_worker_capacity(worker_id, vcpu=int(tier["vcpu"]), ram_gb=int(tier["ram_gb"]))
         return None, begin_error or "Could not start instance."
     try:
         enqueue_job(job_payload)
     except Exception:
+        release_worker_capacity(worker_id, vcpu=int(tier["vcpu"]), ram_gb=int(tier["ram_gb"]))
         repository.release_instance_reservation(instance_id)
         repository.transition_instance_status(
             instance_id,
@@ -1167,6 +1200,13 @@ def stop_instance(
         return None, "You do not have permission to stop this instance."
     if inst.status not in ("running", "provisioning"):
         return None, f"Cannot stop an instance in '{inst.status}' state."
+    if not inst.worker_id:
+        return None, "This instance has no assigned worker yet — try again shortly."
+
+    from codesandbox.features.worker.service import is_worker_online
+
+    if not is_worker_online(inst.worker_id):
+        return None, f"Worker '{inst.worker_id}' is offline — it cannot be reached to stop this instance."
 
     actor = f"user:{actor_user_id}" if actor_user_id else "system"
     callback_url = get_settings().control_plane_internal_url + "/internal/worker/callback"
@@ -1187,6 +1227,7 @@ def stop_instance(
             "job_id": job_id,
             "action": "stop",
             "instance_id": instance_id,
+            "worker_id": transitioned.worker_id,
             "reason": "user_stop",
             "runtime_id": transitioned.runtime_id,
             "runtime_provider": transitioned.runtime_provider,
@@ -1204,6 +1245,27 @@ def stop_instance(
         )
         return None, "Runtime queue is unavailable. Reconciliation will retry cleanup."
     return _instance_dict(transitioned), None
+
+
+def list_reconcile_candidates(worker_id: str) -> list[dict]:
+    """Everything this worker_id might still have a live container for,
+    with a fresh callback token per instance — called once at worker boot
+    so it can reattach to containers that outlived its own process restart."""
+    result = []
+    for inst in repository.list_runtime_backed_instances_for_worker(worker_id):
+        job_id = str(inst.worker_job_id or "")
+        if not job_id or not inst.runtime_id:
+            continue
+        result.append({
+            "instance_id": str(inst.id),
+            "job_id": job_id,
+            "runtime_id": inst.runtime_id,
+            "runtime_provider": inst.runtime_provider,
+            "workspace_volume_id": inst.workspace_volume_id,
+            "runtime_policy": json.loads(inst.runtime_policy or "{}"),
+            "callback_token": make_worker_callback_token(job_id, str(inst.id), "start"),
+        })
+    return result
 
 
 def _mark_template_test_result(inst, status: str) -> None:
@@ -1224,6 +1286,33 @@ def _safe_int(value) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _upsert_worker_runtime(inst, *, status: str) -> None:
+    if not inst.worker_id:
+        return
+    from codesandbox.features.worker.repository import upsert_runtime
+
+    upsert_runtime(
+        instance_id=str(inst.id),
+        worker_id=str(inst.worker_id),
+        runtime_provider=inst.runtime_provider,
+        runtime_id=inst.runtime_id,
+        workspace_volume_id=inst.workspace_volume_id,
+        status=status,
+    )
+
+
+def _release_worker_capacity_for(inst) -> None:
+    if not inst.worker_id:
+        return
+    from codesandbox.features.worker.service import release_worker_capacity
+
+    release_worker_capacity(
+        inst.worker_id,
+        vcpu=int(inst.allocated_vcpu or 0),
+        ram_gb=int(inst.allocated_ram_gb or 0),
+    )
 
 
 def _charge_completed_instance(inst) -> None:
@@ -1290,6 +1379,7 @@ def handle_worker_callback(
             return {}, f"Cannot accept started event in '{inst.status}' state."
         repository.log_instance_event(instance_id, "started", actor="worker", detail=detail)
         _mark_template_test_result(inst, "passed")
+        _upsert_worker_runtime(updated, status="running")
 
     elif event == "heartbeat":
         updated = repository.transition_instance_status(
@@ -1365,6 +1455,8 @@ def handle_worker_callback(
         if updated is None:
             return {}, f"Cannot finalize instance in '{current.status if current else inst.status}' state."
         _charge_completed_instance(updated)
+        _release_worker_capacity_for(updated)
+        _upsert_worker_runtime(updated, status=final_status)
         repository.log_instance_event(instance_id, final_status, actor="worker", detail=detail)
         if final_status != "stopped":
             _mark_template_test_result(inst, "failed")
@@ -1392,6 +1484,8 @@ def handle_worker_callback(
             updated.billing_status = "not_charged"
             updated.charged_amount = Decimal("0")
             updated.save()
+        _release_worker_capacity_for(updated)
+        _upsert_worker_runtime(updated, status="failed")
         repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)
         _mark_template_test_result(inst, "failed")
 
@@ -1414,6 +1508,7 @@ def handle_worker_callback(
             "job_id": kill_job_id,
             "action": "kill",
             "instance_id": instance_id,
+            "worker_id": transitioned.worker_id,
             "reason": "escape_attempt",
             "callback_url": get_settings().control_plane_internal_url + "/internal/worker/callback",
             "callback_token": callback_token,

@@ -27,6 +27,7 @@ from codesandbox.features.sandbox.models import (
     SandboxTemplatePlan,
     TopupIntent,
 )
+from codesandbox.features.worker.models import WorkerInstanceRuntime, WorkerNode
 
 __all__ = [
     "User",
@@ -56,6 +57,8 @@ __all__ = [
     "SandboxAuditLog",
     "SandboxInput",
     "SandboxArtifact",
+    "WorkerNode",
+    "WorkerInstanceRuntime",
 ]
 
 # Auth extensions — imported here so NexORM registers them for migrations

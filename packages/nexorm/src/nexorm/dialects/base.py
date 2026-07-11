@@ -87,8 +87,15 @@ class BaseDialect:
             parts.append("UNIQUE")
         default = field.get("default", column.get("default"))
         if default is not None:
-            parts.append(f"DEFAULT {self.literal(default)}")
+            type_name = self.field_type_map.get(
+                field.get("type") or column.get("type"),
+                field.get("type_name") or column.get("type_name"),
+            )
+            parts.append(self.default_clause(type_name, self.literal(default)))
         return " ".join(parts)
+
+    def default_clause(self, type_name, literal_sql):
+        return f"DEFAULT {literal_sql}"
 
     def auto_primary_key_sql(self):
         return f"{self.type_map['integer']} PRIMARY KEY {self.auto_increment}".strip()

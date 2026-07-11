@@ -60,7 +60,7 @@ def platform_sandboxes():
             "artifact_paths": '["/output"]', "input_required": False,
             "max_upload_mb": 50, "read_only_root": True, "run_as_user": "",
             "pids_limit": 256, "allow_full_internet": False,
-            "max_timeout_hr": 2, "status": "active", "type_config": "",
+            "max_timeout_hr": 2, "status": "active", "runtime_config": "",
             "active_instances": 0,
         }
     elif template_param:

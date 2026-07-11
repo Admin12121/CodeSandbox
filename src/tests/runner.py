@@ -89,6 +89,9 @@ _SUITE_MODULES = [
     ("system_rbac",   "tests.platform_admin.test_system_rbac"),
     ("platform_admin","tests.platform_admin.test_rbac"),
     ("sandbox",       "tests.sandbox.test_runtime_policy"),
+    ("worker",        "tests.worker.test_migrations"),
+    ("worker_routing", "tests.worker.test_multi_worker_routing"),
+    ("worker_registry", "tests.worker.test_registry"),
 ]
 
 

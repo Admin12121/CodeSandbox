@@ -93,7 +93,7 @@ def create_template(
     network_mode: str,
     allow_root: bool,
     max_timeout_hr: int,
-    type_config: str | None,
+    runtime_config: str | None,
     created_by_id: str | None,
     status: str = "maintenance",
     default_command: str | None = None,
@@ -134,7 +134,7 @@ def create_template(
         pids_limit=pids_limit,
         allow_full_internet=allow_full_internet,
         max_timeout_hr=max_timeout_hr,
-        type_config=type_config or None,
+        runtime_config=runtime_config or None,
         created_by=created_by_id,
         created_at=_now(),
         status=status,
@@ -514,6 +514,7 @@ def begin_instance_start(
     instance_id: str,
     *,
     actor: str,
+    worker_id: str,
     worker_job_id: str,
     runtime_policy: str,
     runtime_provider: str,
@@ -556,6 +557,7 @@ def begin_instance_start(
         old_status = inst.status
         inst.status = "provisioning"
         inst.status_changed_at = _now()
+        inst.worker_id = worker_id
         inst.worker_job_id = worker_job_id
         inst.runtime_policy = runtime_policy
         inst.runtime_provider = runtime_provider
@@ -891,3 +893,13 @@ def list_instance_artifacts(instance_id: str) -> list[SandboxArtifact]:
 def list_live_instances() -> list[SandboxInstance]:
     rows = SandboxInstance.objects.all()
     return [row for row in rows if row.status in _LIVE_INSTANCE_STATUSES]
+
+
+_RUNTIME_BACKED_STATUSES = ("provisioning", "running", "stopping", "cleanup")
+
+
+def list_runtime_backed_instances_for_worker(worker_id: str) -> list[SandboxInstance]:
+    """Instances this worker_id might still have a live container for —
+    used at worker boot to rebuild the in-memory registry after a restart."""
+    rows = SandboxInstance.objects.filter(worker_id=worker_id).all()
+    return [row for row in rows if row.status in _RUNTIME_BACKED_STATUSES]

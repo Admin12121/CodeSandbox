@@ -23,7 +23,10 @@ services:
       - /bin/sh
       - -c
       - |
-        uv run nexorm makemigrations
+        # `makemigrations` is a manual, human-reviewed dev step (see
+        # docs/runtime-architecture.md) — it must never run automatically
+        # at container start, in dev or prod. Only apply already-committed,
+        # reviewed migrations here.
         uv run nexorm migrate
         uv run python seed.py
         exec uv run uvicorn codesandbox.asgi:app --host 0.0.0.0 --port 5000 --reload
@@ -61,6 +64,9 @@ services:
       # own CONTROL_PLANE_URL, not this.
       APP_URL: http://localhost
       NATS_URL: nats://nats:4222
+      NATS_USER: ${NATS_CONTROL_PLANE_USER:-control-plane}
+      NATS_PASSWORD: ${NATS_CONTROL_PLANE_PASSWORD:-dev-control-plane-nats-change-me}
+      ENVIRONMENT: development
       # Dev only — enables Jinja2 template auto-reload (see app.py). Do NOT set in prod.
       FLASK_DEBUG: "1"
     depends_on:
@@ -105,15 +111,26 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ── Mock sandbox worker ───────────────────────────────────────────────────
+  # ── Sandbox worker ─────────────────────────────────────────────────────────
+  # DEVELOPMENT ONLY below: SANDBOX_DOCKER_BACKEND=local_socket + the bind-mounted
+  # /var/run/docker.sock give this container root-equivalent control of the
+  # host's Docker daemon. Never ship this to production — see
+  # docker-compose.prod.yml and docs/runtime-architecture.md for the
+  # SANDBOX_DOCKER_BACKEND=remote_tls setup, which the worker refuses to
+  # bypass in production (ENVIRONMENT=production) unless you explicitly set
+  # ALLOW_UNSAFE_DOCKER_SOCKET=true.
   worker:
     build:
       context: ./worker
     container_name: codesandbox-worker
     environment:
+      ENVIRONMENT: development
+      WORKER_ID: worker-1
       REDIS_URL: redis://redis:6379/0
       CONTROL_PLANE_URL: http://app:5000
       NATS_URL: nats://nats:4222
+      NATS_USER: ${NATS_WORKER_USER:-worker}
+      NATS_PASSWORD: ${NATS_WORKER_PASSWORD:-dev-worker-nats-change-me}
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
@@ -122,6 +139,7 @@ services:
       SANDBOX_ALLOWED_IMAGES: ${SANDBOX_ALLOWED_IMAGES:-docker.io/admin12121/decompile:stable,ubuntu:22.04,busybox:1.36}
       SANDBOX_REQUIRE_IMAGE_ALLOWLIST: ${SANDBOX_REQUIRE_IMAGE_ALLOWLIST:-false}
       SANDBOX_VOLUME_INIT_IMAGE: busybox:1.36
+      SANDBOX_DOCKER_BACKEND: local_socket
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -160,7 +178,14 @@ services:
   nats:
     image: nats:2-alpine
     container_name: codesandbox-nats
-    command: ["-js"]
+    command: ["-js", "-c", "/etc/nats/nats-server.conf"]
+    environment:
+      NATS_CONTROL_PLANE_USER: ${NATS_CONTROL_PLANE_USER:-control-plane}
+      NATS_CONTROL_PLANE_PASSWORD: ${NATS_CONTROL_PLANE_PASSWORD:-dev-control-plane-nats-change-me}
+      NATS_WORKER_USER: ${NATS_WORKER_USER:-worker}
+      NATS_WORKER_PASSWORD: ${NATS_WORKER_PASSWORD:-dev-worker-nats-change-me}
+    volumes:
+      - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
     restart: unless-stopped
 
   # ── MinIO object storage ───────────────────────────────────────────────────

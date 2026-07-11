@@ -16,6 +16,7 @@ from docker.types import Mount
 
 from .artifacts import ArtifactCollector, ObjectStore, tar_bytes
 from .base import RuntimeRunner
+from .docker_client import DockerClientFactory
 from .filesystem import DockerFilesystem
 from .metrics import DockerMetrics
 
@@ -24,6 +25,7 @@ log = logging.getLogger("codesandbox-worker.docker")
 _SUPPORTED_RUNTIME_CLASSES = {"container", "tool_job"}
 _SUPPORTED_NETWORK_MODES = {"disabled", "restricted", "full_internet"}
 _USER_RE = re.compile(r"^(?:[0-9]+|[A-Za-z_][A-Za-z0-9_-]*)(?::(?:[0-9]+|[A-Za-z_][A-Za-z0-9_-]*))?$")
+_WORKER_ID = os.environ.get("WORKER_ID", platform.node())
 
 
 class DockerRunner(RuntimeRunner):
@@ -32,7 +34,7 @@ class DockerRunner(RuntimeRunner):
         self.instance_id = str(job["instance_id"])
         self.policy = dict(job.get("runtime_policy") or {})
         self.publish = publish
-        self.client = docker.from_env(timeout=60)
+        self.client = DockerClientFactory.create()
         self.store = store or ObjectStore()
         self.collector = ArtifactCollector(self.store)
         self.container = None
@@ -114,6 +116,19 @@ class DockerRunner(RuntimeRunner):
             value = str(self.policy.get(path_name) or "")
             if not value.startswith("/") or ".." in value.split("/"):
                 raise ValueError(f"Invalid {path_name}.")
+        # Generic (not slug-specific) required/forbidden-argument re-check —
+        # sourced entirely from this template's own runtime_config, same as
+        # the control-plane-side check in runtime/policy.py.
+        required_args = [str(a) for a in (self.policy.get("required_args") or [])]
+        forbidden_args = [str(a) for a in (self.policy.get("forbidden_args") or [])]
+        if required_args or forbidden_args:
+            command_text = " ".join(self.policy.get("default_command") or [])
+            missing = [arg for arg in required_args if arg not in command_text]
+            if missing:
+                raise ValueError(f"Default command must include: {', '.join(missing)}.")
+            present = [arg for arg in forbidden_args if arg in command_text]
+            if present:
+                raise ValueError(f"Default command must not include: {', '.join(present)}.")
 
     def _ensure_image(self, image: str) -> None:
         try:
@@ -218,6 +233,18 @@ class DockerRunner(RuntimeRunner):
         self.input_volume = self.client.volumes.create(name=input_name, labels=labels)
         self._stage_volumes()
 
+    def _container_labels(self) -> dict[str, str]:
+        meta = self.job.get("labels") or {}
+        return {
+            "com.codesandbox.managed": "true",
+            "codesandbox.instance_id": self.instance_id,
+            "codesandbox.worker_id": _WORKER_ID,
+            "codesandbox.template_id": str(meta.get("template_id") or ""),
+            "codesandbox.plan_id": str(meta.get("plan_id") or ""),
+            "codesandbox.owner_type": str(meta.get("owner_type") or ""),
+            "codesandbox.owner_id": str(meta.get("owner_id") or ""),
+        }
+
     def _container_command(self) -> list[str] | None:
         command = self.policy.get("default_command")
         if command:
@@ -269,11 +296,7 @@ class DockerRunner(RuntimeRunner):
             "security_opt": ["no-new-privileges:true"],
             "privileged": False,
             "init": True,
-            "labels": {
-                "com.codesandbox.managed": "true",
-                "com.codesandbox.instance_id": self.instance_id,
-                "com.codesandbox.runtime_class": str(self.policy["runtime_class"]),
-            },
+            "labels": self._container_labels(),
         }
         network_mode = self.policy["network_mode"]
         if network_mode == "disabled":
@@ -290,7 +313,7 @@ class DockerRunner(RuntimeRunner):
             "runtime_id": self.container.id,
             "runtime_node_id": os.environ.get("RUNTIME_NODE_ID", platform.node()),
             "workspace_volume_id": self.workspace_volume.name,
-            "worker_id": os.environ.get("WORKER_ID", platform.node()),
+            "worker_id": _WORKER_ID,
         }
 
     def exec(self, command: list[str]) -> tuple[int, bytes]:
