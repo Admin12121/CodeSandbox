@@ -353,6 +353,12 @@ class PolicyBuilder:
         max_input_size_mb = template_runtime_config.get("max_input_size_mb")
         test_config_raw = template_runtime_config.get("test_config")
         test_config = test_config_raw if isinstance(test_config_raw, dict) else {}
+        ui_feature_config = template_runtime_config.get("ui")
+        ui_feature_config = ui_feature_config if isinstance(ui_feature_config, dict) else {}
+        desktop_gui_raw = ui_feature_config.get("desktop_gui")
+        desktop_gui_config = desktop_gui_raw if isinstance(desktop_gui_raw, dict) else {}
+        android_ui_raw = ui_feature_config.get("android_ui")
+        android_ui_config = android_ui_raw if isinstance(android_ui_raw, dict) else {}
 
         return {
             "version": POLICY_VERSION,
@@ -386,6 +392,8 @@ class PolicyBuilder:
             "required_args": required_args,
             "forbidden_args": forbidden_args,
             "test_config": test_config,
+            "desktop_gui": desktop_gui_config,
+            "android_ui": android_ui_config,
             "allow_root": bool(_value(template, "allow_root", False)),
             "read_only_root": bool(_value(template, "read_only_root", True)),
             "run_as_user": str(_value(template, "run_as_user", "") or ""),

@@ -263,7 +263,7 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
     broadcast, since more than one worker process may be running:
       publish   codesandbox.worker.<worker_id>.sandbox.<id>.terminal.ctl    {"action":"open"|"close"|"resize",...}
       publish   codesandbox.worker.<worker_id>.sandbox.<id>.terminal.input  {"data": "<keystrokes>"}
-      subscribe codesandbox.worker.<worker_id>.sandbox.<id>.terminal.output {"type":"ready"|"output"|"closed",...}
+      subscribe codesandbox.sandbox.<id>.terminal.output {"type":"ready"|"output"|"closed",...}
     """
     instance_id: str = websocket.path_params["instance_id"]
     token = websocket.query_params.get("token", "")
@@ -321,7 +321,12 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
 
     ctl_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.terminal.ctl"
     input_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.terminal.input"
-    output_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.terminal.output"
+    # codesandbox.sandbox.> (not codesandbox.worker.>) — matches the
+    # worker's actual publish grant and this process's actual subscribe
+    # grant (see docker/nats/nats-server.conf); ctl/input stay under
+    # codesandbox.worker.> since the control plane publishes those and the
+    # worker subscribes, the other direction.
+    output_subject = f"codesandbox.sandbox.{instance_id}.terminal.output"
 
     queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=500)
 
@@ -381,6 +386,95 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
         except Exception:
             pass
         await _release_terminal_session()
+
+
+async def ws_sandbox_gui(websocket: WebSocket) -> None:
+    """Bridges the browser to a sandbox container's internal GUI/VNC port —
+    the browser never gets that container's raw IP/port (docs/plan.md Phase
+    10.6); it only ever talks to this route, which relays to the owning
+    worker over NATS, and the worker is the only thing that opens the real
+    TCP socket to the container. noVNC speaks binary RFB frames, not JSON
+    text, so this (unlike ws_sandbox_terminal) uses receive_bytes/send_bytes
+    and base64-wraps each chunk only for the NATS hop in between.
+    """
+    instance_id: str = websocket.path_params["instance_id"]
+    token = websocket.query_params.get("token", "")
+
+    if not _verify_ws_token(token, instance_id, required_purpose="gui"):
+        await websocket.close(code=1008)
+        return
+
+    worker_id, worker_error = await _lookup_owning_worker(instance_id)
+    if worker_error:
+        await websocket.accept()
+        await websocket.send_text(json.dumps({"type": "error", "message": worker_error}))
+        await websocket.close()
+        return
+
+    await websocket.accept()
+
+    try:
+        nc = await _get_nats()
+    except Exception:
+        await websocket.send_text(json.dumps({"type": "error", "message": "NATS unavailable"}))
+        await websocket.close()
+        return
+
+    ctl_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.gui.ctl"
+    input_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.gui.input"
+    output_subject = f"codesandbox.sandbox.{instance_id}.gui.output"
+
+    queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=500)
+
+    async def _enqueue(msg: "_nats.aio.msg.Msg") -> None:
+        try:
+            queue.put_nowait(json.loads(msg.data.decode()))
+        except asyncio.QueueFull:
+            pass
+        except Exception:
+            pass
+
+    sub = await nc.subscribe(output_subject, cb=_enqueue)
+    await nc.publish(ctl_subject, json.dumps({"action": "open"}).encode())
+
+    async def _pump_output() -> None:
+        while True:
+            payload = await queue.get()
+            kind = payload.get("type")
+            if kind == "output":
+                try:
+                    raw = base64.b64decode(str(payload.get("data_b64") or ""))
+                except Exception:
+                    continue
+                await websocket.send_bytes(raw)
+            elif kind in {"ready", "error", "closed"}:
+                await websocket.send_text(json.dumps(payload))
+
+    pump_task = asyncio.create_task(_pump_output())
+
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+            raw = message.get("bytes")
+            if raw is None:
+                continue
+            await nc.publish(input_subject, json.dumps({
+                "data_b64": base64.b64encode(raw).decode("ascii"),
+            }).encode())
+    except (WebSocketDisconnect, Exception):
+        pass
+    finally:
+        pump_task.cancel()
+        try:
+            await sub.unsubscribe()
+        except Exception:
+            pass
+        try:
+            await nc.publish(ctl_subject, json.dumps({"action": "close"}).encode())
+        except Exception:
+            pass
 
 
 # ── HTTP: filesystem REST API (relayed to the worker over NATS request-reply) ──
@@ -542,6 +636,7 @@ def _make_app() -> Starlette:
         routes=[
             WebSocketRoute("/ws/sandbox/{instance_id}/monitor", ws_sandbox_monitor),
             WebSocketRoute("/ws/sandbox/{instance_id}/terminal", ws_sandbox_terminal),
+            WebSocketRoute("/ws/sandbox/{instance_id}/gui", ws_sandbox_gui),
             Route("/healthz", healthz, methods=["GET"]),
             Route("/api/sandbox/{instance_id}/fs", fs_list, methods=["GET"]),
             Route("/api/sandbox/{instance_id}/file", fs_file_get, methods=["GET"]),

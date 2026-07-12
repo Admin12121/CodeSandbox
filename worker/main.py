@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -18,6 +19,7 @@ from runtime.artifacts import ObjectStore
 from runtime.callbacks import CallbackClient
 from runtime.docker_client import DockerClientFactory
 from runtime.docker_runner import DockerRunner
+from runtime.gui import DockerGuiProxy
 from runtime.process import RuntimeRegistry
 from runtime.registry_client import WorkerRegistryClient
 from runtime.terminal import DockerTerminalManager
@@ -49,6 +51,8 @@ QUEUE_KEY = f"codesandbox:sandbox-jobs:{WORKER_ID}"
 _TERMINAL_CTL_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.terminal.ctl"
 _TERMINAL_INPUT_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.terminal.input"
 _FS_REQUEST_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.fs.request"
+_GUI_CTL_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.gui.ctl"
+_GUI_INPUT_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.gui.input"
 _TOTAL_VCPU = int(os.environ.get("SANDBOX_WORKER_TOTAL_VCPU", "8"))
 _TOTAL_RAM_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_RAM_GB", "16"))
 _TOTAL_DISK_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_DISK_GB", "100"))
@@ -98,6 +102,7 @@ class WorkerApp:
         self._store = None
         self._store_lock = threading.Lock()
         self.terminal = DockerTerminalManager(self.registry, self.publish, WORKER_ID)
+        self.gui = DockerGuiProxy(self.registry, self.publish, WORKER_ID)
         self.registry_client = WorkerRegistryClient(CONTROL_PLANE_URL, WORKER_ID)
 
     @property
@@ -163,6 +168,32 @@ class WorkerApp:
         if isinstance(data, str) and data:
             self.terminal.write(instance_id, terminal_id, data)
 
+    async def _gui_control(self, message) -> None:
+        instance_id = self._instance_id(message.subject)
+        if not instance_id:
+            return
+        try:
+            body = json.loads(message.data)
+        except Exception:
+            return
+        action = body.get("action")
+        if action == "open":
+            threading.Thread(target=self.gui.open, args=(instance_id,), daemon=True).start()
+        elif action == "close":
+            self.gui.close(instance_id)
+
+    async def _gui_input(self, message) -> None:
+        instance_id = self._instance_id(message.subject)
+        if not instance_id:
+            return
+        try:
+            body = json.loads(message.data)
+            data = base64.b64decode(str(body.get("data_b64") or ""))
+        except Exception:
+            return
+        if data:
+            self.gui.write(instance_id, data)
+
     async def _filesystem(self, message) -> None:
         instance_id = self._instance_id(message.subject)
         runner = self.registry.get(instance_id or "") if instance_id else None
@@ -198,6 +229,12 @@ class WorkerApp:
                     )
                     await self.nc.subscribe(
                         _FS_REQUEST_SUBJECT, cb=self._filesystem
+                    )
+                    await self.nc.subscribe(
+                        _GUI_CTL_SUBJECT, cb=self._gui_control
+                    )
+                    await self.nc.subscribe(
+                        _GUI_INPUT_SUBJECT, cb=self._gui_input
                     )
                     log.info("NATS connected url=%s worker_id=%s", NATS_URL, WORKER_ID)
                     return
@@ -554,6 +591,7 @@ class WorkerApp:
                 log.exception("worker loop failed")
                 time.sleep(1)
         self.terminal.close_all()
+        self.gui.close_all()
         for _, runner in self.registry.all():
             try:
                 runner.kill()

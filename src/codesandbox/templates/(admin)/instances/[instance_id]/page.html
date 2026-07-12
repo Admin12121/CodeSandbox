@@ -2,6 +2,27 @@
   <div class="border-y border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
 {% endif %}
 
+{% if workflow_run %}
+  {% import "components/ui/button.html" as wf_button %}
+  <div class="fixed right-4 top-[3.5rem] z-40 flex max-w-xs items-center gap-3 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg">
+    <div class="min-w-0">
+      <div class="truncate font-medium">{{ workflow_run.workflow_name }}</div>
+      <div class="truncate text-muted-foreground">Stage: {{ workflow_run.stage_name }}</div>
+    </div>
+    {% if workflow_run.stage_run_status == "running" and workflow_run.has_next_stage %}
+      <form method="post" action="/workflow-runs/{{ workflow_run.run_id }}/continue" class="shrink-0">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        {% call wf_button.button(type="submit", size="sm") %}{{ workflow_run.continue_label }}{% endcall %}
+      </form>
+    {% elif workflow_run.stage_run_status == "running" and not workflow_run.has_next_stage %}
+      <form method="post" action="/workflow-runs/{{ workflow_run.run_id }}/continue" class="shrink-0">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        {% call wf_button.button(type="submit", size="sm", variant="outline") %}Finish workflow{% endcall %}
+      </form>
+    {% endif %}
+  </div>
+{% endif %}
+
 {% if ui_mode == "terminal_only" %}
   {% include "(admin)/instances/[instance_id]/_components/terminal_only.html" %}
 {% elif ui_mode == "lab_ui" %}

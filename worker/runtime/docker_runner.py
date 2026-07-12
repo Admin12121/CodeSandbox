@@ -147,10 +147,49 @@ class DockerRunner(RuntimeRunner):
                 name,
                 driver="bridge",
                 internal=True,
-                attachable=False,
+                # attachable=True (not the Docker default) so the worker
+                # itself can join dynamically per-instance for GUI/Android
+                # proxying (see _ensure_worker_reachable) — this network
+                # stays `internal=True` regardless, so sandbox containers on
+                # it still can't reach the real internet or the platform's
+                # own default network.
+                attachable=True,
                 labels={"com.codesandbox.managed": "true"},
             )
         return name
+
+    def _ensure_worker_reachable(self, network_name: str | None) -> None:
+        """Join the worker's own container to the sandbox's network so it
+        can reach the GUI/Android port by container name — see
+        docs/plan.md Phase 10.6 (no host port publishing; the worker relays
+        bytes over NATS instead of the browser ever touching the container
+        directly). `network_name` is None when network_mode="none"
+        (disabled) — nothing to join, GUI/Android are unreachable for that
+        instance and worker/runtime/gui.py will honestly report so."""
+        if not network_name or network_name in {"none", "host"}:
+            log.warning(
+                "instance=%s requested desktop_gui/android_ui with network_mode=disabled — "
+                "no network to proxy over.", self.instance_id[:8],
+            )
+            return
+        try:
+            # WORKER_ID (_WORKER_ID) is the logical routing name used in NATS
+            # subjects — NOT the Docker container's own name/ID. The
+            # container's hostname *is* its short ID by default (Docker
+            # convention, not overridden by this compose file), which is
+            # what containers.get() needs here.
+            worker_container = self.client.containers.get(platform.node())
+            network = self.client.networks.get(network_name)
+            network.connect(worker_container)
+            log.info(
+                "worker joined network=%s for instance=%s", network_name, self.instance_id[:8]
+            )
+        except docker.errors.APIError as exc:
+            if "already exists" not in str(exc).lower() and "already connected" not in str(exc).lower():
+                log.warning(
+                    "could not join worker to network=%s for instance=%s error=%s",
+                    network_name, self.instance_id[:8], exc,
+                )
 
     def _stage_volumes(self) -> None:
         helper_image = os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36")
@@ -309,6 +348,9 @@ class DockerRunner(RuntimeRunner):
         self.container = self.client.containers.create(**kwargs)
         self.container.start()
         self.started_monotonic = time.monotonic()
+        modes = set(self.policy.get("interface_modes") or [])
+        if modes & {"desktop_gui", "android_ui"}:
+            self._ensure_worker_reachable(kwargs.get("network") or kwargs.get("network_mode"))
         return {
             "runtime_provider": "docker",
             "runtime_id": self.container.id,

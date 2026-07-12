@@ -1,0 +1,52 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/frame.html" as frame %}
+
+<div class="mx-auto max-w-3xl p-6">
+  <a href="/workflows" class="text-xs text-muted-foreground hover:text-foreground">&larr; Workflows</a>
+
+  <div class="mt-3 flex items-center justify-between gap-4">
+    <h1 class="text-xl font-semibold">{{ run.workflow_name }}</h1>
+    {% if run.status == "completed" %}
+      {{ badge.badge("Completed", variant="outline") }}
+    {% elif run.status == "failed" %}
+      {{ badge.badge("Failed", variant="destructive") }}
+    {% elif run.status == "cancelled" %}
+      {{ badge.badge("Cancelled", variant="secondary") }}
+    {% else %}
+      {{ badge.badge("Running", variant="secondary") }}
+    {% endif %}
+  </div>
+
+  {% if error %}
+    <div class="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+  {% endif %}
+
+  <div class="mt-6">
+    {% call frame.frame() %}
+      {% call frame.frame_panel() %}
+        <h2 class="mb-3 text-sm font-semibold">Stage runs</h2>
+        <ol class="space-y-2">
+          {% for sr in run.stage_runs %}
+            <li class="flex items-center justify-between gap-2 text-sm">
+              <div class="flex items-center gap-2">
+                <span class="size-1.5 rounded-full {{ 'bg-green-500' if sr.status == 'completed' else ('bg-destructive' if sr.status == 'failed' else ('bg-blue-500' if sr.status == 'running' else 'bg-muted-foreground/40')) }}"></span>
+                <span class="font-medium">{{ sr.stage_key }}</span>
+                <span class="text-xs text-muted-foreground">{{ sr.status }}</span>
+              </div>
+              {% if sr.instance_id %}
+                <a href="/instances/{{ sr.instance_id }}?workflow_run={{ run.id }}" class="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline">Open instance</a>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ol>
+      {% endcall %}
+    {% endcall %}
+  </div>
+
+  {% if run.status == "running" and run.stage_runs %}
+    <a href="/instances/{{ run.stage_runs[-1].instance_id }}?workflow_run={{ run.id }}"
+       class="mt-6 inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+      Go to current stage
+    </a>
+  {% endif %}
+</div>

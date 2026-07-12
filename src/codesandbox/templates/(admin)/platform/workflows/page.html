@@ -1,0 +1,16 @@
+{% import "(admin)/platform/workflows/_components/table.html" as tbl %}
+
+{% if selected_workflow is defined and selected_workflow %}
+  {{ tbl.workflow_editor(
+    selected_workflow=selected_workflow,
+    workflows=workflows,
+    can_manage=can_manage,
+    available_templates=available_templates,
+    error=error if error is defined else none,
+  ) }}
+{% else %}
+  {{ tbl.workflows_table(
+    workflows=workflows,
+    can_manage=can_manage,
+  ) }}
+{% endif %}

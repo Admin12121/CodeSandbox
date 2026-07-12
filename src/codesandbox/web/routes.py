@@ -242,12 +242,18 @@ def instance_detail(instance_id: str):
         return {"_redirect": "/my-instances"}
     instance = ctx["instance"]
     ws_ctx = _workspaces_ctx(user)
+
+    from codesandbox.features.workflow.service import get_workflow_run_context_for_instance
+
+    workflow_run = get_workflow_run_context_for_instance(instance_id)
+
     return {
         "_meta": {"title": f"{instance['template_name']} - CodeSandbox"},
         "user": _user_ctx(user),
         "nav": build_nav("/my-instances", user, ws_ctx.get("active_workspace")),
         "page_title": instance["template_name"],
         "error": request.args.get("error"),
+        "workflow_run": workflow_run,
         **ctx,
         **ws_ctx,
     }

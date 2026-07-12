@@ -264,7 +264,7 @@ def stop_instance_action(instance_id: str):
 
 # ── Instance monitor / terminal / fs token ─────────────────────────────────────
 
-_WS_TOKEN_PURPOSES = {"monitor", "terminal", "fs"}
+_WS_TOKEN_PURPOSES = {"monitor", "terminal", "fs", "gui", "android"}
 
 
 @web_bp.get("/instances/<instance_id>/monitor-token")

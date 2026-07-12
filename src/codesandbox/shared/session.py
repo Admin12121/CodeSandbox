@@ -103,6 +103,7 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
             separator(),
             item("Sandboxes", "/platform/sandboxes", "platform.sandboxes.manage"),
             item("Sandbox Plans", "/platform/sandbox-plans", "platform.sandbox_plans.manage"),
+            item("Workflows", "/platform/workflows", "platform.workflows.manage"),
         ]
         if role != "system_admin":
             from codesandbox.features.platform_admin import repository as rbac_repo
@@ -119,6 +120,7 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
     user_items = [
         item("Dashboard", "/dashboard"),
         item("Hub", "/hub"),
+        item("Workflows", "/workflows"),
         item("My Instances", "/my-instances"),
     ]
     if active_workspace:

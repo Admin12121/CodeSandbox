@@ -1238,7 +1238,7 @@ def can_open_instance_channel(
     inst = repository.get_instance(instance_id)
     if inst is None:
         return False
-    if purpose in {"terminal", "fs"}:
+    if purpose in {"terminal", "fs", "gui", "android"}:
         if inst.status != "running" or not bool(inst.runtime_id):
             return False
         template = repository.get_template(str(inst.template_id))
@@ -1251,6 +1251,10 @@ def can_open_instance_channel(
             return bool({"terminal_only", "lab_ui"} & allowed) or bool(bg.get("allow_terminal"))
         if purpose == "fs":
             return "lab_ui" in allowed or bool(bg.get("allow_filesystem"))
+        if purpose == "gui":
+            return "desktop_gui" in allowed
+        if purpose == "android":
+            return "android_ui" in allowed
     return purpose == "monitor"
 
 

@@ -1,0 +1,401 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/alert.html" as alert %}
+{% import "components/ui/delete-dialog.html" as del_dialog %}
+
+{# ═══ LIST VIEW ═══ #}
+{% macro workflows_table(workflows, can_manage=false) %}
+<div class="grid gap-4 p-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-semibold">Workflows</h1>
+      <p class="text-sm text-muted-foreground">Multi-stage sandbox workflows spanning templates and instances.</p>
+    </div>
+    {% if can_manage %}
+      <a href="/platform/workflows?workflow=new">{% call button.button(size="sm") %}New workflow{% endcall %}</a>
+    {% endif %}
+  </div>
+
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Name") }}
+          {{ table.table_head("Slug") }}
+          {{ table.table_head("Status") }}
+          {{ table.table_head("Stages", class="text-right") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if not workflows %}
+          {% call table.table_row() %}
+            {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "4"}) %}No workflows yet.{% endcall %}
+          {% endcall %}
+        {% else %}
+          {% for wf in workflows %}
+            {% call table.table_row(class="cursor-pointer", attrs={"data-cs-href": "/platform/workflows?workflow=" ~ wf.id}) %}
+              {{ table.table_cell(wf.name, class="font-medium") }}
+              {{ table.table_cell(wf.slug, class="text-sm text-muted-foreground font-mono") }}
+              {% call table.table_cell() %}
+                {% if wf.status == "published" %}
+                  {{ badge.badge("Published", variant="outline") }}
+                {% elif wf.status == "archived" %}
+                  {{ badge.badge("Archived", variant="destructive") }}
+                {% else %}
+                  {{ badge.badge("Draft", variant="secondary") }}
+                {% endif %}
+              {% endcall %}
+              {{ table.table_cell(wf.graph.stages | length | string, class="text-right text-sm tabular-nums") }}
+            {% endcall %}
+          {% endfor %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+</div>
+{% endmacro %}
+
+{# ═══ EDITOR VIEW ═══ #}
+{% macro workflow_editor(selected_workflow, workflows, can_manage, available_templates, error=none) %}
+{% set is_create = selected_workflow.id is none %}
+{% set wid = selected_workflow.id or "" %}
+
+<div class="flex h-[calc(100dvh-var(--header-height))] min-w-0 w-full max-w-full overflow-hidden bg-background">
+
+  <div class="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
+    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+      <a href="/platform/workflows" aria-label="Back" class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </a>
+      {% if can_manage %}
+        <a href="/platform/workflows?workflow=new" aria-label="New workflow" class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        </a>
+      {% endif %}
+    </div>
+    <div class="min-h-0 flex-1 overflow-y-auto p-2">
+      <ul class="m-0 flex flex-col gap-0.5 p-0 list-none">
+        {% if is_create %}
+          <li><span class="flex w-full items-center gap-2 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground">New workflow</span></li>
+        {% endif %}
+        {% for wf in workflows %}
+          <li>
+            <a href="/platform/workflows?workflow={{ wf.id }}"
+               class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {{ 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' if wid == wf.id else 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground' }}">
+              <span class="truncate">{{ wf.name }}</span>
+              {% if wf.status == "published" %}<span class="ml-auto shrink-0 size-1.5 rounded-full bg-green-500"></span>{% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div class="flex h-12 shrink-0 items-center justify-between border-b px-4 gap-4">
+      <div class="truncate text-sm font-semibold min-w-0">{{ "New Workflow" if is_create else selected_workflow.name }}</div>
+      <div class="flex items-center gap-2 shrink-0">
+        {% if not is_create and can_manage %}
+          {{ del_dialog.delete_dialog_trigger("del-wf-dlg") }}
+          {{ del_dialog.delete_dialog(
+            id="del-wf-dlg",
+            name=selected_workflow.name,
+            description="Permanently deletes this workflow. Cannot be undone.",
+            action="/platform/workflows/" ~ wid ~ "/delete",
+          ) }}
+          <button type="button" id="wf-publish-btn" data-wf-id="{{ wid }}" data-published="{{ '1' if selected_workflow.status == 'published' else '0' }}"
+            class="inline-flex h-8 items-center justify-center rounded-md border border-input px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+            {{ "Unpublish" if selected_workflow.status == "published" else "Publish" }}
+          </button>
+        {% endif %}
+        {% if can_manage %}
+          <button type="submit" form="workflow-identity-form"
+            class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            {{ "Create Workflow" if is_create else "Save Changes" }}
+          </button>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if error %}
+      <div class="shrink-0 border-b px-4 py-2">{{ alert.alert(error, variant="destructive") }}</div>
+    {% endif %}
+
+    <div class="flex-1 overflow-y-auto">
+      <form id="workflow-identity-form" method="post" action="/platform/workflows/save" class="p-4 grid gap-4 max-w-2xl">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        {% if not is_create %}<input type="hidden" name="workflow_id" value="{{ wid }}">{% endif %}
+        {% call frame.frame() %}
+          {% call table.table(variant="card") %}
+            {% call table.table_header() %}
+              {% call table.table_row() %}{{ table.table_head("Identity") }}{% endcall %}
+            {% endcall %}
+            {% call table.table_body() %}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="font-medium text-sm align-middle") %}Name{% endcall %}
+                {% call table.table_cell() %}
+                  <input name="name" type="text" value="{{ selected_workflow.name }}" placeholder="Malware Static Analysis" required
+                    class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_row() %}
+                {% call table.table_cell(class="font-medium text-sm align-middle") %}Slug{% endcall %}
+                {% call table.table_cell() %}
+                  <input name="slug" type="text" value="{{ selected_workflow.slug }}" placeholder="malware-static-analysis"
+                    class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_row(class="border-0") %}
+                {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Description{% endcall %}
+                {% call table.table_cell() %}
+                  <textarea name="description" rows="3" placeholder="What this workflow does…"
+                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{{ selected_workflow.description }}</textarea>
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+        {% endcall %}
+      </form>
+
+      {% if not is_create %}
+        <div class="border-t p-4">
+          <div class="mb-3 flex items-center justify-between">
+            <h2 class="text-sm font-semibold">Canvas</h2>
+            <div class="flex items-center gap-2">
+              <button type="button" id="wf-add-stage-btn"
+                class="inline-flex h-7 items-center gap-1 rounded-md border border-input px-2 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                Add stage
+              </button>
+              <button type="button" id="wf-save-graph-btn"
+                class="inline-flex h-7 items-center justify-center rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                Save graph
+              </button>
+            </div>
+          </div>
+          <p class="mb-2 text-xs text-muted-foreground">Click "Connect" on a stage, then click the stage it should lead to. Drag stages to reposition.</p>
+          <div id="wf-canvas" class="relative h-[560px] w-full overflow-auto rounded-xl border border-input bg-muted/20"
+            data-graph="{{ selected_workflow.graph | tojson | forceescape }}"
+            data-templates="{{ available_templates | tojson | forceescape }}"
+            data-workflow-id="{{ wid }}">
+            <svg id="wf-edges" class="pointer-events-none absolute inset-0 h-full w-full" style="min-width:1600px;min-height:1000px"></svg>
+            <div id="wf-nodes" class="relative" style="min-width:1600px;min-height:1000px"></div>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% if not is_create %}
+{% app_script "workflow-canvas" %}
+(function () {
+  var root = document.getElementById('wf-canvas');
+  if (!root || root.dataset.ready === '1') return;
+  root.dataset.ready = '1';
+
+  var nodesEl = document.getElementById('wf-nodes');
+  var edgesEl = document.getElementById('wf-edges');
+  var workflowId = root.dataset.workflowId;
+  var templates = [];
+  var graph = { stages: [], edges: [] };
+  try { templates = JSON.parse(root.dataset.templates) || []; } catch (e) {}
+  try {
+    var raw = JSON.parse(root.dataset.graph);
+    graph = (raw && typeof raw === 'object') ? raw : { stages: [], edges: [] };
+  } catch (e) {}
+  graph.stages = graph.stages || [];
+  graph.edges = graph.edges || [];
+
+  var UI_MODES = ['terminal_only', 'lab_ui', 'background_run', 'desktop_gui', 'android_ui'];
+  var connectFrom = null;
+  var nodeEls = {};
+
+  function csrf() {
+    var el = document.querySelector('input[name="_csrf_token"]');
+    return el ? el.value : '';
+  }
+
+  function stageByKey(key) {
+    return graph.stages.find(function (s) { return s.stage_key === key; });
+  }
+
+  function nodeCenter(key) {
+    var el = nodeEls[key];
+    if (!el) return { x: 0, y: 0 };
+    return { x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop + el.offsetHeight / 2 };
+  }
+
+  function redrawEdges() {
+    edgesEl.innerHTML = '';
+    graph.edges.forEach(function (edge) {
+      var a = nodeCenter(edge.from_stage_key);
+      var b = nodeCenter(edge.to_stage_key);
+      var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+      line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+      line.setAttribute('stroke', 'currentColor');
+      line.setAttribute('stroke-width', '2');
+      line.setAttribute('class', 'text-muted-foreground/50');
+      line.setAttribute('marker-end', 'url(#wf-arrow)');
+      edgesEl.appendChild(line);
+    });
+    var defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+    defs.innerHTML = '<marker id="wf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="fill-muted-foreground/50"/></marker>';
+    edgesEl.appendChild(defs);
+  }
+
+  function templateOptions(selectedId) {
+    return templates.map(function (t) {
+      return '<option value="' + t.id + '"' + (t.id === selectedId ? ' selected' : '') + '>' + t.name + '</option>';
+    }).join('');
+  }
+
+  function uiModeOptions(selectedMode) {
+    return UI_MODES.map(function (m) {
+      return '<option value="' + m + '"' + (m === selectedMode ? ' selected' : '') + '>' + m.replace('_', ' ') + '</option>';
+    }).join('');
+  }
+
+  function renderNode(stage) {
+    var el = document.createElement('div');
+    el.className = 'absolute w-64 rounded-lg border bg-background p-3 text-xs shadow-sm select-none';
+    el.style.left = (stage.position_x || 40) + 'px';
+    el.style.top = (stage.position_y || 40) + 'px';
+    el.dataset.stageKey = stage.stage_key;
+    el.innerHTML =
+      '<div class="mb-2 flex items-center justify-between gap-1 cursor-move" data-drag-handle>' +
+        '<input data-field="name" class="w-full bg-transparent text-sm font-medium outline-none" value="' + (stage.name || '').replace(/"/g, '&quot;') + '" placeholder="Stage name">' +
+        '<button type="button" data-remove class="shrink-0 text-muted-foreground hover:text-destructive">&times;</button>' +
+      '</div>' +
+      '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">Template</label>' +
+      '<select data-field="template_id" class="mb-2 h-7 w-full rounded border border-input bg-background px-1 text-xs">' + templateOptions(stage.template_id) + '</select>' +
+      '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">UI mode</label>' +
+      '<select data-field="ui_mode" class="mb-2 h-7 w-full rounded border border-input bg-background px-1 text-xs">' + uiModeOptions(stage.ui_mode) + '</select>' +
+      '<label class="mb-1 flex items-center gap-1.5"><input type="checkbox" data-field="carry_artifacts"' + (stage.carry_artifacts ? ' checked' : '') + '> Carry artifacts forward</label>' +
+      '<label class="mb-2 flex items-center gap-1.5"><input type="checkbox" data-field="auto_start"' + (stage.auto_start ? ' checked' : '') + '> Auto-start (no manual Continue)</label>' +
+      '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">Continue button label</label>' +
+      '<input data-field="continue_label" class="mb-2 h-7 w-full rounded border border-input bg-background px-1 text-xs" value="' + (stage.continue_label || '').replace(/"/g, '&quot;') + '" placeholder="Continue to next stage">' +
+      '<button type="button" data-connect class="w-full rounded border border-input py-1 text-[10px] font-medium hover:bg-accent">Connect &rarr;</button>';
+    nodesEl.appendChild(el);
+    nodeEls[stage.stage_key] = el;
+
+    el.querySelectorAll('[data-field]').forEach(function (input) {
+      input.addEventListener('input', function () {
+        var field = input.dataset.field;
+        stage[field] = input.type === 'checkbox' ? input.checked : input.value;
+      });
+      input.addEventListener('change', function () {
+        var field = input.dataset.field;
+        stage[field] = input.type === 'checkbox' ? input.checked : input.value;
+      });
+    });
+
+    el.querySelector('[data-remove]').addEventListener('click', function () {
+      graph.stages = graph.stages.filter(function (s) { return s.stage_key !== stage.stage_key; });
+      graph.edges = graph.edges.filter(function (e) { return e.from_stage_key !== stage.stage_key && e.to_stage_key !== stage.stage_key; });
+      el.remove();
+      delete nodeEls[stage.stage_key];
+      redrawEdges();
+    });
+
+    el.querySelector('[data-connect]').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (connectFrom === stage.stage_key) { connectFrom = null; el.classList.remove('ring-2', 'ring-primary'); return; }
+      if (connectFrom) {
+        graph.edges.push({ from_stage_key: connectFrom, to_stage_key: stage.stage_key, condition: null, label: '' });
+        var fromEl = nodeEls[connectFrom];
+        if (fromEl) fromEl.classList.remove('ring-2', 'ring-primary');
+        connectFrom = null;
+        redrawEdges();
+      } else {
+        connectFrom = stage.stage_key;
+        el.classList.add('ring-2', 'ring-primary');
+      }
+    });
+
+    var handle = el.querySelector('[data-drag-handle]');
+    var dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
+    handle.addEventListener('pointerdown', function (ev) {
+      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'BUTTON') return;
+      dragging = true;
+      startX = ev.clientX; startY = ev.clientY;
+      origLeft = el.offsetLeft; origTop = el.offsetTop;
+      handle.setPointerCapture(ev.pointerId);
+    });
+    handle.addEventListener('pointermove', function (ev) {
+      if (!dragging) return;
+      var dx = ev.clientX - startX, dy = ev.clientY - startY;
+      var newLeft = Math.max(0, origLeft + dx), newTop = Math.max(0, origTop + dy);
+      el.style.left = newLeft + 'px';
+      el.style.top = newTop + 'px';
+      stage.position_x = newLeft;
+      stage.position_y = newTop;
+      redrawEdges();
+    });
+    handle.addEventListener('pointerup', function () { dragging = false; });
+  }
+
+  function renderAll() {
+    nodesEl.innerHTML = '';
+    nodeEls = {};
+    graph.stages.forEach(renderNode);
+    redrawEdges();
+  }
+
+  document.getElementById('wf-add-stage-btn').addEventListener('click', function () {
+    var key = 'stage-' + Math.random().toString(36).slice(2, 8);
+    var stage = {
+      stage_key: key, name: 'New stage', template_id: (templates[0] || {}).id || '',
+      ui_mode: 'background_run', position_x: 40 + (graph.stages.length % 4) * 280,
+      position_y: 40 + Math.floor(graph.stages.length / 4) * 220,
+      config_json: {}, carry_artifacts: false, auto_start: false, continue_label: '',
+    };
+    graph.stages.push(stage);
+    renderNode(stage);
+    redrawEdges();
+  });
+
+  document.getElementById('wf-save-graph-btn').addEventListener('click', function () {
+    fetch('/platform/workflows/' + workflowId + '/graph', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ graph: graph, validate: true }),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        if (res.ok && res.data.ok) {
+          window.Toast && window.Toast.create({ title: 'Graph saved', type: 'success' });
+        } else {
+          window.Toast && window.Toast.create({ title: 'Could not save graph', description: (res.data && res.data.error) || 'Unknown error', type: 'error' });
+        }
+      })
+      .catch(function (err) {
+        window.Toast && window.Toast.create({ title: 'Network error', description: err.message, type: 'error' });
+      });
+  });
+
+  var publishBtn = document.getElementById('wf-publish-btn');
+  if (publishBtn) {
+    publishBtn.addEventListener('click', function () {
+      var published = publishBtn.dataset.published === '1';
+      var url = '/platform/workflows/' + publishBtn.dataset.wfId + (published ? '/unpublish' : '/publish');
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+        .then(function (res) {
+          if (res.ok && res.data.ok) {
+            location.reload();
+          } else {
+            window.Toast && window.Toast.create({ title: 'Could not change status', description: (res.data && res.data.error) || 'Unknown error', type: 'error' });
+          }
+        });
+    });
+  }
+
+  renderAll();
+})();
+{% end_app_script %}
+{% endif %}
+{% endmacro %}

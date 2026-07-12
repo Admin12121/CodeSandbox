@@ -20,7 +20,12 @@ class DockerTerminalManager:
         return getattr(wrapper, "_sock", wrapper)
 
     def _subject(self, instance_id: str) -> str:
-        return f"codesandbox.worker.{self.worker_id}.sandbox.{instance_id}.terminal.output"
+        # Under codesandbox.sandbox.> (not codesandbox.worker.>) — that's the
+        # worker's actual NATS publish grant and the control plane's actual
+        # subscribe grant (see docker/nats/nats-server.conf); ctl/input stay
+        # under codesandbox.worker.> since those are published by the
+        # control plane and subscribed to by the worker, the other way round.
+        return f"codesandbox.sandbox.{instance_id}.terminal.output"
 
     def _publish(self, instance_id: str, terminal_id: str, payload: dict) -> None:
         self.publish(self._subject(instance_id), {

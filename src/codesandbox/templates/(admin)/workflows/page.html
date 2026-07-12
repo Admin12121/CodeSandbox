@@ -1,0 +1,29 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/frame.html" as frame %}
+
+<div class="mx-auto max-w-4xl p-6">
+  <h1 class="text-xl font-semibold">Workflows</h1>
+  <p class="mt-1 text-sm text-muted-foreground">Multi-stage sandbox pipelines — background analysis, reverse engineering, attack simulation.</p>
+
+  <div class="mt-6 grid gap-3">
+    {% if not workflows %}
+      <p class="py-12 text-center text-sm text-muted-foreground">No workflows are published yet.</p>
+    {% else %}
+      {% for wf in workflows %}
+        <a href="/workflows/{{ wf.slug }}">
+          {% call frame.frame() %}
+            {% call frame.frame_panel() %}
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <div class="font-medium">{{ wf.name }}</div>
+                  <p class="mt-0.5 truncate text-sm text-muted-foreground">{{ wf.description or "No description." }}</p>
+                </div>
+                {{ badge.badge((wf.graph.stages | length | string) ~ " stages", variant="secondary") }}
+              </div>
+            {% endcall %}
+          {% endcall %}
+        </a>
+      {% endfor %}
+    {% endif %}
+  </div>
+</div>

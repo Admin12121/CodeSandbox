@@ -1,36 +1,119 @@
 {% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
 
 {% set desktop_cfg = (ui_config.desktop_gui if ui_config and ui_config.desktop_gui else {}) %}
-{% set gui_url = desktop_cfg.novnc_url or desktop_cfg.gui_url or runtime_config.novnc_url or runtime_config.gui_url %}
-{% set gui_port = desktop_cfg.gui_port or runtime_config.gui_port %}
+{% set gui_enabled = desktop_cfg.get("enabled", true) if desktop_cfg else true %}
+{% set internal_port = desktop_cfg.internal_port or runtime_config.internal_port %}
 
-<div class="flex h-[calc(100vh-2.85rem)] flex-col bg-background">
-  <div class="flex h-10 shrink-0 items-center justify-between border-b px-3 text-xs">
-    <div class="min-w-0">
+<div id="desktop-gui" class="flex h-[calc(100vh-2.85rem)] flex-col bg-[#0a0a0a]"
+  data-instance-id="{{ instance.id }}" data-instance-status="{{ instance.status }}"
+  data-configured="{{ '1' if internal_port else '0' }}">
+  <div class="flex h-10 shrink-0 items-center justify-between border-b border-white/10 px-3 text-xs text-white">
+    <div class="min-w-0 flex items-center gap-2">
       <span class="font-medium">Desktop GUI</span>
-      <span class="ml-2 text-muted-foreground">{{ instance.template_name }}</span>
+      <span class="text-white/50">{{ instance.template_name }}</span>
     </div>
-    {{ badge.badge(instance.status | replace("_", " ") | title, variant=("outline" if instance.status == "running" else "secondary")) }}
+    <div class="flex items-center gap-2">
+      <span id="gui-status-text" class="text-white/60">Idle</span>
+      {{ badge.badge(instance.status | replace("_", " ") | title, variant=("outline" if instance.status == "running" else "secondary")) }}
+      <button type="button" id="gui-reconnect-btn" title="Reconnect" class="rounded p-1 text-white/70 hover:bg-white/10 hover:text-white">
+        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
+      <button type="button" id="gui-fullscreen-btn" title="Fullscreen" class="rounded p-1 text-white/70 hover:bg-white/10 hover:text-white">
+        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+    </div>
   </div>
 
-  {% if gui_url %}
-    <iframe
-      src="{{ gui_url }}"
-      title="Desktop GUI"
-      class="min-h-0 flex-1 border-0 bg-black"
-      allow="clipboard-read; clipboard-write; fullscreen"
-    ></iframe>
-  {% else %}
-    <div class="grid min-h-0 flex-1 place-items-center p-6">
-      <div class="max-w-lg rounded-xl border bg-card p-6 text-center">
-        <h1 class="text-lg font-semibold">Desktop GUI is not configured</h1>
-        <p class="mt-2 text-sm text-muted-foreground">
-          Desktop GUI requires a noVNC/gui_url or gui_port in runtime.json. This mode is separate from Lab UI.
-        </p>
-        {% if gui_port %}
-          <p class="mt-3 font-mono text-xs text-muted-foreground">Configured GUI port: {{ gui_port }}</p>
-        {% endif %}
+  <div id="gui-viewport" class="relative min-h-0 flex-1">
+    {% if not internal_port %}
+      <div class="grid h-full place-items-center p-6">
+        <div class="max-w-lg rounded-xl border border-white/10 bg-white/5 p-6 text-center text-white">
+          <h1 class="text-lg font-semibold">Desktop GUI is not configured</h1>
+          <p class="mt-2 text-sm text-white/60">
+            This template needs <code class="text-white/80">ui.desktop_gui.internal_port</code> set in runtime.json
+            (the VNC/RFB port inside the container) before a GUI session can connect.
+          </p>
+        </div>
       </div>
-    </div>
-  {% endif %}
+    {% elif instance.status != "running" %}
+      <div class="grid h-full place-items-center p-6">
+        <div class="max-w-lg rounded-xl border border-white/10 bg-white/5 p-6 text-center text-white">
+          <h1 class="text-lg font-semibold">Waiting for worker</h1>
+          <p class="mt-2 text-sm text-white/60">The instance is "{{ instance.status }}" — a GUI session can only connect once it's running.</p>
+        </div>
+      </div>
+    {% else %}
+      <div id="gui-canvas-target" class="h-full w-full"></div>
+      <div id="gui-overlay" class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 text-sm text-white">
+        <span id="gui-overlay-text">Connecting…</span>
+      </div>
+    {% endif %}
+  </div>
 </div>
+
+{% app_script "sandbox-desktop-gui" %}
+(function () {
+  var root = document.getElementById("desktop-gui");
+  if (!root || root.dataset.ready === "1") return;
+  root.dataset.ready = "1";
+
+  var instanceId = root.dataset.instanceId;
+  var configured = root.dataset.configured === "1";
+  var canvasTarget = document.getElementById("gui-canvas-target");
+  var overlay = document.getElementById("gui-overlay");
+  var overlayText = document.getElementById("gui-overlay-text");
+  var statusText = document.getElementById("gui-status-text");
+  var reconnectBtn = document.getElementById("gui-reconnect-btn");
+  var fullscreenBtn = document.getElementById("gui-fullscreen-btn");
+
+  if (!configured || !canvasTarget) return;
+
+  function setStatus(text) {
+    if (statusText) statusText.textContent = text;
+  }
+  function setOverlay(text) {
+    if (overlay) { overlay.style.display = text ? "flex" : "none"; }
+    if (overlayText) overlayText.textContent = text || "";
+  }
+
+  var rfb = null;
+
+  function connect() {
+    setStatus("Connecting…");
+    setOverlay("Connecting…");
+    fetch("/instances/" + encodeURIComponent(instanceId) + "/monitor-token?purpose=gui")
+      .then(function (r) { if (!r.ok) throw new Error("token request failed (" + r.status + ")"); return r.json(); })
+      .then(function (body) {
+        return import("https://esm.sh/@novnc/novnc@1.4.0/lib/rfb.js").then(function (mod) {
+          var RFB = mod.default;
+          var protocol = location.protocol === "https:" ? "wss:" : "ws:";
+          var url = protocol + "//" + location.host + "/ws/sandbox/" + encodeURIComponent(instanceId) + "/gui?token=" + encodeURIComponent(body.token);
+          rfb = new RFB(canvasTarget, url);
+          rfb.addEventListener("connect", function () { setStatus("Live"); setOverlay(""); });
+          rfb.addEventListener("disconnect", function () { setStatus("Disconnected"); setOverlay("Disconnected — click Reconnect."); });
+          rfb.addEventListener("credentialsrequired", function () { setStatus("Authentication required"); });
+        });
+      })
+      .catch(function (err) {
+        setStatus("Unavailable");
+        setOverlay("Could not connect: " + err.message);
+      });
+  }
+
+  if (reconnectBtn) {
+    reconnectBtn.addEventListener("click", function () {
+      if (rfb) { try { rfb.disconnect(); } catch (e) {} rfb = null; }
+      connect();
+    });
+  }
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener("click", function () {
+      var el = document.getElementById("gui-viewport");
+      if (el && el.requestFullscreen) el.requestFullscreen();
+    });
+  }
+
+  connect();
+})();
+{% end_app_script %}

@@ -50,6 +50,8 @@ def create_app() -> Flask:
     from codesandbox.features.sandbox import routes as _sandbox_routes  # noqa: F401
     from codesandbox.features.sandbox import pages as _sandbox_pages  # noqa: F401
     from codesandbox.features.billing import routes as _billing_routes  # noqa: F401
+    from codesandbox.features.workflow import routes as _workflow_routes  # noqa: F401
+    from codesandbox.features.workflow import pages as _workflow_pages  # noqa: F401
 
     app.register_blueprint(web_bp)
     init_limiter(app, settings.redis_url)
