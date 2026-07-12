@@ -110,6 +110,8 @@ def create_template(
     run_as_user: str | None = None,
     pids_limit: int = 256,
     allow_full_internet: bool = False,
+    interface_behavior: str = "single",
+    ui_workflow_json: str | None = None,
 ) -> SandboxTemplate:
     # New templates never start "active" — they have no plans configured yet, and an
     # active-but-planless template is broken for real end users hitting the Hub.
@@ -132,6 +134,8 @@ def create_template(
         interface_mode=interface_mode,
         allowed_ui_modes=allowed_ui_modes,
         default_ui_mode=default_ui_mode,
+        interface_behavior=interface_behavior,
+        ui_workflow_json=ui_workflow_json,
         network_mode=network_mode,
         allow_root=allow_root,
         read_only_root=read_only_root,

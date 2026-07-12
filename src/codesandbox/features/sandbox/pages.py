@@ -21,6 +21,7 @@ from .service import (
     get_template_detail,
     get_template_plan_configs,
 )
+from .ui_workflow import UI_WORKFLOW_CONDITIONS, UI_WORKFLOW_MODES
 
 
 @router.page("/platform/sandboxes")
@@ -57,6 +58,8 @@ def platform_sandboxes():
             "runtime_class": "container", "interface_mode": "terminal_only",
             "allowed_ui_modes": "terminal_only", "allowed_ui_mode_values": ["terminal_only"],
             "default_ui_mode": "terminal_only",
+            "interface_behavior": "single", "ui_workflow_json": "",
+            "ui_workflow": {"mode": "workflow", "start_node_id": None, "nodes": [], "edges": []},
             "network_mode": "disabled", "allow_root": False,
             "default_command": "", "working_dir": "/workspace",
             "input_mount_path": "/input", "output_mount_path": "/output",
@@ -98,6 +101,33 @@ def platform_sandboxes():
         "template_statuses": TEMPLATE_STATUSES,
         "template_plan_configs": template_plan_configs,
         "error": request.args.get("error"),
+    }
+
+
+@router.page("/platform/sandboxes/<template_id>/workflow")
+def platform_sandbox_ui_workflow(template_id: str):
+    session, redirect = require_platform_role("system_admin", "system_staff")
+    if redirect:
+        return redirect
+    user = session.user
+    can_manage = user.platform_role == "system_admin" or has_platform_permission(user, "platform.sandboxes.manage")
+    if not can_manage:
+        return {"_redirect": "/dashboard"}
+    selected_template = get_template_detail(template_id)
+    if selected_template is None:
+        return {"_redirect": "/platform/sandboxes"}
+    nav = build_nav("/platform/sandboxes", user)
+    return {
+        "_meta": {"title": f"{selected_template['name']} workflow — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": f"{selected_template['name']} — Workflow",
+        **_workspaces_ctx(user),
+        "selected_template": selected_template,
+        "can_manage": can_manage,
+        "ui_workflow_modes": UI_WORKFLOW_MODES,
+        "ui_workflow_conditions": UI_WORKFLOW_CONDITIONS,
+        "ui_mode_labels": UI_MODE_LABELS,
     }
 
 

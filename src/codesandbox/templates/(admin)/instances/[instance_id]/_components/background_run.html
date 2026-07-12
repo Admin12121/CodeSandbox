@@ -93,9 +93,6 @@
         <div class="flex items-center gap-1.5"><span>Runtime</span><span id="background-runtime" class="font-medium text-foreground">{{ instance.total_runtime_sec or 0 }}s</span></div>
         <div class="flex items-center gap-1.5"><span>Cost</span><span id="background-cost" class="font-medium text-foreground">£{{ instance.charged_amount or "0" }}</span></div>
         <div class="flex items-center gap-1.5"><span>Rate</span><span class="font-medium text-foreground">£{{ instance.cost_hr_snapshot }}/hr</span></div>
-        {% if workflow_next_stage %}
-          <a href="/instances/{{ instance.id }}?ui_mode={{ workflow_next_stage.ui_mode or 'lab_ui' }}">{% call button.button(size="sm") %}{{ workflow_next_stage.continue_label or "Continue next stage" }}{% endcall %}</a>
-        {% endif %}
       </div>
     </header>
 

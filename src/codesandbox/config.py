@@ -87,6 +87,9 @@ class Settings:
         # since the app is served via `uvicorn` (ASGI) in dev, which never sets it.
         self.debug = os.environ.get("FLASK_DEBUG", "0") == "1"
         self.billing_dev_topup_enabled = env_bool("BILLING_DEV_TOPUP_ENABLED", False)
+        self.finance_cost_per_vcpu_hour = os.environ.get("FINANCE_COST_PER_VCPU_HOUR", "0")
+        self.finance_cost_per_ram_gb_hour = os.environ.get("FINANCE_COST_PER_RAM_GB_HOUR", "0")
+        self.finance_cost_per_disk_gb_hour = os.environ.get("FINANCE_COST_PER_DISK_GB_HOUR", "0")
 
         # ── Billing: Stripe (GBP topups) ──────────────────────────────────
         self.stripe_secret_key = os.environ.get("STRIPE_SECRET_KEY", "")

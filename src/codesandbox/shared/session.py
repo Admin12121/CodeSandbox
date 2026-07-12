@@ -77,11 +77,13 @@ def require_sandbox_user(
 def build_nav(current_path: str, user: User, active_workspace: dict | None = None) -> dict[str, Any]:
     role = user.platform_role
 
-    def item(label: str, href: str, permission: str | None = None) -> dict:
+    def item(label: str, href: str, permission: str | None = None, *, exact: bool = False) -> dict:
         return {
             "label": label,
             "href": href,
-            "active": current_path == href or (href != "#help" and current_path.startswith(href + "/")),
+            "active": current_path == href or (
+                not exact and href != "#help" and current_path.startswith(href + "/")
+            ),
             "permission": permission,
         }
 
@@ -94,33 +96,53 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
     ]
 
     if role in ("system_admin", "system_staff"):
-        platform_items = [
+        core_items = [
             item("Dashboard", "/dashboard"),
             item("Users", "/platform/users", "platform.users.read"),
             item("Organizations", "/platform/organizations", "platform.organizations.read"),
             item("Application Staff", "/platform/staff", "platform.staff.read"),
             item("Staff Roles", "/platform/roles", "platform.roles.read"),
-            separator(),
+        ]
+        finance_items = [
+            item("Overview", "/platform/finance", "platform.finance.read", exact=True),
+            item("Revenue", "/platform/finance/revenue", "platform.finance.read"),
+            item("Ledger", "/platform/finance/ledger", "platform.finance.read"),
+            item("Promotions", "/platform/finance/promotions", "platform.finance.read"),
+        ]
+        sandbox_items = [
             item("Sandboxes", "/platform/sandboxes", "platform.sandboxes.manage"),
             item("Sandbox Plans", "/platform/sandbox-plans", "platform.sandbox_plans.manage"),
-            item("Workflows", "/platform/workflows", "platform.workflows.manage"),
+            # "Workflows" (the cross-template SandboxWorkflow builder at
+            # /platform/workflows) is intentionally not in the sidebar —
+            # template UI workflows are now configured per-template from the
+            # Identity tab's Workflow Mode, not from a separate global page.
+            # The route/feature itself still exists for a possible future
+            # advanced cross-template scenario builder.
         ]
         if role != "system_admin":
             from codesandbox.features.platform_admin import repository as rbac_repo
             perms = rbac_repo.get_user_permission_keys(user.id)
-            platform_items = [
-                i for i in platform_items
-                if not i["permission"] or i["permission"] in perms
-            ]
+            def permitted(items: list[dict]) -> list[dict]:
+                return [
+                    i for i in items
+                    if not i["permission"] or i["permission"] in perms
+                ]
+            core_items = permitted(core_items)
+            finance_items = permitted(finance_items)
+            sandbox_items = permitted(sandbox_items)
+        sections = [{"label": "Platform", "items": core_items}]
+        if finance_items:
+            sections.append({"label": "Finance", "items": finance_items})
+        if sandbox_items:
+            sections.append({"label": "Sandboxes", "items": sandbox_items})
         return {
-            "sections": [{"label": "Platform", "items": platform_items}],
+            "sections": sections,
             "secondary": secondary_items,
         }
 
     user_items = [
         item("Dashboard", "/dashboard"),
         item("Hub", "/hub"),
-        item("Workflows", "/workflows"),
         item("My Instances", "/my-instances"),
     ]
     if active_workspace:

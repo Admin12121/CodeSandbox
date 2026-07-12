@@ -29,6 +29,14 @@ from .runtime.scheduler import get_runtime_driver
 from .runtime.drivers.base import UnsupportedRuntimeError
 from .runtime.artifacts import safe_artifact_name
 from .runtime.metrics import runtime_seconds
+from .ui_workflow import (
+    parse_ui_workflow_graph,
+    ui_workflow_node_by_id,
+    ui_workflow_node_ui_modes,
+    ui_workflow_outgoing_edges,
+    ui_workflow_start_node,
+    validate_ui_workflow_graph,
+)
 
 _WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 
@@ -149,20 +157,39 @@ def _runtime_default_ui_modes(runtime_class: str) -> list[str]:
     return ["terminal_only", "lab_ui", "background_run"]
 
 
+def _tfield(template_or_dict, key, default=None):
+    if isinstance(template_or_dict, dict):
+        return template_or_dict.get(key, default)
+    return getattr(template_or_dict, key, default)
+
+
+def template_interface_behavior(template_or_dict) -> str:
+    value = str(_tfield(template_or_dict, "interface_behavior") or "single")
+    return value if value in ("single", "workflow") else "single"
+
+
+def template_ui_workflow_graph(template_or_dict) -> dict:
+    return parse_ui_workflow_graph(_tfield(template_or_dict, "ui_workflow_json"))
+
+
 def template_allowed_ui_modes(template_or_dict) -> list[str]:
-    explicit = getattr(template_or_dict, "allowed_ui_modes", None)
-    if isinstance(template_or_dict, dict):
-        explicit = template_or_dict.get("allowed_ui_modes")
-    legacy = getattr(template_or_dict, "interface_mode", None)
-    if isinstance(template_or_dict, dict):
-        legacy = template_or_dict.get("interface_mode")
-    runtime_class = getattr(template_or_dict, "runtime_class", None)
-    if isinstance(template_or_dict, dict):
-        runtime_class = template_or_dict.get("runtime_class")
+    runtime_class = _tfield(template_or_dict, "runtime_class")
+    if template_interface_behavior(template_or_dict) == "workflow":
+        modes = ui_workflow_node_ui_modes(template_ui_workflow_graph(template_or_dict))
+        if modes:
+            return modes
+        # No nodes configured yet — fall back to the runtime's usual default
+        # so the template still behaves sanely before the graph is built.
+    explicit = _tfield(template_or_dict, "allowed_ui_modes")
+    legacy = _tfield(template_or_dict, "interface_mode")
     return normalize_ui_modes(explicit or legacy, tuple(_runtime_default_ui_modes(str(runtime_class or "container"))[:1]))
 
 
 def template_default_ui_mode(template_or_dict) -> str:
+    if template_interface_behavior(template_or_dict) == "workflow":
+        start = ui_workflow_start_node(template_ui_workflow_graph(template_or_dict))
+        if start and start.get("ui_mode"):
+            return normalize_ui_mode(start.get("ui_mode"), "terminal_only")
     allowed = template_allowed_ui_modes(template_or_dict)
     configured = getattr(template_or_dict, "default_ui_mode", None)
     if isinstance(template_or_dict, dict):
@@ -232,96 +259,7 @@ def validate_ui_mode_config(
         if require_publish_ready and not has_android:
             return "Android UI requires Android emulator config in runtime.json before publishing."
 
-    workflow_error = validate_workflow_config(runtime_config)
-    if workflow_error:
-        return workflow_error
     return None
-
-
-def validate_workflow_config(runtime_config: dict) -> str | None:
-    workflow = runtime_config.get("workflow") or runtime_config.get("stage_graph_json")
-    if not workflow:
-        return None
-    if isinstance(workflow, str):
-        try:
-            workflow = json.loads(workflow)
-        except ValueError:
-            return "Workflow config must be valid JSON."
-    if not isinstance(workflow, dict):
-        return "Workflow config must be an object."
-    stages = workflow.get("stages")
-    if stages is None:
-        return None
-    if not isinstance(stages, list):
-        return "Workflow stages must be a list."
-    stage_ids = set()
-    for index, stage in enumerate(stages, start=1):
-        if not isinstance(stage, dict):
-            return f"Workflow stage {index} must be an object."
-        stage_id = str(stage.get("id") or stage.get("slug") or index)
-        if stage_id in stage_ids:
-            return f"Workflow stage {stage_id} is duplicated."
-        stage_ids.add(stage_id)
-        mode = normalize_ui_mode(stage.get("ui_mode"), default="")
-        if not mode:
-            return f"Workflow stage {stage_id} has an invalid ui_mode."
-        runtime_class = str(stage.get("runtime_class") or "").strip()
-        if runtime_class and runtime_class not in RUNTIME_CLASSES:
-            return f"Workflow stage {stage_id} has an invalid runtime_class."
-        carry = stage.get("carry_artifacts", False)
-        if not isinstance(carry, bool):
-            return f"Workflow stage {stage_id} carry_artifacts must be true or false."
-    for stage in stages:
-        next_stage_id = stage.get("next_stage_id")
-        if next_stage_id and str(next_stage_id) not in stage_ids:
-            return f"Workflow stage {stage.get('id') or stage.get('slug')} points to a missing next_stage_id."
-    return None
-
-
-def _workflow_next_stage_for_ui_mode(workflow: object, ui_mode: str) -> dict:
-    if isinstance(workflow, str):
-        try:
-            workflow = json.loads(workflow)
-        except ValueError:
-            return {}
-    if not isinstance(workflow, dict):
-        return {}
-
-    stages = workflow.get("stages")
-    if isinstance(stages, list):
-        by_id: dict[str, dict] = {}
-        ordered: list[dict] = []
-        for index, stage in enumerate(stages, start=1):
-            if not isinstance(stage, dict):
-                continue
-            item = dict(stage)
-            stage_id = str(item.get("id") or item.get("slug") or index)
-            item["_stage_id"] = stage_id
-            item["ui_mode"] = normalize_ui_mode(item.get("ui_mode"), default=str(item.get("ui_mode") or ""))
-            by_id[stage_id] = item
-            ordered.append(item)
-
-        for index, stage in enumerate(ordered):
-            if stage.get("ui_mode") != ui_mode:
-                continue
-            next_stage = by_id.get(str(stage.get("next_stage_id") or ""))
-            if next_stage is None and index + 1 < len(ordered):
-                next_stage = ordered[index + 1]
-            if next_stage:
-                result = dict(next_stage)
-                result["continue_label"] = stage.get("continue_label") or result.get("continue_label") or "Continue next stage"
-                return result
-            return {}
-
-    next_stage_id = workflow.get("next_stage_id")
-    next_ui_mode = workflow.get("next_ui_mode") or workflow.get("ui_mode") or "lab_ui"
-    if next_stage_id or workflow.get("continue_label"):
-        return {
-            "_stage_id": str(next_stage_id or ""),
-            "ui_mode": normalize_ui_mode(next_ui_mode, "lab_ui"),
-            "continue_label": workflow.get("continue_label") or "Continue next stage",
-        }
-    return {}
 
 
 def make_worker_callback_token(job_id: str, instance_id: str, action: str) -> str:
@@ -374,7 +312,6 @@ def _instance_dict(inst, template_cache: dict | None = None) -> dict:
     t = (template_cache or {}).get(tid) or repository.get_template(tid)
     allowed_ui_modes = template_allowed_ui_modes(t) if t else ["terminal_only"]
     default_ui_mode = template_default_ui_mode(t) if t else "terminal_only"
-    runtime_config = parse_runtime_config(t.runtime_config) if t else {}
     return {
         "id": str(inst.id),
         "template_id": tid,
@@ -384,7 +321,6 @@ def _instance_dict(inst, template_cache: dict | None = None) -> dict:
         "runtime_class": t.runtime_class if t else "",
         "allowed_ui_modes": allowed_ui_modes,
         "default_ui_mode": default_ui_mode,
-        "workflow": runtime_config.get("workflow") or runtime_config.get("stage_graph_json") or {},
         "plan_id": inst.plan_id,
         "workspace_type": inst.workspace_type,
         "workspace_user_id": str(inst.workspace_user_id) if inst.workspace_user_id else None,
@@ -661,6 +597,9 @@ def _template_dict(t) -> dict:
         "allowed_ui_modes": _ui_mode_csv(allowed_ui_modes),
         "allowed_ui_mode_values": allowed_ui_modes,
         "default_ui_mode": default_ui_mode,
+        "interface_behavior": template_interface_behavior(t),
+        "ui_workflow_json": t.ui_workflow_json or "",
+        "ui_workflow": template_ui_workflow_graph(t),
         "network_mode": t.network_mode,
         "allow_root": bool(t.allow_root),
         "read_only_root": bool(t.read_only_root),
@@ -693,6 +632,7 @@ def save_template(
     interface_mode: str = "terminal",
     allowed_ui_modes: str | list[str] | None = None,
     default_ui_mode: str = "terminal_only",
+    interface_behavior: str = "single",
     network_mode: str = "disabled",
     allow_root: bool = False,
     max_timeout_hr: int = 2,
@@ -719,12 +659,33 @@ def save_template(
     if not _image_allowed(docker_image):
         return None, "Docker image is not in the configured runtime allowlist."
     runtime_class = runtime_class if runtime_class in RUNTIME_CLASSES else "container"
-    _modes = normalize_ui_modes(allowed_ui_modes if allowed_ui_modes is not None else interface_mode)
+    interface_behavior = interface_behavior if interface_behavior in ("single", "workflow") else "single"
+
+    existing_t = repository.get_template(template_id) if template_id else None
+    if template_id and existing_t is None:
+        return None, "Template not found."
+
+    if interface_behavior == "workflow":
+        # The Identity form doesn't submit allowed_ui_modes/default_ui_mode
+        # in Workflow Mode — they're derived from whatever graph is already
+        # saved (edited separately via the canvas route). A template that
+        # hasn't had its workflow configured yet just falls back to
+        # whatever this runtime_class's own default mode is (not a hardcoded
+        # terminal_only — that's invalid for e.g. tool_job) until the admin
+        # builds the graph.
+        existing_graph = template_ui_workflow_graph(existing_t) if existing_t else {"nodes": []}
+        _modes = ui_workflow_node_ui_modes(existing_graph) or _runtime_default_ui_modes(runtime_class)[:1]
+        default_ui_mode = _modes[0]
+        graph_start = ui_workflow_start_node(existing_graph)
+        if graph_start and graph_start.get("ui_mode") in _modes:
+            default_ui_mode = graph_start["ui_mode"]
+    else:
+        # Single Mode: the template opens in exactly one UI mode — no
+        # multi-select, just whatever the admin picked as Default UI Mode.
+        default_ui_mode = normalize_ui_mode(default_ui_mode, "terminal_only")
+        _modes = [default_ui_mode]
     allowed_ui_modes_json = _ui_mode_json(_modes)
     interface_mode = _ui_mode_csv(_modes)
-    default_ui_mode = normalize_ui_mode(default_ui_mode, _modes[0])
-    if default_ui_mode not in _modes:
-        default_ui_mode = _modes[0]
     network_mode = normalize_network_mode(
         network_mode if network_mode in NETWORK_MODES else "disabled"
     )
@@ -787,6 +748,7 @@ def save_template(
         interface_mode=interface_mode,
         allowed_ui_modes=allowed_ui_modes_json,
         default_ui_mode=default_ui_mode,
+        interface_behavior=interface_behavior,
         network_mode=network_mode,
         allow_root=allow_root,
         read_only_root=read_only_root,
@@ -797,9 +759,8 @@ def save_template(
     )
 
     if template_id:
-        existing_t = repository.get_template(template_id)
-        if existing_t is None:
-            return None, "Template not found."
+        # existing_t was already fetched above (needed to derive Workflow
+        # Mode's allowed_ui_modes/default_ui_mode before validation ran).
         slug = existing_t.slug if existing_t else (slug.strip() or _slugify(name))
 
         update_kwargs = dict(
@@ -839,6 +800,7 @@ def save_template(
             "runtime_class": runtime_class,
             "allowed_ui_modes": _modes,
             "default_ui_mode": default_ui_mode,
+            "interface_behavior": interface_behavior,
             "network_mode": network_mode,
             "allow_full_internet": allow_full_internet,
         }),
@@ -858,6 +820,10 @@ def set_template_status(template_id: str, status: str, actor_user_id: str | None
             return "Template not found."
         if (t.last_test_status or "untested") != "passed":
             return "Cannot activate: run a successful Test Launch first."
+        if template_interface_behavior(t) == "workflow":
+            graph_error = validate_ui_workflow_graph(template_ui_workflow_graph(t))
+            if graph_error:
+                return f"Cannot activate: {graph_error}"
         runtime_config = parse_runtime_config(t.runtime_config)
         ui_error = validate_ui_mode_config(
             runtime_class=t.runtime_class,
@@ -929,6 +895,62 @@ def save_template_config(template_id: str, config_json: str, actor_user_id: str 
                 template_id=template_id,
             )
     repository.update_template(template_id, **update_kwargs)
+
+
+def save_template_ui_workflow(
+    template_id: str, graph: dict, actor_user_id: str | None = None
+) -> tuple[dict | None, str | None]:
+    """Persists this template's own UI-stage graph (Workflow Mode). Any
+    change here alters what UI mode(s) the template opens with and how
+    instances transition between them — always dangerous enough to force a
+    retest, same tier as an Identity-tab runtime field edit."""
+    existing_t = repository.get_template(template_id)
+    if existing_t is None:
+        return None, "Template not found."
+    error = validate_ui_workflow_graph(graph)
+    if error:
+        return None, error
+    node_modes = ui_workflow_node_ui_modes(graph)
+    runtime_config = parse_runtime_config(existing_t.runtime_config)
+    ui_error = validate_ui_mode_config(
+        runtime_class=existing_t.runtime_class,
+        allowed_ui_modes=node_modes,
+        default_ui_mode=node_modes[0],
+        default_command=existing_t.default_command or "",
+        runtime_config=runtime_config,
+        require_publish_ready=False,
+    )
+    if ui_error:
+        return None, ui_error
+
+    graph_json = json.dumps(graph, separators=(",", ":"))
+    update_kwargs: dict = {"ui_workflow_json": graph_json}
+    if existing_t.ui_workflow_json != graph_json:
+        update_kwargs["last_test_status"] = "untested"
+        update_kwargs["last_tested_at"] = None
+        if existing_t.status == "active":
+            update_kwargs["status"] = "maintenance"
+    t = repository.update_template(template_id, **update_kwargs)
+    repository.log_instance_event(
+        None,
+        "template.ui_workflow_updated",
+        actor=f"user:{actor_user_id}" if actor_user_id else "system",
+        detail=json.dumps({
+            "node_count": len(graph.get("nodes") or []),
+            "edge_count": len(graph.get("edges") or []),
+            "ui_modes": node_modes,
+            "forced_retest": True,
+        }),
+        template_id=template_id,
+    )
+    return _template_dict(t), None
+
+
+def get_template_ui_workflow(template_id: str) -> dict | None:
+    t = repository.get_template(template_id)
+    if t is None:
+        return None
+    return template_ui_workflow_graph(t)
 
 
 def delete_template(template_id: str) -> str | None:
@@ -1470,10 +1492,41 @@ def select_instance_ui_mode(
     return (requested if requested in allowed else default), allowed
 
 
+def _ui_workflow_choices(graph: dict, node: dict | None, instance: dict) -> list[dict]:
+    """Outgoing-edge choices from the current node, filtered by condition —
+    success/failure only appear once the instance's real exit_code makes the
+    outcome known; manual/always are always offered."""
+    if not node:
+        return []
+    exit_code = instance.get("exit_code")
+    choices = []
+    for edge in ui_workflow_outgoing_edges(graph, str(node.get("id"))):
+        condition = str(edge.get("condition") or "manual")
+        if condition == "success" and exit_code != 0:
+            continue
+        if condition == "failure" and (exit_code is None or exit_code == 0):
+            continue
+        target = ui_workflow_node_by_id(graph, edge.get("target"))
+        if target is None:
+            continue
+        choices.append({
+            "edge_id": edge.get("id") or "",
+            "label": edge.get("label") or node.get("continue_label") or f"Open {UI_MODE_LABELS.get(target.get('ui_mode'), target.get('ui_mode'))}",
+            "condition": condition,
+            "target_node_id": target.get("id"),
+            "target_ui_mode": target.get("ui_mode"),
+            "target_label": target.get("label") or UI_MODE_LABELS.get(target.get("ui_mode"), target.get("ui_mode")),
+            "target_auto_start": bool(target.get("auto_start")),
+            "url": f"/instances/{instance.get('id')}?ui_mode={target.get('ui_mode')}&node={target.get('id')}",
+        })
+    return choices
+
+
 def get_instance_ui_context(
     instance_id: str,
     actor_user_id: str | None,
     requested_ui_mode: str | None = None,
+    requested_node_id: str | None = None,
 ) -> tuple[dict | None, str | None]:
     instance, error = get_instance_for_view(instance_id, actor_user_id)
     if error or instance is None:
@@ -1490,8 +1543,18 @@ def get_instance_ui_context(
     template = repository.get_template(instance["template_id"])
     plan_row = repository.get_plan(instance["plan_id"])
     runtime_config = parse_runtime_config(template.runtime_config if template else None)
-    ui_mode, allowed_ui_modes = select_instance_ui_mode(instance, requested_ui_mode)
-    workflow = runtime_config.get("workflow") or runtime_config.get("stage_graph_json") or {}
+
+    ui_workflow_node = None
+    ui_workflow_choices: list[dict] = []
+    if template is not None and template_interface_behavior(template) == "workflow":
+        graph = template_ui_workflow_graph(template)
+        ui_workflow_node = ui_workflow_node_by_id(graph, requested_node_id) or ui_workflow_start_node(graph)
+        ui_mode = normalize_ui_mode((ui_workflow_node or {}).get("ui_mode"), "terminal_only")
+        allowed_ui_modes = ui_workflow_node_ui_modes(graph) or [ui_mode]
+        ui_workflow_choices = _ui_workflow_choices(graph, ui_workflow_node, instance)
+    else:
+        ui_mode, allowed_ui_modes = select_instance_ui_mode(instance, requested_ui_mode)
+
     return {
         "instance": instance,
         "template": _template_dict(template) if template else None,
@@ -1508,8 +1571,8 @@ def get_instance_ui_context(
         "ui_mode_labels": UI_MODE_LABELS,
         "runtime_config": runtime_config,
         "ui_config": runtime_config.get("ui") if isinstance(runtime_config.get("ui"), dict) else {},
-        "workflow": workflow,
-        "workflow_next_stage": _workflow_next_stage_for_ui_mode(workflow, ui_mode),
+        "ui_workflow_node": ui_workflow_node,
+        "ui_workflow_choices": ui_workflow_choices,
         "artifacts": artifacts or [],
         "events": events or [],
         "notes": notes or {},
@@ -1823,25 +1886,28 @@ def _release_worker_capacity_for(inst) -> None:
 
 
 def _charge_completed_instance(inst) -> None:
-    runtime_sec = max(int(inst.total_runtime_sec or 0), int(inst.min_billable_sec or 0))
-    amount = (
-        Decimal(str(inst.cost_hr_snapshot or "0"))
-        * Decimal(runtime_sec)
-        / Decimal(3600)
-    ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
-    tx, charged, status = repository.charge_instance_balance(
+    actual_runtime_sec = int(inst.total_runtime_sec or 0)
+    billable_sec = max(actual_runtime_sec, int(inst.min_billable_sec or 0))
+    from codesandbox.features.finance.service import create_usage_charge_for_instance
+
+    charge, tx, revenue, status = create_usage_charge_for_instance(
         str(inst.id),
-        amount,
-        f"Sandbox usage ({runtime_sec}s at {inst.billing_currency or 'GBP'} {inst.cost_hr_snapshot or 0}/hr)",
+        runtime_seconds=actual_runtime_sec,
+        billable_seconds=billable_sec,
+        description=f"Sandbox usage ({billable_sec}s at {inst.billing_currency or 'GBP'} {inst.cost_hr_snapshot or 0}/hr)",
     )
-    if tx is not None:
+    if charge is not None:
         repository.log_instance_event(
             str(inst.id),
             "usage_charged",
             actor="system",
             detail=json.dumps({
-                "due": str(amount),
-                "charged": str(charged),
+                "usage_charge_id": str(charge.id),
+                "gross": str(charge.gross_amount or "0"),
+                "discount": str(charge.discount_amount or "0"),
+                "credit": str(charge.credit_amount or "0"),
+                "revenue": str(revenue),
+                "balance_transaction_id": str(tx.id) if tx else None,
                 "billing_status": status,
             }),
         )
@@ -1895,9 +1961,7 @@ def handle_worker_callback(
             # (_evaluate_test_success on the worker, "test_success" in the
             # stopped/failed callback below).
             test_template = repository.get_template(str(inst.template_id))
-            ui_mode = normalize_ui_mode(
-                test_template.default_ui_mode if test_template else None, "terminal_only"
-            )
+            ui_mode = template_default_ui_mode(test_template) if test_template else "terminal_only"
             if ui_mode in ("terminal_only", "lab_ui"):
                 _mark_template_test_result(inst, "passed")
         _upsert_worker_runtime(updated, status="running")

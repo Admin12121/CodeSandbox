@@ -49,6 +49,16 @@ class SandboxTemplate(Model):
     interface_mode = StringField(max_length=40, default="terminal")   # legacy: terminal|full_ui|background|android_ui|gui
     allowed_ui_modes = TextField(nullable=True)                       # terminal_only|lab_ui|background_run|desktop_gui|android_ui
     default_ui_mode = StringField(max_length=40, default="terminal_only")
+
+    # Interface behavior — single: one fixed default_ui_mode; workflow: the
+    # instance opens the ui_workflow_json graph's start node and switches
+    # ui_mode (same instance) as the user/pipeline follows outgoing edges.
+    # Distinct from features/workflow/'s SandboxWorkflow, which spans
+    # multiple templates/instances — this graph is always scoped to this one
+    # template's own UI stages.
+    interface_behavior = StringField(max_length=20, default="single")  # single|workflow
+    ui_workflow_json = TextField(nullable=True)
+
     network_mode = StringField(max_length=40, default="disabled")     # disabled|isolated|fake_internet|controlled_proxy|allowlist
 
     # Security defaults

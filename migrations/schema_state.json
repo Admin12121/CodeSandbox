@@ -1086,6 +1086,2272 @@
       "model": "Balance",
       "name": "balances"
     },
+    "coupon_redemptions": {
+      "columns": {
+        "coupon_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Coupon",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Coupon",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "coupon_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "currency": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "GBP",
+          "field": {
+            "auto_increment": false,
+            "default": "GBP",
+            "index": false,
+            "max_length": 3,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 3,
+          "name": "currency",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "entity_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_type": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 10,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 10,
+          "name": "entity_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "metadata_json": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "metadata_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
+        "redeemed_amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "redeemed_amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "topup_intent_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "TopupIntent",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "TopupIntent",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "topup_intent_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "usage_charge_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "UsageCharge",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "UsageCharge",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "usage_charge_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "coupon_id",
+          "name": "fk_coupon_redemptions_coupon_id",
+          "on_delete": "CASCADE",
+          "to_column": "id",
+          "to_table": "finance_coupons"
+        },
+        {
+          "column": "usage_charge_id",
+          "name": "fk_coupon_redemptions_usage_charge_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "usage_charges"
+        },
+        {
+          "column": "topup_intent_id",
+          "name": "fk_coupon_redemptions_topup_intent_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "topup_intents"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "coupon_id"
+          ],
+          "name": "idx_coupon_redemptions_coupon_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "usage_charge_id"
+          ],
+          "name": "idx_coupon_redemptions_usage_charge_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "topup_intent_id"
+          ],
+          "name": "idx_coupon_redemptions_topup_intent_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "coupon_id",
+            "entity_type",
+            "entity_id"
+          ],
+          "name": "idx_coupon_redemptions_coupon_entity",
+          "unique": false
+        }
+      ],
+      "model": "CouponRedemption",
+      "name": "coupon_redemptions"
+    },
+    "credit_grants": {
+      "columns": {
+        "amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": null,
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "balance_transaction_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "BalanceTransaction",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "BalanceTransaction",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "balance_transaction_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "currency": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "GBP",
+          "field": {
+            "auto_increment": false,
+            "default": "GBP",
+            "index": false,
+            "max_length": 3,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 3,
+          "name": "currency",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "entity_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_type": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 10,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 10,
+          "name": "entity_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "expires_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "granted_by": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "credit_grants_made",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "credit_grants_made",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "granted_by",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "reason": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
+        "remaining_amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": null,
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "remaining_amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "status": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "active",
+          "field": {
+            "auto_increment": false,
+            "default": "active",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "updated_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "updated_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "granted_by",
+          "name": "fk_credit_grants_granted_by",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        },
+        {
+          "column": "balance_transaction_id",
+          "name": "fk_credit_grants_balance_transaction_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "balance_transactions"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "granted_by"
+          ],
+          "name": "idx_credit_grants_granted_by",
+          "unique": false
+        },
+        {
+          "columns": [
+            "balance_transaction_id"
+          ],
+          "name": "idx_credit_grants_balance_transaction_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "entity_type",
+            "entity_id",
+            "status"
+          ],
+          "name": "idx_credit_grants_entity_status",
+          "unique": false
+        }
+      ],
+      "model": "CreditGrant",
+      "name": "credit_grants"
+    },
+    "finance_adjustments": {
+      "columns": {
+        "amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": null,
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "balance_transaction_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "BalanceTransaction",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "BalanceTransaction",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "balance_transaction_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "created_by": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "finance_adjustments_made",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "finance_adjustments_made",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_by",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "currency": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "GBP",
+          "field": {
+            "auto_increment": false,
+            "default": "GBP",
+            "index": false,
+            "max_length": 3,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 3,
+          "name": "currency",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "entity_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_type": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 10,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 10,
+          "name": "entity_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "reason": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "reason",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "created_by",
+          "name": "fk_finance_adjustments_created_by",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        },
+        {
+          "column": "balance_transaction_id",
+          "name": "fk_finance_adjustments_balance_transaction_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "balance_transactions"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "created_by"
+          ],
+          "name": "idx_finance_adjustments_created_by",
+          "unique": false
+        },
+        {
+          "columns": [
+            "balance_transaction_id"
+          ],
+          "name": "idx_finance_adjustments_balance_transaction_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "entity_type",
+            "entity_id",
+            "created_at"
+          ],
+          "name": "idx_finance_adjustments_entity_created",
+          "unique": false
+        }
+      ],
+      "model": "FinanceAdjustment",
+      "name": "finance_adjustments"
+    },
+    "finance_coupons": {
+      "columns": {
+        "applies_to_org_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "applies_to_org_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "applies_to_plan_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 40,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 40,
+          "name": "applies_to_plan_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "applies_to_template_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxTemplate",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxTemplate",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "applies_to_template_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "applies_to_user_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "finance_coupons",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "finance_coupons",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "applies_to_user_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "code": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 80,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": true
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 80,
+          "name": "code",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": true
+        },
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "created_by": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "created_coupons",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "created_coupons",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_by",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "currency": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 3,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 3,
+          "name": "currency",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "description": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "description",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
+        "discount_type": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 30,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 30,
+          "name": "discount_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "expires_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "expires_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "max_redemptions": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "max_redemptions",
+          "nullable": true,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "name": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 120,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 120,
+          "name": "name",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "per_entity_limit": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "per_entity_limit",
+          "nullable": true,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "starts_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "starts_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "status": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "active",
+          "field": {
+            "auto_increment": false,
+            "default": "active",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "updated_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "updated_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "value": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "value",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "applies_to_template_id",
+          "name": "fk_finance_coupons_applies_to_template_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "sandbox_templates"
+        },
+        {
+          "column": "applies_to_user_id",
+          "name": "fk_finance_coupons_applies_to_user_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        },
+        {
+          "column": "applies_to_org_id",
+          "name": "fk_finance_coupons_applies_to_org_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "organizations"
+        },
+        {
+          "column": "created_by",
+          "name": "fk_finance_coupons_created_by",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "code"
+          ],
+          "name": "uidx_finance_coupons_code",
+          "unique": true
+        },
+        {
+          "columns": [
+            "applies_to_template_id"
+          ],
+          "name": "idx_finance_coupons_applies_to_template_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "applies_to_user_id"
+          ],
+          "name": "idx_finance_coupons_applies_to_user_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "applies_to_org_id"
+          ],
+          "name": "idx_finance_coupons_applies_to_org_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "created_by"
+          ],
+          "name": "idx_finance_coupons_created_by",
+          "unique": false
+        }
+      ],
+      "model": "Coupon",
+      "name": "finance_coupons"
+    },
+    "finance_invoices": {
+      "columns": {
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "credit_total": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "credit_total",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "currency": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "GBP",
+          "field": {
+            "auto_increment": false,
+            "default": "GBP",
+            "index": false,
+            "max_length": 3,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 3,
+          "name": "currency",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "discount_total": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "discount_total",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "entity_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "entity_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_type": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 10,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 10,
+          "name": "entity_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "finalized_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "finalized_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "invoice_no": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 80,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": true
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 80,
+          "name": "invoice_no",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": true
+        },
+        "pdf_storage_key": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 700,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 700,
+          "name": "pdf_storage_key",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "period_end": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "period_end",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "period_start": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "period_start",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "refund_total": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "refund_total",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "status": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "draft",
+          "field": {
+            "auto_increment": false,
+            "default": "draft",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "subtotal": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "subtotal",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "total": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "total",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        }
+      },
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "columns": [
+            "invoice_no"
+          ],
+          "name": "uidx_finance_invoices_invoice_no",
+          "unique": true
+        },
+        {
+          "columns": [
+            "entity_type",
+            "entity_id",
+            "period_start"
+          ],
+          "name": "idx_finance_invoices_entity_period",
+          "unique": false
+        }
+      ],
+      "model": "Invoice",
+      "name": "finance_invoices"
+    },
     "instance_requests": {
       "columns": {
         "created_at": {
@@ -8030,6 +10296,30 @@
           "type": "BooleanField",
           "unique": false
         },
+        "interface_behavior": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "single",
+          "field": {
+            "auto_increment": false,
+            "default": "single",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "interface_behavior",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
         "interface_mode": {
           "auto_increment": false,
           "decimal_places": null,
@@ -8436,6 +10726,30 @@
           "nullable": false,
           "primary_key": false,
           "type": "StringField",
+          "unique": false
+        },
+        "ui_workflow_json": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "ui_workflow_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
           "unique": false
         },
         "updated_at": {
@@ -9799,6 +12113,904 @@
       ],
       "model": "TwoFactorMethod",
       "name": "two_factor_methods"
+    },
+    "usage_charges": {
+      "columns": {
+        "balance_transaction_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "BalanceTransaction",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "BalanceTransaction",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "balance_transaction_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "billable_seconds": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": 0,
+          "field": {
+            "auto_increment": false,
+            "default": 0,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "billable_seconds",
+          "nullable": false,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "charged_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "charged_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "cost_hr_snapshot": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "cost_hr_snapshot",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "coupon_redemption_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "coupon_redemption_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "credit_amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "credit_amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "currency": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "GBP",
+          "field": {
+            "auto_increment": false,
+            "default": "GBP",
+            "index": false,
+            "max_length": 3,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 3,
+          "name": "currency",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "discount_amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "discount_amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "entity_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "entity_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "entity_type": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 10,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 10,
+          "name": "entity_type",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "final_amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "final_amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "gross_amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "gross_amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "idempotency_key": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 255,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": true
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 255,
+          "name": "idempotency_key",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": true
+        },
+        "instance_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxInstance",
+            "type": "ForeignKey",
+            "unique": true
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxInstance",
+            "type": "ForeignKey",
+            "unique": true
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "instance_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": true
+        },
+        "metadata_json": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "metadata_json",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
+        "org_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "usage_charges",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "usage_charges",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "org_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "plan_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 40,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 40,
+          "name": "plan_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "refunded_amount": {
+          "auto_increment": false,
+          "decimal_places": 4,
+          "default": "0.00",
+          "field": {
+            "auto_increment": false,
+            "decimal_places": 4,
+            "default": "0.00",
+            "index": false,
+            "max_digits": 12,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DecimalField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": 12,
+          "max_length": null,
+          "name": "refunded_amount",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DecimalField",
+          "unique": false
+        },
+        "refunded_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "refunded_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "runtime_seconds": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": 0,
+          "field": {
+            "auto_increment": false,
+            "default": 0,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "runtime_seconds",
+          "nullable": false,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "status": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "pending",
+          "field": {
+            "auto_increment": false,
+            "default": "pending",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "template_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxTemplate",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxTemplate",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "template_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "user_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "usage_charges",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "usage_charges",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "user_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "instance_id",
+          "name": "fk_usage_charges_instance_id",
+          "on_delete": "CASCADE",
+          "to_column": "id",
+          "to_table": "sandbox_instances"
+        },
+        {
+          "column": "user_id",
+          "name": "fk_usage_charges_user_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        },
+        {
+          "column": "org_id",
+          "name": "fk_usage_charges_org_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "organizations"
+        },
+        {
+          "column": "template_id",
+          "name": "fk_usage_charges_template_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "sandbox_templates"
+        },
+        {
+          "column": "balance_transaction_id",
+          "name": "fk_usage_charges_balance_transaction_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "balance_transactions"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "instance_id"
+          ],
+          "name": "idx_usage_charges_instance_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "instance_id"
+          ],
+          "name": "uidx_usage_charges_instance_id",
+          "unique": true
+        },
+        {
+          "columns": [
+            "user_id"
+          ],
+          "name": "idx_usage_charges_user_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "org_id"
+          ],
+          "name": "idx_usage_charges_org_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "template_id"
+          ],
+          "name": "idx_usage_charges_template_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "idempotency_key"
+          ],
+          "name": "uidx_usage_charges_idempotency_key",
+          "unique": true
+        },
+        {
+          "columns": [
+            "balance_transaction_id"
+          ],
+          "name": "idx_usage_charges_balance_transaction_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "entity_type",
+            "entity_id",
+            "created_at"
+          ],
+          "name": "idx_usage_charges_entity_created",
+          "unique": false
+        },
+        {
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "name": "idx_usage_charges_status_created",
+          "unique": false
+        }
+      ],
+      "model": "UsageCharge",
+      "name": "usage_charges"
     },
     "user_passkeys": {
       "columns": {

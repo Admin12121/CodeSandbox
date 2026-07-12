@@ -370,7 +370,6 @@
             {% endcall %}
 
             {# ── Runtime ── #}
-            {% set active_ifaces = selected_template.allowed_ui_mode_values or ((selected_template.allowed_ui_modes or selected_template.interface_mode or "terminal_only").split(",") | map("trim") | list) %}
             {% call frame.frame() %}
               {% call table.table(variant="card") %}
                 {% call table.table_header() %}
@@ -451,39 +450,67 @@
                     {% endcall %}
                   {% endcall %}
 
-                  {# UI Mode — multi-select pills (checkboxes) #}
+                  {% set iface_opts = [
+                    {"value": "terminal_only", "label": "Terminal Only",  "runtimes": "container microvm fullvm qemu_vm firecracker_microvm"},
+                    {"value": "lab_ui",        "label": "Lab UI",         "runtimes": "container microvm fullvm qemu_vm firecracker_microvm"},
+                    {"value": "background_run","label": "Background Run", "runtimes": "container tool_job microvm fullvm qemu_vm firecracker_microvm"},
+                    {"value": "desktop_gui",   "label": "Desktop GUI",    "runtimes": "fullvm qemu_vm"},
+                    {"value": "android_ui",    "label": "Android UI",     "runtimes": "android_emulator"},
+                  ] %}
+                  {% set is_workflow_mode = selected_template.interface_behavior == "workflow" %}
+
+                  {# Interface Behavior — Single Mode / Workflow Mode #}
                   {% call table.table_row() %}
-                    {% call table.table_cell(class="font-medium text-sm align-top pt-2.5") %}Allowed UI Modes{% endcall %}
+                    {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Interface Behavior{% endcall %}
                     {% call table.table_cell() %}
-                      <div id="iface-pills" class="flex flex-wrap gap-2">
-                        {% set iface_opts = [
-                          {"value": "terminal_only", "label": "Terminal Only",  "runtimes": "container microvm fullvm qemu_vm firecracker_microvm"},
-                          {"value": "lab_ui",        "label": "Lab UI",         "runtimes": "container microvm fullvm qemu_vm firecracker_microvm"},
-                          {"value": "background_run","label": "Background Run", "runtimes": "container tool_job microvm fullvm qemu_vm firecracker_microvm"},
-                          {"value": "desktop_gui",   "label": "Desktop GUI",    "runtimes": "fullvm qemu_vm"},
-                          {"value": "android_ui",    "label": "Android UI",     "runtimes": "android_emulator"},
-                        ] %}
-                        {% for opt in iface_opts %}
-                          <label class="iface-pill inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-input px-3 py-1 text-sm font-medium transition-colors hover:bg-accent/20"
-                            data-runtimes="{{ opt.runtimes }}">
-                            <input type="checkbox" name="allowed_ui_modes" value="{{ opt.value }}" class="sr-only"
-                              {% if opt.value in active_ifaces %}checked{% endif %}>
-                            <svg class="iface-check size-3.5 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" {% if opt.value not in active_ifaces %}hidden{% endif %}><polyline points="20 6 9 17 4 12"/></svg>
-                            {{ opt.label }}
-                          </label>
-                        {% endfor %}
+                      <div class="flex flex-col gap-2">
+                        <label class="inline-flex cursor-pointer items-center gap-2 text-sm">
+                          <input type="radio" name="interface_behavior" id="ib-single" value="single" class="size-3.5" {% if not is_workflow_mode %}checked{% endif %}>
+                          Single Mode
+                          <span class="text-xs text-muted-foreground">— one fixed UI mode</span>
+                        </label>
+                        <label class="inline-flex cursor-pointer items-center gap-2 text-sm {% if is_create %}opacity-50{% endif %}">
+                          <input type="radio" name="interface_behavior" id="ib-workflow" value="workflow" class="size-3.5" {% if is_workflow_mode %}checked{% endif %} {% if is_create %}disabled{% endif %}>
+                          Workflow Mode
+                          <span class="text-xs text-muted-foreground">— multiple UI stages, same instance</span>
+                        </label>
+                        {% if is_create %}
+                          <p class="text-xs text-muted-foreground">Create the template first, then switch to Workflow Mode to build its canvas.</p>
+                        {% endif %}
                       </div>
                     {% endcall %}
                   {% endcall %}
 
-                  {% call table.table_row() %}
+                  {# Single Mode: one select #}
+                  {% call table.table_row(attrs={"id": "ib-single-row", "style": "display:none" if is_workflow_mode else ""}) %}
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Default UI Mode{% endcall %}
                     {% call table.table_cell() %}
                       <select name="default_ui_mode" id="default-ui-mode" class="h-8 w-64 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         {% for opt in iface_opts %}
-                          <option value="{{ opt.value }}" {% if selected_template.default_ui_mode == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+                          <option value="{{ opt.value }}" data-runtimes="{{ opt.runtimes }}" {% if selected_template.default_ui_mode == opt.value %}selected{% endif %}>{{ opt.label }}</option>
                         {% endfor %}
                       </select>
+                    {% endcall %}
+                  {% endcall %}
+
+                  {# Workflow Mode: opens the template-scoped canvas — no template selector, no per-node cross-template complexity #}
+                  {% call table.table_row(attrs={"id": "ib-workflow-row", "style": "" if is_workflow_mode else "display:none"}) %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}UI Workflow{% endcall %}
+                    {% call table.table_cell() %}
+                      {% if is_create %}
+                        <p class="text-sm text-muted-foreground">Save this template first to configure its workflow.</p>
+                      {% else %}
+                        <div class="flex items-center gap-3">
+                          <a href="/platform/sandboxes/{{ tid }}/workflow"
+                             class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input px-3 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                            <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="8" x="3" y="3" rx="1"/><rect width="8" height="8" x="13" y="13" rx="1"/><path d="M7 11v3a2 2 0 0 0 2 2h3"/><path d="M17 7h-3a2 2 0 0 0-2 2v3"/></svg>
+                            Configure Workflow
+                          </a>
+                          <span class="text-xs text-muted-foreground">
+                            {{ selected_template.ui_workflow.nodes | length }} stage(s), {{ selected_template.ui_workflow.edges | length }} connection(s)
+                          </span>
+                        </div>
+                      {% endif %}
                     {% endcall %}
                   {% endcall %}
 
@@ -1155,13 +1182,16 @@
   };
 
   function initForm() {
-    var cards      = document.querySelectorAll('.rc-card');
-    var pills      = document.querySelectorAll('.iface-pill');
-    var imgLbl     = document.getElementById('img-field-label');
-    var comboInput = document.getElementById('img-combobox-input');
-    var comboPopup = document.getElementById('img-combobox-popup');
-    var comboList  = document.getElementById('img-combobox-list');
-    var defaultUi  = document.getElementById('default-ui-mode');
+    var cards       = document.querySelectorAll('.rc-card');
+    var imgLbl      = document.getElementById('img-field-label');
+    var comboInput  = document.getElementById('img-combobox-input');
+    var comboPopup  = document.getElementById('img-combobox-popup');
+    var comboList   = document.getElementById('img-combobox-list');
+    var defaultUi   = document.getElementById('default-ui-mode');
+    var ibSingle    = document.getElementById('ib-single');
+    var ibWorkflow  = document.getElementById('ib-workflow');
+    var ibSingleRow = document.getElementById('ib-single-row');
+    var ibWorkflowRow = document.getElementById('ib-workflow-row');
 
     if (!cards.length) return;
 
@@ -1190,52 +1220,26 @@
       });
     }
 
-    function updatePills(rcVal) {
-      var cfg = RC_CFG[rcVal] || RC_CFG.container;
-      pills.forEach(function(p) {
-        var inp = p.querySelector('input[type="checkbox"]');
-        if (!inp) return;
-        var allowed = cfg.ifaces.indexOf(inp.value) >= 0;
-        p.style.display = allowed ? '' : 'none';
-        if (!allowed && inp.checked) inp.checked = false;
-      });
-      var anyChecked = !!document.querySelector('input[name="allowed_ui_modes"]:checked');
-      if (!anyChecked) {
-        var def = document.querySelector('input[name="allowed_ui_modes"][value="' + cfg.def + '"]');
-        if (def) def.checked = true;
-      }
-      updateDefaultUiOptions();
-      updatePillStyles();
-    }
-
-    function updateDefaultUiOptions() {
+    // Single Mode's Default UI Mode select — only offers modes the current
+    // runtime class actually supports, matching the old pills' filtering.
+    function updateDefaultUiSelect(rcVal) {
       if (!defaultUi) return;
-      var checked = Array.from(document.querySelectorAll('input[name="allowed_ui_modes"]:checked')).map(function(inp) {
-        return inp.value;
-      });
+      var cfg = RC_CFG[rcVal] || RC_CFG.container;
+      var anyVisible = false;
       Array.from(defaultUi.options).forEach(function(opt) {
-        opt.hidden = checked.indexOf(opt.value) < 0;
+        var allowed = cfg.ifaces.indexOf(opt.value) >= 0;
+        opt.hidden = !allowed;
+        if (allowed) anyVisible = true;
       });
-      if (checked.indexOf(defaultUi.value) < 0) {
-        defaultUi.value = checked[0] || (RC_CFG[currentRuntime()] || RC_CFG.container).def;
+      if (defaultUi.selectedOptions.length === 0 || defaultUi.selectedOptions[0].hidden) {
+        defaultUi.value = cfg.def;
       }
     }
 
-    function updatePillStyles() {
-      pills.forEach(function(p) {
-        var inp = p.querySelector('input[type="checkbox"]');
-        if (!inp) return;
-        var chk = p.querySelector('.iface-check');
-        if (inp.checked) {
-          p.classList.add('border-primary', 'bg-primary/10', 'text-foreground');
-          p.classList.remove('border-input', 'text-muted-foreground');
-          if (chk) chk.removeAttribute('hidden');
-        } else {
-          p.classList.remove('border-primary', 'bg-primary/10', 'text-foreground');
-          p.classList.add('border-input', 'text-muted-foreground');
-          if (chk) chk.setAttribute('hidden', '');
-        }
-      });
+    function updateInterfaceBehaviorRows() {
+      var isWorkflow = !!(ibWorkflow && ibWorkflow.checked);
+      if (ibSingleRow) ibSingleRow.style.display = isWorkflow ? 'none' : '';
+      if (ibWorkflowRow) ibWorkflowRow.style.display = isWorkflow ? '' : 'none';
     }
 
     function buildComboOptions(rcVal) {
@@ -1327,7 +1331,7 @@
     function onRuntimeChange() {
       var val = currentRuntime();
       updateCards();
-      updatePills(val);
+      updateDefaultUiSelect(val);
       updateImageField(val);
     }
 
@@ -1336,10 +1340,10 @@
       c.addEventListener('click',  function(){ setTimeout(onRuntimeChange, 0); });
     });
 
-    pills.forEach(function(p) {
-      p.addEventListener('change', function(){ updateDefaultUiOptions(); updatePillStyles(); });
-      p.addEventListener('click',  function(){ setTimeout(function(){ updateDefaultUiOptions(); updatePillStyles(); }, 0); });
+    [ibSingle, ibWorkflow].forEach(function(r) {
+      if (r) r.addEventListener('change', updateInterfaceBehaviorRows);
     });
+    updateInterfaceBehaviorRows();
 
     if (comboInput) {
       comboInput.addEventListener('focus', showCombo);

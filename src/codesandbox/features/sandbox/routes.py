@@ -28,6 +28,7 @@ from .service import (
     save_template,
     save_template_config,
     save_template_plan_configs,
+    save_template_ui_workflow,
     set_template_status,
     start_instance,
     start_test_instance,
@@ -101,6 +102,7 @@ def save_template_action():
         interface_mode=",".join(request.form.getlist("interface_mode")) or "terminal_only",
         allowed_ui_modes=request.form.getlist("allowed_ui_modes") or request.form.getlist("interface_mode"),
         default_ui_mode=request.form.get("default_ui_mode", "terminal_only"),
+        interface_behavior=request.form.get("interface_behavior", "single"),
         network_mode=request.form.get("network_mode", "disabled"),
         allow_root=request.form.get("allow_root") == "1",
         max_timeout_hr=int(request.form.get("max_timeout_hr") or 2),
@@ -129,6 +131,20 @@ def save_template_config_action(template_id: str):
     config_json = _json.dumps(body.get("files", {}))
     save_template_config(template_id, config_json, actor_user_id=str(cs.user.id))
     return {"ok": True}
+
+
+@web_bp.post("/platform/sandboxes/<template_id>/workflow/save")
+@platform_perm("platform.sandboxes.manage")
+def save_template_ui_workflow_action(template_id: str):
+    cs = get_current_session()
+    body = request.get_json(silent=True) or {}
+    graph = body.get("graph")
+    if not isinstance(graph, dict):
+        return {"ok": False, "error": "Invalid graph payload."}, 400
+    result, error = save_template_ui_workflow(template_id, graph, actor_user_id=str(cs.user.id))
+    if error:
+        return {"ok": False, "error": error}, 400
+    return {"ok": True, "template": result}
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/status")

@@ -23,6 +23,35 @@
   </div>
 {% endif %}
 
+{% if ui_workflow_choices %}
+  {% import "components/ui/button.html" as uiwf_button %}
+  <div id="ui-workflow-banner" class="fixed right-4 top-[3.5rem] z-40 flex max-w-sm flex-col gap-2 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg"
+       data-choices="{{ ui_workflow_choices | tojson | forceescape }}">
+    <div class="min-w-0">
+      <div class="truncate font-medium">{{ template.name }}</div>
+      <div class="truncate text-muted-foreground">Stage: {{ ui_workflow_node.label or ui_mode_label }}</div>
+    </div>
+    <div class="flex flex-wrap gap-1.5">
+      {% for choice in ui_workflow_choices %}
+        <a href="{{ choice.url }}">
+          {% call uiwf_button.button(size="sm", variant=("outline" if choice.condition == "failure" else "default")) %}{{ choice.label }}{% endcall %}
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% app_script "sandbox-ui-workflow-nav" %}
+  (function () {
+    var banner = document.getElementById('ui-workflow-banner');
+    if (!banner) return;
+    var choices = [];
+    try { choices = JSON.parse(banner.dataset.choices) || []; } catch (e) {}
+    if (choices.length === 1 && choices[0].target_auto_start) {
+      setTimeout(function () { window.location.href = choices[0].url; }, 800);
+    }
+  })();
+  {% end_app_script %}
+{% endif %}
+
 {% if ui_mode == "terminal_only" %}
   {% include "(admin)/instances/[instance_id]/_components/terminal_only.html" %}
 {% elif ui_mode == "lab_ui" %}

@@ -28,6 +28,14 @@ from codesandbox.features.sandbox.models import (
     SandboxTemplatePlan,
     TopupIntent,
 )
+from codesandbox.features.finance.models import (
+    Coupon,
+    CouponRedemption,
+    CreditGrant,
+    FinanceAdjustment,
+    Invoice,
+    UsageCharge,
+)
 from codesandbox.features.worker.models import WorkerInstanceRuntime, WorkerNode
 from codesandbox.features.workflow.models import SandboxWorkflow, WorkflowRun, WorkflowStageRun
 
@@ -60,6 +68,12 @@ __all__ = [
     "SandboxAuditLog",
     "SandboxInput",
     "SandboxArtifact",
+    "UsageCharge",
+    "Coupon",
+    "CouponRedemption",
+    "CreditGrant",
+    "Invoice",
+    "FinanceAdjustment",
     "WorkerNode",
     "WorkerInstanceRuntime",
     "SandboxWorkflow",

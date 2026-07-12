@@ -1,0 +1,457 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/badge.html" as badge %}
+
+<div class="flex h-[calc(100dvh-var(--header-height))] w-full max-w-full flex-col overflow-hidden bg-background">
+
+  {# ── Header ── #}
+  <div class="flex h-12 shrink-0 items-center justify-between border-b px-4 gap-4">
+    <div class="flex items-center gap-2 min-w-0">
+      <a href="/platform/sandboxes?template={{ selected_template.id }}" aria-label="Back to template"
+         class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </a>
+      <div class="min-w-0">
+        <div class="truncate text-sm font-semibold">{{ selected_template.name }} — Workflow</div>
+        <div class="truncate text-[11px] text-muted-foreground">Every stage below is this same template — just a different UI mode.</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <div class="flex items-center gap-1 rounded-md border border-input p-0.5">
+        <button type="button" id="wf-zoom-out" title="Zoom out" class="inline-flex size-6 items-center justify-center rounded hover:bg-accent transition-colors">
+          <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
+        </button>
+        <button type="button" id="wf-zoom-reset" title="Reset zoom" class="inline-flex h-6 min-w-10 items-center justify-center rounded px-1 text-[11px] tabular-nums hover:bg-accent transition-colors">100%</button>
+        <button type="button" id="wf-zoom-in" title="Zoom in" class="inline-flex size-6 items-center justify-center rounded hover:bg-accent transition-colors">
+          <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
+        </button>
+      </div>
+      <button type="button" id="wf-add-node-btn"
+        class="inline-flex h-7 items-center gap-1 rounded-md border border-input px-2 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+        <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        Add stage
+      </button>
+      <button type="button" id="wf-save-graph-btn"
+        class="inline-flex h-7 items-center justify-center rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+        Save graph
+      </button>
+    </div>
+  </div>
+
+  {# ── Canvas ── #}
+  <div id="wf-viewport" class="relative flex-1 overflow-hidden bg-muted/20 [background-image:radial-gradient(circle,var(--border)_1px,transparent_1px)] [background-size:20px_20px] cursor-grab active:cursor-grabbing"
+       data-graph="{{ selected_template.ui_workflow | tojson | forceescape }}"
+       data-template-id="{{ selected_template.id }}"
+       data-runtime-class="{{ selected_template.runtime_class }}"
+       data-ui-mode-labels="{{ ui_mode_labels | tojson | forceescape }}">
+    <div id="wf-world" class="absolute left-0 top-0 origin-top-left" style="width:3000px;height:2000px">
+      <svg id="wf-edges" class="pointer-events-none absolute inset-0" width="3000" height="2000">
+        <defs>
+          <marker id="wf-arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="fill-primary/70"/></marker>
+        </defs>
+      </svg>
+      <svg id="wf-preview-edge" class="pointer-events-none absolute inset-0" width="3000" height="2000"></svg>
+      <div id="wf-nodes" class="absolute inset-0"></div>
+    </div>
+
+    <div id="wf-empty-hint" class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground" hidden>
+      No stages yet — click "Add stage" to start building this template's workflow.
+    </div>
+  </div>
+</div>
+
+{% app_script "sandbox-ui-workflow-canvas" %}
+(function () {
+  var viewport = document.getElementById('wf-viewport');
+  if (!viewport || viewport.dataset.ready === '1') return;
+  viewport.dataset.ready = '1';
+
+  var world      = document.getElementById('wf-world');
+  var edgesSvg   = document.getElementById('wf-edges');
+  var previewSvg = document.getElementById('wf-preview-edge');
+  var nodesEl    = document.getElementById('wf-nodes');
+  var emptyHint  = document.getElementById('wf-empty-hint');
+  var templateId = viewport.dataset.templateId;
+  var runtimeClass = viewport.dataset.runtimeClass;
+
+  var UI_MODE_LABELS = {};
+  try { UI_MODE_LABELS = JSON.parse(viewport.dataset.uiModeLabels) || {}; } catch (e) {}
+
+  // Same runtime-class -> ui_mode compatibility used by the Identity tab's
+  // Single Mode select — keeps Workflow Mode nodes from being configured
+  // with a ui_mode the runtime can't actually serve.
+  var RUNTIME_IFACES = {
+    container:        ['terminal_only', 'lab_ui', 'background_run'],
+    tool_job:         ['background_run'],
+    microvm:          ['terminal_only', 'lab_ui', 'background_run'],
+    firecracker_microvm: ['terminal_only', 'lab_ui', 'background_run'],
+    fullvm:           ['desktop_gui', 'background_run', 'terminal_only'],
+    qemu_vm:          ['desktop_gui', 'background_run', 'terminal_only'],
+    android_emulator: ['android_ui'],
+  };
+  var ALL_MODES = ['terminal_only', 'lab_ui', 'background_run', 'desktop_gui', 'android_ui'];
+  var availableModes = RUNTIME_IFACES[runtimeClass] || ALL_MODES;
+  var CONDITIONS = ['manual', 'always', 'success', 'failure'];
+
+  var graph = { mode: 'workflow', start_node_id: null, nodes: [], edges: [] };
+  try {
+    var raw = JSON.parse(viewport.dataset.graph);
+    if (raw && typeof raw === 'object') graph = raw;
+  } catch (e) {}
+  graph.nodes = graph.nodes || [];
+  graph.edges = graph.edges || [];
+
+  var nodeEls = {};
+  var selectedEdgeId = null;
+  var pan = { x: 40, y: 40 };
+  var zoom = 1;
+
+  function applyTransform() {
+    world.style.transform = 'translate(' + pan.x + 'px,' + pan.y + 'px) scale(' + zoom + ')';
+    var zoomLabel = document.getElementById('wf-zoom-reset');
+    if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%';
+  }
+
+  function setZoom(next, anchorScreenX, anchorScreenY) {
+    var clamped = Math.max(0.35, Math.min(2, next));
+    if (anchorScreenX != null) {
+      var rect = viewport.getBoundingClientRect();
+      var worldX = (anchorScreenX - rect.left - pan.x) / zoom;
+      var worldY = (anchorScreenY - rect.top - pan.y) / zoom;
+      pan.x = anchorScreenX - rect.left - worldX * clamped;
+      pan.y = anchorScreenY - rect.top - worldY * clamped;
+    }
+    zoom = clamped;
+    applyTransform();
+  }
+
+  function screenToWorld(clientX, clientY) {
+    var rect = viewport.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - pan.x) / zoom,
+      y: (clientY - rect.top - pan.y) / zoom,
+    };
+  }
+
+  function uid(prefix) {
+    return prefix + '-' + Math.random().toString(36).slice(2, 9);
+  }
+
+  function nodeById(id) {
+    return graph.nodes.find(function (n) { return n.id === id; });
+  }
+
+  function handlePoint(node, which) {
+    var w = 240, headerH = 34;
+    var x = node.position.x + (which === 'source' ? w : 0);
+    var y = node.position.y + headerH / 2;
+    return { x: x, y: y };
+  }
+
+  function bezierPath(a, b) {
+    var dx = Math.max(60, Math.abs(b.x - a.x) * 0.5);
+    return 'M ' + a.x + ' ' + a.y + ' C ' + (a.x + dx) + ' ' + a.y + ', ' + (b.x - dx) + ' ' + b.y + ', ' + b.x + ' ' + b.y;
+  }
+
+  function conditionColor(cond) {
+    if (cond === 'success') return 'stroke-emerald-500/70';
+    if (cond === 'failure') return 'stroke-red-500/70';
+    if (cond === 'always') return 'stroke-primary/70';
+    return 'stroke-muted-foreground/50';
+  }
+
+  function redrawEdges() {
+    var svgEls = ['<defs><marker id="wf-arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="fill-primary/70"/></marker></defs>'];
+    graph.edges.forEach(function (edge) {
+      var a = nodeById(edge.source), b = nodeById(edge.target);
+      if (!a || !b) return;
+      var p1 = handlePoint(a, 'source'), p2 = handlePoint(b, 'target');
+      var mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      var selected = edge.id === selectedEdgeId;
+      svgEls.push(
+        '<path d="' + bezierPath(p1, p2) + '" fill="none" stroke-width="' + (selected ? 3 : 2) + '" class="' + conditionColor(edge.condition) + (selected ? ' opacity-100' : ' opacity-80') + '" marker-end="url(#wf-arrow)" data-edge-id="' + edge.id + '" style="pointer-events:stroke;cursor:pointer"/>'
+      );
+      var label = (edge.label || edge.condition || 'manual');
+      svgEls.push(
+        '<g data-edge-id="' + edge.id + '" style="cursor:pointer">' +
+          '<rect x="' + (mid.x - 34) + '" y="' + (mid.y - 10) + '" width="68" height="18" rx="9" class="fill-background stroke-border" stroke-width="1"></rect>' +
+          '<text x="' + mid.x + '" y="' + (mid.y + 4) + '" text-anchor="middle" class="fill-foreground" style="font-size:10px;font-weight:500">' + label.slice(0, 12) + '</text>' +
+        '</g>'
+      );
+    });
+    edgesSvg.innerHTML = svgEls.join('');
+
+    edgesSvg.querySelectorAll('[data-edge-id]').forEach(function (el) {
+      el.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        selectEdge(el.getAttribute('data-edge-id'));
+      });
+    });
+  }
+
+  function selectEdge(edgeId) {
+    selectedEdgeId = edgeId;
+    renderAll();
+    var edge = graph.edges.find(function (e) { return e.id === edgeId; });
+    if (edge) openEdgeEditor(edge);
+  }
+
+  function openEdgeEditor(edge) {
+    var existing = document.getElementById('wf-edge-editor');
+    if (existing) existing.remove();
+    var a = nodeById(edge.source), b = nodeById(edge.target);
+    if (!a || !b) return;
+    var p1 = handlePoint(a, 'source'), p2 = handlePoint(b, 'target');
+    var mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    var box = document.createElement('div');
+    box.id = 'wf-edge-editor';
+    box.className = 'absolute z-10 w-56 rounded-lg border bg-popover p-2.5 text-xs shadow-lg';
+    box.style.left = (mid.x - 112) + 'px';
+    box.style.top = (mid.y + 14) + 'px';
+    box.innerHTML =
+      '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">Edge label</label>' +
+      '<input data-f="label" class="mb-2 h-7 w-full rounded border border-input bg-background px-1.5 text-xs" value="' + (edge.label || '').replace(/"/g, '&quot;') + '" placeholder="Open Lab UI">' +
+      '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">Condition</label>' +
+      '<select data-f="condition" class="mb-2 h-7 w-full rounded border border-input bg-background px-1.5 text-xs">' +
+        CONDITIONS.map(function (c) { return '<option value="' + c + '"' + (c === (edge.condition || 'manual') ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
+      '</select>' +
+      '<div class="flex items-center justify-between">' +
+        '<button type="button" data-f="delete" class="text-[11px] text-destructive hover:underline">Remove connection</button>' +
+        '<button type="button" data-f="close" class="text-[11px] text-muted-foreground hover:underline">Done</button>' +
+      '</div>';
+    world.appendChild(box);
+    box.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+    box.querySelector('[data-f="label"]').addEventListener('input', function (ev) { edge.label = ev.target.value; redrawEdges(); });
+    box.querySelector('[data-f="condition"]').addEventListener('change', function (ev) { edge.condition = ev.target.value; redrawEdges(); });
+    box.querySelector('[data-f="delete"]').addEventListener('click', function () {
+      graph.edges = graph.edges.filter(function (e) { return e.id !== edge.id; });
+      selectedEdgeId = null;
+      box.remove();
+      renderAll();
+    });
+    box.querySelector('[data-f="close"]').addEventListener('click', function () {
+      selectedEdgeId = null;
+      box.remove();
+      redrawEdges();
+    });
+  }
+
+  function modeOptions(selected) {
+    return availableModes.map(function (m) {
+      return '<option value="' + m + '"' + (m === selected ? ' selected' : '') + '>' + (UI_MODE_LABELS[m] || m) + '</option>';
+    }).join('');
+  }
+
+  function renderNode(node) {
+    if (!node.position) node.position = { x: 40, y: 40 };
+    if (availableModes.indexOf(node.ui_mode) < 0) node.ui_mode = availableModes[0];
+
+    var el = document.createElement('div');
+    el.className = 'absolute w-60 select-none rounded-xl border bg-card text-xs shadow-sm';
+    el.style.left = node.position.x + 'px';
+    el.style.top = node.position.y + 'px';
+    el.dataset.nodeId = node.id;
+    var isStart = graph.start_node_id === node.id;
+    el.innerHTML =
+      '<div class="flex items-center gap-1.5 rounded-t-xl border-b bg-muted/40 px-2 py-1.5 cursor-move" data-drag-handle>' +
+        '<button type="button" data-f="start" title="Set as start node" class="shrink-0 ' + (isStart ? 'text-amber-500' : 'text-muted-foreground/40 hover:text-muted-foreground') + '">' +
+          '<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="' + (isStart ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' +
+        '</button>' +
+        '<input data-f="label" class="min-w-0 flex-1 bg-transparent text-xs font-medium outline-none" value="' + (node.label || '').replace(/"/g, '&quot;') + '" placeholder="Stage name">' +
+        '<button type="button" data-f="remove" class="shrink-0 text-muted-foreground hover:text-destructive">&times;</button>' +
+      '</div>' +
+      '<div class="p-2.5">' +
+        '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">UI mode</label>' +
+        '<select data-f="ui_mode" class="mb-2 h-7 w-full rounded border border-input bg-background px-1.5 text-xs">' + modeOptions(node.ui_mode) + '</select>' +
+        '<label class="mb-1.5 flex items-center gap-1.5" title="Artifacts produced while this stage is active stay visible after switching to the next stage — same instance, same workspace, nothing is copied or discarded."><input type="checkbox" data-f="carry_artifacts"' + (node.carry_artifacts ? ' checked' : '') + '> Carry artifacts forward</label>' +
+        '<label class="mb-2 flex items-center gap-1.5" title="If this stage is the only option when its incoming connection is followed, skip the Continue button and switch to it automatically after a short delay."><input type="checkbox" data-f="auto_start"' + (node.auto_start ? ' checked' : '') + '> Auto-start when reached</label>' +
+        '<label class="mb-1 block text-[10px] uppercase text-muted-foreground" title="Fallback button text for outgoing connections from THIS stage that don\'t have their own label set (set a connection\'s own label by clicking it).">Continue label</label>' +
+        '<input data-f="continue_label" class="h-7 w-full rounded border border-input bg-background px-1.5 text-xs" value="' + (node.continue_label || '').replace(/"/g, '&quot;') + '" placeholder="Continue to next stage">' +
+      '</div>' +
+      '<div data-handle="target" title="Drag from another stage\'s output handle here" class="absolute left-0 top-[17px] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-muted-foreground/60 hover:bg-primary transition-colors" style="cursor:crosshair"></div>' +
+      '<div data-handle="source" title="Drag to another stage to connect" class="absolute right-0 top-[17px] size-3 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-primary hover:bg-primary/80 transition-colors" style="cursor:crosshair"></div>';
+
+    nodesEl.appendChild(el);
+    nodeEls[node.id] = el;
+
+    el.querySelectorAll('[data-f]').forEach(function (input) {
+      if (input.tagName === 'BUTTON') return;
+      var handler = function () {
+        var f = input.dataset.f;
+        node[f] = input.type === 'checkbox' ? input.checked : input.value;
+        if (f === 'label' || f === 'ui_mode') redrawEdges();
+      };
+      input.addEventListener('input', handler);
+      input.addEventListener('change', handler);
+      input.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+    });
+
+    el.querySelector('[data-f="start"]').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      graph.start_node_id = node.id;
+      renderAll();
+    });
+
+    el.querySelector('[data-f="remove"]').addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      graph.nodes = graph.nodes.filter(function (n) { return n.id !== node.id; });
+      graph.edges = graph.edges.filter(function (e) { return e.source !== node.id && e.target !== node.id; });
+      if (graph.start_node_id === node.id) graph.start_node_id = (graph.nodes[0] || {}).id || null;
+      renderAll();
+    });
+
+    wireNodeDrag(el, node);
+    wireHandle(el.querySelector('[data-handle="source"]'), node);
+  }
+
+  function wireNodeDrag(el, node) {
+    var handle = el.querySelector('[data-drag-handle]');
+    var dragging = false, startClientX = 0, startClientY = 0, origX = 0, origY = 0;
+    handle.addEventListener('pointerdown', function (ev) {
+      if (ev.target.closest('[data-f]')) return;
+      dragging = true;
+      startClientX = ev.clientX; startClientY = ev.clientY;
+      origX = node.position.x; origY = node.position.y;
+      handle.setPointerCapture(ev.pointerId);
+      ev.stopPropagation();
+    });
+    handle.addEventListener('pointermove', function (ev) {
+      if (!dragging) return;
+      var dx = (ev.clientX - startClientX) / zoom, dy = (ev.clientY - startClientY) / zoom;
+      node.position.x = Math.max(0, origX + dx);
+      node.position.y = Math.max(0, origY + dy);
+      el.style.left = node.position.x + 'px';
+      el.style.top = node.position.y + 'px';
+      redrawEdges();
+    });
+    handle.addEventListener('pointerup', function () { dragging = false; });
+  }
+
+  var connecting = null; // { sourceId }
+
+  function wireHandle(handleEl, node) {
+    if (!handleEl) return;
+    handleEl.addEventListener('pointerdown', function (ev) {
+      ev.stopPropagation();
+      connecting = { sourceId: node.id };
+      handleEl.setPointerCapture(ev.pointerId);
+    });
+    handleEl.addEventListener('pointermove', function (ev) {
+      if (!connecting || connecting.sourceId !== node.id) return;
+      drawPreviewEdge(node, screenToWorld(ev.clientX, ev.clientY));
+    });
+    handleEl.addEventListener('pointerup', function (ev) {
+      if (!connecting) return;
+      finishConnect(ev);
+    });
+  }
+
+  function drawPreviewEdge(sourceNode, worldPoint) {
+    var a = handlePoint(sourceNode, 'source');
+    previewSvg.innerHTML = '<path d="' + bezierPath(a, worldPoint) + '" fill="none" stroke-width="2" stroke-dasharray="4 3" class="stroke-primary"/>';
+  }
+
+  function clearPreviewEdge() {
+    previewSvg.innerHTML = '';
+  }
+
+  function finishConnect(ev) {
+    if (!connecting) return;
+    var targetEl = document.elementFromPoint(ev.clientX, ev.clientY);
+    var nodeCard = targetEl && targetEl.closest ? targetEl.closest('[data-node-id]') : null;
+    var sourceId = connecting.sourceId;
+    connecting = null;
+    clearPreviewEdge();
+    if (!nodeCard) return;
+    var targetId = nodeCard.dataset.nodeId;
+    if (!targetId || targetId === sourceId) return;
+    var dup = graph.edges.some(function (e) { return e.source === sourceId && e.target === targetId; });
+    if (dup) return;
+    graph.edges.push({ id: uid('edge'), source: sourceId, target: targetId, condition: 'manual', label: '' });
+    renderAll();
+  }
+
+  // Global pointer listeners for the connect-drag preview (handle listeners
+  // alone miss pointermove once the pointer leaves the handle element).
+  viewport.addEventListener('pointermove', function (ev) {
+    if (!connecting) return;
+    var sourceNode = nodeById(connecting.sourceId);
+    if (!sourceNode) return;
+    drawPreviewEdge(sourceNode, screenToWorld(ev.clientX, ev.clientY));
+  });
+  viewport.addEventListener('pointerup', function (ev) {
+    if (connecting) finishConnect(ev);
+  });
+
+  function renderAll() {
+    nodesEl.innerHTML = '';
+    nodeEls = {};
+    graph.nodes.forEach(renderNode);
+    redrawEdges();
+    emptyHint.hidden = graph.nodes.length > 0;
+  }
+
+  document.getElementById('wf-add-node-btn').addEventListener('click', function () {
+    var col = graph.nodes.length % 4, row = Math.floor(graph.nodes.length / 4);
+    var node = {
+      id: uid('node'), label: 'New stage', ui_mode: availableModes[0],
+      position: { x: 40 + col * 300, y: 40 + row * 240 },
+      carry_artifacts: true, auto_start: false, continue_label: '',
+    };
+    graph.nodes.push(node);
+    if (!graph.start_node_id) graph.start_node_id = node.id;
+    renderAll();
+  });
+
+  document.getElementById('wf-save-graph-btn').addEventListener('click', function () {
+    fetch('/platform/sandboxes/' + templateId + '/workflow/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ graph: graph }),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        if (res.ok && res.data.ok) {
+          window.Toast && window.Toast.create({ title: 'Workflow saved', description: 'This forces a retest before the template can be published again.', type: 'success' });
+        } else {
+          window.Toast && window.Toast.create({ title: 'Could not save workflow', description: (res.data && res.data.error) || 'Unknown error', type: 'error' });
+        }
+      })
+      .catch(function (err) {
+        window.Toast && window.Toast.create({ title: 'Network error', description: err.message, type: 'error' });
+      });
+  });
+
+  // ── Viewport pan + zoom ──
+  var panning = false, panStartX = 0, panStartY = 0, panOrigX = 0, panOrigY = 0;
+  viewport.addEventListener('pointerdown', function (ev) {
+    if (ev.target !== viewport && ev.target !== world) return;
+    panning = true;
+    panStartX = ev.clientX; panStartY = ev.clientY;
+    panOrigX = pan.x; panOrigY = pan.y;
+    selectedEdgeId = null;
+    var editor = document.getElementById('wf-edge-editor');
+    if (editor) editor.remove();
+    redrawEdges();
+  });
+  viewport.addEventListener('pointermove', function (ev) {
+    if (!panning) return;
+    pan.x = panOrigX + (ev.clientX - panStartX);
+    pan.y = panOrigY + (ev.clientY - panStartY);
+    applyTransform();
+  });
+  window.addEventListener('pointerup', function () { panning = false; });
+
+  viewport.addEventListener('wheel', function (ev) {
+    ev.preventDefault();
+    var delta = ev.deltaY > 0 ? -0.1 : 0.1;
+    setZoom(zoom + delta, ev.clientX, ev.clientY);
+  }, { passive: false });
+
+  document.getElementById('wf-zoom-in').addEventListener('click', function () { setZoom(zoom + 0.15); });
+  document.getElementById('wf-zoom-out').addEventListener('click', function () { setZoom(zoom - 0.15); });
+  document.getElementById('wf-zoom-reset').addEventListener('click', function () { zoom = 1; pan = { x: 40, y: 40 }; applyTransform(); });
+
+  applyTransform();
+  renderAll();
+})();
+{% end_app_script %}

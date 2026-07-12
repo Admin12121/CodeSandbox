@@ -50,6 +50,8 @@ def create_app() -> Flask:
     from codesandbox.features.sandbox import routes as _sandbox_routes  # noqa: F401
     from codesandbox.features.sandbox import pages as _sandbox_pages  # noqa: F401
     from codesandbox.features.billing import routes as _billing_routes  # noqa: F401
+    from codesandbox.features.finance import routes as _finance_routes  # noqa: F401
+    from codesandbox.features.finance import pages as _finance_pages  # noqa: F401
     from codesandbox.features.workflow import routes as _workflow_routes  # noqa: F401
     from codesandbox.features.workflow import pages as _workflow_pages  # noqa: F401
 

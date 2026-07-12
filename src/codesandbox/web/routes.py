@@ -237,6 +237,7 @@ def instance_detail(instance_id: str):
         instance_id,
         str(user.id),
         request.args.get("ui_mode") or request.args.get("mode"),
+        request.args.get("node"),
     )
     if error or ctx is None:
         return {"_redirect": "/my-instances"}
