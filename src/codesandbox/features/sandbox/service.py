@@ -219,9 +219,12 @@ def validate_ui_mode_config(
 
     if "desktop_gui" in allowed_ui_modes:
         desktop = _ui_feature_config(runtime_config, "desktop_gui")
-        has_gui = any(str(desktop.get(key) or runtime_config.get(key) or "").strip() for key in ("gui_url", "novnc_url", "gui_port"))
+        has_gui = any(
+            str(desktop.get(key) or runtime_config.get(key) or "").strip()
+            for key in ("gui_url", "novnc_url", "gui_port", "internal_port")
+        )
         if require_publish_ready and not has_gui:
-            return "Desktop GUI requires gui_url, novnc_url, or gui_port in runtime.json before publishing."
+            return "Desktop GUI requires internal_port (or gui_url/novnc_url/gui_port) in runtime.json before publishing."
 
     if "android_ui" in allowed_ui_modes:
         android = _ui_feature_config(runtime_config, "android_ui")
@@ -844,7 +847,7 @@ def save_template(
     return _template_dict(t), None
 
 
-def set_template_status(template_id: str, status: str) -> str | None:
+def set_template_status(template_id: str, status: str, actor_user_id: str | None = None) -> str | None:
     if status not in TEMPLATE_STATUSES:
         return "Invalid status."
     if status == "active":
@@ -866,7 +869,25 @@ def set_template_status(template_id: str, status: str) -> str | None:
         )
         if ui_error:
             return f"Cannot activate: {ui_error}"
+    existing = repository.get_template(template_id)
+    previous_status = existing.status if existing else None
     repository.update_template(template_id, status=status)
+    # Publish/unpublish is a user-visibility change (Draft/Maintenance ->
+    # visible in Hub, or back) — audit logged regardless of direction.
+    if status == "active":
+        event = "template.published"
+    elif previous_status == "active":
+        event = "template.unpublished"
+    else:
+        event = "template.status_changed"
+    repository.log_instance_event(
+        None,
+        event,
+        old_status=previous_status,
+        new_status=status,
+        actor=f"user:{actor_user_id}" if actor_user_id else "system",
+        template_id=template_id,
+    )
     return None
 
 
@@ -880,7 +901,7 @@ def get_template_test_status(template_id: str) -> dict | None:
     }
 
 
-def save_template_config(template_id: str, config_json: str) -> None:
+def save_template_config(template_id: str, config_json: str, actor_user_id: str | None = None) -> None:
     existing_t = repository.get_template(template_id)
     new_config = config_json.strip() or None
     update_kwargs: dict = {"runtime_config": new_config}
@@ -891,15 +912,22 @@ def save_template_config(template_id: str, config_json: str) -> None:
         # workflow labels, etc.) autosaves without touching publish status.
         old_cfg = parse_runtime_config(existing_t.runtime_config)
         new_cfg = parse_runtime_config(new_config)
-        dangerous_changed = any(
-            _ui_feature_config(old_cfg, key) != _ui_feature_config(new_cfg, key)
-            for key in ("desktop_gui", "android_ui")
-        )
-        if dangerous_changed:
+        changed_keys = [
+            key for key in ("desktop_gui", "android_ui")
+            if _ui_feature_config(old_cfg, key) != _ui_feature_config(new_cfg, key)
+        ]
+        if changed_keys:
             update_kwargs["last_test_status"] = "untested"
             update_kwargs["last_tested_at"] = None
             if existing_t.status == "active":
                 update_kwargs["status"] = "maintenance"
+            repository.log_instance_event(
+                None,
+                "template.dangerous_config_changed",
+                actor=f"user:{actor_user_id}" if actor_user_id else "system",
+                detail=json.dumps({"changed_keys": changed_keys, "forced_retest": True}),
+                template_id=template_id,
+            )
     repository.update_template(template_id, **update_kwargs)
 
 
@@ -1256,6 +1284,18 @@ def can_open_instance_channel(
         if purpose == "android":
             return "android_ui" in allowed
     return purpose == "monitor"
+
+
+def log_channel_token_issued(instance_id: str, purpose: str, actor_user_id: str | None = None) -> None:
+    """High-risk channels (GUI/Android connection tokens) are audit logged
+    individually — everything else (monitor/terminal/fs) is already implicit
+    in the instance's own started/stopped/artifact event trail."""
+    repository.log_instance_event(
+        instance_id,
+        f"instance.{purpose}_token_issued",
+        actor=f"user:{actor_user_id}" if actor_user_id else "system",
+        detail=json.dumps({"purpose": purpose}),
+    )
 
 
 def upload_instance_input(

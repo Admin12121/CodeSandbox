@@ -477,6 +477,60 @@ async def ws_sandbox_gui(websocket: WebSocket) -> None:
             pass
 
 
+async def _android_unavailable_ws(websocket: WebSocket, channel: str) -> None:
+    """Honest placeholder for both android-screen and android-logcat: no
+    real Android emulator/device driver exists yet in this codebase
+    (runtime/drivers/android.py unconditionally raises UnsupportedRuntimeError,
+    and no worker has ever registered "android_emulator" capability — see
+    worker_supports_runtime_class). Rather than serve fake frames/log lines,
+    this accepts the connection (so the browser gets a real, well-formed
+    state transition instead of a raw connection failure) and sends one
+    explicit unavailable event with the real reason, then closes — see
+    docs/plan.md Phase 10.7."""
+    instance_id: str = websocket.path_params["instance_id"]
+    token = websocket.query_params.get("token", "")
+
+    if not _verify_ws_token(token, instance_id, required_purpose="android"):
+        await websocket.close(code=1008)
+        return
+
+    worker_id, worker_error = await _lookup_owning_worker(instance_id)
+    await websocket.accept()
+    if worker_error:
+        await websocket.send_text(json.dumps({"type": "unavailable", "reason": worker_error}))
+        await websocket.close()
+        return
+
+    from codesandbox.features.worker.service import worker_supports_runtime_class
+
+    supported = await asyncio.to_thread(worker_supports_runtime_class, worker_id, "android_emulator")
+    if not supported:
+        await websocket.send_text(json.dumps({
+            "type": "unavailable",
+            "reason": (
+                f"No worker in this deployment has a real Android emulator driver yet "
+                f"(the {channel} channel has no backing runtime — see docs/plan.md Phase 10.7)."
+            ),
+        }))
+    else:
+        # A future real driver would relay real frames/log lines here,
+        # mirroring ws_sandbox_gui's NATS relay — intentionally not
+        # implemented until a worker actually registers this capability.
+        await websocket.send_text(json.dumps({
+            "type": "unavailable",
+            "reason": "Worker reports android_emulator support but no relay is implemented yet.",
+        }))
+    await websocket.close()
+
+
+async def ws_sandbox_android_screen(websocket: WebSocket) -> None:
+    await _android_unavailable_ws(websocket, "screen")
+
+
+async def ws_sandbox_android_logcat(websocket: WebSocket) -> None:
+    await _android_unavailable_ws(websocket, "logcat")
+
+
 # ── HTTP: filesystem REST API (relayed to the worker over NATS request-reply) ──
 #
 # These live on the Starlette layer (not the Flask blueprint) purely so they
@@ -637,6 +691,8 @@ def _make_app() -> Starlette:
             WebSocketRoute("/ws/sandbox/{instance_id}/monitor", ws_sandbox_monitor),
             WebSocketRoute("/ws/sandbox/{instance_id}/terminal", ws_sandbox_terminal),
             WebSocketRoute("/ws/sandbox/{instance_id}/gui", ws_sandbox_gui),
+            WebSocketRoute("/ws/sandbox/{instance_id}/android-screen", ws_sandbox_android_screen),
+            WebSocketRoute("/ws/sandbox/{instance_id}/android-logcat", ws_sandbox_android_logcat),
             Route("/healthz", healthz, methods=["GET"]),
             Route("/api/sandbox/{instance_id}/fs", fs_list, methods=["GET"]),
             Route("/api/sandbox/{instance_id}/file", fs_file_get, methods=["GET"]),

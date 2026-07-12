@@ -22,6 +22,7 @@ from .service import (
     get_template_test_status,
     handle_worker_callback,
     list_reconcile_candidates,
+    log_channel_token_issued,
     make_worker_callback_token,
     save_plan,
     save_template,
@@ -123,18 +124,20 @@ def save_template_action():
 @web_bp.post("/platform/sandboxes/<template_id>/config")
 @platform_perm("platform.sandboxes.manage")
 def save_template_config_action(template_id: str):
+    cs = get_current_session()
     body = request.get_json(silent=True) or {}
     config_json = _json.dumps(body.get("files", {}))
-    save_template_config(template_id, config_json)
+    save_template_config(template_id, config_json, actor_user_id=str(cs.user.id))
     return {"ok": True}
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/status")
 @platform_perm("platform.sandboxes.manage")
 def set_template_status_action(template_id: str):
+    cs = get_current_session()
     body = request.get_json(silent=True) or {}
     status = body.get("status", "")
-    error = set_template_status(template_id, status)
+    error = set_template_status(template_id, status, actor_user_id=str(cs.user.id))
     if error:
         return {"ok": False, "error": error}, 400
     return {"ok": True}
@@ -286,6 +289,12 @@ def instance_monitor_token(instance_id: str):
         abort(400)
     if not can_open_instance_channel(instance_id, str(cs.user.id), purpose):
         abort(403)
+    if purpose in ("gui", "android"):
+        # High-risk channels (GUI/Android connection tokens) are audit
+        # logged individually — everything else (monitor/terminal/fs) is
+        # already implicit in the instance's own started/stopped/artifact
+        # event trail.
+        log_channel_token_issued(instance_id, purpose, actor_user_id=str(cs.user.id))
     token = URLSafeTimedSerializer(get_settings().secret_key, salt=_WS_TOKEN_SALT).dumps(
         {"instance_id": instance_id, "purpose": purpose}
     )

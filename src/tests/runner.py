@@ -94,12 +94,17 @@ _SUITE_MODULES = [
     ("sandbox",       "tests.sandbox.test_runtime_policy"),
     ("sandbox_templates", "tests.sandbox.test_dynamic_templates"),
     ("billing",       "tests.sandbox.test_billing_idempotency"),
+    ("sandbox_publish", "tests.sandbox.test_publish_lifecycle"),
+    ("sandbox_test_launch", "tests.sandbox.test_launch_gating"),
+    ("sandbox_content_guards", "tests.sandbox.test_template_content_guards"),
+    ("workflow",      "tests.workflow.test_workflow_graph"),
     ("worker",        "tests.fleet.test_migrations"),
     ("worker_routing", "tests.fleet.test_multi_worker_routing"),
     ("worker_registry", "tests.fleet.test_registry"),
     ("security_slugs", "tests.fleet.test_no_hardcoded_slugs"),
     ("security_docker", "tests.fleet.test_docker_backend_guard"),
     ("security_nats", "tests.fleet.test_nats_auth_guard"),
+    ("security_nats_subjects", "tests.fleet.test_nats_subject_grants"),
 ]
 
 

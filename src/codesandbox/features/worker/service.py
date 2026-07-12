@@ -41,6 +41,26 @@ def is_worker_online(worker_id: str | None) -> bool:
     return node is not None and node.status == "online"
 
 
+def worker_supports_runtime_class(worker_id: str | None, runtime_class: str) -> bool:
+    """Real capability check, not a hardcoded frontend string — every
+    worker's own registration call reports what it can actually run (see
+    worker/main.py `_register_loop`'s `capabilities` dict). No worker has
+    ever registered "android_emulator" support because no such driver
+    exists yet (runtime/drivers/android.py unconditionally raises) — this
+    reads as false honestly, rather than a UI faking a connection."""
+    if not worker_id:
+        return False
+    node = repository.get_worker_node(worker_id)
+    if node is None or not node.capabilities_json:
+        return False
+    import json
+    try:
+        capabilities = json.loads(node.capabilities_json)
+    except (TypeError, ValueError):
+        return False
+    return runtime_class in (capabilities.get("runtime_class") or [])
+
+
 def release_worker_capacity(worker_id: str | None, *, vcpu: int, ram_gb: int) -> None:
     if not worker_id:
         return
