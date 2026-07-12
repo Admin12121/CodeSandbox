@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import json
 
-UI_WORKFLOW_MODES = ("terminal_only", "lab_ui", "background_run", "desktop_gui", "android_ui")
+UI_WORKFLOW_MODES = ("terminal_only", "lab_ui", "background_run", "desktop_gui", "android_ui", "custom_page")
 UI_WORKFLOW_CONDITIONS = ("success", "failure", "manual", "always")
+
+# custom_page is a static admin-authored HTML screen (e.g. a "Workflow
+# failed" landing page with a restart link) — it doesn't run in any
+# sandbox runtime, so it's exempt from the runtime_class UI-mode
+# compatibility checks the other 5 real modes go through.
+UI_WORKFLOW_RUNTIME_BACKED_MODES = ("terminal_only", "lab_ui", "background_run", "desktop_gui", "android_ui")
 
 
 def parse_ui_workflow_graph(graph_json: str | None) -> dict:
@@ -55,7 +61,13 @@ def validate_ui_workflow_graph(graph: dict) -> str | None:
     if not start_node_id or start_node_id not in id_set:
         return "Workflow Mode requires one valid start node."
 
+    nodes_by_id = {str(n.get("id")): n for n in nodes}
     adjacency: dict[str, list[str]] = {i: [] for i in ids}
+    # Every source's outgoing targets must have pairwise-distinct ui_modes —
+    # both a direct source==target match and two sibling branches landing
+    # on the same mode are the same underlying mistake (an edge with
+    # nothing to actually switch to, or a branch the user can't tell apart).
+    seen_target_modes_by_source: dict[str, dict[str, str]] = {i: {} for i in ids}
     for edge in edges:
         src = str(edge.get("source") or "")
         dst = str(edge.get("target") or "")
@@ -64,6 +76,20 @@ def validate_ui_workflow_graph(graph: dict) -> str | None:
         condition = str(edge.get("condition") or "manual")
         if condition not in UI_WORKFLOW_CONDITIONS:
             return f"Edge '{edge.get('id') or ''}' has an invalid condition."
+        src_mode = nodes_by_id[src].get("ui_mode")
+        dst_mode = nodes_by_id[dst].get("ui_mode")
+        if src_mode == dst_mode:
+            return (
+                f"'{nodes_by_id[src].get('label') or src}' and '{nodes_by_id[dst].get('label') or dst}' "
+                "have the same UI mode — connect stages with different UI modes to branch between."
+            )
+        existing_dst = seen_target_modes_by_source[src].get(dst_mode)
+        if existing_dst and existing_dst != dst:
+            return (
+                f"'{nodes_by_id[src].get('label') or src}' already branches to a '{dst_mode}' stage — "
+                "each branch from one stage needs a distinct UI mode."
+            )
+        seen_target_modes_by_source[src][dst_mode] = dst
         adjacency[src].append(dst)
 
     if not graph.get("allow_cycles"):

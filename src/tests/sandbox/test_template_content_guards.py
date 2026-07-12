@@ -117,6 +117,78 @@ def test_sidebar_nav_does_not_show_global_workflows_item(ctx: TestContext) -> No
     assert 'item("Workflows", "/workflows")' not in text
 
 
+def test_ui_workflow_canvas_nodes_container_does_not_block_clicks_underneath(ctx: TestContext) -> None:
+    """Regression: #wf-nodes is a full-bleed absolute div spanning the whole
+    3000x2000 canvas. Without pointer-events:none, its empty (childless)
+    area sits on top of the edges SVG in paint order and swallows every
+    click anywhere on the canvas — including clicks meant for an edge's
+    label pill and clicks meant to pan the background — even where no node
+    card is visually present. Each node card must opt back in individually."""
+    path = os.path.join(
+        _templates_root(), "(admin)", "platform", "sandboxes", "[template_id]", "workflow", "page.html"
+    )
+    text = open(path, encoding="utf-8").read()
+    assert 'id="wf-nodes" class="pointer-events-none' in text, (
+        "#wf-nodes must opt out of pointer events at the container level"
+    )
+    assert "pointer-events-auto absolute w-60" in text, (
+        "each node card must explicitly opt back in to pointer events"
+    )
+
+
+def test_ui_workflow_canvas_edge_click_deletes_via_trash_icon(ctx: TestContext) -> None:
+    """Clicking a connection must surface a delete affordance directly at
+    its midpoint — not a separate boxy form requiring 'Remove connection'
+    text-link discovery."""
+    path = os.path.join(
+        _templates_root(), "(admin)", "platform", "sandboxes", "[template_id]", "workflow", "page.html"
+    )
+    text = open(path, encoding="utf-8").read()
+    assert "wf-edge-toolbar" in text
+    assert 'data-f="delete"' in text
+    assert "Remove connection" not in text, "old boxy text-link pattern must be gone"
+
+
+def test_ui_workflow_canvas_no_arrow_marker(ctx: TestContext) -> None:
+    path = os.path.join(
+        _templates_root(), "(admin)", "platform", "sandboxes", "[template_id]", "workflow", "page.html"
+    )
+    text = open(path, encoding="utf-8").read()
+    assert "marker-end" not in text
+    assert "<marker" not in text
+
+
+def test_ui_workflow_canvas_rejects_same_ui_mode_connections(ctx: TestContext) -> None:
+    """Covers both the direct source==target same-mode case and the sibling
+    case (a source branching to two different targets that share a mode) —
+    findModeConflict is reused at both connect-time and ui_mode-change-time
+    so a same-mode conflict can't sneak in by editing an existing node."""
+    path = os.path.join(
+        _templates_root(), "(admin)", "platform", "sandboxes", "[template_id]", "workflow", "page.html"
+    )
+    text = open(path, encoding="utf-8").read()
+    assert "function findModeConflict" in text
+    assert "s1.ui_mode === t1.ui_mode" in text
+    assert "t2.ui_mode === t1.ui_mode" in text
+    assert "findModeConflict()" in text.split("function findModeConflict")[1], (
+        "findModeConflict must be re-invoked elsewhere (e.g. on ui_mode change), not just defined"
+    )
+
+
+def test_custom_page_component_sandboxes_admin_html_in_iframe(ctx: TestContext) -> None:
+    """Admin-authored custom_page HTML must render isolated from the main
+    app (no session/cookie access, no same-origin script execution against
+    the app shell) — srcdoc + sandbox, not a direct innerHTML/{% raw %}
+    dump into the page."""
+    path = os.path.join(
+        _templates_root(), "(admin)", "instances", "[instance_id]", "_components", "custom_page.html"
+    )
+    text = open(path, encoding="utf-8").read()
+    assert "<iframe" in text and 'sandbox="allow-scripts"' in text
+    assert "srcdoc=" in text
+    assert "custom-page-back" in text  # real Back control, not just a stub
+
+
 TESTS: list[TestCase] = [
     TestCase("lab_ui does not include old hub template", "sandbox", test_lab_ui_does_not_include_old_hub_template),
     TestCase("desktop_gui/android_ui never expose raw internal URL", "sandbox", test_desktop_gui_and_android_ui_never_expose_raw_internal_url),
@@ -127,4 +199,9 @@ TESTS: list[TestCase] = [
     TestCase("ui workflow canvas has no template selector", "sandbox", test_ui_workflow_canvas_has_no_template_selector),
     TestCase("ui workflow canvas uses real drag-connect", "sandbox", test_ui_workflow_canvas_uses_real_drag_connect),
     TestCase("sidebar nav does not show global Workflows item", "sandbox", test_sidebar_nav_does_not_show_global_workflows_item),
+    TestCase("ui workflow canvas nodes container does not block clicks underneath", "sandbox", test_ui_workflow_canvas_nodes_container_does_not_block_clicks_underneath),
+    TestCase("ui workflow canvas edge click deletes via trash icon", "sandbox", test_ui_workflow_canvas_edge_click_deletes_via_trash_icon),
+    TestCase("ui workflow canvas has no arrow marker", "sandbox", test_ui_workflow_canvas_no_arrow_marker),
+    TestCase("ui workflow canvas rejects same ui_mode connections", "sandbox", test_ui_workflow_canvas_rejects_same_ui_mode_connections),
+    TestCase("custom_page component sandboxes admin html in iframe", "sandbox", test_custom_page_component_sandboxes_admin_html_in_iframe),
 ]

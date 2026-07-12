@@ -62,6 +62,8 @@
   {% include "(admin)/instances/[instance_id]/_components/desktop_gui.html" %}
 {% elif ui_mode == "android_ui" %}
   {% include "(admin)/instances/[instance_id]/_components/android_ui.html" %}
+{% elif ui_mode == "custom_page" %}
+  {% include "(admin)/instances/[instance_id]/_components/custom_page.html" %}
 {% else %}
   <div class="grid h-[calc(100vh-2.85rem)] place-items-center p-6">
     <div class="max-w-lg rounded-xl border bg-card p-6 text-center">

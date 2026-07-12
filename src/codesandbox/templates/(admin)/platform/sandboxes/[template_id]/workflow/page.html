@@ -44,13 +44,9 @@
        data-runtime-class="{{ selected_template.runtime_class }}"
        data-ui-mode-labels="{{ ui_mode_labels | tojson | forceescape }}">
     <div id="wf-world" class="absolute left-0 top-0 origin-top-left" style="width:3000px;height:2000px">
-      <svg id="wf-edges" class="pointer-events-none absolute inset-0" width="3000" height="2000">
-        <defs>
-          <marker id="wf-arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="fill-primary/70"/></marker>
-        </defs>
-      </svg>
+      <svg id="wf-edges" class="pointer-events-none absolute inset-0" width="3000" height="2000"></svg>
       <svg id="wf-preview-edge" class="pointer-events-none absolute inset-0" width="3000" height="2000"></svg>
-      <div id="wf-nodes" class="absolute inset-0"></div>
+      <div id="wf-nodes" class="pointer-events-none absolute inset-0"></div>
     </div>
 
     <div id="wf-empty-hint" class="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted-foreground" hidden>
@@ -89,8 +85,15 @@
     android_emulator: ['android_ui'],
   };
   var ALL_MODES = ['terminal_only', 'lab_ui', 'background_run', 'desktop_gui', 'android_ui'];
-  var availableModes = RUNTIME_IFACES[runtimeClass] || ALL_MODES;
+  // custom_page is a static admin-authored HTML screen — it doesn't run in
+  // any sandbox runtime, so every runtime_class can use it regardless of
+  // which of the 5 real modes that runtime otherwise supports.
+  var availableModes = (RUNTIME_IFACES[runtimeClass] || ALL_MODES).concat(['custom_page']);
   var CONDITIONS = ['manual', 'always', 'success', 'failure'];
+  var MODE_DOT = {
+    terminal_only: 'bg-slate-400', lab_ui: 'bg-blue-400', background_run: 'bg-amber-400',
+    desktop_gui: 'bg-purple-400', android_ui: 'bg-green-400', custom_page: 'bg-rose-400',
+  };
 
   var graph = { mode: 'workflow', start_node_id: null, nodes: [], edges: [] };
   try {
@@ -148,35 +151,60 @@
   }
 
   function bezierPath(a, b) {
-    var dx = Math.max(60, Math.abs(b.x - a.x) * 0.5);
+    // Source handles face right, target handles face left — the tangent
+    // at BOTH ends must stay purely horizontal, or the curve stops being
+    // a smooth "S" and grows a visible elbow/kink right at the endpoint
+    // (a cubic bezier is only guaranteed smooth through an endpoint when
+    // its control point sits on that endpoint's actual direction of
+    // travel; blending in vertical offset here fights the horizontal
+    // handle direction and creates a sharp corner instead of a curve).
+    // Sibling edges from the same source briefly overlapping right after
+    // the handle before diverging is the normal, expected look for this
+    // — the reference does the same thing, just subtly at its scale.
+    var dx = Math.max(20, Math.abs(b.x - a.x) * 0.4);
     return 'M ' + a.x + ' ' + a.y + ' C ' + (a.x + dx) + ' ' + a.y + ', ' + (b.x - dx) + ' ' + b.y + ', ' + b.x + ' ' + b.y;
   }
 
   function conditionColor(cond) {
-    if (cond === 'success') return 'stroke-emerald-500/70';
-    if (cond === 'failure') return 'stroke-red-500/70';
-    if (cond === 'always') return 'stroke-primary/70';
-    return 'stroke-muted-foreground/50';
+    // Combined with the container's own opacity class below, the old /50
+    // stroke-opacity here multiplied down to ~0.4 effective opacity — nearly
+    // invisible against the dotted canvas background, which is what read as
+    // a "gap" between the handle and the line even though the path's actual
+    // start point is exact (verified: matches the handle's screen position
+    // pixel-for-pixel). These need to be clearly visible on their own.
+    if (cond === 'success') return 'stroke-emerald-400';
+    if (cond === 'failure') return 'stroke-red-400';
+    if (cond === 'always') return 'stroke-primary';
+    return 'stroke-muted-foreground';
+  }
+
+  function removeEdgeToolbar() {
+    var existing = document.getElementById('wf-edge-toolbar');
+    if (existing) existing.remove();
   }
 
   function redrawEdges() {
-    var svgEls = ['<defs><marker id="wf-arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" class="fill-primary/70"/></marker></defs>'];
+    var svgEls = [];
     graph.edges.forEach(function (edge) {
       var a = nodeById(edge.source), b = nodeById(edge.target);
       if (!a || !b) return;
       var p1 = handlePoint(a, 'source'), p2 = handlePoint(b, 'target');
-      var mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
       var selected = edge.id === selectedEdgeId;
       svgEls.push(
-        '<path d="' + bezierPath(p1, p2) + '" fill="none" stroke-width="' + (selected ? 3 : 2) + '" class="' + conditionColor(edge.condition) + (selected ? ' opacity-100' : ' opacity-80') + '" marker-end="url(#wf-arrow)" data-edge-id="' + edge.id + '" style="pointer-events:stroke;cursor:pointer"/>'
+        '<path d="' + bezierPath(p1, p2) + '" fill="none" stroke-width="' + (selected ? 3 : 2.5) + '" class="' + conditionColor(edge.condition) + (selected ? '' : ' opacity-90') + '" data-edge-id="' + edge.id + '" style="pointer-events:stroke;cursor:pointer"/>'
       );
-      var label = (edge.label || edge.condition || 'manual');
-      svgEls.push(
-        '<g data-edge-id="' + edge.id + '" style="cursor:pointer">' +
-          '<rect x="' + (mid.x - 34) + '" y="' + (mid.y - 10) + '" width="68" height="18" rx="9" class="fill-background stroke-border" stroke-width="1"></rect>' +
-          '<text x="' + mid.x + '" y="' + (mid.y + 4) + '" text-anchor="middle" class="fill-foreground" style="font-size:10px;font-weight:500">' + label.slice(0, 12) + '</text>' +
-        '</g>'
-      );
+      // The label pill itself is hidden while this edge is selected — the
+      // floating toolbar (condition + delete) renders in its place instead.
+      if (!selected) {
+        var mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        var label = (edge.condition || 'manual');
+        svgEls.push(
+          '<g data-edge-id="' + edge.id + '" style="cursor:pointer;pointer-events:all">' +
+            '<rect x="' + (mid.x - 30) + '" y="' + (mid.y - 10) + '" width="60" height="18" rx="9" class="fill-background stroke-border" stroke-width="1"></rect>' +
+            '<text x="' + mid.x + '" y="' + (mid.y + 4) + '" text-anchor="middle" class="fill-foreground" style="font-size:10px;font-weight:500">' + label + '</text>' +
+          '</g>'
+        );
+      }
     });
     edgesSvg.innerHTML = svgEls.join('');
 
@@ -186,52 +214,108 @@
         selectEdge(el.getAttribute('data-edge-id'));
       });
     });
+
+    if (selectedEdgeId) {
+      var selectedEdge = graph.edges.find(function (e) { return e.id === selectedEdgeId; });
+      if (selectedEdge) showEdgeToolbar(selectedEdge); else removeEdgeToolbar();
+    } else {
+      removeEdgeToolbar();
+    }
   }
 
   function selectEdge(edgeId) {
     selectedEdgeId = edgeId;
-    renderAll();
-    var edge = graph.edges.find(function (e) { return e.id === edgeId; });
-    if (edge) openEdgeEditor(edge);
+    redrawEdges();
   }
 
-  function openEdgeEditor(edge) {
-    var existing = document.getElementById('wf-edge-editor');
-    if (existing) existing.remove();
+  // Compact floating toolbar at the edge's midpoint — click the edge, get a
+  // condition selector and a delete icon right there. No separate form.
+  function showEdgeToolbar(edge) {
+    removeEdgeToolbar();
     var a = nodeById(edge.source), b = nodeById(edge.target);
     if (!a || !b) return;
     var p1 = handlePoint(a, 'source'), p2 = handlePoint(b, 'target');
     var mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
     var box = document.createElement('div');
-    box.id = 'wf-edge-editor';
-    box.className = 'absolute z-10 w-56 rounded-lg border bg-popover p-2.5 text-xs shadow-lg';
-    box.style.left = (mid.x - 112) + 'px';
-    box.style.top = (mid.y + 14) + 'px';
+    box.id = 'wf-edge-toolbar';
+    box.className = 'absolute z-10 flex items-center gap-1 rounded-full border bg-popover py-1 pl-2 pr-1 text-xs shadow-lg';
+    box.style.left = mid.x + 'px';
+    box.style.top = mid.y + 'px';
+    box.style.transform = 'translate(-50%, -50%)';
     box.innerHTML =
-      '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">Edge label</label>' +
-      '<input data-f="label" class="mb-2 h-7 w-full rounded border border-input bg-background px-1.5 text-xs" value="' + (edge.label || '').replace(/"/g, '&quot;') + '" placeholder="Open Lab UI">' +
-      '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">Condition</label>' +
-      '<select data-f="condition" class="mb-2 h-7 w-full rounded border border-input bg-background px-1.5 text-xs">' +
+      '<select data-f="condition" title="When does this connection become available?" class="h-6 rounded-full border-0 bg-transparent px-1 text-[11px] focus-visible:outline-none">' +
         CONDITIONS.map(function (c) { return '<option value="' + c + '"' + (c === (edge.condition || 'manual') ? ' selected' : '') + '>' + c + '</option>'; }).join('') +
       '</select>' +
-      '<div class="flex items-center justify-between">' +
-        '<button type="button" data-f="delete" class="text-[11px] text-destructive hover:underline">Remove connection</button>' +
-        '<button type="button" data-f="close" class="text-[11px] text-muted-foreground hover:underline">Done</button>' +
-      '</div>';
+      '<button type="button" data-f="delete" title="Delete this connection" class="inline-flex size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">' +
+        '<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>' +
+      '</button>';
     world.appendChild(box);
     box.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
-    box.querySelector('[data-f="label"]').addEventListener('input', function (ev) { edge.label = ev.target.value; redrawEdges(); });
-    box.querySelector('[data-f="condition"]').addEventListener('change', function (ev) { edge.condition = ev.target.value; redrawEdges(); });
+    box.querySelector('[data-f="condition"]').addEventListener('change', function (ev) {
+      edge.condition = ev.target.value;
+      redrawEdges();
+    });
     box.querySelector('[data-f="delete"]').addEventListener('click', function () {
       graph.edges = graph.edges.filter(function (e) { return e.id !== edge.id; });
       selectedEdgeId = null;
-      box.remove();
       renderAll();
     });
-    box.querySelector('[data-f="close"]').addEventListener('click', function () {
-      selectedEdgeId = null;
-      box.remove();
-      redrawEdges();
+  }
+
+  var DEFAULT_CUSTOM_PAGE_HTML =
+    '<style>\n' +
+    '  body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #f2f3f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; text-align: center; }\n' +
+    '  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }\n' +
+    '  p { color: #9a9a9a; }\n' +
+    '</style>\n' +
+    '<div>\n' +
+    '  <h1>Workflow finished</h1>\n' +
+    '  <p>Design this screen however you like — it is plain HTML/CSS.</p>\n' +
+    '</div>\n';
+
+  // In-canvas editor for a custom_page node's static HTML/CSS — a live
+  // sandboxed preview next to a plain-text source editor. Writes straight
+  // into the in-memory node object; persisted on the next "Save graph".
+  function openPageEditor(node) {
+    var existing = document.getElementById('wf-page-editor');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'wf-page-editor';
+    overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6';
+    overlay.innerHTML =
+      '<div class="flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">' +
+        '<div class="flex h-11 shrink-0 items-center justify-between border-b px-3">' +
+          '<div class="text-xs font-medium">Page Editor — ' + (node.label || 'Custom Page').replace(/</g, '&lt;') + '</div>' +
+          '<button type="button" data-f="close" class="inline-flex h-7 items-center justify-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">Done</button>' +
+        '</div>' +
+        '<div class="grid min-h-0 flex-1 grid-cols-2">' +
+          '<textarea data-f="source" spellcheck="false" class="h-full min-h-0 w-full resize-none border-r bg-background p-3 font-mono text-xs leading-relaxed outline-none" placeholder="&lt;style&gt;...&lt;/style&gt;\n&lt;div&gt;Your page&lt;/div&gt;"></textarea>' +
+          '<iframe data-f="preview" sandbox="allow-scripts" class="h-full min-h-0 w-full bg-white"></iframe>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var source = overlay.querySelector('[data-f="source"]');
+    var preview = overlay.querySelector('[data-f="preview"]');
+    source.value = node.custom_html || DEFAULT_CUSTOM_PAGE_HTML;
+
+    function updatePreview() {
+      preview.srcdoc = source.value;
+    }
+    updatePreview();
+
+    source.addEventListener('input', function () {
+      node.custom_html = source.value;
+      updatePreview();
+    });
+    overlay.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+    overlay.querySelector('[data-f="close"]').addEventListener('click', function () {
+      node.custom_html = source.value;
+      overlay.remove();
+    });
+    overlay.addEventListener('click', function (ev) {
+      if (ev.target === overlay) { node.custom_html = source.value; overlay.remove(); }
     });
   }
 
@@ -246,39 +330,69 @@
     if (availableModes.indexOf(node.ui_mode) < 0) node.ui_mode = availableModes[0];
 
     var el = document.createElement('div');
-    el.className = 'absolute w-60 select-none rounded-xl border bg-card text-xs shadow-sm';
+    el.className = 'pointer-events-auto absolute w-60 select-none rounded-xl border bg-card text-xs shadow-sm';
     el.style.left = node.position.x + 'px';
     el.style.top = node.position.y + 'px';
     el.dataset.nodeId = node.id;
     var isStart = graph.start_node_id === node.id;
+    var isEndNode = !graph.edges.some(function (e) { return e.source === node.id; });
+    var isCustomPage = node.ui_mode === 'custom_page';
+    var dotClass = MODE_DOT[node.ui_mode] || 'bg-muted-foreground';
     el.innerHTML =
       '<div class="flex items-center gap-1.5 rounded-t-xl border-b bg-muted/40 px-2 py-1.5 cursor-move" data-drag-handle>' +
-        '<button type="button" data-f="start" title="Set as start node" class="shrink-0 ' + (isStart ? 'text-amber-500' : 'text-muted-foreground/40 hover:text-muted-foreground') + '">' +
-          '<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="' + (isStart ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' +
-        '</button>' +
+        '<button type="button" data-f="start" title="' + (isStart ? 'Start stage — every instance opens here' : 'Set as start stage') + '" class="shrink-0 size-3 rounded-[2.5px] ' + dotClass + (isStart ? ' ring-2 ring-offset-1 ring-offset-card ring-foreground' : ' opacity-50 hover:opacity-90') + ' transition-opacity"></button>' +
         '<input data-f="label" class="min-w-0 flex-1 bg-transparent text-xs font-medium outline-none" value="' + (node.label || '').replace(/"/g, '&quot;') + '" placeholder="Stage name">' +
-        '<button type="button" data-f="remove" class="shrink-0 text-muted-foreground hover:text-destructive">&times;</button>' +
+        '<button type="button" data-f="remove" title="Delete this stage" class="shrink-0 inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors">' +
+          '<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>' +
+        '</button>' +
       '</div>' +
       '<div class="p-2.5">' +
         '<label class="mb-1 block text-[10px] uppercase text-muted-foreground">UI mode</label>' +
         '<select data-f="ui_mode" class="mb-2 h-7 w-full rounded border border-input bg-background px-1.5 text-xs">' + modeOptions(node.ui_mode) + '</select>' +
-        '<label class="mb-1.5 flex items-center gap-1.5" title="Artifacts produced while this stage is active stay visible after switching to the next stage — same instance, same workspace, nothing is copied or discarded."><input type="checkbox" data-f="carry_artifacts"' + (node.carry_artifacts ? ' checked' : '') + '> Carry artifacts forward</label>' +
-        '<label class="mb-2 flex items-center gap-1.5" title="If this stage is the only option when its incoming connection is followed, skip the Continue button and switch to it automatically after a short delay."><input type="checkbox" data-f="auto_start"' + (node.auto_start ? ' checked' : '') + '> Auto-start when reached</label>' +
-        '<label class="mb-1 block text-[10px] uppercase text-muted-foreground" title="Fallback button text for outgoing connections from THIS stage that don\'t have their own label set (set a connection\'s own label by clicking it).">Continue label</label>' +
-        '<input data-f="continue_label" class="h-7 w-full rounded border border-input bg-background px-1.5 text-xs" value="' + (node.continue_label || '').replace(/"/g, '&quot;') + '" placeholder="Continue to next stage">' +
+        (isCustomPage ?
+          '<button type="button" data-f="edit-page" class="mb-2 inline-flex h-7 w-full items-center justify-center gap-1.5 rounded border border-input text-xs font-medium hover:bg-accent transition-colors">' +
+            '<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
+            'Open Page Editor' +
+          '</button>' : '') +
+        (isCustomPage ? '' :
+          '<label class="mb-1.5 flex items-center gap-1.5" title="Artifacts produced while this stage is active stay visible after switching to the next stage — same instance, same workspace, nothing is copied or discarded."><input type="checkbox" data-f="carry_artifacts"' + (node.carry_artifacts ? ' checked' : '') + '> Carry artifacts forward</label>'
+        ) +
+        '<label class="' + (isEndNode ? '' : 'mb-2 ') + 'flex items-center gap-1.5" title="If this stage is the ONLY next option once reached (no branch to choose from), skip the Continue button and switch to it automatically after a short delay. Does nothing when there are multiple next options — those always need a click."><input type="checkbox" data-f="auto_start"' + (node.auto_start ? ' checked' : '') + '> Auto-start when reached</label>' +
+        (isEndNode ? '' :
+          '<label class="mb-1 block text-[10px] uppercase text-muted-foreground" title="Fallback button text for outgoing connections from THIS stage that don\'t have their own label set.">Continue label</label>' +
+          '<input data-f="continue_label" class="h-7 w-full rounded border border-input bg-background px-1.5 text-xs" value="' + (node.continue_label || '').replace(/"/g, '&quot;') + '" placeholder="Continue to next stage">'
+        ) +
       '</div>' +
       '<div data-handle="target" title="Drag from another stage\'s output handle here" class="absolute left-0 top-[17px] size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-muted-foreground/60 hover:bg-primary transition-colors" style="cursor:crosshair"></div>' +
-      '<div data-handle="source" title="Drag to another stage to connect" class="absolute right-0 top-[17px] size-3 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background bg-primary hover:bg-primary/80 transition-colors" style="cursor:crosshair"></div>';
+      '<div data-handle="source" title="Drag to another stage to connect" class="absolute right-0 top-[17px] size-3 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background ' + dotClass + ' hover:opacity-80 transition-colors" style="cursor:crosshair"></div>';
 
     nodesEl.appendChild(el);
     nodeEls[node.id] = el;
 
     el.querySelectorAll('[data-f]').forEach(function (input) {
       if (input.tagName === 'BUTTON') return;
+      if (input.dataset.f === 'ui_mode') {
+        input.addEventListener('change', function () {
+          var oldMode = node.ui_mode;
+          node.ui_mode = input.value;
+          var conflict = findModeConflict();
+          if (conflict) {
+            node.ui_mode = oldMode;
+            input.value = oldMode;
+            toastModeConflict(conflict);
+            return;
+          }
+          // Changes the card's own fields (Open Page Editor / Carry
+          // artifacts) and its handle/dot color — needs a full re-render.
+          renderAll();
+        });
+        input.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+        return;
+      }
       var handler = function () {
         var f = input.dataset.f;
         node[f] = input.type === 'checkbox' ? input.checked : input.value;
-        if (f === 'label' || f === 'ui_mode') redrawEdges();
+        if (f === 'label') redrawEdges();
       };
       input.addEventListener('input', handler);
       input.addEventListener('change', handler);
@@ -298,6 +412,15 @@
       if (graph.start_node_id === node.id) graph.start_node_id = (graph.nodes[0] || {}).id || null;
       renderAll();
     });
+
+    var editPageBtn = el.querySelector('[data-f="edit-page"]');
+    if (editPageBtn) {
+      editPageBtn.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+      editPageBtn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        openPageEditor(node);
+      });
+    }
 
     wireNodeDrag(el, node);
     wireHandle(el.querySelector('[data-handle="source"]'), node);
@@ -354,6 +477,43 @@
     previewSvg.innerHTML = '';
   }
 
+  function modeLabel(mode) {
+    return UI_MODE_LABELS[mode] || mode;
+  }
+
+  // Two things must never both be true at once anywhere in the graph:
+  // (1) an edge whose source and target share a ui_mode — nothing to
+  //     switch to; (2) two edges leaving the SAME source whose targets
+  //     share a ui_mode — a branch's choices must each be a distinct UI
+  //     mode, or the user can't tell them apart. Checked as one full-graph
+  //     scan so connect-time and mode-change-time reuse identical logic.
+  function findModeConflict() {
+    for (var i = 0; i < graph.edges.length; i++) {
+      var e1 = graph.edges[i];
+      var s1 = nodeById(e1.source), t1 = nodeById(e1.target);
+      if (!s1 || !t1) continue;
+      if (s1.ui_mode === t1.ui_mode) {
+        return { type: 'direct', a: s1, b: t1 };
+      }
+      for (var j = i + 1; j < graph.edges.length; j++) {
+        var e2 = graph.edges[j];
+        if (e2.source !== e1.source) continue;
+        var t2 = nodeById(e2.target);
+        if (t2 && t2.ui_mode === t1.ui_mode) {
+          return { type: 'sibling', a: t1, b: t2 };
+        }
+      }
+    }
+    return null;
+  }
+
+  function toastModeConflict(conflict) {
+    var description = conflict.type === 'direct'
+      ? 'Both stages are "' + modeLabel(conflict.a.ui_mode) + '" — connect stages with different UI modes to branch between.'
+      : 'This stage already branches to another "' + modeLabel(conflict.b.ui_mode) + '" stage — each branch from one stage needs a distinct UI mode.';
+    window.Toast && window.Toast.create({ title: 'Cannot make stages the same UI mode', description: description, type: 'error' });
+  }
+
   function finishConnect(ev) {
     if (!connecting) return;
     var targetEl = document.elementFromPoint(ev.clientX, ev.clientY);
@@ -367,6 +527,12 @@
     var dup = graph.edges.some(function (e) { return e.source === sourceId && e.target === targetId; });
     if (dup) return;
     graph.edges.push({ id: uid('edge'), source: sourceId, target: targetId, condition: 'manual', label: '' });
+    var conflict = findModeConflict();
+    if (conflict) {
+      graph.edges.pop();
+      toastModeConflict(conflict);
+      return;
+    }
     renderAll();
   }
 
@@ -429,8 +595,7 @@
     panStartX = ev.clientX; panStartY = ev.clientY;
     panOrigX = pan.x; panOrigY = pan.y;
     selectedEdgeId = null;
-    var editor = document.getElementById('wf-edge-editor');
-    if (editor) editor.remove();
+    removeEdgeToolbar();
     redrawEdges();
   });
   viewport.addEventListener('pointermove', function (ev) {

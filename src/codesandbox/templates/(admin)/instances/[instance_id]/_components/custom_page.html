@@ -1,0 +1,30 @@
+<div class="flex h-[calc(100vh-2.85rem)] flex-col overflow-hidden bg-background">
+  <div class="flex h-9 shrink-0 items-center justify-between gap-2 border-b px-3 text-xs">
+    <div class="min-w-0 truncate text-muted-foreground">{{ ui_workflow_node.label or "Custom Page" }}</div>
+    <div class="flex shrink-0 items-center gap-2">
+      <button type="button" id="custom-page-back" class="inline-flex h-6 items-center gap-1 rounded-md border border-input px-2 text-[11px] font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+        <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        Back
+      </button>
+      {% if ui_workflow_restart_url %}
+        <a href="{{ ui_workflow_restart_url }}" class="inline-flex h-6 items-center gap-1 rounded-md border border-input px-2 text-[11px] font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+          <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+          Restart
+        </a>
+      {% endif %}
+    </div>
+  </div>
+  <iframe id="custom-page-frame" sandbox="allow-scripts" class="min-h-0 flex-1 w-full border-0 bg-white" srcdoc="{{ (ui_workflow_node.custom_html or '') }}"></iframe>
+</div>
+
+{% app_script "sandbox-custom-page" %}
+(function () {
+  var backBtn = document.getElementById("custom-page-back");
+  if (!backBtn || backBtn.dataset.ready === "1") return;
+  backBtn.dataset.ready = "1";
+  backBtn.addEventListener("click", function () {
+    if (window.history.length > 1) window.history.back();
+    else window.location.href = "/my-instances";
+  });
+})();
+{% end_app_script %}

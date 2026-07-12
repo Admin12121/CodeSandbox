@@ -469,7 +469,7 @@
                           Single Mode
                           <span class="text-xs text-muted-foreground">— one fixed UI mode</span>
                         </label>
-                        <label class="inline-flex cursor-pointer items-center gap-2 text-sm {% if is_create %}opacity-50{% endif %}">
+                        <label id="ib-workflow-label" class="inline-flex cursor-pointer items-center gap-2 text-sm {% if is_create %}opacity-50{% endif %}">
                           <input type="radio" name="interface_behavior" id="ib-workflow" value="workflow" class="size-3.5" {% if is_workflow_mode %}checked{% endif %} {% if is_create %}disabled{% endif %}>
                           Workflow Mode
                           <span class="text-xs text-muted-foreground">— multiple UI stages, same instance</span>
@@ -477,6 +477,9 @@
                         {% if is_create %}
                           <p class="text-xs text-muted-foreground">Create the template first, then switch to Workflow Mode to build its canvas.</p>
                         {% endif %}
+                        <p id="ib-workflow-unavailable-hint" class="text-xs text-muted-foreground" hidden>
+                          This runtime class only has one possible UI mode — there's nothing to branch between, so Workflow Mode isn't available. Use Single Mode, or switch Runtime Class to one with more than one UI mode.
+                        </p>
                       </div>
                     {% endcall %}
                   {% endcall %}
@@ -1192,6 +1195,8 @@
     var ibWorkflow  = document.getElementById('ib-workflow');
     var ibSingleRow = document.getElementById('ib-single-row');
     var ibWorkflowRow = document.getElementById('ib-workflow-row');
+    var ibWorkflowLabel = document.getElementById('ib-workflow-label');
+    var ibWorkflowHint  = document.getElementById('ib-workflow-unavailable-hint');
 
     if (!cards.length) return;
 
@@ -1240,6 +1245,22 @@
       var isWorkflow = !!(ibWorkflow && ibWorkflow.checked);
       if (ibSingleRow) ibSingleRow.style.display = isWorkflow ? 'none' : '';
       if (ibWorkflowRow) ibWorkflowRow.style.display = isWorkflow ? '' : 'none';
+    }
+
+    // tool_job/android_emulator only ever have exactly one possible
+    // UI mode — nothing to branch between, so Workflow Mode is disabled
+    // for them (server also rejects it, this just avoids a round trip).
+    function updateWorkflowAvailability(rcVal) {
+      if (!ibWorkflow) return;
+      var cfg = RC_CFG[rcVal] || RC_CFG.container;
+      var available = cfg.ifaces.length > 1;
+      ibWorkflow.disabled = !available;
+      if (ibWorkflowLabel) ibWorkflowLabel.classList.toggle('opacity-50', !available);
+      if (ibWorkflowHint) ibWorkflowHint.hidden = available;
+      if (!available && ibWorkflow.checked && ibSingle) {
+        ibSingle.checked = true;
+        updateInterfaceBehaviorRows();
+      }
     }
 
     function buildComboOptions(rcVal) {
@@ -1333,6 +1354,7 @@
       updateCards();
       updateDefaultUiSelect(val);
       updateImageField(val);
+      updateWorkflowAvailability(val);
     }
 
     cards.forEach(function(c) {

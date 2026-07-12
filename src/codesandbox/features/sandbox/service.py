@@ -30,6 +30,7 @@ from .runtime.drivers.base import UnsupportedRuntimeError
 from .runtime.artifacts import safe_artifact_name
 from .runtime.metrics import runtime_seconds
 from .ui_workflow import (
+    UI_WORKFLOW_MODES,
     parse_ui_workflow_graph,
     ui_workflow_node_by_id,
     ui_workflow_node_ui_modes,
@@ -98,6 +99,7 @@ UI_MODE_LABELS = {
     "background_run": "Background Run",
     "desktop_gui": "Desktop GUI",
     "android_ui": "Android UI",
+    "custom_page": "Custom Page",
 }
 UI_MODE_ALIASES = {
     "terminal": "terminal_only",
@@ -187,9 +189,12 @@ def template_allowed_ui_modes(template_or_dict) -> list[str]:
 
 def template_default_ui_mode(template_or_dict) -> str:
     if template_interface_behavior(template_or_dict) == "workflow":
+        # Workflow-mode nodes aren't restricted to Single Mode's 5
+        # runtime-backed UI_MODES (custom_page is workflow-only), so this
+        # deliberately does NOT go through normalize_ui_mode.
         start = ui_workflow_start_node(template_ui_workflow_graph(template_or_dict))
-        if start and start.get("ui_mode"):
-            return normalize_ui_mode(start.get("ui_mode"), "terminal_only")
+        if start and start.get("ui_mode") in UI_WORKFLOW_MODES:
+            return start["ui_mode"]
     allowed = template_allowed_ui_modes(template_or_dict)
     configured = getattr(template_or_dict, "default_ui_mode", None)
     if isinstance(template_or_dict, dict):
@@ -664,6 +669,15 @@ def save_template(
     existing_t = repository.get_template(template_id) if template_id else None
     if template_id and existing_t is None:
         return None, "Template not found."
+
+    if interface_behavior == "workflow" and len(_runtime_default_ui_modes(runtime_class)) <= 1:
+        # tool_job and android_emulator each only ever have exactly one
+        # possible ui_mode — there's nothing to branch between, so Workflow
+        # Mode (multiple UI stages) is meaningless for them.
+        return None, (
+            f"Workflow Mode requires a runtime with more than one available UI mode — "
+            f"{runtime_class} only supports {_runtime_default_ui_modes(runtime_class)[0]}. Use Single Mode instead."
+        )
 
     if interface_behavior == "workflow":
         # The Identity form doesn't submit allowed_ui_modes/default_ui_mode
@@ -1546,12 +1560,19 @@ def get_instance_ui_context(
 
     ui_workflow_node = None
     ui_workflow_choices: list[dict] = []
+    ui_workflow_restart_url = None
     if template is not None and template_interface_behavior(template) == "workflow":
         graph = template_ui_workflow_graph(template)
         ui_workflow_node = ui_workflow_node_by_id(graph, requested_node_id) or ui_workflow_start_node(graph)
-        ui_mode = normalize_ui_mode((ui_workflow_node or {}).get("ui_mode"), "terminal_only")
+        # Workflow-mode nodes aren't restricted to Single Mode's UI_MODES
+        # (custom_page is workflow-only) — the graph was already validated
+        # against UI_WORKFLOW_MODES at save time, so this is trusted as-is.
+        ui_mode = (ui_workflow_node or {}).get("ui_mode") or "terminal_only"
         allowed_ui_modes = ui_workflow_node_ui_modes(graph) or [ui_mode]
         ui_workflow_choices = _ui_workflow_choices(graph, ui_workflow_node, instance)
+        start_node = ui_workflow_start_node(graph)
+        if start_node and start_node.get("id") != (ui_workflow_node or {}).get("id"):
+            ui_workflow_restart_url = f"/instances/{instance.get('id')}?ui_mode={start_node.get('ui_mode')}&node={start_node.get('id')}"
     else:
         ui_mode, allowed_ui_modes = select_instance_ui_mode(instance, requested_ui_mode)
 
@@ -1573,6 +1594,7 @@ def get_instance_ui_context(
         "ui_config": runtime_config.get("ui") if isinstance(runtime_config.get("ui"), dict) else {},
         "ui_workflow_node": ui_workflow_node,
         "ui_workflow_choices": ui_workflow_choices,
+        "ui_workflow_restart_url": ui_workflow_restart_url,
         "artifacts": artifacts or [],
         "events": events or [],
         "notes": notes or {},
