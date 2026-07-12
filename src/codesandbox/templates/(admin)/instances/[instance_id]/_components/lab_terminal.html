@@ -1,0 +1,16 @@
+{% import "components/ui/resizable.html" as resizable %}
+{% import "(admin)/instances/[instance_id]/_components/lab_icons.html" as icons %}
+
+{% macro lab_terminal() -%}
+{% call resizable.resizable_panel(default_size=30, min_size=15, attrs={"data-panel": "terminal", "data-default-size": "30"}) %}
+  <div class="flex h-8 items-center justify-between border-b text-xs">
+    <div data-terminal-tabs class="flex h-full items-center"></div>
+
+    <button data-new-terminal class="border-l px-2 text-muted-foreground hover:text-accent-foreground">
+      {{ icons.icon("plus") }}
+    </button>
+  </div>
+
+  <div data-terminal-panes class="h-[calc(100%-2rem)] overflow-auto p-3 font-mono text-xs"></div>
+{% endcall %}
+{%- endmacro %}

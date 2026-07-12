@@ -8054,6 +8054,30 @@
           "type": "StringField",
           "unique": false
         },
+        "last_test_error": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "last_test_error",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
         "last_test_status": {
           "auto_increment": false,
           "decimal_places": null,

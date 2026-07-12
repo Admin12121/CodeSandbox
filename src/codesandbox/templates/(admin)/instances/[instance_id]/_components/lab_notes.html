@@ -1,0 +1,93 @@
+{% import "components/ui/resizable.html" as resizable %}
+{% import "(admin)/instances/[instance_id]/_components/lab_icons.html" as icons %}
+
+{% macro lab_right_panel(notes, artifacts) -%}
+{% call resizable.resizable_panel(default_size=35, min_size=25, max_size=40, attrs={"data-panel": "right"}) %}
+  <div class="h-full overflow-auto text-sm">
+
+    <div data-right-pane="notes" class="right-pane p-3">
+      <div class="mx-auto max-w-[620px] space-y-4 px-2 py-3 text-sm">
+        <input data-notes-title class="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground" value="{{ notes.title if notes else 'Untitled Investigation' }}" placeholder="Untitled">
+
+        <textarea
+          data-notes-content
+          class="min-h-[22rem] w-full resize-none rounded-md border bg-muted/20 p-3 leading-6 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="Write case notes, observations, commands, indicators, and manual analysis here."
+        >{{ notes.content if notes else '' }}</textarea>
+
+        <div data-notes-status class="text-xs text-muted-foreground">Notes save per instance.</div>
+      </div>
+    </div>
+
+    <div data-right-pane="ai" class="right-pane hidden h-full">
+      <div class="flex h-full flex-col bg-background">
+        <div class="flex h-8 shrink-0 items-center justify-between border-b px-2">
+          <span class="text-sm font-medium">New Claude Agent Thread</span>
+
+          <div class="flex items-center gap-3 text-muted-foreground">
+            <button class="hover:text-accent-foreground">{{ icons.icon("plus") }}</button>
+            <button class="text-xs hover:text-accent-foreground">•••</button>
+          </div>
+        </div>
+
+        <textarea
+          class="min-h-0 flex-1 resize-none bg-transparent px-3 py-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground"
+          placeholder="Message Claude Agent — @ to include context, / for commands"
+        ></textarea>
+
+        <div class="shrink-0 border-t bg-background">
+          <textarea class="h-24 w-full resize-none bg-transparent px-3 py-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground"></textarea>
+
+          <div class="flex h-12 items-center justify-between px-3 text-xs text-muted-foreground">
+            <div class="flex items-center gap-3">
+              <button class="hover:text-accent-foreground">{{ icons.icon("plus") }}</button>
+              <button class="hover:text-accent-foreground">◉</button>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <button class="hover:text-accent-foreground">Accept Edits⌄</button>
+              <button class="hover:text-accent-foreground">Default⌄</button>
+              <button class="rounded-md bg-muted px-2 py-1 hover:text-accent-foreground">➤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div data-right-pane="metrics" class="right-pane hidden p-4">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="text-sm font-semibold">Metrics</h2>
+        <span id="runtime-metric-state" class="text-xs text-muted-foreground">Connecting</span>
+      </div>
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+        <div class="border-b pb-2"><dt class="text-muted-foreground">CPU</dt><dd id="runtime-cpu" class="mt-1 font-mono text-sm">0%</dd></div>
+        <div class="border-b pb-2"><dt class="text-muted-foreground">Memory</dt><dd id="runtime-memory" class="mt-1 font-mono text-sm">0 MB</dd></div>
+        <div class="border-b pb-2"><dt class="text-muted-foreground">Network RX</dt><dd id="runtime-rx" class="mt-1 font-mono text-sm">0 KB</dd></div>
+        <div class="border-b pb-2"><dt class="text-muted-foreground">Network TX</dt><dd id="runtime-tx" class="mt-1 font-mono text-sm">0 KB</dd></div>
+        <div class="border-b pb-2"><dt class="text-muted-foreground">Block Read</dt><dd id="runtime-block-read" class="mt-1 font-mono text-sm">0 MB</dd></div>
+        <div class="border-b pb-2"><dt class="text-muted-foreground">Block Write</dt><dd id="runtime-block-write" class="mt-1 font-mono text-sm">0 MB</dd></div>
+      </dl>
+    </div>
+
+    <div data-right-pane="artifacts" class="right-pane hidden p-4">
+      <h2 class="mb-3 text-sm font-semibold">Artifacts</h2>
+      <div id="runtime-artifact-list">
+      {% if artifacts %}
+        <div class="divide-y border-y">
+          {% for artifact in artifacts %}
+            <a href="/artifacts/{{ artifact.id }}/download" class="flex items-center gap-3 py-2.5 text-xs hover:text-foreground">
+              {{ icons.icon("archive", "text-muted-foreground") }}
+              <span class="min-w-0 flex-1 truncate">{{ artifact.name }}</span>
+              <span class="shrink-0 text-muted-foreground">{{ (artifact.size_bytes / 1024) | round(1) }} KB</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="border-y py-8 text-center text-xs text-muted-foreground">No artifacts yet.</div>
+      {% endif %}
+      </div>
+    </div>
+
+  </div>
+{% endcall %}
+{%- endmacro %}

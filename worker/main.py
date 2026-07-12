@@ -230,21 +230,69 @@ class WorkerApp:
             callback.try_send("artifact_ready", artifact)
             self._publish_event(callback.instance_id, "artifact_ready", artifact)
 
+    # Test Launch only: buffered so a `log_contains` success_condition can be
+    # checked once the run finishes — a bounded ring buffer, not the full
+    # stream, so an interactive/background_run instance without that
+    # condition configured pays zero extra memory cost (see the `if` guard).
+    _TEST_LOG_BUFFER_MAX_BYTES = 256 * 1024
+
     def _stream_logs(self, runner: DockerRunner) -> None:
+        test_config = runner.policy.get("test_config") or {}
+        buffer_logs = str(test_config.get("success_condition") or "") == "log_contains"
         try:
             for chunk in runner.container.logs(stream=True, follow=True, stdout=True, stderr=True):
                 if runner.external_control.is_set():
                     break
+                text = chunk.decode("utf-8", errors="replace")
+                if buffer_logs:
+                    runner.test_log_buffer = (runner.test_log_buffer + text)[-self._TEST_LOG_BUFFER_MAX_BYTES:]
                 self.publish(
                     f"codesandbox.sandbox.events.{runner.instance_id}",
                     {
                         "type": "log",
                         "instance_id": runner.instance_id,
-                        "data": chunk.decode("utf-8", errors="replace"),
+                        "data": text,
                     },
                 )
         except Exception:
             pass
+
+    def _evaluate_test_success(
+        self, runner: DockerRunner, exit_code, artifacts: list[dict]
+    ) -> tuple[bool | None, str | None]:
+        """Mode-specific Test Launch pass/fail, evaluated where the real
+        signal (exit code, produced artifacts, buffered logs) actually lives
+        — not "did the container start" (see docs/plan.md Phase 10.4).
+        Returns (None, None) for a normal (non-test) run, where the control
+        plane's own "started implies passed" fallback for terminal_only/lab_ui
+        still applies."""
+        test_config = runner.policy.get("test_config") or {}
+        success_condition = str(test_config.get("success_condition") or "").strip()
+        if not success_condition:
+            return None, None
+        if success_condition == "exit_zero":
+            ok = exit_code == 0
+            return ok, (None if ok else f"Process exited with code {exit_code}.")
+        if success_condition == "artifact_exists":
+            required = [str(p).lstrip("/") for p in test_config.get("required_artifacts") or []]
+            produced = {str(a.get("name") or "").lstrip("/") for a in artifacts}
+            missing = [p for p in required if p not in produced]
+            return (not missing), (
+                None if not missing else f"Missing required artifacts: {', '.join(missing)}"
+            )
+        if success_condition == "log_contains":
+            patterns = [str(p) for p in test_config.get("log_contains") or []]
+            buffer = getattr(runner, "test_log_buffer", "")
+            missing = [p for p in patterns if p not in buffer]
+            return (not missing), (
+                None if not missing else f"Log output did not contain: {', '.join(missing)}"
+            )
+        if success_condition == "healthcheck":
+            # No worker-side GUI/emulator proxy exists yet (Phase 10.6/10.7) —
+            # report an honest failure with the real reason instead of a
+            # fabricated pass.
+            return False, "Healthcheck-based test success requires Desktop GUI/Android UI real connection support, which is not yet available."
+        return None, f"Unknown success_condition: {success_condition!r}"
 
     def _finish(
         self,
@@ -256,13 +304,20 @@ class WorkerApp:
     ) -> None:
         callback.try_send("cleanup_started", {"reason": reason})
         self.terminal.close(runner.instance_id)
+        artifacts: list[dict] = []
         try:
-            self._publish_artifacts(callback, runner.collect_artifacts())
+            artifacts = runner.collect_artifacts()
+            self._publish_artifacts(callback, artifacts)
         except Exception as exc:
             log.warning("artifact collection failed instance=%s error=%s", runner.instance_id[:8], exc)
         runner.cleanup()
-        callback.try_send(event, {"reason": reason, "exit_code": exit_code})
-        self._publish_event(runner.instance_id, event, {"reason": reason, "exit_code": exit_code})
+        payload = {"reason": reason, "exit_code": exit_code}
+        test_success, test_reason = self._evaluate_test_success(runner, exit_code, artifacts)
+        if test_success is not None:
+            payload["test_success"] = test_success
+            payload["test_reason"] = test_reason
+        callback.try_send(event, payload)
+        self._publish_event(runner.instance_id, event, payload)
 
     def _monitor_loop(self, runner: DockerRunner, callback: CallbackClient, instance_id: str) -> None:
         """Poll a running container until it exits, times out, breaches its

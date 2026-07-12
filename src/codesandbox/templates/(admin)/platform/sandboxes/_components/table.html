@@ -18,8 +18,8 @@
 {% macro templates_table(templates, total, page, total_pages, search, status_filter, page_size=25, can_manage=false) %}
   {% set status_options = [
     {"value": "all", "label": "All status"},
-    {"value": "active", "label": "Active"},
-    {"value": "maintenance", "label": "Maintenance"},
+    {"value": "active", "label": "Published"},
+    {"value": "maintenance", "label": "Maintenance / Draft"},
     {"value": "disabled", "label": "Disabled"},
   ] %}
   {% set status_match = status_options | selectattr('value', 'equalto', status_filter) | list %}
@@ -94,9 +94,9 @@
                 {{ table.table_cell(tmpl.runtime_class | replace("_", " ") | title, class="text-sm text-muted-foreground") }}
                 {% call table.table_cell() %}
                   {% if tmpl.status == "active" %}
-                    {{ badge.badge("Active", variant="outline") }}
+                    {{ badge.badge("Published", variant="outline") }}
                   {% elif tmpl.status == "maintenance" %}
-                    {{ badge.badge("Maintenance", variant="secondary") }}
+                    {{ badge.badge("Draft" if tmpl.last_test_status == "untested" else "Maintenance", variant="secondary") }}
                   {% else %}
                     {{ badge.badge("Disabled", variant="destructive") }}
                   {% endif %}
@@ -271,26 +271,35 @@
                     {% call table.table_head(class="text-right") %}
                       {% if not is_create %}
                         <div class="flex items-center justify-end gap-3 font-normal normal-case">
+                          {% set publish_ready = selected_template.last_test_status == "passed" %}
+                          {% set failure_title = "Last test failed: " ~ selected_template.last_test_error if selected_template.last_test_error else "Last test failed — run Test Launch again" %}
                           {% if selected_template.status != "active" %}
-                            <span class="text-xs text-muted-foreground">
-                              {% if selected_template.last_test_status == "passed" %}Test passed — ready to activate
-                              {% elif selected_template.last_test_status == "failed" %}Last test failed — run Test Launch again
-                              {% else %}Not yet tested — run Test Launch in the Config tab before activating{% endif %}
+                            <span id="test-status-hint" class="max-w-xs truncate text-xs text-muted-foreground" title="{{ failure_title if selected_template.last_test_status == 'failed' else '' }}">
+                              {% if publish_ready %}Test passed — ready to publish
+                              {% elif selected_template.last_test_status == "failed" %}{{ failure_title }}
+                              {% else %}Not yet tested — run Test Launch in the Config tab before publishing{% endif %}
                             </span>
                           {% endif %}
                           {% if selected_template.status == "active" %}
-                            {{ badge.badge("Active", variant="outline") }}
+                            {{ badge.badge("Published", variant="outline") }}
                           {% elif selected_template.status == "maintenance" %}
-                            {{ badge.badge("Maintenance", variant="secondary") }}
+                            {{ badge.badge("Draft" if selected_template.last_test_status == "untested" else "Maintenance", variant="secondary") }}
                           {% else %}
                             {{ badge.badge("Disabled", variant="destructive") }}
                           {% endif %}
                           {% if can_manage %}
-                            <button type="button" id="status-toggle-btn"
-                              data-target-status="{{ 'maintenance' if selected_template.status == 'active' else 'active' }}"
-                              class="inline-flex h-7 items-center justify-center rounded-md border border-input px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
-                              {{ "Deactivate" if selected_template.status == "active" else "Activate" }}
-                            </button>
+                            {% if selected_template.status != "active" and not publish_ready %}
+                              <button type="button" disabled title="{{ failure_title if selected_template.last_test_status == 'failed' else 'Not yet tested — run Test Launch in the Config tab before publishing' }}"
+                                class="inline-flex h-7 items-center justify-center rounded-md border border-input px-2.5 text-xs font-medium opacity-50 cursor-not-allowed">
+                                Cannot publish
+                              </button>
+                            {% else %}
+                              <button type="button" id="status-toggle-btn"
+                                data-target-status="{{ 'maintenance' if selected_template.status == 'active' else 'active' }}"
+                                class="inline-flex h-7 items-center justify-center rounded-md border border-input px-2.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
+                                {{ "Unpublish" if selected_template.status == "active" else "Publish" }}
+                              </button>
+                            {% endif %}
                           {% endif %}
                         </div>
                       {% endif %}
@@ -930,6 +939,12 @@
           <span id="ide-active-file" class="font-mono opacity-60"></span>
           {% if can_manage %}
             <div class="w-px h-3.5 bg-border mx-0.5"></div>
+            <input type="file" id="test-input-file" hidden>
+            <button type="button" id="test-input-btn" title="Attach test input file (optional)"
+              class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
+              <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <span id="test-input-name" class="max-w-20 truncate font-mono opacity-60"></span>
             <button type="button" id="test-launch-btn" title="Test Launch"
               class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
               <svg id="launch-icon-play" class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
@@ -2802,11 +2817,9 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
         var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
         monUptime.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
       }, 1000);
-      window.Toast && window.Toast.create({
-        title: 'Test passed',
-        description: 'This template can now be activated from the Identity tab.',
-        type: 'success',
-      });
+      // No "Test passed" toast here anymore — a container starting isn't a
+      // pass for background_run/desktop_gui/android_ui (see docs/plan.md
+      // Phase 10.4). The real result is fetched once the run finishes below.
     }
     if (state !== 'running') {
       clearInterval(uptimeTimer); uptimeTimer = null;
@@ -2815,7 +2828,34 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
       window.__csTestInstanceId = null;
       document.dispatchEvent(new CustomEvent('cs:test-instance-changed', { detail: { instanceId: null } }));
       window.csSetMonitorAvailable && window.csSetMonitorAvailable(false);
+      reportTestResult();
     }
+  }
+
+  function reportTestResult() {
+    fetch('/platform/sandboxes/{{ tid }}/test-status')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.ok) return;
+        if (data.last_test_status === 'passed') {
+          window.Toast && window.Toast.create({
+            title: 'Test passed',
+            description: 'This template can now be published from the Identity tab.',
+            type: 'success',
+          });
+        } else if (data.last_test_status === 'failed') {
+          window.Toast && window.Toast.create({
+            title: 'Test failed',
+            description: data.last_test_error || 'The test run did not meet its success condition.',
+            type: 'error',
+          });
+        }
+        var hint = document.getElementById('test-status-hint');
+        if (hint) hint.textContent = data.last_test_error
+          ? ('Last test failed: ' + data.last_test_error)
+          : (data.last_test_status === 'passed' ? 'Test passed — ready to publish' : '');
+      })
+      .catch(function() {});
   }
 
   function openMonitor(instanceId) {
@@ -2900,12 +2940,29 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
     };
   }
 
+  var testInputFileEl = document.getElementById('test-input-file');
+  var testInputBtn = document.getElementById('test-input-btn');
+  var testInputName = document.getElementById('test-input-name');
+  if (testInputBtn) {
+    testInputBtn.addEventListener('click', function() {
+      testInputFileEl && testInputFileEl.click();
+    });
+  }
+  if (testInputFileEl) {
+    testInputFileEl.addEventListener('change', function() {
+      var file = testInputFileEl.files[0];
+      if (testInputName) testInputName.textContent = file ? file.name : '';
+    });
+  }
+
   function launchTestInstance() {
     launchBtn.disabled = true;
+    var formData = new FormData();
+    var file = testInputFileEl && testInputFileEl.files[0];
+    if (file) formData.append('test_input_file', file);
     fetch('/platform/sandboxes/{{ tid }}/test-run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: formData,
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {

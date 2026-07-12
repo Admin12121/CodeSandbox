@@ -46,8 +46,22 @@ def _parse_decimal(value: str) -> Decimal | None:
         return None
 
 
-def _runtime_fields_changed(existing_t, values: dict) -> bool:
-    return any(getattr(existing_t, key, None) != value for key, value in values.items())
+def _runtime_fields_changed(
+    existing_t,
+    values: dict,
+    existing_runtime_config: dict,
+    new_runtime_config: dict,
+) -> bool:
+    if any(getattr(existing_t, key, None) != value for key, value in values.items()):
+        return True
+    # GUI/Android connection config lives inside the free-form runtime_config
+    # JSON blob, not a typed column, but changing it is just as dangerous as
+    # changing runtime_class/network_mode — it points the browser at a
+    # different VNC/emulator endpoint.
+    for key in ("desktop_gui", "android_ui"):
+        if _ui_feature_config(existing_runtime_config, key) != _ui_feature_config(new_runtime_config, key):
+            return True
+    return False
 
 
 def _image_allowed(image: str) -> bool:
@@ -654,6 +668,7 @@ def _template_dict(t) -> dict:
         "status": t.status,
         "last_test_status": t.last_test_status or "untested",
         "last_tested_at": t.last_tested_at,
+        "last_test_error": t.last_test_error or "",
         "runtime_config": t.runtime_config or "",
         "created_at": t.created_at,
         "updated_at": t.updated_at,
@@ -791,7 +806,8 @@ def save_template(
             **runtime_values,
         )
 
-        if _runtime_fields_changed(existing_t, runtime_values):
+        existing_runtime_config = parse_runtime_config(existing_t.runtime_config)
+        if _runtime_fields_changed(existing_t, runtime_values, existing_runtime_config, parsed_runtime_config):
             # A Runtime-affecting edit invalidates any prior test pass. If the
             # template was live, take it out of rotation until it's retested.
             update_kwargs["last_test_status"] = "untested"
@@ -854,8 +870,37 @@ def set_template_status(template_id: str, status: str) -> str | None:
     return None
 
 
+def get_template_test_status(template_id: str) -> dict | None:
+    t = repository.get_template(template_id)
+    if t is None:
+        return None
+    return {
+        "last_test_status": t.last_test_status or "untested",
+        "last_test_error": t.last_test_error or "",
+    }
+
+
 def save_template_config(template_id: str, config_json: str) -> None:
-    repository.update_template(template_id, runtime_config=config_json.strip() or None)
+    existing_t = repository.get_template(template_id)
+    new_config = config_json.strip() or None
+    update_kwargs: dict = {"runtime_config": new_config}
+    if existing_t is not None:
+        # The Config tab autosaves on every edit, so only the fields that are
+        # actually dangerous (GUI/Android connection config — same list as
+        # _runtime_fields_changed) force a retest; everything else (notes,
+        # workflow labels, etc.) autosaves without touching publish status.
+        old_cfg = parse_runtime_config(existing_t.runtime_config)
+        new_cfg = parse_runtime_config(new_config)
+        dangerous_changed = any(
+            _ui_feature_config(old_cfg, key) != _ui_feature_config(new_cfg, key)
+            for key in ("desktop_gui", "android_ui")
+        )
+        if dangerous_changed:
+            update_kwargs["last_test_status"] = "untested"
+            update_kwargs["last_tested_at"] = None
+            if existing_t.status == "active":
+                update_kwargs["status"] = "maintenance"
+    repository.update_template(template_id, **update_kwargs)
 
 
 def delete_template(template_id: str) -> str | None:
@@ -1685,7 +1730,7 @@ def list_reconcile_candidates(worker_id: str) -> list[dict]:
     return result
 
 
-def _mark_template_test_result(inst, status: str) -> None:
+def _mark_template_test_result(inst, status: str, reason: str | None = None) -> None:
     """If this instance was a Test Launch, record the pass/fail outcome on its template."""
     if inst.workspace_type != "test":
         return
@@ -1693,6 +1738,7 @@ def _mark_template_test_result(inst, status: str) -> None:
         str(inst.template_id),
         last_test_status=status,
         last_tested_at=datetime.now(timezone.utc),
+        last_test_error=reason if status == "failed" else None,
     )
 
 
@@ -1795,7 +1841,21 @@ def handle_worker_callback(
         if updated is None:
             return {}, f"Cannot accept started event in '{inst.status}' state."
         repository.log_instance_event(instance_id, "started", actor="worker", detail=detail)
-        _mark_template_test_result(inst, "passed")
+        if inst.workspace_type == "test":
+            # terminal_only/lab_ui: a real container starting, reachable
+            # through the same terminal/filesystem code path production
+            # instances use, is the honest pass signal for those modes.
+            # background_run/desktop_gui/android_ui need more than "it
+            # started" (see docs/plan.md Phase 10.4) — those wait for the
+            # worker's own success_condition evaluation at finish time
+            # (_evaluate_test_success on the worker, "test_success" in the
+            # stopped/failed callback below).
+            test_template = repository.get_template(str(inst.template_id))
+            ui_mode = normalize_ui_mode(
+                test_template.default_ui_mode if test_template else None, "terminal_only"
+            )
+            if ui_mode in ("terminal_only", "lab_ui"):
+                _mark_template_test_result(inst, "passed")
         _upsert_worker_runtime(updated, status="running")
 
     elif event == "heartbeat":
@@ -1875,8 +1935,18 @@ def handle_worker_callback(
         _release_worker_capacity_for(updated)
         _upsert_worker_runtime(updated, status=final_status)
         repository.log_instance_event(instance_id, final_status, actor="worker", detail=detail)
-        if final_status != "stopped":
-            _mark_template_test_result(inst, "failed")
+        if inst.workspace_type == "test":
+            if "test_success" in data:
+                # Worker evaluated a configured success_condition against the
+                # real exit code/artifacts/logs — trust it over the generic
+                # "did it stop cleanly" heuristic below.
+                _mark_template_test_result(
+                    inst,
+                    "passed" if data.get("test_success") else "failed",
+                    reason=data.get("test_reason"),
+                )
+            elif final_status != "stopped":
+                _mark_template_test_result(inst, "failed", reason=str(data.get("reason") or final_status))
 
     elif event == "failed":
         elapsed = runtime_seconds(inst.started_at, now)
@@ -1904,7 +1974,9 @@ def handle_worker_callback(
         _release_worker_capacity_for(updated)
         _upsert_worker_runtime(updated, status="failed")
         repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)
-        _mark_template_test_result(inst, "failed")
+        _mark_template_test_result(
+            inst, "failed", reason=str(data.get("reason") or data.get("error") or "runtime_failed")
+        )
 
     elif event == "escape_attempt":
         repository.log_instance_event(instance_id, "escape_attempt", actor="worker", detail=detail)
@@ -1961,6 +2033,7 @@ def handle_worker_callback(
 def start_test_instance(
     template_id: str,
     actor_user_id: str,
+    test_input_file=None,
 ) -> tuple[dict | None, str | None]:
     """Admin: create + immediately start a single-use test instance of a template.
 
@@ -1970,6 +2043,12 @@ def start_test_instance(
     if t is None:
         return None, "Template not found."
 
+    runtime_config = parse_runtime_config(t.runtime_config)
+    test_config = runtime_config.get("test_config")
+    test_config = test_config if isinstance(test_config, dict) else {}
+    if test_config.get("requires_input") and test_input_file is None:
+        return None, "This template's test config requires an input file — upload one to run the test."
+
     inst = repository.create_instance(
         template_id=template_id,
         plan_id=_TEST_PLAN["id"],
@@ -1978,6 +2057,10 @@ def start_test_instance(
         created_by_user_id=actor_user_id,
         billing_entity="test",
     )
+    if test_input_file is not None:
+        _, upload_error = upload_instance_input(str(inst.id), actor_user_id, test_input_file)
+        if upload_error:
+            return None, upload_error
     return start_instance(str(inst.id), actor_user_id=actor_user_id)
 
 

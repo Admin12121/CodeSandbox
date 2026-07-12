@@ -1,0 +1,18 @@
+{% import "components/ui/resizable.html" as resizable %}
+
+{% macro lab_filesystem() -%}
+{% call resizable.resizable_panel(default_size=20, min_size=15, max_size=25, class="h-full", attrs={"data-panel": "left"}) %}
+  <div id="sandbox-fs" class="flex h-full flex-col overflow-hidden bg-background text-xs">
+
+    <div class="flex h-8 shrink-0 items-center gap-2 border-b px-2">
+      <span class="truncate font-mono text-muted-foreground select-none">/workspace</span>
+    </div>
+
+    <div class="min-h-0 flex-1 overflow-auto p-2">
+      <div id="sandbox-fs-root" data-fs-children-of="/">
+        <div class="px-2 py-1 text-muted-foreground/60">Loading…</div>
+      </div>
+    </div>
+  </div>
+{% endcall %}
+{%- endmacro %}

@@ -66,6 +66,7 @@ class SandboxTemplate(Model):
     # passed. Runtime-affecting edits reset this back to "untested".
     last_test_status = StringField(max_length=20, default="untested")  # untested|passed|failed
     last_tested_at = DateTimeField(nullable=True)
+    last_test_error = TextField(nullable=True)
 
     # Type-specific config JSON — admin editable, worker reads
     runtime_config = TextField(nullable=True)

@@ -351,6 +351,8 @@ class PolicyBuilder:
             str(t).lower() for t in template_runtime_config.get("allowed_file_types") or []
         ]
         max_input_size_mb = template_runtime_config.get("max_input_size_mb")
+        test_config_raw = template_runtime_config.get("test_config")
+        test_config = test_config_raw if isinstance(test_config_raw, dict) else {}
 
         return {
             "version": POLICY_VERSION,
@@ -383,6 +385,7 @@ class PolicyBuilder:
             "allowed_file_types": allowed_file_types,
             "required_args": required_args,
             "forbidden_args": forbidden_args,
+            "test_config": test_config,
             "allow_root": bool(_value(template, "allow_root", False)),
             "read_only_root": bool(_value(template, "read_only_root", True)),
             "run_as_user": str(_value(template, "run_as_user", "") or ""),

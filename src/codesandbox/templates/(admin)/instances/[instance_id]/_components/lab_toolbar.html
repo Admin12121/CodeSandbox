@@ -1,0 +1,59 @@
+{% import "components/ui/separator.html" as sep %}
+{% import "(admin)/instances/[instance_id]/_components/lab_icons.html" as icons %}
+
+{% macro lab_toolbar(instance, plan) -%}
+  <div class="flex h-[25px] items-center justify-between border-t bg-sidebar px-1 text-[10px] text-muted-foreground">
+    <div class="flex h-full items-center gap-1">
+      <button data-toggle-panel="left" class="status-btn active-status rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("panel-left") }}
+      </button>
+      <span class="px-1 capitalize">{{ instance.status }}</span>
+      <span class="px-1">{{ instance.allocated_vcpu or plan.ind_vcpu }} vCPU</span>
+      <span class="px-1">{{ instance.allocated_ram_gb or plan.ind_ram_gb }} GB</span>
+      <span class="px-1">£{{ instance.cost_hr_snapshot }}/hr</span>
+      <span id="sandbox-estimated-cost" class="px-1">£0.0000</span>
+      {% if instance.status in ("running", "provisioning") %}
+        <form method="post" action="/instances/{{ instance.id }}/stop" class="inline-flex">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" title="Stop sandbox" aria-label="Stop sandbox" class="status-btn rounded px-1 text-destructive hover:bg-destructive/10">
+            <svg class="size-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+          </button>
+        </form>
+      {% endif %}
+    </div>
+
+    <div class="flex h-full items-center gap-1">
+      <span id="sandbox-time" class="px-1">00:00</span>
+
+      {{ sep.separator(orientation="vertical") }}
+
+      <button data-toggle-panel="terminal" class="status-btn active-status rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("terminal") }}
+      </button>
+
+      {{ sep.separator(orientation="vertical") }}
+
+      <button data-toggle-right="notes" class="status-btn active-status rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("notepad") }}
+      </button>
+
+      {{ sep.separator(orientation="vertical") }}
+
+      <button data-toggle-right="ai" class="status-btn rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("spark") }}
+      </button>
+
+      {{ sep.separator(orientation="vertical") }}
+
+      <button data-toggle-right="metrics" title="Metrics" class="status-btn rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("activity") }}
+      </button>
+
+      {{ sep.separator(orientation="vertical") }}
+
+      <button data-toggle-right="artifacts" title="Artifacts" class="status-btn rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("archive") }}
+      </button>
+    </div>
+  </div>
+{%- endmacro %}

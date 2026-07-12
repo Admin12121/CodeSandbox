@@ -46,6 +46,7 @@ class DockerRunner(RuntimeRunner):
         self._cleaned = False
         self.filesystem = DockerFilesystem(self)
         self.metrics_reader = DockerMetrics(self)
+        self.test_log_buffer = ""  # Test Launch only — see WorkerApp._stream_logs
 
     @property
     def is_running(self) -> bool:

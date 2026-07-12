@@ -1,0 +1,955 @@
+{% app_script "codesandbox.ui.shell" %}
+(function () {
+  function initSandboxUI() {
+    var root = document.getElementById("sandbox-ui");
+    if (!root || root.dataset.ready === "1") return;
+    root.dataset.ready = "1";
+
+    var terminalCount = 0;
+    var maxEditors = 3;
+    var maxTerminals = 3;
+    var terminalStates = {}; // name -> { name, term, fitAddon, ws, ro }
+    var openFileState = {};   // path -> { original: string }
+
+    var $ = function (selector, base) {
+      return (base || root).querySelector(selector);
+    };
+
+    var $$ = function (selector, base) {
+      return Array.from((base || root).querySelectorAll(selector));
+    };
+
+    var show = function (el) {
+      if (el) el.classList.remove("hidden");
+    };
+
+    var hide = function (el) {
+      if (el) el.classList.add("hidden");
+    };
+
+    var hidden = function (el) {
+      return !el || el.classList.contains("hidden");
+    };
+
+    var panel = function (name) {
+      return $('[data-panel="' + name + '"]');
+    };
+
+    function escHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    function editorTabByPath(path) {
+      return $$("[data-tab]").find(function (el) { return el.dataset.tab === path; });
+    }
+
+    function editorPaneByPath(path) {
+      return $$("[data-editor-file]").find(function (el) { return el.dataset.editorFile === path; });
+    }
+
+    function siblingHandle(el, offset) {
+      if (!el || !el.parentElement) return null;
+
+      var items = Array.from(el.parentElement.children);
+      var index = items.indexOf(el);
+      var item = items[index + offset];
+
+      return item && item.dataset.slot === "resizable-handle" ? item : null;
+    }
+
+    function syncHandle(el, visible) {
+      if (!el) return;
+
+      if (el.dataset.panel === "left") {
+        visible ? show(siblingHandle(el, 1)) : hide(siblingHandle(el, 1));
+      }
+
+      if (el.dataset.panel === "right") {
+        visible ? show(siblingHandle(el, -1)) : hide(siblingHandle(el, -1));
+      }
+
+      if (el.dataset.panel === "terminal") {
+        visible ? show(siblingHandle(el, -1)) : hide(siblingHandle(el, -1));
+      }
+    }
+
+    function setActive(selector, value) {
+      $$(selector).forEach(function (el) {
+        el.classList.toggle("active-status", value);
+        el.classList.toggle("text-accent-foreground", value);
+        el.classList.toggle("text-muted-foreground", !value);
+      });
+    }
+
+    function visibleEditorTabs() {
+      return $$(".editor-tab").filter(function (el) {
+        return !el.classList.contains("hidden");
+      });
+    }
+
+    function visibleTerminalTabs() {
+      return $$(".terminal-tab").filter(function (el) {
+        return !el.classList.contains("hidden");
+      });
+    }
+
+    function syncCenterLayout() {
+      var editor = panel("editor");
+      var terminal = panel("terminal");
+      var empty = panel("center-empty");
+
+      var hasOpenFiles = visibleEditorTabs().length > 0;
+      var terminalVisible = terminal && !hidden(terminal);
+      var hasTerminalTabs = visibleTerminalTabs().length > 0;
+
+      if (hasOpenFiles) {
+        show(editor);
+        hide(empty);
+
+        if (terminalVisible && hasTerminalTabs) {
+          terminal.style.flexGrow = terminal.dataset.defaultSize || "30";
+          terminal.style.flexBasis = "0%";
+          terminal.style.flexShrink = "1";
+          syncHandle(terminal, true);
+        } else {
+          hide(terminal);
+          syncHandle(terminal, false);
+        }
+
+        return;
+      }
+
+      hide(editor);
+
+      if (terminalVisible && hasTerminalTabs) {
+        hide(empty);
+        syncHandle(terminal, false);
+
+        terminal.style.flexGrow = "1";
+        terminal.style.flexBasis = "0%";
+        terminal.style.flexShrink = "1";
+        return;
+      }
+
+      hide(terminal);
+      syncHandle(terminal, false);
+      show(empty);
+    }
+
+    // ── Real terminal (xterm.js + WS, max three PTY sessions per instance) ─
+    function xtermCdnLoad(cb) {
+      if (window.Terminal && window.FitAddon) { cb(); return; }
+      var s1 = document.createElement("script");
+      s1.src = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js";
+      s1.onload = function () {
+        var css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css";
+        document.head.appendChild(css);
+        var s2 = document.createElement("script");
+        s2.src = "https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js";
+        s2.onload = cb;
+        document.head.appendChild(s2);
+      };
+      document.head.appendChild(s1);
+    }
+
+    function openTerminalWs(state, instanceId, token) {
+      var wsProto = location.protocol === "https:" ? "wss" : "ws";
+      var wsUrl = wsProto + "://" + location.host + "/ws/sandbox/" + instanceId +
+        "/terminal?token=" + encodeURIComponent(token) +
+        "&terminal_id=" + encodeURIComponent(state.name);
+
+      var ws;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        state.term.writeln("\x1b[31mWebSocket not available.\x1b[0m");
+        return;
+      }
+      state.ws = ws;
+
+      ws.onmessage = function (e) {
+        var msg;
+        try { msg = JSON.parse(e.data); } catch (ex) { return; }
+        if (msg.type === "ready") {
+          try { state.fitAddon.fit(); } catch (err) {}
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "resize", cols: state.term.cols, rows: state.term.rows }));
+          }
+        } else if (msg.type === "output") {
+          state.term.write(msg.data);
+        } else if (msg.type === "closed") {
+          state.term.writeln("\r\n\x1b[90m[session closed]\x1b[0m");
+        } else if (msg.type === "error") {
+          state.term.writeln("\x1b[31m" + (msg.message || "terminal error") + "\x1b[0m");
+        }
+      };
+      ws.onerror = function () { state.term.writeln("\x1b[31mNo terminal backend available.\x1b[0m"); };
+      ws.onclose = function () { state.term.writeln("\r\n\x1b[90m[disconnected]\x1b[0m"); };
+    }
+
+    function connectRealTerminal(name, pane) {
+      var instanceId = root.dataset.instanceId;
+      if (!instanceId) {
+        pane.textContent = "No sandbox instance for this session.";
+        return;
+      }
+
+      xtermCdnLoad(function () {
+        var term = new Terminal({
+          fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
+          fontSize: 13,
+          lineHeight: 1.4,
+          cursorBlink: true,
+          cursorStyle: "bar",
+          theme: {
+            background: "#09090b",
+            foreground: "#e4e4e7",
+            cursor: "#a1a1aa",
+            selectionBackground: "rgba(255,255,255,0.15)",
+          },
+        });
+        var fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(pane);
+
+        var state = { name: name, term: term, fitAddon: fitAddon, ws: null, ro: null };
+        terminalStates[name] = state;
+
+        var ro = new ResizeObserver(function () {
+          try { fitAddon.fit(); } catch (e) {}
+          if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+          }
+        });
+        ro.observe(pane);
+        state.ro = ro;
+
+        term.onData(function (data) {
+          if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({ type: "data", data: data }));
+          }
+        });
+
+        term.writeln("\x1b[90mConnecting to sandbox terminal…\x1b[0m");
+
+        fetch("/instances/" + instanceId + "/monitor-token?purpose=terminal")
+          .then(function (r) {
+            if (!r.ok) throw new Error("token request failed (" + r.status + ")");
+            return r.json();
+          })
+          .then(function (data) { openTerminalWs(state, instanceId, data.token); })
+          .catch(function (err) {
+            term.writeln("\x1b[31mCould not authenticate terminal: " + err.message + "\x1b[0m");
+          });
+
+        setTimeout(function () { try { fitAddon.fit(); } catch (e) {} }, 50);
+      });
+    }
+
+    function destroyTerminal(name) {
+      var state = terminalStates[name];
+      if (!state) return;
+      if (state.ws) { try { state.ws.close(); } catch (e) {} }
+      if (state.ro) { try { state.ro.disconnect(); } catch (e) {} }
+      if (state.term) { try { state.term.dispose(); } catch (e) {} }
+      delete terminalStates[name];
+    }
+
+    function createCleanTerminal() {
+      if (visibleTerminalTabs().length >= maxTerminals) return null;
+
+      terminalCount += 1;
+
+      var name = "terminal-" + terminalCount;
+      var tabs = $("[data-terminal-tabs]");
+      var panes = $("[data-terminal-panes]");
+
+      if (!tabs || !panes) return null;
+
+      var tab = document.createElement("button");
+      tab.dataset.terminalTab = name;
+      tab.className = "terminal-tab flex h-full items-center gap-2 border-r px-4 text-muted-foreground hover:text-accent-foreground";
+      tab.innerHTML =
+        '<span>bash</span>' +
+        '<span class="terminal-tab-close rounded p-0.5 hover:bg-background/60">×</span>';
+
+      var pane = document.createElement("div");
+      pane.dataset.terminalPane = name;
+      pane.className = "terminal-pane hidden h-full w-full";
+
+      tabs.appendChild(tab);
+      panes.appendChild(pane);
+
+      connectRealTerminal(name, pane);
+
+      return name;
+    }
+
+    function ensureTerminalTab() {
+      var tabs = visibleTerminalTabs();
+
+      if (tabs.length) {
+        var active = tabs.find(function (tab) {
+          return tab.classList.contains("active-terminal");
+        });
+
+        return active ? active.dataset.terminalTab : tabs[0].dataset.terminalTab;
+      }
+
+      return createCleanTerminal();
+    }
+
+    // ── Real filesystem (dynamic tree + real editor read/write) ───────────
+    var fsToken = null;
+    var fsTokenAt = 0;
+    var FS_TOKEN_REFRESH_MS = 8 * 60 * 1000; // token TTL is 10min server-side; refetch before that
+
+    function fsInstanceId() {
+      return root.dataset.instanceId || "";
+    }
+
+    function fetchFsToken() {
+      var instanceId = fsInstanceId();
+      if (!instanceId) return Promise.reject(new Error("no sandbox instance"));
+      if (fsToken && Date.now() - fsTokenAt < FS_TOKEN_REFRESH_MS) {
+        return Promise.resolve(fsToken);
+      }
+      return fetch("/instances/" + instanceId + "/monitor-token?purpose=fs")
+        .then(function (r) {
+          if (!r.ok) throw new Error("token request failed (" + r.status + ")");
+          return r.json();
+        })
+        .then(function (data) {
+          fsToken = data.token;
+          fsTokenAt = Date.now();
+          return fsToken;
+        });
+    }
+
+    function fsApi(method, urlPath, params, body) {
+      var instanceId = fsInstanceId();
+      if (!instanceId) return Promise.reject(new Error("no sandbox instance"));
+      return fetchFsToken().then(function (token) {
+        var qs = "token=" + encodeURIComponent(token);
+        Object.keys(params || {}).forEach(function (k) {
+          qs += "&" + encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
+        });
+        var url = "/api/sandbox/" + instanceId + urlPath + "?" + qs;
+        var opts = { method: method };
+        if (body !== undefined) {
+          opts.headers = { "Content-Type": "application/json" };
+          opts.body = JSON.stringify(body);
+        }
+        return fetch(url, opts).then(function (r) {
+          return r.json().then(function (data) { return data; });
+        });
+      });
+    }
+
+    function fsList(path) { return fsApi("GET", "/fs", { path: path }); }
+    function fsRead(path) { return fsApi("GET", "/file", { path: path }); }
+    function fsWrite(path, content) { return fsApi("PUT", "/file", {}, { path: path, content: content }); }
+
+    var FOLDER_ICON = '<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+    var FILE_ICON = '<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>';
+
+    function joinFsPath(dir, name) {
+      if (dir === "/" || dir === "") return name;
+      return dir.replace(/\/$/, "") + "/" + name;
+    }
+
+    function loadFsLevel(path, container) {
+      container.innerHTML = '<div class="px-2 py-1 text-muted-foreground/60">Loading…</div>';
+      fsList(path).then(function (res) {
+        container.innerHTML = "";
+        if (!res.ok) {
+          container.innerHTML = '<div class="px-2 py-1 text-red-400">' + escHtml(res.error || "failed to load") + "</div>";
+          return;
+        }
+        if (!res.entries.length) {
+          container.innerHTML = '<div class="px-2 py-1 text-muted-foreground/60">Empty</div>';
+          return;
+        }
+        res.entries.forEach(function (entry) {
+          var full = joinFsPath(path, entry.name);
+
+          var row = document.createElement("div");
+          row.className = "fs-row";
+          row.dataset.fsPath = full;
+          row.dataset.fsType = entry.type;
+          row.innerHTML = (entry.type === "dir" ? FOLDER_ICON : FILE_ICON) +
+            '<span class="truncate">' + escHtml(entry.name) + "</span>";
+          container.appendChild(row);
+
+          if (entry.type === "dir") {
+            var children = document.createElement("div");
+            children.className = "hidden pl-4";
+            children.dataset.fsChildrenOf = full;
+            container.appendChild(children);
+          }
+        });
+      }).catch(function (err) {
+        container.innerHTML = '<div class="px-2 py-1 text-red-400">' + escHtml(err.message) + "</div>";
+      });
+    }
+
+    function toggleFsDir(row) {
+      var childContainer = row.nextElementSibling;
+      if (!childContainer || childContainer.dataset.fsChildrenOf !== row.dataset.fsPath) return;
+      var willShow = childContainer.classList.contains("hidden");
+      childContainer.classList.toggle("hidden");
+      if (willShow && childContainer.dataset.loaded !== "1") {
+        childContainer.dataset.loaded = "1";
+        loadFsLevel(row.dataset.fsPath, childContainer);
+      }
+    }
+
+    function fsInitRoot() {
+      var mount = document.getElementById("sandbox-fs-root");
+      if (!mount) return;
+      loadFsLevel("/", mount);
+    }
+
+    function setDirty(path, dirty) {
+      var tab = editorTabByPath(path);
+      if (!tab) return;
+      var dot = tab.querySelector(".editor-tab-dirty");
+      if (dot) dot.classList.toggle("hidden", !dirty);
+    }
+
+    // ── CodeMirror 6 (syntax highlighting, search, bracket matching) ──────
+    // Loaded via dynamic ESM import() — plain ES modules, not UMD/AMD, so
+    // this doesn't hit the Monaco-AMD-hijack problem xterm.js/Chart.js had
+    // elsewhere in this app (this page has no Monaco anyway).
+    //
+    // esm.sh, not jsdelivr's `+esm`: CodeMirror's core bundle and its
+    // language/theme packages share low-level deps (@codemirror/state,
+    // @codemirror/view, ...). jsdelivr's `+esm` resolves each separate
+    // import() URL's dependency tree independently, so those shared deps
+    // silently resolve to different, incompatible versions loaded side by
+    // side (verified: state@6.0.1 *and* state@6.5.2 both loaded on the same
+    // page) — CodeMirror's extension system relies on those being the exact
+    // same module instance, so the editor throws and never mounts. esm.sh
+    // deduplicates shared sub-dependencies consistently across separate
+    // import() calls, which is what this needs.
+    var CM_LANG_URLS = {
+      py: "https://esm.sh/@codemirror/lang-python@6",
+      js: "https://esm.sh/@codemirror/lang-javascript@6",
+      jsx: "https://esm.sh/@codemirror/lang-javascript@6",
+      mjs: "https://esm.sh/@codemirror/lang-javascript@6",
+      ts: "https://esm.sh/@codemirror/lang-javascript@6",
+      tsx: "https://esm.sh/@codemirror/lang-javascript@6",
+      json: "https://esm.sh/@codemirror/lang-json@6",
+      html: "https://esm.sh/@codemirror/lang-html@6",
+      css: "https://esm.sh/@codemirror/lang-css@6",
+      md: "https://esm.sh/@codemirror/lang-markdown@6",
+    };
+
+    function cmCore() {
+      return import("https://esm.sh/codemirror@6.0.1");
+    }
+
+    function cmLangExtension(path) {
+      var ext = (path.split(".").pop() || "").toLowerCase();
+      var url = CM_LANG_URLS[ext];
+      if (!url) return Promise.resolve(null);
+      return import(url).then(function (mod) {
+        if (mod.python) return mod.python();
+        if (mod.javascript) return mod.javascript({ jsx: ext === "jsx" || ext === "tsx", typescript: ext === "ts" || ext === "tsx" });
+        if (mod.json) return mod.json();
+        if (mod.html) return mod.html();
+        if (mod.css) return mod.css();
+        if (mod.markdown) return mod.markdown();
+        return null;
+      }).catch(function (err) { console.warn("CodeMirror language extension failed to load:", err); return null; });
+    }
+
+    function cmTheme() {
+      if (!document.documentElement.classList.contains("dark")) return Promise.resolve(null);
+      return import("https://esm.sh/@codemirror/theme-one-dark@6")
+        .then(function (mod) { return mod.oneDark; })
+        .catch(function (err) { console.warn("CodeMirror theme failed to load:", err); return null; });
+    }
+
+    function mountCodeMirror(pane, path, content) {
+      var mount = document.createElement("div");
+      mount.className = "cm-mount h-full w-full overflow-auto";
+      pane.appendChild(mount);
+
+      return Promise.all([cmCore(), cmLangExtension(path), cmTheme()]).then(function (results) {
+        var core = results[0], langExt = results[1], themeExt = results[2];
+        var extensions = [core.basicSetup];
+        if (langExt) extensions.push(langExt);
+        if (themeExt) extensions.push(themeExt);
+        extensions.push(core.EditorView.updateListener.of(function (update) {
+          if (!update.docChanged) return;
+          var state = openFileState[path];
+          if (!state) return;
+          setDirty(path, update.state.doc.toString() !== state.original);
+        }));
+
+        return new core.EditorView({ doc: content, extensions: extensions, parent: mount });
+      });
+    }
+
+    function openFileInEditor(path) {
+      if (editorTabByPath(path)) { openEditor(path); return; }
+      if (visibleEditorTabs().length >= maxEditors) return;
+
+      var tabs = $("[data-editor-tabs]");
+      var panes = $("[data-editor-panes]");
+      if (!tabs || !panes) return;
+
+      var name = path.split("/").pop();
+
+      var tab = document.createElement("button");
+      tab.dataset.tab = path;
+      tab.title = path;
+      tab.className = "editor-tab hidden h-full items-center gap-2 border-r px-4 text-xs text-muted-foreground hover:text-accent-foreground";
+      tab.innerHTML =
+        '<span class="editor-tab-dirty hidden size-1.5 shrink-0 rounded-full bg-foreground"></span>' +
+        "<span>" + escHtml(name) + "</span>" +
+        '<span class="tab-close rounded p-0.5 hover:bg-background/60">×</span>';
+
+      var pane = document.createElement("div");
+      pane.dataset.editorFile = path;
+      pane.className = "editor-pane hidden h-full w-full overflow-hidden";
+      pane.innerHTML = '<div class="p-3 text-xs text-muted-foreground">Loading…</div>';
+
+      tabs.appendChild(tab);
+      panes.appendChild(pane);
+      openEditor(path);
+
+      fsRead(path).then(function (res) {
+        if (!res.ok) {
+          pane.innerHTML = '<div class="p-3 text-xs text-red-400">' + escHtml(res.error || "Could not open file.") + "</div>";
+          return;
+        }
+        if (res.binary) {
+          pane.innerHTML = '<div class="p-3 text-xs text-muted-foreground">Binary file — cannot edit here.</div>';
+          return;
+        }
+        openFileState[path] = { original: res.content, view: null };
+        pane.innerHTML = "";
+        mountCodeMirror(pane, path, res.content).then(function (view) {
+          if (openFileState[path]) openFileState[path].view = view;
+        }).catch(function (err) {
+          console.error("CodeMirror mount failed:", err);
+          pane.innerHTML = '<div class="p-3 text-xs text-red-400">Editor failed to load.</div>';
+        });
+      }).catch(function (err) {
+        pane.innerHTML = '<div class="p-3 text-xs text-red-400">' + escHtml(err.message) + "</div>";
+      });
+    }
+
+    function saveActiveFile() {
+      var activeTab = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
+      if (!activeTab) return;
+      var path = activeTab.dataset.tab;
+      var state = openFileState[path];
+      if (!state || !state.view) return;
+
+      var content = state.view.state.doc.toString();
+      fsWrite(path, content).then(function (res) {
+        if (res.ok) {
+          state.original = content;
+          setDirty(path, false);
+          window.Toast && window.Toast.create({ title: "Saved", type: "success", duration: 1500 });
+        } else {
+          window.Toast && window.Toast.create({ title: "Save failed", description: res.error || "", type: "error" });
+        }
+      }).catch(function (err) {
+        window.Toast && window.Toast.create({ title: "Save failed", description: err.message, type: "error" });
+      });
+    }
+
+    function togglePanel(name) {
+      var el = panel(name);
+      if (!el) return;
+
+      var visible = hidden(el);
+
+      if (name === "terminal" && visible) {
+        show(el);
+        syncHandle(el, true);
+        setActive('[data-toggle-panel="terminal"]', true);
+
+        var terminalName = ensureTerminalTab();
+        if (terminalName) openTerminal(terminalName);
+
+        syncCenterLayout();
+        window.dispatchEvent(new Event("resize"));
+        return;
+      }
+
+      visible ? show(el) : hide(el);
+      syncHandle(el, visible);
+      setActive('[data-toggle-panel="' + name + '"]', visible);
+
+      if (name === "terminal") {
+        syncCenterLayout();
+      }
+
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function openRight(mode) {
+      var right = panel("right");
+      show(right);
+      syncHandle(right, true);
+
+      $$("[data-right-pane]").forEach(function (el) {
+        el.classList.toggle("hidden", el.dataset.rightPane !== mode);
+      });
+
+      $$("[data-toggle-right]").forEach(function (btn) {
+        var active = btn.dataset.toggleRight === mode;
+        btn.classList.toggle("active-status", active);
+        btn.classList.toggle("text-accent-foreground", active);
+        btn.classList.toggle("text-muted-foreground", !active);
+      });
+
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function toggleRight(mode) {
+      var right = panel("right");
+      var pane = $('[data-right-pane="' + mode + '"]');
+
+      if (right && !hidden(right) && pane && !hidden(pane)) {
+        hide(right);
+        syncHandle(right, false);
+        setActive("[data-toggle-right]", false);
+        window.dispatchEvent(new Event("resize"));
+        return;
+      }
+
+      openRight(mode);
+    }
+
+    function openEditor(file) {
+      var pane = editorPaneByPath(file);
+      var tab = editorTabByPath(file);
+
+      if (!pane || !tab) return;
+
+      tab.classList.remove("hidden");
+      tab.classList.add("flex");
+
+      $$("[data-editor-file]").forEach(function (el) {
+        el.classList.toggle("hidden", el.dataset.editorFile !== file);
+      });
+
+      $$("[data-tab]").forEach(function (el) {
+        var active = el.dataset.tab === file;
+        el.classList.toggle("active-tab", active);
+        el.classList.toggle("text-muted-foreground", !active);
+      });
+
+      var title = $("#current-file-title");
+      if (title) title.textContent = file;
+
+      syncCenterLayout();
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function closeEditor(file) {
+      var tab = editorTabByPath(file);
+      var pane = editorPaneByPath(file);
+
+      if (!tab) return;
+
+      var wasActive = tab.classList.contains("active-tab");
+
+      var state = openFileState[file];
+      if (state && state.view) { try { state.view.destroy(); } catch (e) {} }
+      delete openFileState[file];
+
+      tab.remove();
+      if (pane) pane.remove();
+
+      if (wasActive) {
+        var next = visibleEditorTabs()[0];
+
+        if (next) {
+          openEditor(next.dataset.tab);
+          return;
+        }
+
+        var title = $("#current-file-title");
+        if (title) title.textContent = "";
+      }
+
+      syncCenterLayout();
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function openTerminal(name) {
+      var terminal = panel("terminal");
+      show(terminal);
+
+      syncHandle(terminal, true);
+      setActive('[data-toggle-panel="terminal"]', true);
+
+      $$("[data-terminal-tab]").forEach(function (el) {
+        var active = el.dataset.terminalTab === name;
+        el.classList.toggle("active-terminal", active);
+        el.classList.toggle("text-muted-foreground", !active);
+      });
+
+      $$("[data-terminal-pane]").forEach(function (el) {
+        el.classList.toggle("hidden", el.dataset.terminalPane !== name);
+      });
+
+      syncCenterLayout();
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function closeTerminal(name) {
+      var terminal = panel("terminal");
+      var tab = $('[data-terminal-tab="' + name + '"]');
+      var pane = $('[data-terminal-pane="' + name + '"]');
+
+      if (!tab) return;
+
+      var wasActive = tab.classList.contains("active-terminal");
+
+      destroyTerminal(name);
+      tab.remove();
+      if (pane) pane.remove();
+
+      var remaining = visibleTerminalTabs();
+
+      if (!remaining.length) {
+        hide(terminal);
+        syncHandle(terminal, false);
+        setActive('[data-toggle-panel="terminal"]', false);
+        syncCenterLayout();
+        window.dispatchEvent(new Event("resize"));
+        return;
+      }
+
+      if (wasActive) {
+        openTerminal(remaining[0].dataset.terminalTab);
+        return;
+      }
+
+      syncCenterLayout();
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    root.addEventListener("click", function (event) {
+      var target = event.target;
+
+      var action =
+        target.closest("[data-toggle-panel]") ||
+        target.closest("[data-toggle-right]") ||
+        target.closest("[data-new-terminal]") ||
+        target.closest(".tab-close") ||
+        target.closest(".terminal-tab-close") ||
+        target.closest("[data-tab]") ||
+        target.closest("[data-terminal-tab]") ||
+        target.closest(".fs-row");
+
+      if (!action || !root.contains(action)) return;
+
+      if (action.dataset.togglePanel) return togglePanel(action.dataset.togglePanel);
+      if (action.dataset.toggleRight) return toggleRight(action.dataset.toggleRight);
+
+      if (action.dataset.newTerminal !== undefined) {
+        var terminalName = createCleanTerminal();
+        if (terminalName) openTerminal(terminalName);
+        return;
+      }
+
+      if (action.classList.contains("tab-close")) {
+        var editorTab = action.closest("[data-tab]");
+        if (editorTab) closeEditor(editorTab.dataset.tab);
+        return;
+      }
+
+      if (action.classList.contains("terminal-tab-close")) {
+        var terminalTab = action.closest("[data-terminal-tab]");
+        if (terminalTab) closeTerminal(terminalTab.dataset.terminalTab);
+        return;
+      }
+
+      if (action.classList.contains("fs-row")) {
+        if (action.dataset.fsType === "dir") return toggleFsDir(action);
+        return openFileInEditor(action.dataset.fsPath);
+      }
+
+      if (action.dataset.tab) return openEditor(action.dataset.tab);
+      if (action.dataset.terminalTab) return openTerminal(action.dataset.terminalTab);
+    });
+
+    function toggleRightPanel() {
+      var right = panel("right");
+      if (!right) return;
+      if (!hidden(right)) {
+        hide(right);
+        syncHandle(right, false);
+        setActive("[data-toggle-right]", false);
+      } else {
+        var activePane = $$("[data-right-pane]").find(function (el) { return !el.classList.contains("hidden"); });
+        openRight(activePane ? activePane.dataset.rightPane : "notes");
+      }
+      window.dispatchEvent(new Event("resize"));
+    }
+
+    function focusTerminal() {
+      var terminalName = ensureTerminalTab();
+      if (!terminalName) return;
+      if (hidden(panel("terminal"))) togglePanel("terminal");
+      else openTerminal(terminalName);
+      var state = terminalStates[terminalName];
+      if (state && state.term) state.term.focus();
+    }
+
+    function isTypingInPlainField() {
+      // The notes-panel title input / AI textarea are the only real
+      // <input>/<textarea> elements on this page — CodeMirror's content is a
+      // contenteditable div (never matched here, so code-editing keystrokes
+      // always reach the shortcuts below) and xterm.js's own hidden input
+      // lives inside .xterm (excluded so terminal typing isn't touched).
+      var el = document.activeElement;
+      if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return false;
+      return !el.closest(".xterm");
+    }
+
+    // ── IDE keyboard shortcuts + DevTools hardening (this page only) ──────
+    // Capture phase: fires before xterm.js's own handlers and before the
+    // main admin layout's bubble-phase keydown listener (which also binds
+    // Ctrl+J → command palette, Ctrl+B → nothing but browser bookmarks) —
+    // stopPropagation() on the ones that collide keeps this page in charge.
+    document.addEventListener("keydown", function (event) {
+      var key = event.key;
+      var mod = event.ctrlKey || event.metaKey;
+      var terminalFocused = !!(document.activeElement && document.activeElement.closest(".xterm"));
+
+      // DevTools shortcuts — blocked page-wide, before anything else.
+      if (key === "F12") { event.preventDefault(); event.stopPropagation(); return; }
+      if (mod && event.shiftKey && (key === "I" || key === "i" || key === "J" || key === "j" || key === "K" || key === "k")) {
+        event.preventDefault(); return;
+      }
+      if (event.altKey && mod && (key === "I" || key === "i")) { event.preventDefault(); return; } // macOS Cmd+Option+I
+      if (mod && !event.shiftKey && (key === "U" || key === "u")) { event.preventDefault(); return; } // view-source
+
+      // Ctrl+Shift+C: let xterm.js handle it as copy when the terminal has
+      // focus, otherwise block it — Chrome's DevTools element-picker binds
+      // the same combo.
+      if (mod && event.shiftKey && (key === "C" || key === "c")) {
+        if (!terminalFocused) event.preventDefault();
+        return;
+      }
+      if (mod && event.shiftKey && (key === "V" || key === "v") && terminalFocused) return; // xterm paste
+
+      if (isTypingInPlainField()) return; // don't hijack the notes/AI text fields
+
+      if (mod && !event.altKey && (key === "b" || key === "B")) {
+        event.preventDefault(); event.stopPropagation();
+        togglePanel("left");
+        return;
+      }
+      if (mod && event.altKey && (key === "b" || key === "B")) {
+        event.preventDefault(); event.stopPropagation();
+        toggleRightPanel();
+        return;
+      }
+      if (mod && (key === "j" || key === "J")) {
+        event.preventDefault(); event.stopPropagation();
+        togglePanel("terminal");
+        return;
+      }
+      if (mod && (key === "s" || key === "S")) {
+        event.preventDefault(); event.stopPropagation();
+        saveActiveFile();
+        return;
+      }
+      if (mod && (key === "w" || key === "W")) {
+        var activeTab = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
+        if (activeTab) {
+          event.preventDefault(); event.stopPropagation();
+          closeEditor(activeTab.dataset.tab);
+        }
+        return;
+      }
+      if (mod && /^[123]$/.test(key)) {
+        var tabs = visibleEditorTabs();
+        var target = tabs[Number(key) - 1];
+        if (target) {
+          event.preventDefault(); event.stopPropagation();
+          openEditor(target.dataset.tab);
+        }
+        return;
+      }
+      if (mod && key === "`") {
+        event.preventDefault(); event.stopPropagation();
+        focusTerminal();
+        return;
+      }
+      if (key === "Escape" && terminalFocused) {
+        var activeTab2 = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
+        var editorPane = activeTab2 && editorPaneByPath(activeTab2.dataset.tab);
+        var cmContent = editorPane && editorPane.querySelector(".cm-content");
+        if (cmContent) cmContent.focus();
+        return;
+      }
+    }, true);
+
+    // Right-click is disabled everywhere on this page except inside the
+    // terminal, where it's xterm.js's paste gesture.
+    document.addEventListener("contextmenu", function (event) {
+      if (event.target.closest && event.target.closest(".xterm")) return;
+      event.preventDefault();
+    }, true);
+
+    // DevTools-open heuristic: docked DevTools shrinks the viewport relative
+    // to the outer window by roughly its own width/height. Not a security
+    // boundary (misses undocked DevTools windows entirely) — a UX guard for
+    // a security-training platform where "just open DevTools" would
+    // trivially defeat the sandboxed-IDE framing.
+    var devtoolsOverlay = null;
+    function ensureDevtoolsOverlay() {
+      if (devtoolsOverlay) return devtoolsOverlay;
+      var el = document.createElement("div");
+      el.id = "sandbox-devtools-block";
+      el.className = "fixed inset-0 z-[9999] hidden items-center justify-center bg-background/95 backdrop-blur-sm text-center px-6";
+      el.innerHTML =
+        '<div><p class="text-lg font-semibold">DevTools detected</p>' +
+        '<p class="mt-1 text-sm text-muted-foreground">Close DevTools to continue using the sandbox IDE.</p></div>';
+      document.body.appendChild(el);
+      devtoolsOverlay = el;
+      return el;
+    }
+    window.setInterval(function () {
+      var open = (window.outerWidth - window.innerWidth > 160) || (window.outerHeight - window.innerHeight > 160);
+      var overlay = ensureDevtoolsOverlay();
+      overlay.classList.toggle("hidden", !open);
+      overlay.classList.toggle("flex", open);
+    }, 1500);
+
+    window.setInterval(function () {
+      var time = $("#sandbox-time");
+      if (!time) return;
+
+      time.textContent = new Date().toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }, 1000);
+
+    openTerminal(createCleanTerminal());
+    openRight("notes");
+    fsInitRoot();
+    syncCenterLayout();
+  }
+
+  initSandboxUI();
+  window.addEventListener("app-router:patch", initSandboxUI);
+})();
+{% end_app_script %}

@@ -19,6 +19,7 @@ from .service import (
     delete_template,
     get_artifact_for_download,
     get_instance_artifacts_for_view,
+    get_template_test_status,
     handle_worker_callback,
     list_reconcile_candidates,
     make_worker_callback_token,
@@ -213,11 +214,25 @@ def toggle_plan_action(plan_id: str):
 
 # ── Admin: test-run a template ────────────────────────────────────────────────
 
+@web_bp.get("/platform/sandboxes/<template_id>/test-status")
+@platform_perm("platform.sandboxes.manage")
+def test_status_action(template_id: str):
+    result = get_template_test_status(template_id)
+    if result is None:
+        return {"ok": False, "error": "Template not found."}, 404
+    return {"ok": True, **result}
+
+
 @web_bp.post("/platform/sandboxes/<template_id>/test-run")
 @platform_perm("platform.sandboxes.manage")
 def test_run_action(template_id: str):
     cs = get_current_session()
-    result, err = start_test_instance(template_id, actor_user_id=str(cs.user.id))
+    test_input_file = request.files.get("test_input_file")
+    if test_input_file is not None and not test_input_file.filename:
+        test_input_file = None
+    result, err = start_test_instance(
+        template_id, actor_user_id=str(cs.user.id), test_input_file=test_input_file
+    )
     if err:
         return {"ok": False, "error": err}, 400
     return {"ok": True, "instance_id": result["id"]}

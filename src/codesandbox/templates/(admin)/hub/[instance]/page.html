@@ -88,13 +88,13 @@
                 <form id="start-form" method="post" enctype="multipart/form-data" action="/hub/{{ tmpl.slug }}/start">
                   <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="plan_id" id="start-plan-id" value="">
-                  {% call button.button(variant="default", attrs={"type": "submit", "id": "action-btn"}) %}Start{% endcall %}
+                  {% call button.button(variant="default", type="submit", attrs={"id": "action-btn"}) %}Start{% endcall %}
                 </form>
               {% else %}
                 <form id="request-form" method="post" action="/hub/{{ tmpl.slug }}/request">
                   <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="plan_id" id="start-plan-id" value="">
-                  {% call button.button(variant="outline", attrs={"type": "submit", "id": "action-btn"}) %}Request{% endcall %}
+                  {% call button.button(variant="outline", type="submit", attrs={"id": "action-btn"}) %}Request{% endcall %}
                 </form>
               {% endif %}
             {% endcall %}
