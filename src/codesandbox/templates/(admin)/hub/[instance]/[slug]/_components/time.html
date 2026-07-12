@@ -7,11 +7,8 @@
 
     var terminalCount = 0;
     var maxEditors = 3;
-    // The worker only holds one real PTY per instance_id (see worker.py
-    // _terminal_open) — so unlike editor tabs, only one live terminal
-    // session is supported right now.
-    var maxTerminals = 1;
-    var terminalState = null; // { name, term, fitAddon, ws, ro }
+    var maxTerminals = 3;
+    var terminalStates = {}; // name -> { name, term, fitAddon, ws, ro }
     var openFileState = {};   // path -> { original: string }
 
     var $ = function (selector, base) {
@@ -141,7 +138,7 @@
       show(empty);
     }
 
-    // ── Real terminal (xterm.js + WS, one PTY session per instance) ──────
+    // ── Real terminal (xterm.js + WS, max three PTY sessions per instance) ─
     function xtermCdnLoad(cb) {
       if (window.Terminal && window.FitAddon) { cb(); return; }
       var s1 = document.createElement("script");
@@ -162,7 +159,8 @@
     function openTerminalWs(state, instanceId, token) {
       var wsProto = location.protocol === "https:" ? "wss" : "ws";
       var wsUrl = wsProto + "://" + location.host + "/ws/sandbox/" + instanceId +
-        "/terminal?token=" + encodeURIComponent(token);
+        "/terminal?token=" + encodeURIComponent(token) +
+        "&terminal_id=" + encodeURIComponent(state.name);
 
       var ws;
       try {
@@ -219,7 +217,7 @@
         term.open(pane);
 
         var state = { name: name, term: term, fitAddon: fitAddon, ws: null, ro: null };
-        terminalState = state;
+        terminalStates[name] = state;
 
         var ro = new ResizeObserver(function () {
           try { fitAddon.fit(); } catch (e) {}
@@ -253,11 +251,12 @@
     }
 
     function destroyTerminal(name) {
-      if (!terminalState || terminalState.name !== name) return;
-      if (terminalState.ws) { try { terminalState.ws.close(); } catch (e) {} }
-      if (terminalState.ro) { try { terminalState.ro.disconnect(); } catch (e) {} }
-      if (terminalState.term) { try { terminalState.term.dispose(); } catch (e) {} }
-      terminalState = null;
+      var state = terminalStates[name];
+      if (!state) return;
+      if (state.ws) { try { state.ws.close(); } catch (e) {} }
+      if (state.ro) { try { state.ro.disconnect(); } catch (e) {} }
+      if (state.term) { try { state.term.dispose(); } catch (e) {} }
+      delete terminalStates[name];
     }
 
     function createCleanTerminal() {
@@ -807,7 +806,8 @@
       if (!terminalName) return;
       if (hidden(panel("terminal"))) togglePanel("terminal");
       else openTerminal(terminalName);
-      if (terminalState && terminalState.term) terminalState.term.focus();
+      var state = terminalStates[terminalName];
+      if (state && state.term) state.term.focus();
     }
 
     function isTypingInPlainField() {

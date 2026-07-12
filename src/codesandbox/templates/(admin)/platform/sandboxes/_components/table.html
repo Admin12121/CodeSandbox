@@ -361,7 +361,7 @@
             {% endcall %}
 
             {# ── Runtime ── #}
-            {% set active_ifaces = (selected_template.interface_mode or "terminal").split(",") | map("trim") | list %}
+            {% set active_ifaces = selected_template.allowed_ui_mode_values or ((selected_template.allowed_ui_modes or selected_template.interface_mode or "terminal_only").split(",") | map("trim") | list) %}
             {% call frame.frame() %}
               {% call table.table(variant="card") %}
                 {% call table.table_header() %}
@@ -442,28 +442,39 @@
                     {% endcall %}
                   {% endcall %}
 
-                  {# Interface — multi-select pills (checkboxes) #}
+                  {# UI Mode — multi-select pills (checkboxes) #}
                   {% call table.table_row() %}
-                    {% call table.table_cell(class="font-medium text-sm align-top pt-2.5") %}Interface{% endcall %}
+                    {% call table.table_cell(class="font-medium text-sm align-top pt-2.5") %}Allowed UI Modes{% endcall %}
                     {% call table.table_cell() %}
                       <div id="iface-pills" class="flex flex-wrap gap-2">
                         {% set iface_opts = [
-                          {"value": "terminal",   "label": "Terminal",    "runtimes": "container microvm fullvm"},
-                          {"value": "full_ui",    "label": "Full UI",     "runtimes": "container microvm fullvm"},
-                          {"value": "background", "label": "Background",  "runtimes": "container microvm fullvm"},
-                          {"value": "android_ui", "label": "Android UI",  "runtimes": "android_emulator"},
-                          {"value": "gui",        "label": "GUI (VNC)",   "runtimes": "fullvm"},
+                          {"value": "terminal_only", "label": "Terminal Only",  "runtimes": "container microvm fullvm qemu_vm firecracker_microvm"},
+                          {"value": "lab_ui",        "label": "Lab UI",         "runtimes": "container microvm fullvm qemu_vm firecracker_microvm"},
+                          {"value": "background_run","label": "Background Run", "runtimes": "container tool_job microvm fullvm qemu_vm firecracker_microvm"},
+                          {"value": "desktop_gui",   "label": "Desktop GUI",    "runtimes": "fullvm qemu_vm"},
+                          {"value": "android_ui",    "label": "Android UI",     "runtimes": "android_emulator"},
                         ] %}
                         {% for opt in iface_opts %}
                           <label class="iface-pill inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-input px-3 py-1 text-sm font-medium transition-colors hover:bg-accent/20"
                             data-runtimes="{{ opt.runtimes }}">
-                            <input type="checkbox" name="interface_mode" value="{{ opt.value }}" class="sr-only"
+                            <input type="checkbox" name="allowed_ui_modes" value="{{ opt.value }}" class="sr-only"
                               {% if opt.value in active_ifaces %}checked{% endif %}>
                             <svg class="iface-check size-3.5 text-primary" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" {% if opt.value not in active_ifaces %}hidden{% endif %}><polyline points="20 6 9 17 4 12"/></svg>
                             {{ opt.label }}
                           </label>
                         {% endfor %}
                       </div>
+                    {% endcall %}
+                  {% endcall %}
+
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Default UI Mode{% endcall %}
+                    {% call table.table_cell() %}
+                      <select name="default_ui_mode" id="default-ui-mode" class="h-8 w-64 rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        {% for opt in iface_opts %}
+                          <option value="{{ opt.value }}" {% if selected_template.default_ui_mode == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+                        {% endfor %}
+                      </select>
                     {% endcall %}
                   {% endcall %}
 
@@ -1116,11 +1127,13 @@
 {% app_script "sandbox-identity-form" %}
 (function(){
   var RC_CFG = {
-    container:        { label:'Docker Image',    ph:'ubuntu:22.04',   ifaces:['terminal','full_ui','background'],  def:'terminal',
+    container:        { label:'Docker Image',    ph:'ubuntu:22.04',   ifaces:['terminal_only','lab_ui','background_run'],  def:'terminal_only',
                         opts:['ubuntu:22.04','ubuntu:20.04','debian:12','kali:latest','alpine:3.19','python:3.12','node:20','parrotsec/core'] },
-    microvm:          { label:'Kernel Image',    ph:'vmlinux-5.10.0', ifaces:['terminal','full_ui','background'],  def:'terminal',
+    tool_job:         { label:'Docker Image',    ph:'python:3.12',    ifaces:['background_run'],                         def:'background_run',
+                        opts:['python:3.12','ubuntu:22.04','debian:12','alpine:3.19'] },
+    microvm:          { label:'Kernel Image',    ph:'vmlinux-5.10.0', ifaces:['terminal_only','lab_ui','background_run'],  def:'terminal_only',
                         opts:['vmlinux-5.10.0','vmlinux-5.15.0','vmlinux-6.1.0'] },
-    fullvm:           { label:'VM Image',        ph:'win10.qcow2',    ifaces:['gui','full_ui','background','terminal'],  def:'gui',
+    fullvm:           { label:'VM Image',        ph:'win10.qcow2',    ifaces:['desktop_gui','background_run','terminal_only'],  def:'desktop_gui',
                         opts:['win10.qcow2','win11.qcow2','ubuntu-22.04.qcow2','debian-12.qcow2'] },
     android_emulator: { label:'Emulator Target', ph:'android:30',     ifaces:['android_ui'],                      def:'android_ui',
                         opts:['android:30','android:31','android:33','android:34'] },
@@ -1133,6 +1146,7 @@
     var comboInput = document.getElementById('img-combobox-input');
     var comboPopup = document.getElementById('img-combobox-popup');
     var comboList  = document.getElementById('img-combobox-list');
+    var defaultUi  = document.getElementById('default-ui-mode');
 
     if (!cards.length) return;
 
@@ -1170,12 +1184,26 @@
         p.style.display = allowed ? '' : 'none';
         if (!allowed && inp.checked) inp.checked = false;
       });
-      var anyChecked = !!document.querySelector('input[name="interface_mode"]:checked');
+      var anyChecked = !!document.querySelector('input[name="allowed_ui_modes"]:checked');
       if (!anyChecked) {
-        var def = document.querySelector('input[name="interface_mode"][value="' + cfg.def + '"]');
+        var def = document.querySelector('input[name="allowed_ui_modes"][value="' + cfg.def + '"]');
         if (def) def.checked = true;
       }
+      updateDefaultUiOptions();
       updatePillStyles();
+    }
+
+    function updateDefaultUiOptions() {
+      if (!defaultUi) return;
+      var checked = Array.from(document.querySelectorAll('input[name="allowed_ui_modes"]:checked')).map(function(inp) {
+        return inp.value;
+      });
+      Array.from(defaultUi.options).forEach(function(opt) {
+        opt.hidden = checked.indexOf(opt.value) < 0;
+      });
+      if (checked.indexOf(defaultUi.value) < 0) {
+        defaultUi.value = checked[0] || (RC_CFG[currentRuntime()] || RC_CFG.container).def;
+      }
     }
 
     function updatePillStyles() {
@@ -1294,8 +1322,8 @@
     });
 
     pills.forEach(function(p) {
-      p.addEventListener('change', updatePillStyles);
-      p.addEventListener('click',  function(){ setTimeout(updatePillStyles, 0); });
+      p.addEventListener('change', function(){ updateDefaultUiOptions(); updatePillStyles(); });
+      p.addEventListener('click',  function(){ setTimeout(function(){ updateDefaultUiOptions(); updatePillStyles(); }, 0); });
     });
 
     if (comboInput) {
@@ -1427,7 +1455,8 @@ var DEFAULT_RESOURCES = [
 '',
 '[runtime]',
 'class          = "container"     # container | microvm | fullvm | android_emulator',
-'interface      = ["terminal"]    # terminal | full_ui | background | android_ui | gui (multiple allowed)',
+'ui_modes       = ["terminal_only"] # terminal_only | lab_ui | background_run | desktop_gui | android_ui',
+'default_ui_mode= "terminal_only"',
 'network        = "disabled"      # disabled | isolated | fake_internet | controlled_proxy | allowlist',
 'allow_root     = false',
 'max_timeout_hr = 2',
@@ -1462,12 +1491,47 @@ var DEFAULT_RESOURCES = [
 'disk_limit_gb    = ""            # max disk in GB, e.g. "20"',
 ].join(NL);
 
+var DEFAULT_RUNTIME_JSON = JSON.stringify({
+  required_args: [],
+  forbidden_args: [],
+  allowed_file_types: [],
+  max_input_size_mb: 50,
+  success_condition: "",
+  ui: {
+    background_run: {
+      success_condition: "",
+      allow_terminal: false,
+      allow_filesystem: false
+    },
+    desktop_gui: {
+      novnc_url: "",
+      gui_url: "",
+      gui_port: ""
+    },
+    android_ui: {
+      emulator_target: "",
+      adb_serial: "",
+      screen_url: ""
+    }
+  }
+}, null, 2);
+
+var DEFAULT_WORKFLOW_JSON = JSON.stringify({
+  name: "",
+  slug: "",
+  description: "",
+  status: "draft",
+  stages: []
+}, null, 2);
+
 // Load from seed or set defaults
 if (Object.keys(SEED).length > 0) {
   Object.assign(FS, SEED);
 } else {
   FS['Sandbox'] = DEFAULT_SANDBOX;
   FS['resources.toml'] = DEFAULT_RESOURCES;
+  FS['runtime.json'] = DEFAULT_RUNTIME_JSON;
+  FS['workflow.json'] = DEFAULT_WORKFLOW_JSON;
 }
 
 // ── Editor State ───────────────────────────────────────────────────────────

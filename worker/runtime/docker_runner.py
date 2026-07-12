@@ -250,7 +250,7 @@ class DockerRunner(RuntimeRunner):
         if command:
             return [str(value) for value in command]
         modes = set(self.policy.get("interface_modes") or [])
-        if modes.intersection({"terminal", "editor"}):
+        if modes.intersection({"terminal", "editor", "terminal_only", "lab_ui"}):
             return ["/bin/sh", "-c", "trap : TERM INT; sleep infinity & wait"]
         return None
 

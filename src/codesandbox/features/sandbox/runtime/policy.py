@@ -25,6 +25,16 @@ PROTECTED_MOUNT_PREFIXES = ("/dev", "/etc", "/proc", "/run", "/sys", "/var/run")
 # data-driven replacement for what used to be hardcoded per-slug checks on
 # a template's required/forbidden command-line flags.
 RUNTIME_CONFIG_FILE = "runtime.json"
+WORKFLOW_CONFIG_FILE = "workflow.json"
+
+UI_MODE_ALIASES = {
+    "terminal": "terminal_only",
+    "editor": "lab_ui",
+    "full_ui": "lab_ui",
+    "background": "background_run",
+    "gui": "desktop_gui",
+}
+SUPPORTED_UI_MODES = {"terminal_only", "lab_ui", "background_run", "desktop_gui", "android_ui"}
 
 
 def parse_runtime_config(runtime_config: Any) -> dict:
@@ -39,7 +49,13 @@ def parse_runtime_config(runtime_config: Any) -> dict:
         files = json.loads(runtime_config) if isinstance(runtime_config, str) else runtime_config
         raw = files.get(RUNTIME_CONFIG_FILE) if isinstance(files, dict) else None
         parsed = json.loads(raw) if raw else {}
-        return parsed if isinstance(parsed, dict) else {}
+        parsed = parsed if isinstance(parsed, dict) else {}
+        workflow_raw = files.get(WORKFLOW_CONFIG_FILE) if isinstance(files, dict) else None
+        if workflow_raw and "workflow" not in parsed and "stage_graph_json" not in parsed:
+            workflow = json.loads(workflow_raw)
+            if isinstance(workflow, dict):
+                parsed["workflow"] = workflow
+        return parsed
     except (TypeError, ValueError):
         return {}
 
@@ -87,6 +103,12 @@ def normalize_network_mode(value: Any) -> str:
     return NETWORK_ALIASES.get(mode, mode)
 
 
+def normalize_ui_mode(value: Any, default: str = "terminal_only") -> str:
+    mode = str(value or "").strip().lower()
+    mode = UI_MODE_ALIASES.get(mode, mode)
+    return mode if mode in SUPPORTED_UI_MODES else default
+
+
 def _json_list(value: Any, default: list[str] | None = None) -> list[str]:
     if value is None or value == "":
         return list(default or [])
@@ -99,6 +121,15 @@ def _json_list(value: Any, default: list[str] | None = None) -> list[str]:
     if not isinstance(decoded, list):
         raise RuntimePolicyError("Expected a JSON list.")
     return [str(item).strip() for item in decoded if str(item).strip()]
+
+
+def _ui_modes(value: Any, default: list[str]) -> list[str]:
+    modes = []
+    for item in _json_list(value, default):
+        mode = normalize_ui_mode(item, default="")
+        if mode and mode not in modes:
+            modes.append(mode)
+    return modes or list(default)
 
 
 def _absolute_container_path(value: Any, field: str) -> str:
@@ -294,13 +325,19 @@ class PolicyBuilder:
             for path in artifact_paths
         ):
             raise RuntimePolicyError("Artifact paths must be inside workspace or output mounts.")
-        interface_modes = [
-            mode.strip()
-            for mode in str(_value(template, "interface_mode", "terminal")).split(",")
-            if mode.strip()
-        ] or ["terminal"]
-        if user_config and user_config.get("interface_mode") in interface_modes:
-            interface_modes = [str(user_config["interface_mode"])]
+        interface_modes = _ui_modes(
+            _value(template, "allowed_ui_modes")
+            or _value(template, "interface_mode", "terminal_only"),
+            ["terminal_only"],
+        )
+        requested_ui_mode = None
+        if user_config:
+            requested_ui_mode = user_config.get("ui_mode") or user_config.get("interface_mode")
+        if requested_ui_mode and normalize_ui_mode(requested_ui_mode, default="") in interface_modes:
+            interface_modes = [normalize_ui_mode(requested_ui_mode)]
+        default_ui_mode = normalize_ui_mode(_value(template, "default_ui_mode", interface_modes[0]), interface_modes[0])
+        if default_ui_mode not in interface_modes:
+            default_ui_mode = interface_modes[0]
 
         command = _command(_value(template, "default_command"))
         slug = str(_value(template, "slug", ""))
@@ -325,6 +362,7 @@ class PolicyBuilder:
             "docker_image": image,
             "default_command": command,
             "interface_modes": interface_modes,
+            "default_ui_mode": default_ui_mode,
             "network_mode": effective.network_mode,
             "full_internet_enabled": effective.full_internet_enabled,
             "vcpu": tier["vcpu"],

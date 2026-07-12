@@ -1,0 +1,263 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+
+<style>
+.background-run-page {
+  --page-bg: #111111;
+  --text: #c6c8cc;
+  --time: #aeb4bd;
+  --line: rgba(255, 255, 255, 0.105);
+  --log: #18e48a;
+  --info: #3fa7ff;
+  --error: #ff6875;
+  --warn: #f1b84f;
+  min-height: calc(100vh - 2.85rem);
+  background: var(--page-bg);
+  color: var(--text);
+  font-family: "Geist Mono", "IBM Plex Mono", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "Liberation Mono", monospace;
+}
+.logs-explorer {
+  width: 100%;
+  height: 395px;
+  position: relative;
+  overflow: hidden;
+  background: transparent;
+}
+.logs-mask {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 75%, rgba(0,0,0,0.78) 84%, rgba(0,0,0,0.38) 93%, rgba(0,0,0,0) 100%);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 75%, rgba(0,0,0,0.78) 84%, rgba(0,0,0,0.38) 93%, rgba(0,0,0,0) 100%);
+}
+.logs-stream {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+.log-row {
+  display: grid;
+  grid-template-columns: 124px 66px minmax(0, 1fr);
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  line-height: 1;
+  letter-spacing: -0.015em;
+  color: var(--text);
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity, filter;
+  backface-visibility: hidden;
+}
+.log-time { color: var(--time); white-space: nowrap; font-weight: 400; }
+.log-level { white-space: nowrap; font-weight: 600; }
+.log-level.log { color: var(--log); }
+.log-level.info { color: var(--info); }
+.log-level.error { color: var(--error); }
+.log-level.warn { color: var(--warn); }
+.log-message {
+  min-width: 0;
+  color: #c4c5c8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+.log-row.enter {
+  animation: logEnter 780ms cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+@keyframes logEnter {
+  0% { opacity: 0; transform: translate3d(0, -13px, 0); filter: blur(1.8px); }
+  45% { opacity: 1; filter: blur(0.5px); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+}
+</style>
+
+<div id="background-run" data-instance-id="{{ instance.id }}" data-status="{{ instance.status }}" class="background-run-page">
+  <div class="mx-auto grid max-w-7xl gap-4 p-6 lg:grid-cols-[1fr_22rem]">
+    <section class="space-y-4">
+      <div class="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <div>
+          <div class="text-xs uppercase tracking-wide text-muted-foreground">Background Run</div>
+          <h1 class="mt-1 text-xl font-semibold text-foreground">{{ instance.template_name }}</h1>
+          <p class="mt-1 text-xs text-muted-foreground">{{ instance.id }}</p>
+        </div>
+        <div class="flex items-center gap-2">
+          {{ badge.badge(instance.status | replace("_", " ") | title, variant=("outline" if instance.status == "running" else "secondary")) }}
+          {% if workflow_next_stage %}
+            <a href="/instances/{{ instance.id }}?ui_mode={{ workflow_next_stage.ui_mode or 'lab_ui' }}">{% call button.button(size="sm") %}{{ workflow_next_stage.continue_label or "Continue next stage" }}{% endcall %}</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-white/10 bg-black/20 p-4">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-medium text-foreground">Runtime logs</h2>
+          <span id="background-log-state" class="text-xs text-muted-foreground">Connecting…</span>
+        </div>
+        <section class="logs-explorer" aria-label="Runtime logs">
+          <div class="logs-mask">
+            <div id="logsStream" class="logs-stream"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <h2 class="text-sm font-medium text-foreground">Lifecycle steps</h2>
+          <ol id="background-steps" class="mt-3 space-y-2 text-sm">
+            {% set known = ["created", "queued", "started", "running", "cleanup_started", "stopped"] %}
+            {% for item in known %}
+              <li class="flex items-center gap-2 text-muted-foreground">
+                <span class="size-2 rounded-full bg-white/20"></span>
+                <span>{{ item | replace("_", " ") | title }}</span>
+              </li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <h2 class="text-sm font-medium text-foreground">Progress</h2>
+          <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+            <div id="background-progress" class="h-full rounded-full bg-blue-500" style="width: {{ 100 if instance.status in ['stopped','failed','expired','killed'] else (65 if instance.status == 'running' else 20) }}%"></div>
+          </div>
+          <dl class="mt-4 grid grid-cols-2 gap-3 text-xs">
+            <div><dt class="text-muted-foreground">Runtime</dt><dd id="background-runtime" class="mt-1 text-foreground">{{ instance.total_runtime_sec or 0 }}s</dd></div>
+            <div><dt class="text-muted-foreground">Cost</dt><dd id="background-cost" class="mt-1 text-foreground">£{{ instance.charged_amount or "0" }}</dd></div>
+            <div><dt class="text-muted-foreground">Rate</dt><dd class="mt-1 text-foreground">£{{ instance.cost_hr_snapshot }}/hr</dd></div>
+            <div><dt class="text-muted-foreground">Network</dt><dd class="mt-1 text-foreground">{{ instance.effective_network_mode or "-" }}</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <aside class="space-y-4">
+      <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <h2 class="text-sm font-medium text-foreground">Artifacts</h2>
+        <div class="mt-3 divide-y divide-white/10 text-sm">
+          {% if artifacts %}
+            {% for artifact in artifacts %}
+              <a class="flex items-center justify-between gap-3 py-2 hover:text-foreground" href="/artifacts/{{ artifact.id }}/download">
+                <span class="truncate">{{ artifact.name }}</span>
+                <span class="shrink-0 text-xs text-muted-foreground">{{ ((artifact.size_bytes or 0) / 1024) | round(1) }} KB</span>
+              </a>
+            {% endfor %}
+          {% else %}
+            <div class="py-8 text-center text-xs text-muted-foreground">No artifacts yet.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <h2 class="text-sm font-medium text-foreground">Final report</h2>
+        <div class="mt-3 text-sm leading-6 text-muted-foreground">
+          {% if instance.exit_reason %}
+            {{ instance.exit_reason }}
+          {% else %}
+            Report will appear when the run completes.
+          {% endif %}
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script type="application/json" id="background-events">{{ events | tojson }}</script>
+
+{% app_script "sandbox-background-run" %}
+(function () {
+  var root = document.getElementById("background-run");
+  var stream = document.getElementById("logsStream");
+  if (!root || !stream || root.dataset.ready === "1") return;
+  root.dataset.ready = "1";
+  var MAX_ROWS = 13;
+  var ROW_SHIFT_DURATION = 820;
+  var EASE = "cubic-bezier(0.19, 1, 0.22, 1)";
+  var instanceId = root.dataset.instanceId;
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+  }
+  function formatTime(date) {
+    date = date ? new Date(date) : new Date();
+    var day = String(date.getDate()).padStart(2, "0");
+    var month = date.toLocaleString("en-US", { month: "short" });
+    var hour = String(date.getHours()).padStart(2, "0");
+    var minute = String(date.getMinutes()).padStart(2, "0");
+    var second = String(date.getSeconds()).padStart(2, "0");
+    return day + " " + month + " " + hour + ":" + minute + ":" + second;
+  }
+  function row(level, message, time, animated) {
+    var clean = String(level || "LOG").toUpperCase();
+    var el = document.createElement("div");
+    el.className = animated ? "log-row enter" : "log-row";
+    el.innerHTML =
+      '<div class="log-time">' + formatTime(time) + '</div>' +
+      '<div class="log-level ' + clean.toLowerCase() + '">[' + escapeHtml(clean) + ']</div>' +
+      '<div class="log-message" title="' + escapeHtml(message) + '">' + escapeHtml(message) + '</div>';
+    return el;
+  }
+  function prependLog(level, message, time) {
+    var oldRows = Array.from(stream.children);
+    var oldTops = new Map();
+    oldRows.forEach(function (item) { oldTops.set(item, item.getBoundingClientRect().top); });
+    var newRow = row(level, message, time, true);
+    stream.prepend(newRow);
+    Array.from(stream.children).forEach(function (item) {
+      if (item === newRow) return;
+      var oldTop = oldTops.get(item);
+      if (oldTop == null) return;
+      var deltaY = oldTop - item.getBoundingClientRect().top;
+      item.animate([{ transform: "translate3d(0, " + deltaY + "px, 0)" }, { transform: "translate3d(0, 0, 0)" }], {
+        duration: ROW_SHIFT_DURATION, easing: EASE, fill: "both"
+      });
+    });
+    newRow.addEventListener("animationend", function () { newRow.classList.remove("enter"); }, { once: true });
+    while (stream.children.length > MAX_ROWS) {
+      let stale = stream.lastElementChild;
+      stale.animate([
+        { opacity: 1, transform: "translate3d(0, 0, 0)", filter: "blur(0)" },
+        { opacity: 0, transform: "translate3d(0, 8px, 0)", filter: "blur(2px)" }
+      ], { duration: 520, easing: EASE, fill: "forwards" }).onfinish = function () {
+        if (stale && stale.parentNode) stale.remove();
+      };
+    }
+  }
+  function seedEvents() {
+    var payload = document.getElementById("background-events");
+    var events = [];
+    try { events = JSON.parse(payload ? payload.textContent : "[]") || []; } catch (_) {}
+    if (!events.length) {
+      prependLog("INFO", "Waiting for runtime events…");
+      return;
+    }
+    events.slice(-MAX_ROWS).reverse().forEach(function (event) {
+      var detail = event.detail || {};
+      prependLog(event.event === "failed" ? "ERROR" : "INFO", detail.message || detail.reason || event.event, event.created_at);
+    });
+  }
+  function setState(value) {
+    var el = document.getElementById("background-log-state");
+    if (el) el.textContent = value;
+  }
+  seedEvents();
+  fetch("/instances/" + encodeURIComponent(instanceId) + "/monitor-token?purpose=monitor")
+    .then(function (response) { if (!response.ok) throw new Error(); return response.json(); })
+    .then(function (body) {
+      var protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      var socket = new WebSocket(protocol + "//" + location.host + "/ws/sandbox/" + encodeURIComponent(instanceId) + "/monitor?token=" + encodeURIComponent(body.token));
+      socket.onopen = function () { setState("Live"); };
+      socket.onclose = function () { setState("Disconnected"); };
+      socket.onmessage = function (event) {
+        var data;
+        try { data = JSON.parse(event.data); } catch (_) { return; }
+        if (data.type === "log") prependLog("LOG", data.data || "");
+        if (data.type === "event") prependLog(data.event === "failed" ? "ERROR" : "INFO", data.event, new Date());
+      };
+    })
+    .catch(function () { setState("Unavailable"); });
+})();
+{% end_app_script %}

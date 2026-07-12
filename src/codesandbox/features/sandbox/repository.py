@@ -15,6 +15,7 @@ from .models import (
     SandboxAuditLog,
     SandboxArtifact,
     SandboxInput,
+    SandboxInstanceNote,
     SandboxInstance,
     SandboxPlan,
     SandboxTemplate,
@@ -90,6 +91,8 @@ def create_template(
     sandbox_type: str,
     runtime_class: str,
     interface_mode: str,
+    allowed_ui_modes: str | None,
+    default_ui_mode: str,
     network_mode: str,
     allow_root: bool,
     max_timeout_hr: int,
@@ -127,6 +130,8 @@ def create_template(
         sandbox_type=sandbox_type,
         runtime_class=runtime_class,
         interface_mode=interface_mode,
+        allowed_ui_modes=allowed_ui_modes,
+        default_ui_mode=default_ui_mode,
         network_mode=network_mode,
         allow_root=allow_root,
         read_only_root=read_only_root,
@@ -715,6 +720,33 @@ def log_instance_event(
 def list_instance_audit_log(instance_id: str, limit: int = 50) -> list[SandboxAuditLog]:
     rows = SandboxAuditLog.objects.filter(instance_id=instance_id).all()
     return sorted(rows, key=lambda r: r.created_at, reverse=True)[:limit]
+
+
+def get_instance_note(instance_id: str) -> SandboxInstanceNote | None:
+    return SandboxInstanceNote.objects.filter(instance_id=instance_id).first()
+
+
+def upsert_instance_note(
+    instance_id: str,
+    *,
+    title: str,
+    content: str,
+    updated_by: str | None = None,
+) -> SandboxInstanceNote:
+    note = get_instance_note(instance_id)
+    now = _now()
+    if note is None:
+        note = SandboxInstanceNote(
+            id=str(uuid.uuid4()),
+            instance_id=instance_id,
+            created_at=now,
+        )
+    note.title = title[:255] or "Untitled Investigation"
+    note.content = content
+    note.updated_by = updated_by
+    note.updated_at = now
+    note.save()
+    return note
 
 
 _ALLOWED_INSTANCE_TRANSITIONS = {

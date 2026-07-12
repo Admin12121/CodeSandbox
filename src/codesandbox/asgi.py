@@ -49,6 +49,9 @@ _FS_TOKEN_MAX_AGE = 600  # 10 minutes — the browser refetches before this laps
 
 _nc: "_nats.aio.client.Client | None" = None
 _nc_lock = asyncio.Lock()
+_terminal_sessions: dict[str, dict[str, int]] = {}
+_terminal_sessions_lock = asyncio.Lock()
+_MAX_TERMINAL_SESSIONS_PER_INSTANCE = 3
 
 
 async def _get_nats() -> "_nats.aio.client.Client":
@@ -79,6 +82,10 @@ async def lifespan(app: Starlette):
     yield
     if _nc and not _nc.is_closed:
         await _nc.drain()
+
+
+async def healthz(_request: Request) -> JSONResponse:
+    return JSONResponse({"ok": True})
 
 
 def _verify_ws_token(
@@ -240,14 +247,13 @@ async def ws_sandbox_monitor(websocket: WebSocket) -> None:
         await _release_fanout(instance_id, queue)
 
 
-# ── WebSocket: real, isolated terminal for a running Test Launch instance ──────
+# ── WebSocket: real, isolated terminal for a running sandbox instance ──────────
 
 async def ws_sandbox_terminal(websocket: WebSocket) -> None:
     """
-    Bridges the browser to a real PTY spawned per-instance in the worker
-    container (see worker/worker.py). Not (yet) an exec into the template's
-    own container image — that requires the real container runtime worker
-    (Phase 6a). Isolated per instance_id: its own PTY, its own process group.
+    Bridges the browser to a real PTY exec'd inside the sandbox runtime owned
+    by this instance. Up to three independent terminal sessions are allowed per
+    instance and all route to the owning worker_id.
 
     Auth: same short-lived signed token pattern as ws_sandbox_monitor, scoped
     to purpose="terminal" so a monitor token can't be replayed here.
@@ -261,6 +267,10 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
     """
     instance_id: str = websocket.path_params["instance_id"]
     token = websocket.query_params.get("token", "")
+    terminal_id = "".join(
+        ch for ch in websocket.query_params.get("terminal_id", "terminal-1")
+        if ch.isalnum() or ch in {"-", "_"}
+    )[:40] or "terminal-1"
 
     if not _verify_ws_token(token, instance_id, required_purpose="terminal"):
         await websocket.close(code=1008)
@@ -273,6 +283,32 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
         await websocket.close()
         return
 
+    async with _terminal_sessions_lock:
+        sessions = _terminal_sessions.setdefault(instance_id, {})
+        if terminal_id not in sessions and len(sessions) >= _MAX_TERMINAL_SESSIONS_PER_INSTANCE:
+            await websocket.accept()
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "terminal_id": terminal_id,
+                "message": "Maximum 3 terminal sessions per instance.",
+            }))
+            await websocket.close()
+            return
+        sessions[terminal_id] = int(sessions.get(terminal_id) or 0) + 1
+
+    async def _release_terminal_session() -> None:
+        async with _terminal_sessions_lock:
+            sessions = _terminal_sessions.get(instance_id)
+            if sessions is None:
+                return
+            remaining = int(sessions.get(terminal_id) or 0) - 1
+            if remaining > 0:
+                sessions[terminal_id] = remaining
+            else:
+                sessions.pop(terminal_id, None)
+            if not sessions:
+                _terminal_sessions.pop(instance_id, None)
+
     await websocket.accept()
 
     try:
@@ -280,6 +316,7 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
     except Exception:
         await websocket.send_text(json.dumps({"type": "error", "message": "NATS unavailable"}))
         await websocket.close()
+        await _release_terminal_session()
         return
 
     ctl_subject = f"codesandbox.worker.{worker_id}.sandbox.{instance_id}.terminal.ctl"
@@ -290,12 +327,17 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
 
     async def _enqueue(msg: "_nats.aio.msg.Msg") -> None:
         try:
-            queue.put_nowait(msg.data)
+            payload = json.loads(msg.data.decode())
+            if str(payload.get("terminal_id") or "terminal-1") != terminal_id:
+                return
+            queue.put_nowait(json.dumps(payload).encode())
         except asyncio.QueueFull:
+            pass
+        except Exception:
             pass
 
     sub = await nc.subscribe(output_subject, cb=_enqueue)
-    await nc.publish(ctl_subject, json.dumps({"action": "open"}).encode())
+    await nc.publish(ctl_subject, json.dumps({"action": "open", "terminal_id": terminal_id}).encode())
 
     async def _pump_output() -> None:
         while True:
@@ -312,10 +354,14 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
             except Exception:
                 continue
             if body.get("type") == "data":
-                await nc.publish(input_subject, json.dumps({"data": body.get("data", "")}).encode())
+                await nc.publish(input_subject, json.dumps({
+                    "terminal_id": terminal_id,
+                    "data": body.get("data", ""),
+                }).encode())
             elif body.get("type") == "resize":
                 await nc.publish(ctl_subject, json.dumps({
                     "action": "resize",
+                    "terminal_id": terminal_id,
                     "cols": int(body.get("cols", 80)),
                     "rows": int(body.get("rows", 24)),
                 }).encode())
@@ -328,9 +374,13 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
         except Exception:
             pass
         try:
-            await nc.publish(ctl_subject, json.dumps({"action": "close"}).encode())
+            await nc.publish(ctl_subject, json.dumps({
+                "action": "close",
+                "terminal_id": terminal_id,
+            }).encode())
         except Exception:
             pass
+        await _release_terminal_session()
 
 
 # ── HTTP: filesystem REST API (relayed to the worker over NATS request-reply) ──
@@ -492,6 +542,7 @@ def _make_app() -> Starlette:
         routes=[
             WebSocketRoute("/ws/sandbox/{instance_id}/monitor", ws_sandbox_monitor),
             WebSocketRoute("/ws/sandbox/{instance_id}/terminal", ws_sandbox_terminal),
+            Route("/healthz", healthz, methods=["GET"]),
             Route("/api/sandbox/{instance_id}/fs", fs_list, methods=["GET"]),
             Route("/api/sandbox/{instance_id}/file", fs_file_get, methods=["GET"]),
             Route("/api/sandbox/{instance_id}/file", fs_file_put, methods=["PUT"]),

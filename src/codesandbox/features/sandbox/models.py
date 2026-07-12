@@ -42,8 +42,13 @@ class SandboxTemplate(Model):
     sandbox_type = StringField(max_length=40)   # interactive|malware|reverse_engineering|android|ctf
     runtime_class = StringField(max_length=40)  # container|microvm|fullvm|android_emulator
 
-    # Interface / network defaults
-    interface_mode = StringField(max_length=40, default="terminal")   # terminal|full_ui|background|android_ui
+    # UI / network defaults
+    # interface_mode is the legacy comma-separated field. New code writes
+    # allowed_ui_modes/default_ui_mode and keeps interface_mode as an alias
+    # source for older rows.
+    interface_mode = StringField(max_length=40, default="terminal")   # legacy: terminal|full_ui|background|android_ui|gui
+    allowed_ui_modes = TextField(nullable=True)                       # terminal_only|lab_ui|background_run|desktop_gui|android_ui
+    default_ui_mode = StringField(max_length=40, default="terminal_only")
     network_mode = StringField(max_length=40, default="disabled")     # disabled|isolated|fake_internet|controlled_proxy|allowlist
 
     # Security defaults
@@ -266,6 +271,19 @@ class SandboxAuditLog(Model):
 
     class Meta:
         table_name = "sandbox_audit_logs"
+
+
+class SandboxInstanceNote(Model):
+    id = StringField(primary_key=True, max_length=36)
+    instance_id = ForeignKey(to=SandboxInstance, on_delete="CASCADE", unique=True)
+    title = StringField(max_length=255, default="Untitled Investigation")
+    content = TextField(nullable=True)
+    updated_by = ForeignKey(to=User, on_delete="SET NULL", nullable=True)
+    created_at = DateTimeField(default=_now)
+    updated_at = DateTimeField(nullable=True)
+
+    class Meta:
+        table_name = "sandbox_instance_notes"
 
 
 class SandboxTemplatePlan(Model):

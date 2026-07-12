@@ -176,20 +176,15 @@
 
         <div data-right-pane="notes" class="right-pane p-3">
           <div class="mx-auto max-w-[620px] space-y-4 px-2 py-3 text-sm">
-            <input class="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground" value="Untitled Investigation" placeholder="Untitled">
+            <input data-notes-title class="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground" value="{{ notes.title if notes else 'Untitled Investigation' }}" placeholder="Untitled">
 
-            <p class="leading-relaxed text-muted-foreground">
-              Write case notes, observations, commands, indicators, and manual analysis here.
-            </p>
+            <textarea
+              data-notes-content
+              class="min-h-[22rem] w-full resize-none rounded-md border bg-muted/20 p-3 leading-6 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Write case notes, observations, commands, indicators, and manual analysis here."
+            >{{ notes.content if notes else '' }}</textarea>
 
-            <div class="rounded-md border bg-muted/20 p-3">
-              <div class="text-xs font-medium text-muted-foreground">Findings</div>
-              <ul class="mt-2 space-y-2 text-muted-foreground">
-                <li class="flex gap-2"><span>☐</span><span>Review uploaded binary metadata</span></li>
-                <li class="flex gap-2"><span>☐</span><span>Check strings, imports, entropy, and sections</span></li>
-                <li class="flex gap-2"><span>☐</span><span>Record network indicators and suspicious behavior</span></li>
-              </ul>
-            </div>
+            <div data-notes-status class="text-xs text-muted-foreground">Notes save per instance.</div>
           </div>
         </div>
 
@@ -368,6 +363,49 @@
       if(raf) cancelAnimationFrame(raf);
     }, FADE);
   }, DISMISS);
+})();
+{% end_app_script %}
+
+{% app_script "sandbox-instance-notes" %}
+(function () {
+  var root = document.getElementById("sandbox-ui");
+  if (!root || root.dataset.notesBound) return;
+  root.dataset.notesBound = "1";
+  var instanceId = root.dataset.instanceId;
+  var title = root.querySelector("[data-notes-title]");
+  var content = root.querySelector("[data-notes-content]");
+  var status = root.querySelector("[data-notes-status]");
+  var timer = null;
+  if (!instanceId || !title || !content) return;
+
+  function setStatus(value) {
+    if (status) status.textContent = value;
+  }
+
+  function save() {
+    setStatus("Saving…");
+    fetch("/instances/" + encodeURIComponent(instanceId) + "/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.value, content: content.value })
+    }).then(function (response) {
+      if (!response.ok) throw new Error("save failed");
+      return response.json();
+    }).then(function () {
+      setStatus("Saved");
+    }).catch(function () {
+      setStatus("Could not save notes.");
+    });
+  }
+
+  function queueSave() {
+    setStatus("Unsaved changes");
+    window.clearTimeout(timer);
+    timer = window.setTimeout(save, 700);
+  }
+
+  title.addEventListener("input", queueSave);
+  content.addEventListener("input", queueSave);
 })();
 {% end_app_script %}
 

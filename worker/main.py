@@ -137,13 +137,15 @@ class WorkerApp:
         except Exception:
             return
         action = body.get("action")
+        terminal_id = str(body.get("terminal_id") or "terminal-1")[:40] or "terminal-1"
         if action == "open":
-            threading.Thread(target=self.terminal.open, args=(instance_id,), daemon=True).start()
+            threading.Thread(target=self.terminal.open, args=(instance_id, terminal_id), daemon=True).start()
         elif action == "close":
-            self.terminal.close(instance_id)
+            self.terminal.close(instance_id, terminal_id)
         elif action == "resize":
             self.terminal.resize(
                 instance_id,
+                terminal_id,
                 int(body.get("cols") or 80),
                 int(body.get("rows") or 24),
             )
@@ -157,8 +159,9 @@ class WorkerApp:
         except Exception:
             return
         data = body.get("data")
+        terminal_id = str(body.get("terminal_id") or "terminal-1")[:40] or "terminal-1"
         if isinstance(data, str) and data:
-            self.terminal.write(instance_id, data)
+            self.terminal.write(instance_id, terminal_id, data)
 
     async def _filesystem(self, message) -> None:
         instance_id = self._instance_id(message.subject)

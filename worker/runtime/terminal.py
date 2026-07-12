@@ -11,8 +11,9 @@ class DockerTerminalManager:
         self.registry = registry
         self.publish = publish
         self.worker_id = worker_id
-        self._sessions: dict[str, dict] = {}
+        self._sessions: dict[tuple[str, str], dict] = {}
         self._lock = threading.RLock()
+        self.max_sessions_per_instance = 3
 
     @staticmethod
     def _raw_socket(wrapper):
@@ -21,13 +22,31 @@ class DockerTerminalManager:
     def _subject(self, instance_id: str) -> str:
         return f"codesandbox.worker.{self.worker_id}.sandbox.{instance_id}.terminal.output"
 
-    def open(self, instance_id: str) -> None:
+    def _publish(self, instance_id: str, terminal_id: str, payload: dict) -> None:
+        self.publish(self._subject(instance_id), {
+            "terminal_id": terminal_id,
+            **payload,
+        })
+
+    def _session_key(self, instance_id: str, terminal_id: str) -> tuple[str, str]:
+        return instance_id, terminal_id or "terminal-1"
+
+    def open(self, instance_id: str, terminal_id: str = "terminal-1") -> None:
+        key = self._session_key(instance_id, terminal_id)
         with self._lock:
-            if instance_id in self._sessions:
+            if key in self._sessions:
+                self._publish(instance_id, terminal_id, {"type": "ready"})
+                return
+            count = sum(1 for existing_instance_id, _ in self._sessions if existing_instance_id == instance_id)
+            if count >= self.max_sessions_per_instance:
+                self._publish(instance_id, terminal_id, {
+                    "type": "error",
+                    "message": "Maximum 3 terminal sessions per instance.",
+                })
                 return
         runner = self.registry.get(instance_id)
         if runner is None or not getattr(runner, "is_running", False):
-            self.publish(self._subject(instance_id), {
+            self._publish(instance_id, terminal_id, {
                 "type": "error",
                 "message": "Sandbox is not running.",
             })
@@ -37,7 +56,7 @@ class DockerTerminalManager:
             raw = self._raw_socket(wrapper)
         except Exception as exc:
             log.warning("terminal open failed instance=%s error=%s", instance_id[:8], exc)
-            self.publish(self._subject(instance_id), {
+            self._publish(instance_id, terminal_id, {
                 "type": "error",
                 "message": "Container shell is unavailable.",
             })
@@ -52,15 +71,16 @@ class DockerTerminalManager:
             "runner": runner,
         }
         with self._lock:
-            self._sessions[instance_id] = session
+            self._sessions[key] = session
         threading.Thread(
             target=self._read,
-            args=(instance_id, session),
+            args=(instance_id, terminal_id, session),
             daemon=True,
         ).start()
-        self.publish(self._subject(instance_id), {"type": "ready"})
+        self._publish(instance_id, terminal_id, {"type": "ready"})
 
-    def _read(self, instance_id: str, session: dict) -> None:
+    def _read(self, instance_id: str, terminal_id: str, session: dict) -> None:
+        key = self._session_key(instance_id, terminal_id)
         raw = session["socket"]
         try:
             while not session["stop"].is_set():
@@ -70,7 +90,7 @@ class DockerTerminalManager:
                     chunk = raw.read(4096)
                 if not chunk:
                     break
-                self.publish(self._subject(instance_id), {
+                self._publish(instance_id, terminal_id, {
                     "type": "output",
                     "data": chunk.decode("utf-8", errors="replace"),
                 })
@@ -78,13 +98,13 @@ class DockerTerminalManager:
             pass
         finally:
             with self._lock:
-                if self._sessions.get(instance_id) is session:
-                    self._sessions.pop(instance_id, None)
-            self.publish(self._subject(instance_id), {"type": "closed"})
+                if self._sessions.get(key) is session:
+                    self._sessions.pop(key, None)
+            self._publish(instance_id, terminal_id, {"type": "closed"})
 
-    def write(self, instance_id: str, data: str) -> None:
+    def write(self, instance_id: str, terminal_id: str, data: str) -> None:
         with self._lock:
-            session = self._sessions.get(instance_id)
+            session = self._sessions.get(self._session_key(instance_id, terminal_id))
         if session is None:
             return
         raw = session["socket"]
@@ -95,11 +115,11 @@ class DockerTerminalManager:
             else:
                 raw.write(encoded)
         except Exception:
-            self.close(instance_id)
+            self.close(instance_id, terminal_id)
 
-    def resize(self, instance_id: str, cols: int, rows: int) -> None:
+    def resize(self, instance_id: str, terminal_id: str, cols: int, rows: int) -> None:
         with self._lock:
-            session = self._sessions.get(instance_id)
+            session = self._sessions.get(self._session_key(instance_id, terminal_id))
         if session is None:
             return
         try:
@@ -111,20 +131,25 @@ class DockerTerminalManager:
         except Exception:
             pass
 
-    def close(self, instance_id: str) -> None:
+    def close(self, instance_id: str, terminal_id: str | None = None) -> None:
         with self._lock:
-            session = self._sessions.pop(instance_id, None)
-        if session is None:
-            return
-        session["stop"].set()
-        for candidate in (session["socket"], session["wrapper"]):
-            try:
-                candidate.close()
-            except Exception:
-                pass
+            if terminal_id is None:
+                keys = [key for key in self._sessions if key[0] == instance_id]
+                sessions = [self._sessions.pop(key) for key in keys]
+            else:
+                sessions = [self._sessions.pop(self._session_key(instance_id, terminal_id), None)]
+        for session in sessions:
+            if session is None:
+                continue
+            session["stop"].set()
+            for candidate in (session["socket"], session["wrapper"]):
+                try:
+                    candidate.close()
+                except Exception:
+                    pass
 
     def close_all(self) -> None:
         with self._lock:
-            instance_ids = list(self._sessions)
-        for instance_id in instance_ids:
-            self.close(instance_id)
+            keys = list(self._sessions)
+        for instance_id, terminal_id in keys:
+            self.close(instance_id, terminal_id)

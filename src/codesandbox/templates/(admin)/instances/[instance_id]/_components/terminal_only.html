@@ -1,0 +1,194 @@
+<style>
+.terminal-only-tab .terminal-close {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.terminal-only-tab:hover .terminal-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+.terminal-only-tab.active-terminal {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+</style>
+
+<div id="terminal-only-ui" data-instance-id="{{ instance.id }}" class="flex h-[calc(100vh-2.85rem)] flex-col overflow-hidden bg-background">
+  <div class="flex h-9 shrink-0 items-center justify-between border-b text-xs">
+    <div data-terminal-tabs class="flex h-full min-w-0 flex-1 items-center overflow-x-auto"></div>
+    <button data-new-terminal class="h-full border-l px-3 text-muted-foreground hover:text-accent-foreground" title="New terminal (max 3)">+</button>
+  </div>
+  <div data-terminal-panes class="min-h-0 flex-1 bg-[#09090b]"></div>
+</div>
+
+{% app_script "sandbox-terminal-only" %}
+(function () {
+  var root = document.getElementById("terminal-only-ui");
+  if (!root || root.dataset.ready === "1") return;
+  root.dataset.ready = "1";
+
+  var instanceId = root.dataset.instanceId;
+  var maxTerminals = 3;
+  var terminalCount = 0;
+  var states = {};
+
+  function $(selector, base) { return (base || root).querySelector(selector); }
+  function $$(selector, base) { return Array.from((base || root).querySelectorAll(selector)); }
+  function esc(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function visibleTabs() {
+    return $$("[data-terminal-tab]");
+  }
+
+  function xtermCdnLoad(cb) {
+    if (window.Terminal && window.FitAddon) { cb(); return; }
+    var s1 = document.createElement("script");
+    s1.src = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js";
+    s1.onload = function () {
+      var css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css";
+      document.head.appendChild(css);
+      var s2 = document.createElement("script");
+      s2.src = "https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js";
+      s2.onload = cb;
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s1);
+  }
+
+  function fetchToken() {
+    return fetch("/instances/" + encodeURIComponent(instanceId) + "/monitor-token?purpose=terminal")
+      .then(function (r) {
+        if (!r.ok) throw new Error("terminal is not available for this instance");
+        return r.json();
+      }).then(function (data) { return data.token; });
+  }
+
+  function openWs(state, token) {
+    var proto = location.protocol === "https:" ? "wss" : "ws";
+    var url = proto + "://" + location.host + "/ws/sandbox/" + encodeURIComponent(instanceId) +
+      "/terminal?token=" + encodeURIComponent(token) +
+      "&terminal_id=" + encodeURIComponent(state.name);
+    var ws = new WebSocket(url);
+    state.ws = ws;
+    ws.onmessage = function (event) {
+      var msg;
+      try { msg = JSON.parse(event.data); } catch (_) { return; }
+      if (msg.type === "ready") {
+        try { state.fit.fit(); } catch (_) {}
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "resize", cols: state.term.cols, rows: state.term.rows }));
+        }
+      } else if (msg.type === "output") {
+        state.term.write(msg.data || "");
+      } else if (msg.type === "error") {
+        state.term.writeln("\x1b[31m" + esc(msg.message || "terminal error") + "\x1b[0m");
+      } else if (msg.type === "closed") {
+        state.term.writeln("\r\n\x1b[90m[session closed]\x1b[0m");
+      }
+    };
+    ws.onerror = function () { state.term.writeln("\x1b[31mNo terminal backend available.\x1b[0m"); };
+    ws.onclose = function () { state.term.writeln("\r\n\x1b[90m[disconnected]\x1b[0m"); };
+  }
+
+  function connect(name, pane) {
+    xtermCdnLoad(function () {
+      var term = new Terminal({
+        fontFamily: '"JetBrains Mono","Fira Code","Cascadia Code",ui-monospace,monospace',
+        fontSize: 13,
+        lineHeight: 1.4,
+        cursorBlink: true,
+        cursorStyle: "bar",
+        theme: { background: "#09090b", foreground: "#e4e4e7", cursor: "#a1a1aa" }
+      });
+      var fit = new FitAddon.FitAddon();
+      term.loadAddon(fit);
+      term.open(pane);
+      var state = { name: name, term: term, fit: fit, ws: null, ro: null };
+      states[name] = state;
+      state.ro = new ResizeObserver(function () {
+        try { fit.fit(); } catch (_) {}
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+          state.ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+        }
+      });
+      state.ro.observe(pane);
+      term.onData(function (data) {
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+          state.ws.send(JSON.stringify({ type: "data", data: data }));
+        }
+      });
+      term.writeln("\x1b[90mConnecting to sandbox terminal…\x1b[0m");
+      fetchToken().then(function (token) { openWs(state, token); })
+        .catch(function (err) { term.writeln("\x1b[31m" + esc(err.message) + "\x1b[0m"); });
+      window.setTimeout(function () { try { fit.fit(); } catch (_) {} }, 60);
+    });
+  }
+
+  function openTerminal(name) {
+    $$("[data-terminal-tab]").forEach(function (tab) {
+      tab.classList.toggle("active-terminal", tab.dataset.terminalTab === name);
+    });
+    $$("[data-terminal-pane]").forEach(function (pane) {
+      pane.classList.toggle("hidden", pane.dataset.terminalPane !== name);
+    });
+    var state = states[name];
+    if (state && state.term) {
+      try { state.fit.fit(); state.term.focus(); } catch (_) {}
+    }
+  }
+
+  function createTerminal() {
+    if (visibleTabs().length >= maxTerminals) return;
+    terminalCount += 1;
+    var name = "terminal-" + terminalCount;
+    var tab = document.createElement("button");
+    tab.dataset.terminalTab = name;
+    tab.className = "terminal-only-tab flex h-full items-center gap-2 border-r px-4 text-muted-foreground hover:text-accent-foreground";
+    tab.innerHTML = "<span>bash</span><span class=\"terminal-close rounded p-0.5 hover:bg-background/60\">×</span>";
+    var pane = document.createElement("div");
+    pane.dataset.terminalPane = name;
+    pane.className = "hidden h-full w-full p-2";
+    $("[data-terminal-tabs]").appendChild(tab);
+    $("[data-terminal-panes]").appendChild(pane);
+    connect(name, pane);
+    openTerminal(name);
+  }
+
+  function closeTerminal(name) {
+    var state = states[name];
+    if (state) {
+      if (state.ws) { try { state.ws.close(); } catch (_) {} }
+      if (state.ro) { try { state.ro.disconnect(); } catch (_) {} }
+      if (state.term) { try { state.term.dispose(); } catch (_) {} }
+      delete states[name];
+    }
+    var tab = $('[data-terminal-tab="' + name + '"]');
+    var pane = $('[data-terminal-pane="' + name + '"]');
+    var active = tab && tab.classList.contains("active-terminal");
+    if (tab) tab.remove();
+    if (pane) pane.remove();
+    var next = visibleTabs()[0];
+    if (active && next) openTerminal(next.dataset.terminalTab);
+  }
+
+  root.addEventListener("click", function (event) {
+    var action = event.target.closest("[data-new-terminal], [data-terminal-tab], .terminal-close");
+    if (!action || !root.contains(action)) return;
+    if (action.dataset.newTerminal !== undefined) return createTerminal();
+    if (action.classList.contains("terminal-close")) {
+      var tab = action.closest("[data-terminal-tab]");
+      if (tab) closeTerminal(tab.dataset.terminalTab);
+      return;
+    }
+    if (action.dataset.terminalTab) openTerminal(action.dataset.terminalTab);
+  });
+
+  createTerminal();
+})();
+{% end_app_script %}

@@ -5105,6 +5105,289 @@
       "model": "SandboxInput",
       "name": "sandbox_inputs"
     },
+    "sandbox_instance_notes": {
+      "columns": {
+        "content": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "content",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "instance_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxInstance",
+            "type": "ForeignKey",
+            "unique": true
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxInstance",
+            "type": "ForeignKey",
+            "unique": true
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "instance_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": true
+        },
+        "title": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "Untitled Investigation",
+          "field": {
+            "auto_increment": false,
+            "default": "Untitled Investigation",
+            "index": false,
+            "max_length": 255,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 255,
+          "name": "title",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "updated_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "updated_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "updated_by": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "updated_by",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "instance_id",
+          "name": "fk_sandbox_instance_notes_instance_id",
+          "on_delete": "CASCADE",
+          "to_column": "id",
+          "to_table": "sandbox_instances"
+        },
+        {
+          "column": "updated_by",
+          "name": "fk_sandbox_instance_notes_updated_by",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "instance_id"
+          ],
+          "name": "idx_sandbox_instance_notes_instance_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "instance_id"
+          ],
+          "name": "uidx_sandbox_instance_notes_instance_id",
+          "unique": true
+        },
+        {
+          "columns": [
+            "updated_by"
+          ],
+          "name": "idx_sandbox_instance_notes_updated_by",
+          "unique": false
+        }
+      ],
+      "model": "SandboxInstanceNote",
+      "name": "sandbox_instance_notes"
+    },
     "sandbox_instances": {
       "columns": {
         "allocated_disk_gb": {
@@ -7424,6 +7707,30 @@
           "type": "BooleanField",
           "unique": false
         },
+        "allowed_ui_modes": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "TextField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "allowed_ui_modes",
+          "nullable": true,
+          "primary_key": false,
+          "type": "TextField",
+          "unique": false
+        },
         "artifact_paths": {
           "auto_increment": false,
           "decimal_places": null,
@@ -7553,6 +7860,30 @@
           "nullable": true,
           "primary_key": false,
           "type": "TextField",
+          "unique": false
+        },
+        "default_ui_mode": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "terminal_only",
+          "field": {
+            "auto_increment": false,
+            "default": "terminal_only",
+            "index": false,
+            "max_length": 40,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 40,
+          "name": "default_ui_mode",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
           "unique": false
         },
         "description": {

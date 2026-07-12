@@ -13,8 +13,7 @@ from codesandbox.features.sandbox.service import (
     get_active_hub_instance,
     get_hub_template_by_slug,
     get_hub_templates,
-    get_instance_artifacts_for_view,
-    get_instance_for_view,
+    get_instance_ui_context,
     get_org_billing,
     get_org_instances,
     get_org_requests,
@@ -24,6 +23,7 @@ from codesandbox.features.sandbox.service import (
     get_user_instances,
     get_user_requests_in_org,
     review_instance_request,
+    save_instance_note_for_view,
     start_instance,
     submit_instance_request,
     upload_instance_input,
@@ -203,21 +203,7 @@ def hub_sandbox(instance: str, slug: str):
         # to attach to (e.g. a stale bookmark after the instance stopped).
         return {"_redirect": f"/hub/{instance}?error=No+running+instance+for+this+plan.+Start+one+first."}
 
-    artifacts, _ = get_instance_artifacts_for_view(
-        sandbox_instance["id"], str(user.id)
-    )
-
-    nav = build_nav("/hub", user, active_workspace)
-    return {
-        "_meta": {"title": f"{template['name']} Sandbox — CodeSandbox"},
-        "user": _user_ctx(user),
-        "nav": nav,
-        "template": template,
-        "plan": plan,
-        "instance": sandbox_instance,
-        "artifacts": artifacts or [],
-        **ws_ctx,
-    }
+    return {"_redirect": f"/instances/{sandbox_instance['id']}"}
 
 
 # ── My Instances ──────────────────────────────────────────────────────────────
@@ -247,21 +233,41 @@ def instance_detail(instance_id: str):
     if redir:
         return redir
     user = session.user
-    instance, error = get_instance_for_view(instance_id, str(user.id))
-    if error or instance is None:
+    ctx, error = get_instance_ui_context(
+        instance_id,
+        str(user.id),
+        request.args.get("ui_mode") or request.args.get("mode"),
+    )
+    if error or ctx is None:
         return {"_redirect": "/my-instances"}
-    artifacts, _ = get_instance_artifacts_for_view(instance_id, str(user.id))
+    instance = ctx["instance"]
     ws_ctx = _workspaces_ctx(user)
     return {
         "_meta": {"title": f"{instance['template_name']} - CodeSandbox"},
         "user": _user_ctx(user),
         "nav": build_nav("/my-instances", user, ws_ctx.get("active_workspace")),
         "page_title": instance["template_name"],
-        "instance": instance,
-        "artifacts": artifacts or [],
         "error": request.args.get("error"),
+        **ctx,
         **ws_ctx,
     }
+
+
+@web_bp.post("/instances/<instance_id>/notes")
+def instance_notes_save(instance_id: str):
+    session, redir = require_sandbox_user()
+    if redir:
+        abort(401)
+    body = request.get_json(silent=True) or {}
+    result, error = save_instance_note_for_view(
+        instance_id,
+        str(session.user.id),
+        title=str(body.get("title") or ""),
+        content=str(body.get("content") or ""),
+    )
+    if error:
+        return {"ok": False, "error": error}, 403
+    return {"ok": True, "notes": result}
 
 
 # ── Private Instances (org-assigned) ─────────────────────────────────────────
@@ -392,7 +398,7 @@ def hub_start(instance: str):
     _, err = start_instance(result["id"], actor_user_id=str(user.id))
     if err:
         return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
-    return redirect(f"/hub/{instance}/{plan_id}", 303)
+    return redirect(f"/instances/{result['id']}", 303)
 
 
 @web_bp.post("/hub/<instance>/request")
@@ -444,40 +450,3 @@ def hub_review_request(request_id: str):
     if err:
         return redirect(f"/hub?error={err}", 303)
     return redirect("/hub", 303)
-
-
-# ── Laboratory (internal testing) ────────────────────────────────────────────
-
-@router.page("/laboratory/sandbox")
-def sandbox():
-    session, redir = require_session()
-    if redir:
-        return redir
-    user = session.user
-    ws_ctx = _workspaces_ctx(user)
-    nav = build_nav("/laboratory/sandbox", user, ws_ctx.get("active_workspace"))
-
-    try:
-        _, user_count = identity_repo.list_users()
-    except Exception:
-        user_count = 0
-    try:
-        _, org_count = org_repo.list_organizations()
-    except Exception:
-        org_count = 0
-
-    metrics = [
-        {"label": "Total Users",       "value": str(user_count), "change": "Platform accounts"},
-        {"label": "Organizations",      "value": str(org_count),  "change": "Active tenants"},
-        {"label": "Running Sandboxes",  "value": "0",             "change": "Runtime worker pending"},
-        {"label": "Open Cases",         "value": "0",             "change": "Case workflow pending"},
-    ]
-    return {
-        "_meta": {"title": "Dashboard — CodeSandbox"},
-        "user": _user_ctx(user),
-        "nav": nav,
-        "page_title": "Dashboard",
-        "page_description": "Platform overview — users, orgs, runtime, cases",
-        "metrics": metrics,
-        **ws_ctx,
-    }

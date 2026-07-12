@@ -9,7 +9,8 @@ services:
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── Flask application ──────────────────────────────────────────────────────
@@ -23,6 +24,7 @@ services:
       - /bin/sh
       - -c
       - |
+        set -e
         # `makemigrations` is a manual, human-reviewed dev step (see
         # docs/runtime-architecture.md) — it must never run automatically
         # at container start, in dev or prod. Only apply already-committed,
@@ -78,6 +80,16 @@ services:
         condition: service_healthy
       nats:
         condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=3).read()"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
     restart: unless-stopped
 
   # ── MySQL ──────────────────────────────────────────────────────────────────
@@ -149,6 +161,8 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
+      app:
+        condition: service_healthy
     restart: unless-stopped
 
   reconciler:
@@ -171,6 +185,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      app:
         condition: service_healthy
     restart: unless-stopped
 

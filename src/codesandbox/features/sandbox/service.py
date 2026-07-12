@@ -69,7 +69,23 @@ RUNTIME_CLASSES = (
     "qemu_vm",
     "android_emulator",
 )
-INTERFACE_MODES = ("terminal", "editor", "full_ui", "background", "android_ui", "gui")
+UI_MODES = ("terminal_only", "lab_ui", "background_run", "desktop_gui", "android_ui")
+UI_MODE_LABELS = {
+    "terminal_only": "Terminal Only",
+    "lab_ui": "Lab UI",
+    "background_run": "Background Run",
+    "desktop_gui": "Desktop GUI",
+    "android_ui": "Android UI",
+}
+UI_MODE_ALIASES = {
+    "terminal": "terminal_only",
+    "editor": "lab_ui",
+    "full_ui": "lab_ui",
+    "background": "background_run",
+    "gui": "desktop_gui",
+}
+# Backwards-compatible export name used by existing admin page code.
+INTERFACE_MODES = UI_MODES
 NETWORK_MODES = (
     "disabled",
     "restricted",
@@ -80,6 +96,215 @@ NETWORK_MODES = (
     "allowlist",
 )
 TEMPLATE_STATUSES = ("active", "maintenance", "disabled")
+
+
+def normalize_ui_mode(value: object, default: str = "terminal_only") -> str:
+    mode = str(value or "").strip().lower()
+    mode = UI_MODE_ALIASES.get(mode, mode)
+    return mode if mode in UI_MODES else default
+
+
+def normalize_ui_modes(value: object, default: tuple[str, ...] = ("terminal_only",)) -> list[str]:
+    if value is None or value == "":
+        raw_values = list(default)
+    elif isinstance(value, (list, tuple, set)):
+        raw_values = list(value)
+    else:
+        raw = str(value)
+        try:
+            decoded = json.loads(raw)
+            raw_values = decoded if isinstance(decoded, list) else raw.replace(",", "\n").splitlines()
+        except (TypeError, ValueError):
+            raw_values = raw.replace(",", "\n").splitlines()
+    modes = []
+    for item in raw_values:
+        mode = normalize_ui_mode(item, default="")
+        if mode and mode not in modes:
+            modes.append(mode)
+    return modes or list(default)
+
+
+def _runtime_default_ui_modes(runtime_class: str) -> list[str]:
+    runtime_class = str(runtime_class or "container")
+    if runtime_class == "tool_job":
+        return ["background_run"]
+    if runtime_class in {"fullvm", "qemu_vm"}:
+        return ["desktop_gui", "background_run", "terminal_only"]
+    if runtime_class == "android_emulator":
+        return ["android_ui"]
+    return ["terminal_only", "lab_ui", "background_run"]
+
+
+def template_allowed_ui_modes(template_or_dict) -> list[str]:
+    explicit = getattr(template_or_dict, "allowed_ui_modes", None)
+    if isinstance(template_or_dict, dict):
+        explicit = template_or_dict.get("allowed_ui_modes")
+    legacy = getattr(template_or_dict, "interface_mode", None)
+    if isinstance(template_or_dict, dict):
+        legacy = template_or_dict.get("interface_mode")
+    runtime_class = getattr(template_or_dict, "runtime_class", None)
+    if isinstance(template_or_dict, dict):
+        runtime_class = template_or_dict.get("runtime_class")
+    return normalize_ui_modes(explicit or legacy, tuple(_runtime_default_ui_modes(str(runtime_class or "container"))[:1]))
+
+
+def template_default_ui_mode(template_or_dict) -> str:
+    allowed = template_allowed_ui_modes(template_or_dict)
+    configured = getattr(template_or_dict, "default_ui_mode", None)
+    if isinstance(template_or_dict, dict):
+        configured = template_or_dict.get("default_ui_mode")
+    default = normalize_ui_mode(configured, allowed[0])
+    return default if default in allowed else allowed[0]
+
+
+def _ui_mode_csv(modes: list[str]) -> str:
+    return ",".join(modes)
+
+
+def _ui_mode_json(modes: list[str]) -> str:
+    return json.dumps(modes, separators=(",", ":"))
+
+
+def _ui_feature_config(runtime_config: dict, key: str) -> dict:
+    ui = runtime_config.get("ui") if isinstance(runtime_config.get("ui"), dict) else {}
+    value = ui.get(key) if isinstance(ui, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def validate_ui_mode_config(
+    *,
+    runtime_class: str,
+    allowed_ui_modes: list[str],
+    default_ui_mode: str,
+    default_command: str,
+    runtime_config: dict,
+    require_publish_ready: bool = False,
+) -> str | None:
+    if default_ui_mode not in allowed_ui_modes:
+        return "Default UI mode must be one of the allowed UI modes."
+
+    if "android_ui" in allowed_ui_modes and runtime_class != "android_emulator":
+        return "Android UI requires the android_emulator runtime class."
+    if runtime_class == "android_emulator" and allowed_ui_modes != ["android_ui"]:
+        return "Android emulator templates must use Android UI only."
+
+    terminal_capable = runtime_class in {"container", "microvm", "firecracker_microvm", "fullvm", "qemu_vm"}
+    if any(mode in allowed_ui_modes for mode in ("terminal_only", "lab_ui")) and not terminal_capable:
+        return "Terminal Only and Lab UI require a runtime with shell/terminal support."
+
+    if "lab_ui" in allowed_ui_modes and runtime_class == "tool_job":
+        return "Lab UI requires filesystem, editor, and terminal support; use container/microvm/fullvm instead of tool_job."
+
+    if "background_run" in allowed_ui_modes:
+        bg = _ui_feature_config(runtime_config, "background_run")
+        success_condition = str(bg.get("success_condition") or runtime_config.get("success_condition") or "").strip()
+        if require_publish_ready and not default_command.strip():
+            return "Background Run requires a command before publishing."
+        if require_publish_ready and not success_condition:
+            return "Background Run requires a success_condition in runtime.json before publishing."
+
+    if "desktop_gui" in allowed_ui_modes:
+        desktop = _ui_feature_config(runtime_config, "desktop_gui")
+        has_gui = any(str(desktop.get(key) or runtime_config.get(key) or "").strip() for key in ("gui_url", "novnc_url", "gui_port"))
+        if require_publish_ready and not has_gui:
+            return "Desktop GUI requires gui_url, novnc_url, or gui_port in runtime.json before publishing."
+
+    if "android_ui" in allowed_ui_modes:
+        android = _ui_feature_config(runtime_config, "android_ui")
+        has_android = any(str(android.get(key) or runtime_config.get(key) or "").strip() for key in ("emulator_target", "adb_serial", "device_url", "screen_url"))
+        if require_publish_ready and not has_android:
+            return "Android UI requires Android emulator config in runtime.json before publishing."
+
+    workflow_error = validate_workflow_config(runtime_config)
+    if workflow_error:
+        return workflow_error
+    return None
+
+
+def validate_workflow_config(runtime_config: dict) -> str | None:
+    workflow = runtime_config.get("workflow") or runtime_config.get("stage_graph_json")
+    if not workflow:
+        return None
+    if isinstance(workflow, str):
+        try:
+            workflow = json.loads(workflow)
+        except ValueError:
+            return "Workflow config must be valid JSON."
+    if not isinstance(workflow, dict):
+        return "Workflow config must be an object."
+    stages = workflow.get("stages")
+    if stages is None:
+        return None
+    if not isinstance(stages, list):
+        return "Workflow stages must be a list."
+    stage_ids = set()
+    for index, stage in enumerate(stages, start=1):
+        if not isinstance(stage, dict):
+            return f"Workflow stage {index} must be an object."
+        stage_id = str(stage.get("id") or stage.get("slug") or index)
+        if stage_id in stage_ids:
+            return f"Workflow stage {stage_id} is duplicated."
+        stage_ids.add(stage_id)
+        mode = normalize_ui_mode(stage.get("ui_mode"), default="")
+        if not mode:
+            return f"Workflow stage {stage_id} has an invalid ui_mode."
+        runtime_class = str(stage.get("runtime_class") or "").strip()
+        if runtime_class and runtime_class not in RUNTIME_CLASSES:
+            return f"Workflow stage {stage_id} has an invalid runtime_class."
+        carry = stage.get("carry_artifacts", False)
+        if not isinstance(carry, bool):
+            return f"Workflow stage {stage_id} carry_artifacts must be true or false."
+    for stage in stages:
+        next_stage_id = stage.get("next_stage_id")
+        if next_stage_id and str(next_stage_id) not in stage_ids:
+            return f"Workflow stage {stage.get('id') or stage.get('slug')} points to a missing next_stage_id."
+    return None
+
+
+def _workflow_next_stage_for_ui_mode(workflow: object, ui_mode: str) -> dict:
+    if isinstance(workflow, str):
+        try:
+            workflow = json.loads(workflow)
+        except ValueError:
+            return {}
+    if not isinstance(workflow, dict):
+        return {}
+
+    stages = workflow.get("stages")
+    if isinstance(stages, list):
+        by_id: dict[str, dict] = {}
+        ordered: list[dict] = []
+        for index, stage in enumerate(stages, start=1):
+            if not isinstance(stage, dict):
+                continue
+            item = dict(stage)
+            stage_id = str(item.get("id") or item.get("slug") or index)
+            item["_stage_id"] = stage_id
+            item["ui_mode"] = normalize_ui_mode(item.get("ui_mode"), default=str(item.get("ui_mode") or ""))
+            by_id[stage_id] = item
+            ordered.append(item)
+
+        for index, stage in enumerate(ordered):
+            if stage.get("ui_mode") != ui_mode:
+                continue
+            next_stage = by_id.get(str(stage.get("next_stage_id") or ""))
+            if next_stage is None and index + 1 < len(ordered):
+                next_stage = ordered[index + 1]
+            if next_stage:
+                result = dict(next_stage)
+                result["continue_label"] = stage.get("continue_label") or result.get("continue_label") or "Continue next stage"
+                return result
+            return {}
+
+    next_stage_id = workflow.get("next_stage_id")
+    next_ui_mode = workflow.get("next_ui_mode") or workflow.get("ui_mode") or "lab_ui"
+    if next_stage_id or workflow.get("continue_label"):
+        return {
+            "_stage_id": str(next_stage_id or ""),
+            "ui_mode": normalize_ui_mode(next_ui_mode, "lab_ui"),
+            "continue_label": workflow.get("continue_label") or "Continue next stage",
+        }
+    return {}
 
 
 def make_worker_callback_token(job_id: str, instance_id: str, action: str) -> str:
@@ -130,12 +355,19 @@ def get_hub_plans() -> list[dict]:
 def _instance_dict(inst, template_cache: dict | None = None) -> dict:
     tid = str(inst.template_id)
     t = (template_cache or {}).get(tid) or repository.get_template(tid)
+    allowed_ui_modes = template_allowed_ui_modes(t) if t else ["terminal_only"]
+    default_ui_mode = template_default_ui_mode(t) if t else "terminal_only"
+    runtime_config = parse_runtime_config(t.runtime_config) if t else {}
     return {
         "id": str(inst.id),
         "template_id": tid,
         "template_name": t.name if t else "Unknown",
         "template_slug": t.slug if t else "",
         "template_icon": t.icon_path or "" if t else "",
+        "runtime_class": t.runtime_class if t else "",
+        "allowed_ui_modes": allowed_ui_modes,
+        "default_ui_mode": default_ui_mode,
+        "workflow": runtime_config.get("workflow") or runtime_config.get("stage_graph_json") or {},
         "plan_id": inst.plan_id,
         "workspace_type": inst.workspace_type,
         "workspace_user_id": str(inst.workspace_user_id) if inst.workspace_user_id else None,
@@ -390,6 +622,8 @@ def get_user_requests_in_org(user_id: str, org_id: str) -> list[dict]:
 
 
 def _template_dict(t) -> dict:
+    allowed_ui_modes = template_allowed_ui_modes(t)
+    default_ui_mode = template_default_ui_mode(t)
     return {
         "id": str(t.id),
         "slug": t.slug,
@@ -407,6 +641,9 @@ def _template_dict(t) -> dict:
         "sandbox_type": t.sandbox_type,
         "runtime_class": t.runtime_class,
         "interface_mode": t.interface_mode,
+        "allowed_ui_modes": _ui_mode_csv(allowed_ui_modes),
+        "allowed_ui_mode_values": allowed_ui_modes,
+        "default_ui_mode": default_ui_mode,
         "network_mode": t.network_mode,
         "allow_root": bool(t.allow_root),
         "read_only_root": bool(t.read_only_root),
@@ -436,6 +673,8 @@ def save_template(
     slug: str = "",
     runtime_class: str = "container",
     interface_mode: str = "terminal",
+    allowed_ui_modes: str | list[str] | None = None,
+    default_ui_mode: str = "terminal_only",
     network_mode: str = "disabled",
     allow_root: bool = False,
     max_timeout_hr: int = 2,
@@ -462,8 +701,12 @@ def save_template(
     if not _image_allowed(docker_image):
         return None, "Docker image is not in the configured runtime allowlist."
     runtime_class = runtime_class if runtime_class in RUNTIME_CLASSES else "container"
-    _modes = [m.strip() for m in interface_mode.split(",") if m.strip() in INTERFACE_MODES]
-    interface_mode = ",".join(_modes) if _modes else "terminal"
+    _modes = normalize_ui_modes(allowed_ui_modes if allowed_ui_modes is not None else interface_mode)
+    allowed_ui_modes_json = _ui_mode_json(_modes)
+    interface_mode = _ui_mode_csv(_modes)
+    default_ui_mode = normalize_ui_mode(default_ui_mode, _modes[0])
+    if default_ui_mode not in _modes:
+        default_ui_mode = _modes[0]
     network_mode = normalize_network_mode(
         network_mode if network_mode in NETWORK_MODES else "disabled"
     )
@@ -476,6 +719,16 @@ def save_template(
     pids_limit = max(32, min(4096, int(pids_limit or 256)))
     default_command = default_command.strip()
     parsed_runtime_config = parse_runtime_config(runtime_config)
+    ui_error = validate_ui_mode_config(
+        runtime_class=runtime_class,
+        allowed_ui_modes=_modes,
+        default_ui_mode=default_ui_mode,
+        default_command=default_command,
+        runtime_config=parsed_runtime_config,
+        require_publish_ready=False,
+    )
+    if ui_error:
+        return None, ui_error
     command_error = validate_command_args(
         default_command,
         [str(a) for a in parsed_runtime_config.get("required_args") or []],
@@ -514,6 +767,8 @@ def save_template(
         sandbox_type=sandbox_type,
         runtime_class=runtime_class,
         interface_mode=interface_mode,
+        allowed_ui_modes=allowed_ui_modes_json,
+        default_ui_mode=default_ui_mode,
         network_mode=network_mode,
         allow_root=allow_root,
         read_only_root=read_only_root,
@@ -563,6 +818,8 @@ def save_template(
         actor=f"user:{created_by_id}" if created_by_id else "system",
         detail=json.dumps({
             "runtime_class": runtime_class,
+            "allowed_ui_modes": _modes,
+            "default_ui_mode": default_ui_mode,
             "network_mode": network_mode,
             "allow_full_internet": allow_full_internet,
         }),
@@ -582,6 +839,17 @@ def set_template_status(template_id: str, status: str) -> str | None:
             return "Template not found."
         if (t.last_test_status or "untested") != "passed":
             return "Cannot activate: run a successful Test Launch first."
+        runtime_config = parse_runtime_config(t.runtime_config)
+        ui_error = validate_ui_mode_config(
+            runtime_class=t.runtime_class,
+            allowed_ui_modes=template_allowed_ui_modes(t),
+            default_ui_mode=template_default_ui_mode(t),
+            default_command=t.default_command or "",
+            runtime_config=runtime_config,
+            require_publish_ready=True,
+        )
+        if ui_error:
+            return f"Cannot activate: {ui_error}"
     repository.update_template(template_id, status=status)
     return None
 
@@ -926,7 +1194,18 @@ def can_open_instance_channel(
     if inst is None:
         return False
     if purpose in {"terminal", "fs"}:
-        return inst.status == "running" and bool(inst.runtime_id)
+        if inst.status != "running" or not bool(inst.runtime_id):
+            return False
+        template = repository.get_template(str(inst.template_id))
+        if template is None:
+            return False
+        allowed = set(template_allowed_ui_modes(template))
+        runtime_config = parse_runtime_config(template.runtime_config)
+        bg = _ui_feature_config(runtime_config, "background_run")
+        if purpose == "terminal":
+            return bool({"terminal_only", "lab_ui"} & allowed) or bool(bg.get("allow_terminal"))
+        if purpose == "fs":
+            return "lab_ui" in allowed or bool(bg.get("allow_filesystem"))
     return purpose == "monitor"
 
 
@@ -1017,6 +1296,135 @@ def get_instance_artifacts_for_view(
         }
         for item in repository.list_instance_artifacts(instance_id)
     ], None
+
+
+def _audit_event_dict(row) -> dict:
+    detail = {}
+    if row.detail:
+        try:
+            detail = json.loads(row.detail)
+        except ValueError:
+            detail = {"message": row.detail}
+    return {
+        "id": str(row.id),
+        "event": row.event,
+        "old_status": row.old_status,
+        "new_status": row.new_status,
+        "actor": row.actor or "",
+        "detail": detail,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def get_instance_events_for_view(
+    instance_id: str,
+    actor_user_id: str | None,
+    limit: int = 80,
+) -> tuple[list[dict] | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to view this instance."
+    events = repository.list_instance_audit_log(instance_id, limit=limit)
+    return [_audit_event_dict(row) for row in reversed(events)], None
+
+
+def get_instance_note_for_view(
+    instance_id: str,
+    actor_user_id: str | None,
+) -> tuple[dict | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to view this instance."
+    note = repository.get_instance_note(instance_id)
+    if note is None:
+        return {
+            "title": "Untitled Investigation",
+            "content": "",
+            "updated_at": None,
+        }, None
+    return {
+        "title": note.title or "Untitled Investigation",
+        "content": note.content or "",
+        "updated_at": note.updated_at,
+    }, None
+
+
+def save_instance_note_for_view(
+    instance_id: str,
+    actor_user_id: str | None,
+    *,
+    title: str,
+    content: str,
+) -> tuple[dict | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to edit notes for this instance."
+    note = repository.upsert_instance_note(
+        instance_id,
+        title=title.strip() or "Untitled Investigation",
+        content=content,
+        updated_by=actor_user_id,
+    )
+    return {
+        "title": note.title,
+        "content": note.content or "",
+        "updated_at": note.updated_at,
+    }, None
+
+
+def select_instance_ui_mode(
+    instance: dict,
+    requested_ui_mode: str | None = None,
+) -> tuple[str, list[str]]:
+    allowed = normalize_ui_modes(instance.get("allowed_ui_modes"), ("terminal_only",))
+    default = normalize_ui_mode(instance.get("default_ui_mode"), allowed[0])
+    if default not in allowed:
+        default = allowed[0]
+    requested = normalize_ui_mode(requested_ui_mode, default) if requested_ui_mode else default
+    return (requested if requested in allowed else default), allowed
+
+
+def get_instance_ui_context(
+    instance_id: str,
+    actor_user_id: str | None,
+    requested_ui_mode: str | None = None,
+) -> tuple[dict | None, str | None]:
+    instance, error = get_instance_for_view(instance_id, actor_user_id)
+    if error or instance is None:
+        return None, error or "Instance not found."
+    artifacts, artifacts_error = get_instance_artifacts_for_view(instance_id, actor_user_id)
+    if artifacts_error:
+        return None, artifacts_error
+    events, events_error = get_instance_events_for_view(instance_id, actor_user_id)
+    if events_error:
+        return None, events_error
+    notes, notes_error = get_instance_note_for_view(instance_id, actor_user_id)
+    if notes_error:
+        return None, notes_error
+    template = repository.get_template(instance["template_id"])
+    plan_row = repository.get_plan(instance["plan_id"])
+    runtime_config = parse_runtime_config(template.runtime_config if template else None)
+    ui_mode, allowed_ui_modes = select_instance_ui_mode(instance, requested_ui_mode)
+    workflow = runtime_config.get("workflow") or runtime_config.get("stage_graph_json") or {}
+    return {
+        "instance": instance,
+        "template": _template_dict(template) if template else None,
+        "plan": _plan_dict(plan_row) if plan_row else {
+            "id": instance.get("plan_id", ""),
+            "name": instance.get("plan_id", ""),
+            "ind_vcpu": instance.get("allocated_vcpu") or 0,
+            "ind_ram_gb": instance.get("allocated_ram_gb") or 0,
+            "ind_disk_gb": instance.get("allocated_disk_gb") or 0,
+        },
+        "ui_mode": ui_mode,
+        "ui_mode_label": UI_MODE_LABELS.get(ui_mode, ui_mode),
+        "allowed_ui_modes": allowed_ui_modes,
+        "ui_mode_labels": UI_MODE_LABELS,
+        "runtime_config": runtime_config,
+        "ui_config": runtime_config.get("ui") if isinstance(runtime_config.get("ui"), dict) else {},
+        "workflow": workflow,
+        "workflow_next_stage": _workflow_next_stage_for_ui_mode(workflow, ui_mode),
+        "artifacts": artifacts or [],
+        "events": events or [],
+        "notes": notes or {},
+    }, None
 
 
 def get_artifact_for_download(

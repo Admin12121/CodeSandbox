@@ -1,0 +1,36 @@
+{% import "components/ui/badge.html" as badge %}
+
+{% set desktop_cfg = (ui_config.desktop_gui if ui_config and ui_config.desktop_gui else {}) %}
+{% set gui_url = desktop_cfg.novnc_url or desktop_cfg.gui_url or runtime_config.novnc_url or runtime_config.gui_url %}
+{% set gui_port = desktop_cfg.gui_port or runtime_config.gui_port %}
+
+<div class="flex h-[calc(100vh-2.85rem)] flex-col bg-background">
+  <div class="flex h-10 shrink-0 items-center justify-between border-b px-3 text-xs">
+    <div class="min-w-0">
+      <span class="font-medium">Desktop GUI</span>
+      <span class="ml-2 text-muted-foreground">{{ instance.template_name }}</span>
+    </div>
+    {{ badge.badge(instance.status | replace("_", " ") | title, variant=("outline" if instance.status == "running" else "secondary")) }}
+  </div>
+
+  {% if gui_url %}
+    <iframe
+      src="{{ gui_url }}"
+      title="Desktop GUI"
+      class="min-h-0 flex-1 border-0 bg-black"
+      allow="clipboard-read; clipboard-write; fullscreen"
+    ></iframe>
+  {% else %}
+    <div class="grid min-h-0 flex-1 place-items-center p-6">
+      <div class="max-w-lg rounded-xl border bg-card p-6 text-center">
+        <h1 class="text-lg font-semibold">Desktop GUI is not configured</h1>
+        <p class="mt-2 text-sm text-muted-foreground">
+          Desktop GUI requires a noVNC/gui_url or gui_port in runtime.json. This mode is separate from Lab UI.
+        </p>
+        {% if gui_port %}
+          <p class="mt-3 font-mono text-xs text-muted-foreground">Configured GUI port: {{ gui_port }}</p>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>

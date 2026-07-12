@@ -43,6 +43,11 @@
 </style>
 
 <div id="sandbox-ui" class="flex flex-col h-[calc(100vh-2.85rem)]">
+  {% if lab_preview %}
+    <div class="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200">
+      Development-only Lab UI preview. This route uses mock filesystem/editor/terminal data; real sandbox sessions render through /instances/&lt;instance_id&gt;.
+    </div>
+  {% endif %}
 
   <div class="flex-1 min-h-0 overflow-hidden">
   {% call resizable.resizable_panel_group(orientation="horizontal", class="rounded-xl") %}
