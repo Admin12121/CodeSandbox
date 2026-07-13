@@ -578,7 +578,6 @@ class WorkerApp:
         self._reattach_running()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         client = redis.from_url(REDIS_URL, decode_responses=True)
-        log.info("worker starting redis=%s nats=%s worker_id=%s", REDIS_URL, NATS_URL, WORKER_ID)
         while self.running:
             try:
                 result = client.brpop(QUEUE_KEY, timeout=2)

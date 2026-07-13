@@ -2214,10 +2214,14 @@ def _transaction_dict(tx) -> dict:
     return {
         "id": str(tx.id),
         "type": tx.type,
+        "type_label": (tx.type or "").replace("_", " ").title(),
         "amount": str(amount),
         "absolute_amount": str(abs(amount)),
         "is_credit": amount >= 0,
         "description": tx.description or "",
+        "reference": tx.reference or "",
+        "provider": tx.provider or "internal",
+        "status": "failed" if tx.type == "failed_payment" else "completed",
         "instance_id": str(tx.instance_id) if tx.instance_id else None,
         "created_at": tx.created_at,
     }

@@ -16,12 +16,13 @@ from codesandbox.features.sandbox import repository as sandbox_repo
 from codesandbox.features.sandbox.models import (
     Balance,
     BalanceTransaction,
+    SandboxAuditLog,
     SandboxInstance,
     TopupIntent,
 )
 
 from . import repository
-from .models import Coupon, CreditGrant, UsageCharge
+from .models import Coupon, CreditGrant, FinanceAdjustment, UsageCharge
 
 
 MONEY = Decimal("0.0001")
@@ -966,8 +967,12 @@ def _compute_stats(charges: list[UsageCharge]) -> tuple[dict[str, dict], dict]:
         "ram_gb_hours": Decimal("0"),
         "disk_gb_hours": Decimal("0"),
     }
+    instance_ids = sorted({str(c.instance_id) for c in charges if c.instance_id})
+    instances: dict[str, SandboxInstance] = {}
+    if instance_ids:
+        instances = {str(i.id): i for i in SandboxInstance.objects.filter(id__in=instance_ids).all()}
     for charge in charges:
-        inst = SandboxInstance.objects.filter(id=charge.instance_id).first() if charge.instance_id else None
+        inst = instances.get(str(charge.instance_id)) if charge.instance_id else None
         hours = Decimal(int(charge.billable_seconds or 0)) / Decimal(3600)
         vcpu_hours = Decimal(int(inst.allocated_vcpu or 0)) * hours if inst else Decimal("0")
         ram_gb_hours = Decimal(int(inst.allocated_ram_gb or 0)) * hours if inst else Decimal("0")
@@ -1397,26 +1402,46 @@ def _plan_label(plan_id: str | None) -> str:
 
 
 def _usage_charge_for_transaction(tx: BalanceTransaction) -> UsageCharge | None:
-    charge = repository.list_usage_charges(limit=None)
-    for item in charge:
-        if item.balance_transaction_id and str(item.balance_transaction_id) == str(tx.id):
-            return item
+    charge = UsageCharge.objects.filter(balance_transaction_id=str(tx.id)).first()
+    if charge:
+        return charge
     if tx.instance_id:
         return repository.get_usage_charge_by_instance(str(tx.instance_id))
     return None
 
 
-def _adjustment_for_transaction(tx: BalanceTransaction):
-    for item in repository.list_adjustments(limit=None):
-        if item.balance_transaction_id and str(item.balance_transaction_id) == str(tx.id):
-            return item
-    return None
+def _adjustment_for_transaction(tx: BalanceTransaction) -> FinanceAdjustment | None:
+    return FinanceAdjustment.objects.filter(balance_transaction_id=str(tx.id)).first()
 
 
 def _topup_for_transaction(tx: BalanceTransaction) -> TopupIntent | None:
     if not tx.topup_intent_id:
         return None
     return TopupIntent.objects.filter(id=tx.topup_intent_id).first()
+
+
+def _credit_grant_for_transaction(tx: BalanceTransaction) -> CreditGrant | None:
+    return CreditGrant.objects.filter(balance_transaction_id=str(tx.id)).first()
+
+
+def _user_label(user_id) -> str | None:
+    if not user_id:
+        return None
+    user = identity_repo.find_user_by_id(str(user_id))
+    return (user.email or user.name) if user else None
+
+
+def _refund_actor_label(tx: BalanceTransaction) -> str | None:
+    # A refund's BalanceTransaction row doesn't store who issued it — only
+    # the audit trail does: refund_usage_charge logs finance.refund.issued
+    # with actor="user:<id>" and this transaction's id inside the compact
+    # JSON detail payload.
+    needle = f'"transaction_id":"{tx.id}"'
+    for entry in SandboxAuditLog.objects.filter(event="finance.refund.issued").all():
+        actor = str(entry.actor or "")
+        if needle in (entry.detail or "") and actor.startswith("user:"):
+            return _user_label(actor[len("user:"):])
+    return None
 
 
 def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
@@ -1503,10 +1528,16 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
             "refund": str(absolute),
             "total": str(absolute),
             "items": [{"label": "Usage charge refund", "quantity": "1", "rate": str(absolute), "amount": str(absolute)}],
-            "meta": [("Original transaction reference", tx.reference or ""), ("Reason", tx.description or ""), ("Refunded by", tx.provider or "finance")],
+            "meta": [
+                ("Original transaction reference", tx.reference or ""),
+                ("Reason", tx.description or ""),
+                ("Refunded by", _refund_actor_label(tx) or tx.provider or "finance"),
+            ],
         })
     elif tx.type in {"adjustment", "credit_grant"}:
         adjustment = _adjustment_for_transaction(tx)
+        grant = _credit_grant_for_transaction(tx) if tx.type == "credit_grant" else None
+        actor_id = grant.granted_by if grant else (adjustment.created_by if adjustment else None)
         direction = "Add credit" if amount >= 0 else "Deduct balance"
         receipt.update({
             "title": "Internal Adjustment Note" if tx.type == "adjustment" else "Credit Grant Receipt",
@@ -1514,8 +1545,8 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
             "items": [{"label": direction, "quantity": "1", "rate": str(absolute), "amount": str(absolute)}],
             "meta": [
                 ("Direction", direction),
-                ("Reason", (adjustment.reason if adjustment else tx.description) or ""),
-                ("Adjusted by", tx.provider or "finance"),
+                ("Reason", ((grant.reason if grant else None) or (adjustment.reason if adjustment else None) or tx.description) or ""),
+                ("Adjusted by", _user_label(actor_id) or tx.provider or "finance"),
             ],
         })
     elif tx.type == "failed_payment":
@@ -1550,10 +1581,21 @@ def ledger_console(
         rows = [r for r in rows if r.type == tx_type]
     if search:
         q = search.lower().strip()
+        # One label lookup per distinct entity, not per transaction — this
+        # branch walks every transaction in range, and _entity_label is a DB
+        # query each time it's called.
+        label_cache: dict[tuple[str, str], str] = {}
+
+        def cached_label(r) -> str:
+            key = (r.entity_type, str(r.entity_id))
+            if key not in label_cache:
+                label_cache[key] = _entity_label(*key).lower()
+            return label_cache[key]
+
         rows = [
             r for r in rows
             if q in r.type.lower()
-            or q in _entity_label(r.entity_type, str(r.entity_id)).lower()
+            or q in cached_label(r)
             or q in str(r.reference or "").lower()
             or q in str(r.description or "").lower()
         ]
@@ -1601,9 +1643,9 @@ def coupon_redemption_dict(redemption) -> dict:
     }
 
 
-def entity_options(limit: int = 30) -> list[dict]:
-    users, _ = identity_repo.list_users(page=1, page_size=limit)
-    orgs, _ = org_repo.list_organizations(page=1, page_size=limit)
+def entity_options(limit: int = 30, search: str | None = None) -> list[dict]:
+    users, _ = identity_repo.list_users(search=search, page=1, page_size=limit)
+    orgs, _ = org_repo.list_organizations(search=search, page=1, page_size=limit)
     options = [
         {"type": "user", "id": str(u.id), "label": u.email or u.name, "description": u.name or "User"}
         for u in users

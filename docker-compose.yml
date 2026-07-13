@@ -1,76 +1,168 @@
-services:
+name: ${COMPOSE_PROJECT_NAME:?Set COMPOSE_PROJECT_NAME in .env}
 
-  # ── Reverse proxy ─────────────────────────────────────────────────────────
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:?Set LOG_MAX_SIZE in .env}
+    max-file: ${LOG_MAX_FILES:?Set LOG_MAX_FILES in .env}
+
+x-python-runtime-env: &python-runtime-env
+  UV_PROJECT_ENVIRONMENT: ${UV_PROJECT_ENVIRONMENT:?Set UV_PROJECT_ENVIRONMENT in .env}
+  UV_NO_SYNC: ${UV_NO_SYNC:?Set UV_NO_SYNC in .env}
+  PYTHONPATH: ${PYTHONPATH:?Set PYTHONPATH in .env}
+  PYTHONDONTWRITEBYTECODE: ${PYTHONDONTWRITEBYTECODE:?Set PYTHONDONTWRITEBYTECODE in .env}
+  PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:?Set PYTHONUNBUFFERED in .env}
+
+x-app-environment: &app-environment
+  <<: *python-runtime-env
+  ENVIRONMENT: ${ENVIRONMENT:?Set ENVIRONMENT in .env}
+  FLASK_DEBUG: ${FLASK_DEBUG:?Set FLASK_DEBUG in .env}
+  SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+  DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+  REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env}
+  APP_URL: ${APP_URL:?Set APP_URL in .env}
+  CONTROL_PLANE_INTERNAL_URL: ${CONTROL_PLANE_INTERNAL_URL:?Set CONTROL_PLANE_INTERNAL_URL in .env}
+  SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:?Set SESSION_COOKIE_NAME in .env}
+  SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:?Set SESSION_TTL_HOURS in .env}
+  COOKIE_SECURE: ${COOKIE_SECURE:?Set COOKIE_SECURE in .env}
+  WORKER_CALLBACK_TOKEN_TTL_SECONDS: ${WORKER_CALLBACK_TOKEN_TTL_SECONDS:?Set WORKER_CALLBACK_TOKEN_TTL_SECONDS in .env}
+  SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:?Set SANDBOX_JOB_SIGNING_KEY in .env}
+  SANDBOX_ALLOWED_IMAGES: ${SANDBOX_ALLOWED_IMAGES:?Set SANDBOX_ALLOWED_IMAGES in .env}
+  SANDBOX_REQUIRE_IMAGE_ALLOWLIST: ${SANDBOX_REQUIRE_IMAGE_ALLOWLIST:?Set SANDBOX_REQUIRE_IMAGE_ALLOWLIST in .env}
+  SANDBOX_PROVISIONING_STALE_SECONDS: ${SANDBOX_PROVISIONING_STALE_SECONDS:?Set SANDBOX_PROVISIONING_STALE_SECONDS in .env}
+  SANDBOX_HEARTBEAT_STALE_SECONDS: ${SANDBOX_HEARTBEAT_STALE_SECONDS:?Set SANDBOX_HEARTBEAT_STALE_SECONDS in .env}
+  SANDBOX_STOPPING_STALE_SECONDS: ${SANDBOX_STOPPING_STALE_SECONDS:?Set SANDBOX_STOPPING_STALE_SECONDS in .env}
+  SANDBOX_CLEANUP_STALE_SECONDS: ${SANDBOX_CLEANUP_STALE_SECONDS:?Set SANDBOX_CLEANUP_STALE_SECONDS in .env}
+  SANDBOX_RECONCILE_INTERVAL_SECONDS: ${SANDBOX_RECONCILE_INTERVAL_SECONDS:?Set SANDBOX_RECONCILE_INTERVAL_SECONDS in .env}
+  WORKER_OFFLINE_TIMEOUT_SECONDS: ${WORKER_OFFLINE_TIMEOUT_SECONDS:?Set WORKER_OFFLINE_TIMEOUT_SECONDS in .env}
+  SANDBOX_ARTIFACT_RETENTION_DAYS: ${SANDBOX_ARTIFACT_RETENTION_DAYS:?Set SANDBOX_ARTIFACT_RETENTION_DAYS in .env}
+  SANDBOX_MAX_UPLOAD_BYTES: ${SANDBOX_MAX_UPLOAD_BYTES:?Set SANDBOX_MAX_UPLOAD_BYTES in .env}
+  BILLING_DEV_TOPUP_ENABLED: ${BILLING_DEV_TOPUP_ENABLED:?Set BILLING_DEV_TOPUP_ENABLED in .env}
+  S3_ENDPOINT: ${S3_ENDPOINT:?Set S3_ENDPOINT in .env}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+  S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env}
+  S3_ARTIFACT_BUCKET: ${S3_ARTIFACT_BUCKET:?Set S3_ARTIFACT_BUCKET in .env}
+  NATS_URL: ${NATS_URL:?Set NATS_URL in .env}
+  NATS_USER: ${NATS_CONTROL_PLANE_USER:?Set NATS_CONTROL_PLANE_USER in .env}
+  NATS_PASSWORD: ${NATS_CONTROL_PLANE_PASSWORD:?Set NATS_CONTROL_PLANE_PASSWORD in .env}
+  RESEND_APIKEY: ${RESEND_APIKEY:-}
+  FROM_EMAIL: ${FROM_EMAIL:?Set FROM_EMAIL in .env}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  ESEWA_PRODUCT_CODE: ${ESEWA_PRODUCT_CODE:?Set ESEWA_PRODUCT_CODE in .env}
+  ESEWA_SECRET_KEY: ${ESEWA_SECRET_KEY:?Set ESEWA_SECRET_KEY in .env}
+  ESEWA_FORM_URL: ${ESEWA_FORM_URL:?Set ESEWA_FORM_URL in .env}
+  ESEWA_STATUS_URL: ${ESEWA_STATUS_URL:?Set ESEWA_STATUS_URL in .env}
+  NRB_FOREX_URL: ${NRB_FOREX_URL:?Set NRB_FOREX_URL in .env}
+  NRB_FOREX_CACHE_TTL_SECONDS: ${NRB_FOREX_CACHE_TTL_SECONDS:?Set NRB_FOREX_CACHE_TTL_SECONDS in .env}
+  FINANCE_COST_PER_VCPU_HOUR: ${FINANCE_COST_PER_VCPU_HOUR:?Set FINANCE_COST_PER_VCPU_HOUR in .env}
+  FINANCE_COST_PER_RAM_GB_HOUR: ${FINANCE_COST_PER_RAM_GB_HOUR:?Set FINANCE_COST_PER_RAM_GB_HOUR in .env}
+  FINANCE_COST_PER_DISK_GB_HOUR: ${FINANCE_COST_PER_DISK_GB_HOUR:?Set FINANCE_COST_PER_DISK_GB_HOUR in .env}
+
+x-app-build: &app-build
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+
+x-app-source-volumes: &app-source-volumes
+  - ./src:/app/src:ro
+  - ./packages:/app/packages:ro
+  - ./migrations:/app/migrations:ro
+  - ./seeds:/app/seeds:ro
+  - ./seed.py:/app/seed.py:ro
+
+x-bootstrap-source-volumes: &bootstrap-source-volumes
+  - ./src:/app/src:ro
+  - ./packages:/app/packages:ro
+  - ./migrations:/source/migrations:ro
+  - ./seeds:/app/seeds:ro
+  - ./seed.py:/app/seed.py:ro
+
+services:
   nginx:
-    image: nginx:alpine
-    container_name: codesandbox-nginx
+    image: ${NGINX_IMAGE:?Set NGINX_IMAGE in .env}
     ports:
-      - "80:80"
+      - "127.0.0.1:${HTTP_PORT:?Set HTTP_PORT in .env}:80"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - web
+      - storage
     depends_on:
       app:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m
+      - /var/run:size=8m
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/nginx-health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
+    logging: *default-logging
 
-  # ── Flask application ──────────────────────────────────────────────────────
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-      network: host
-    container_name: codesandbox-app
+  bootstrap:
+    <<: *app-build
     command:
       - /bin/sh
-      - -c
+      - -ec
       - |
-        set -e
-        # `makemigrations` is a manual, human-reviewed dev step (see
-        # docs/runtime-architecture.md) — it must never run automatically
-        # at container start, in dev or prod. Only apply already-committed,
-        # reviewed migrations here.
-        uv run nexorm migrate
-        uv run python seed.py
-        exec uv run uvicorn codesandbox.asgi:app --host 0.0.0.0 --port 5000 --reload
-    volumes:
-      - .:/app
+        is_true() {
+          case "$${1:-}" in
+            1|true|TRUE|True|yes|YES|Yes|on|ON|On) return 0 ;;
+            *) return 1 ;;
+          esac
+        }
+
+        if ! is_true "$${AUTO:-true}"; then
+          echo "[bootstrap] AUTO=false: skipping migration and seed"
+          exit 0
+        fi
+
+        echo "[bootstrap] copying root migrations into writable tmpfs"
+        find /app/migrations -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        cp -R /source/migrations/. /app/migrations/
+        find /app/migrations -type d -name __pycache__ -prune -exec rm -rf {} +
+        find /app/migrations -type f -name '*.pyc' -delete
+
+        echo "[bootstrap] running pending migrations"
+        cd /app
+        /opt/codesandbox/.venv/bin/nexorm migrate
+
+        : "$${SEED_ADMIN_EMAIL:?Set SEED_ADMIN_EMAIL when AUTO=true}"
+        : "$${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD when AUTO=true}"
+        : "$${SEED_ADMIN_NAME:?Set SEED_ADMIN_NAME when AUTO=true}"
+
+        echo "[bootstrap] running seed"
+        /opt/codesandbox/.venv/bin/python -u seed.py
+
+        echo "[bootstrap] completed successfully"
     environment:
-      UV_PROJECT_ENVIRONMENT: /opt/codesandbox/.venv
-      # The image already has a complete venv (Dockerfile.dev installs the
-      # full project, not just deps, at build time with real network
-      # access). Without this, `uv run`'s startup sync check treats the
-      # bind-mounted src/ (a different inode/mtime set than what was in the
-      # build context) as reason to reinstall the editable local packages —
-      # which then needs network the running container doesn't have. This
-      # makes uv trust the image's venv as-is; re-run `docker compose build
-      # app` after any pyproject.toml/uv.lock change instead.
-      UV_NO_SYNC: "1"
-      DATABASE_URL: mysql://codesandbox:codesandbox@mysql:3306/codesandbox
-      REDIS_URL: redis://redis:6379/0
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
-      S3_BUCKET: codesandbox
-      S3_ARTIFACT_BUCKET: codesandbox-artifacts
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
-      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:-dev-sandbox-job-signing-key-change-me}
-      CONTROL_PLANE_INTERNAL_URL: http://app:5000
-      SESSION_COOKIE_NAME: cs_session
-      SESSION_TTL_HOURS: "24"
-      WORKER_CALLBACK_TOKEN_TTL_SECONDS: "900"
-      # Public, browser-facing base URL — used only for user-visible links
-      # (email verification, OAuth redirect_uri, org invites, Stripe/eSewa
-      # return URLs). Never the internal container hostname: every one of
-      # its call sites builds a URL the user's own browser must reach.
-      # Container-to-container calls (e.g. the worker's callback) use their
-      # own CONTROL_PLANE_URL, not this.
-      APP_URL: http://localhost
-      NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_CONTROL_PLANE_USER:-control-plane}
-      NATS_PASSWORD: ${NATS_CONTROL_PLANE_PASSWORD:-dev-control-plane-nats-change-me}
-      ENVIRONMENT: development
-      # Dev only — enables Jinja2 template auto-reload (see app.py). Do NOT set in prod.
-      FLASK_DEBUG: "1"
+      <<: *app-environment
+      AUTO: ${AUTO:-true}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
+    volumes: *bootstrap-source-volumes
+    networks:
+      - database
+      - cache
+      - messaging
+      - storage
     depends_on:
       mysql:
         condition: service_healthy
@@ -79,108 +171,166 @@ services:
       minio:
         condition: service_healthy
       nats:
-        condition: service_started
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /app/migrations:size=64m,mode=0755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    logging: *default-logging
+
+  app:
+    <<: *app-build
+    command:
+      - /opt/codesandbox/.venv/bin/uvicorn
+      - codesandbox.asgi:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+      - --reload
+      - --reload-dir
+      - /app/src
+      - --reload-dir
+      - /app/packages
+    environment: *app-environment
+    volumes: *app-source-volumes
+    networks:
+      web:
+        gw_priority: 1
+      database: {}
+      cache: {}
+      messaging: {}
+      storage: {}
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test:
         - CMD
-        - python
+        - /opt/codesandbox/.venv/bin/python
         - -c
         - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=3).read()"
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-    restart: unless-stopped
-
-  # ── MySQL ──────────────────────────────────────────────────────────────────
-  mysql:
-    image: mysql:9
-    container_name: codesandbox-mysql
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: codesandbox
-      MYSQL_USER: codesandbox
-      MYSQL_PASSWORD: codesandbox
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ucodesandbox", "-pcodesandbox"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 45s
     restart: unless-stopped
+    stop_grace_period: 20s
+    logging: *default-logging
 
-  # ── Redis ──────────────────────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: codesandbox-redis
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # ── Sandbox worker ─────────────────────────────────────────────────────────
-  # DEVELOPMENT ONLY below: SANDBOX_DOCKER_BACKEND=local_socket + the bind-mounted
-  # /var/run/docker.sock give this container root-equivalent control of the
-  # host's Docker daemon. Never ship this to production — see
-  # docker-compose.prod.yml and docs/runtime-architecture.md for the
-  # SANDBOX_DOCKER_BACKEND=remote_tls setup, which the worker refuses to
-  # bypass in production (ENVIRONMENT=production) unless you explicitly set
-  # ALLOW_UNSAFE_DOCKER_SOCKET=true.
-  worker:
-    build:
-      context: ./worker
-    container_name: codesandbox-worker
+  migrate:
+    <<: *app-build
+    profiles: ["tools"]
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        find /app/migrations -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        cp -R /source/migrations/. /app/migrations/
+        find /app/migrations -type d -name __pycache__ -prune -exec rm -rf {} +
+        find /app/migrations -type f -name '*.pyc' -delete
+        cd /app
+        exec /opt/codesandbox/.venv/bin/nexorm migrate
     environment:
-      ENVIRONMENT: development
-      WORKER_ID: worker-1
-      REDIS_URL: redis://redis:6379/0
-      CONTROL_PLANE_URL: http://app:5000
-      NATS_URL: nats://nats:4222
-      NATS_USER: ${NATS_WORKER_USER:-worker}
-      NATS_PASSWORD: ${NATS_WORKER_PASSWORD:-dev-worker-nats-change-me}
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: minioadmin
-      S3_SECRET_KEY: minioadmin
-      S3_ARTIFACT_BUCKET: codesandbox-artifacts
-      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:-dev-sandbox-job-signing-key-change-me}
-      SANDBOX_ALLOWED_IMAGES: ${SANDBOX_ALLOWED_IMAGES:-docker.io/admin12121/decompile:stable,ubuntu:22.04,busybox:1.36}
-      SANDBOX_REQUIRE_IMAGE_ALLOWLIST: ${SANDBOX_REQUIRE_IMAGE_ALLOWLIST:-false}
-      SANDBOX_VOLUME_INIT_IMAGE: busybox:1.36
-      SANDBOX_DOCKER_BACKEND: local_socket
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      <<: *python-runtime-env
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+    volumes: *bootstrap-source-volumes
+    networks:
+      - database
     depends_on:
+      mysql:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+      - /app/migrations:size=64m,mode=0755
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    logging: *default-logging
+
+  seed:
+    <<: *app-build
+    profiles: ["tools"]
+    command: ["/opt/codesandbox/.venv/bin/python", "-u", "seed.py"]
+    environment:
+      <<: *app-environment
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?Set SEED_ADMIN_EMAIL in .env}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:?Set SEED_ADMIN_NAME in .env}
+    volumes: *app-source-volumes
+    networks:
+      - database
+      - cache
+      - messaging
+      - storage
+    depends_on:
+      mysql:
+        condition: service_healthy
       redis:
         condition: service_healthy
-      nats:
-        condition: service_started
       minio:
         condition: service_healthy
-      app:
+      nats:
         condition: service_healthy
-    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    logging: *default-logging
 
   reconciler:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-      network: host
-    command: ["uv", "run", "python", "-u", "-m", "codesandbox.reconciler"]
-    volumes:
-      - .:/app
+    <<: *app-build
+    command: ["/opt/codesandbox/.venv/bin/python", "-u", "-m", "codesandbox.reconciler"]
     environment:
-      UV_PROJECT_ENVIRONMENT: /opt/codesandbox/.venv
-      UV_NO_SYNC: "1"
-      DATABASE_URL: mysql://codesandbox:codesandbox@mysql:3306/codesandbox
-      REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
-      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:-dev-sandbox-job-signing-key-change-me}
-      CONTROL_PLANE_INTERNAL_URL: http://app:5000
+      <<: *python-runtime-env
+      ENVIRONMENT: ${ENVIRONMENT:?Set ENVIRONMENT in .env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env}
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:?Set SANDBOX_JOB_SIGNING_KEY in .env}
+      CONTROL_PLANE_INTERNAL_URL: ${CONTROL_PLANE_INTERNAL_URL:?Set CONTROL_PLANE_INTERNAL_URL in .env}
+      SANDBOX_PROVISIONING_STALE_SECONDS: ${SANDBOX_PROVISIONING_STALE_SECONDS:?Set SANDBOX_PROVISIONING_STALE_SECONDS in .env}
+      SANDBOX_HEARTBEAT_STALE_SECONDS: ${SANDBOX_HEARTBEAT_STALE_SECONDS:?Set SANDBOX_HEARTBEAT_STALE_SECONDS in .env}
+      SANDBOX_STOPPING_STALE_SECONDS: ${SANDBOX_STOPPING_STALE_SECONDS:?Set SANDBOX_STOPPING_STALE_SECONDS in .env}
+      SANDBOX_CLEANUP_STALE_SECONDS: ${SANDBOX_CLEANUP_STALE_SECONDS:?Set SANDBOX_CLEANUP_STALE_SECONDS in .env}
+      SANDBOX_RECONCILE_INTERVAL_SECONDS: ${SANDBOX_RECONCILE_INTERVAL_SECONDS:?Set SANDBOX_RECONCILE_INTERVAL_SECONDS in .env}
+      WORKER_OFFLINE_TIMEOUT_SECONDS: ${WORKER_OFFLINE_TIMEOUT_SECONDS:?Set WORKER_OFFLINE_TIMEOUT_SECONDS in .env}
+    volumes:
+      - ./src:/app/src:ro
+      - ./packages:/app/packages:ro
+    networks:
+      - database
+      - cache
     depends_on:
       mysql:
         condition: service_healthy
@@ -188,39 +338,241 @@ services:
         condition: service_healthy
       app:
         condition: service_healthy
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
 
-  # ── NATS messaging ─────────────────────────────────────────────────────────
-  nats:
-    image: nats:2-alpine
-    container_name: codesandbox-nats
-    command: ["-js", "-c", "/etc/nats/nats-server.conf"]
+  docker-engine:
+    image: ${DOCKER_DIND_IMAGE:?Set DOCKER_DIND_IMAGE in .env}
+    hostname: docker-engine
+    privileged: true
     environment:
-      NATS_CONTROL_PLANE_USER: ${NATS_CONTROL_PLANE_USER:-control-plane}
-      NATS_CONTROL_PLANE_PASSWORD: ${NATS_CONTROL_PLANE_PASSWORD:-dev-control-plane-nats-change-me}
-      NATS_WORKER_USER: ${NATS_WORKER_USER:-worker}
-      NATS_WORKER_PASSWORD: ${NATS_WORKER_PASSWORD:-dev-worker-nats-change-me}
+      DOCKER_TLS_CERTDIR: /certs
+      DOCKER_DRIVER: overlay2
+    volumes:
+      - docker_engine_data:/var/lib/docker
+      - docker_engine_certs:/certs
+      - docker_engine_client_certs:/certs/client
+    networks:
+      sandbox_runtime: {}
+      runtime_egress:
+        gw_priority: 1
+    healthcheck:
+      test: ["CMD-SHELL", "docker info >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 45s
+    logging: *default-logging
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:?Set ENVIRONMENT in .env}
+      LOG_LEVEL: ${LOG_LEVEL:?Set LOG_LEVEL in .env}
+      WORKER_ID: ${WORKER_ID:?Set WORKER_ID in .env}
+      RUNTIME_NODE_ID: ${RUNTIME_NODE_ID:?Set RUNTIME_NODE_ID in .env}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env}
+      CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:?Set CONTROL_PLANE_URL in .env}
+      NATS_URL: ${NATS_URL:?Set NATS_URL in .env}
+      NATS_USER: ${NATS_WORKER_USER:?Set NATS_WORKER_USER in .env}
+      NATS_PASSWORD: ${NATS_WORKER_PASSWORD:?Set NATS_WORKER_PASSWORD in .env}
+      S3_ENDPOINT: ${S3_ENDPOINT:?Set S3_ENDPOINT in .env}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+      S3_ARTIFACT_BUCKET: ${S3_ARTIFACT_BUCKET:?Set S3_ARTIFACT_BUCKET in .env}
+      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:?Set SANDBOX_JOB_SIGNING_KEY in .env}
+      SANDBOX_JOB_MAX_AGE_SECONDS: ${SANDBOX_JOB_MAX_AGE_SECONDS:?Set SANDBOX_JOB_MAX_AGE_SECONDS in .env}
+      SANDBOX_ALLOWED_IMAGES: ${SANDBOX_ALLOWED_IMAGES:?Set SANDBOX_ALLOWED_IMAGES in .env}
+      SANDBOX_REQUIRE_IMAGE_ALLOWLIST: ${SANDBOX_REQUIRE_IMAGE_ALLOWLIST:?Set SANDBOX_REQUIRE_IMAGE_ALLOWLIST in .env}
+      SANDBOX_VOLUME_INIT_IMAGE: ${SANDBOX_VOLUME_INIT_IMAGE:?Set SANDBOX_VOLUME_INIT_IMAGE in .env}
+      SANDBOX_RESTRICTED_NETWORK: ${SANDBOX_RESTRICTED_NETWORK:?Set SANDBOX_RESTRICTED_NETWORK in .env}
+      SANDBOX_DEFAULT_USER: ${SANDBOX_DEFAULT_USER:?Set SANDBOX_DEFAULT_USER in .env}
+      SANDBOX_MAX_ARTIFACT_BYTES: ${SANDBOX_MAX_ARTIFACT_BYTES:?Set SANDBOX_MAX_ARTIFACT_BYTES in .env}
+      SANDBOX_WORKER_TOTAL_VCPU: ${SANDBOX_WORKER_TOTAL_VCPU:?Set SANDBOX_WORKER_TOTAL_VCPU in .env}
+      SANDBOX_WORKER_TOTAL_RAM_GB: ${SANDBOX_WORKER_TOTAL_RAM_GB:?Set SANDBOX_WORKER_TOTAL_RAM_GB in .env}
+      SANDBOX_WORKER_TOTAL_DISK_GB: ${SANDBOX_WORKER_TOTAL_DISK_GB:?Set SANDBOX_WORKER_TOTAL_DISK_GB in .env}
+      SANDBOX_WORKER_HEARTBEAT_SECONDS: ${SANDBOX_WORKER_HEARTBEAT_SECONDS:?Set SANDBOX_WORKER_HEARTBEAT_SECONDS in .env}
+      SANDBOX_DOCKER_BACKEND: ${SANDBOX_DOCKER_BACKEND:?Set SANDBOX_DOCKER_BACKEND in .env}
+      ALLOW_UNSAFE_DOCKER_SOCKET: ${ALLOW_UNSAFE_DOCKER_SOCKET:?Set ALLOW_UNSAFE_DOCKER_SOCKET in .env}
+      DOCKER_HOST: ${DOCKER_HOST:?Set DOCKER_HOST in .env}
+      DOCKER_TLS_VERIFY: ${DOCKER_TLS_VERIFY:?Set DOCKER_TLS_VERIFY in .env}
+      DOCKER_CERT_PATH: ${DOCKER_CERT_PATH:?Set DOCKER_CERT_PATH in .env}
+    volumes:
+      - docker_engine_client_certs:/certs/client:ro
+    networks:
+      cache: {}
+      messaging: {}
+      storage: {}
+      worker_egress:
+        gw_priority: 1
+      sandbox_runtime: {}
+    depends_on:
+      docker-engine:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
+
+  mysql:
+    image: ${MYSQL_IMAGE:?Set MYSQL_IMAGE in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-name-resolve
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set MYSQL_DATABASE in .env}
+      MYSQL_USER: ${MYSQL_USER:?Set MYSQL_USER in .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - database
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 45s
+    logging: *default-logging
+
+  redis:
+    image: ${REDIS_IMAGE:?Set REDIS_IMAGE in .env}
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --requirepass
+      - ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    volumes:
+      - redis_data:/data
+    networks:
+      - cache
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 20s
+    logging: *default-logging
+
+  nats:
+    image: ${NATS_IMAGE:?Set NATS_IMAGE in .env}
+    command:
+      - -js
+      - -sd
+      - /data
+      - -m
+      - "8222"
+      - -c
+      - /etc/nats/nats-server.conf
+    environment:
+      NATS_CONTROL_PLANE_USER: ${NATS_CONTROL_PLANE_USER:?Set NATS_CONTROL_PLANE_USER in .env}
+      NATS_CONTROL_PLANE_PASSWORD: ${NATS_CONTROL_PLANE_PASSWORD:?Set NATS_CONTROL_PLANE_PASSWORD in .env}
+      NATS_WORKER_USER: ${NATS_WORKER_USER:?Set NATS_WORKER_USER in .env}
+      NATS_WORKER_PASSWORD: ${NATS_WORKER_PASSWORD:?Set NATS_WORKER_PASSWORD in .env}
     volumes:
       - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
+      - nats_data:/data
+    networks:
+      - messaging
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
+    stop_grace_period: 20s
+    logging: *default-logging
 
-  # ── MinIO object storage ───────────────────────────────────────────────────
   minio:
-    image: minio/minio:latest
-    container_name: codesandbox-minio
+    image: ${MINIO_IMAGE:?Set MINIO_IMAGE in .env}
     command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:?Set MINIO_CONSOLE_PORT in .env}:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:?Set MINIO_BROWSER_REDIRECT_URL in .env}
     volumes:
-      - ./storage:/data
+      - ${MINIO_DATA_DIR:?Set MINIO_DATA_DIR in .env}:/data
+    networks:
+      - storage
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 20s
     restart: unless-stopped
+    stop_grace_period: 30s
+    logging: *default-logging
 
 volumes:
   mysql_data:
   redis_data:
+  nats_data:
+  docker_engine_data:
+  docker_engine_certs:
+  docker_engine_client_certs:
+
+networks:
+  web:
+  database:
+    internal: true
+  cache:
+    internal: true
+  messaging:
+    internal: true
+  storage:
+    internal: true
+  worker_egress:
+  sandbox_runtime:
+    internal: true
+  runtime_egress:

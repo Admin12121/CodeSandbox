@@ -1,0 +1,67 @@
+{% import "components/ui/combobox.html" as combobox %}
+
+{# Server-backed user/org picker shared by the adjustment and credit-grant
+   dialogs. The SSR options are only the first page — typing re-queries
+   /platform/finance/entities so any entity is reachable once the platform
+   outgrows that first page; the combobox runtime's client-side filter then
+   narrows whatever the server returned.
+
+   The input is wrapped in a combobox-trigger-slotted div on purpose: the UI
+   runtime only opens/positions floating popups from a `-trigger` click, and
+   its outside-click closer spares clicks inside `-trigger` elements — a bare
+   input (as these dialogs used to render) meant the popup could never open
+   at all. #}
+{% macro entity_combobox(entity_options, empty_text="No matching entity.") %}
+{% call combobox.combobox(attrs={"data-finance-entity-search": ""}) %}
+  <div data-slot="combobox-trigger" data-target="finance-entity-search-popup">
+    {{ combobox.combobox_input(placeholder="Search users or organizations…", attrs={"autocomplete": "off"}) }}
+  </div>
+  {% call combobox.combobox_popup(class="w-full", attrs={"id": "finance-entity-search-popup"}) %}
+    {{ combobox.combobox_empty(empty_text) }}
+    {% call combobox.combobox_list() %}
+      {% for option in entity_options %}
+        {% call combobox.combobox_item(value=option.label, attrs={"data-entity-id": option.id, "data-entity-type": option.type, "data-finance-entity-option": ""}) %}
+          <div class="grid gap-0.5">
+            <span>{{ option.label }}</span>
+            <span class="text-xs text-muted-foreground">{{ option.description }} · {{ option.type }}</span>
+          </div>
+        {% endcall %}
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
+{% endcall %}
+{% app_script "finance-entity-search" %}
+(function(){
+  var timer = null;
+  function escapeHtml(v){
+    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+  document.addEventListener('input', function(event){
+    var input = event.target.closest('[data-finance-entity-search] [data-slot="combobox-input"]');
+    if(!input) return;
+    var root = input.closest('[data-finance-entity-search]');
+    var list = root.querySelector('[data-slot="combobox-list"]');
+    var empty = root.querySelector('[data-slot="combobox-empty"]');
+    var popup = root.querySelector('[data-slot="combobox-popup"]');
+    var trigger = root.querySelector('[data-slot="combobox-trigger"]');
+    if(!list) return;
+    if(popup && popup.hidden && trigger) trigger.click();
+    clearTimeout(timer);
+    timer = setTimeout(function(){
+      fetch('/platform/finance/entities?q=' + encodeURIComponent(input.value.trim()), {headers: {'X-Requested-With': 'fetch'}})
+        .then(function(resp){ if(!resp.ok) throw new Error('search failed'); return resp.json(); })
+        .then(function(data){
+          var options = (data && data.options) || [];
+          list.innerHTML = options.map(function(o){
+            return '<div class="relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground" data-slot="combobox-item" data-value="' + escapeHtml(o.label) + '" data-entity-id="' + escapeHtml(o.id) + '" data-entity-type="' + escapeHtml(o.type) + '" data-finance-entity-option>' +
+              '<div class="grid gap-0.5"><span>' + escapeHtml(o.label) + '</span><span class="text-xs text-muted-foreground">' + escapeHtml(o.description || '') + ' · ' + escapeHtml(o.type) + '</span></div>' +
+            '</div>';
+          }).join('');
+          if(empty) empty.hidden = options.length !== 0;
+        })
+        .catch(function(){ /* keep whatever options are already shown */ });
+    }, 250);
+  });
+})();
+{% end_app_script %}
+{% endmacro %}

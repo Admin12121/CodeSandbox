@@ -1,5 +1,6 @@
 {% import "components/ui/input.html" as input %}
 {% import "components/ui/select.html" as select %}
+{% import "components/ui/button.html" as button %}
 
 {% macro period_toolbar(period, action="", extra={}) %}
 {% set period_options = [
@@ -33,6 +34,7 @@
     {{ input.input(name="start", value=period.start, placeholder="YYYY-MM-DD", size="sm", class="w-32", attrs={"autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
     <span class="text-xs text-muted-foreground">to</span>
     {{ input.input(name="end", value=period.end, placeholder="YYYY-MM-DD", size="sm", class="w-32", attrs={"autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
+    {% call button.button(type="submit", size="sm") %}Apply{% endcall %}
   </div>
 </form>
 {% app_script "finance-period-toolbar" %}

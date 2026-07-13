@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import base64
 import html
-import json
 import logging
 import uuid
 from decimal import Decimal, InvalidOperation
@@ -69,11 +67,64 @@ def billing_topup_stripe_action():
         )
     except stripe_gateway.StripeTopupError as exc:
         return {"ok": False, "error": str(exc)}, 400
+    except stripe.AuthenticationError:
+        log.exception("Stripe credentials were rejected")
+        return {"ok": False, "error": "Stripe credentials were rejected."}, 503
+    except stripe.APIConnectionError:
+        log.exception("Stripe API is unreachable")
+        return {"ok": False, "error": "Stripe is temporarily unreachable."}, 503
+    except stripe.StripeError:
+        log.exception("Stripe rejected PaymentIntent creation")
+        return {"ok": False, "error": "Stripe could not start the payment."}, 502
     except Exception:
         log.exception("Stripe payment intent creation failed")
         return {"ok": False, "error": "Could not start payment. Please try again."}, 500
 
     return {"ok": True, "client_secret": client_secret}
+
+
+@web_bp.post("/billing/topup/stripe/finalize")
+@verified_email("adding funds")
+def billing_topup_stripe_finalize_action():
+    """Server-side verification for the PaymentIntent returned by Stripe.js.
+
+    The signed webhook remains the production source of asynchronous updates,
+    while this route makes localhost development work without exposing the
+    local webhook to Stripe. Both paths call the same idempotent completion.
+    """
+    session, redir = require_sandbox_user()
+    if redir:
+        return {"ok": False, "error": "Not authenticated."}, 401
+
+    body = request.get_json(silent=True) or {}
+    external_ref = str(body.get("payment_intent_id") or "")
+    intent = billing_repo.get_topup_intent_by_ref("stripe", external_ref)
+    if intent is None:
+        return {"ok": False, "error": "Payment not found."}, 404
+
+    entity_type, entity_id = _resolve_billing_entity(session.user)
+    if (intent.entity_type, intent.entity_id) != (entity_type, entity_id):
+        return {"ok": False, "error": "Payment not found."}, 404
+
+    try:
+        status = stripe_gateway.reconcile_payment_intent(external_ref)
+    except stripe_gateway.StripeTopupError as exc:
+        log.warning("Stripe PaymentIntent reconciliation rejected: %s", exc)
+        return {"ok": False, "error": str(exc)}, 400
+    except stripe.AuthenticationError:
+        log.exception("Stripe credentials were rejected during reconciliation")
+        return {"ok": False, "error": "Stripe credentials were rejected."}, 503
+    except stripe.APIConnectionError:
+        log.exception("Stripe API is unreachable during reconciliation")
+        return {"ok": False, "error": "Stripe is temporarily unreachable."}, 503
+    except stripe.StripeError:
+        log.exception("Stripe reconciliation failed")
+        return {"ok": False, "error": "Could not verify the Stripe payment."}, 502
+    except Exception:
+        log.exception("Stripe PaymentIntent reconciliation failed")
+        return {"ok": False, "error": "Could not verify the Stripe payment."}, 500
+
+    return {"ok": True, "status": status}
 
 
 @web_bp.get("/billing/topup/status/<gateway>/<path:external_ref>")
@@ -145,7 +196,7 @@ def stripe_webhook_action():
     sig_header = request.headers.get("Stripe-Signature", "")
     try:
         stripe_gateway.handle_webhook(payload, sig_header)
-    except stripe.error.SignatureVerificationError:
+    except stripe.SignatureVerificationError:
         log.warning("Stripe webhook signature verification failed")
         return {"ok": False}, 400
     except stripe_gateway.StripeTopupError as exc:
@@ -162,18 +213,27 @@ def stripe_webhook_action():
 @web_bp.post("/billing/topup/esewa")
 @verified_email("adding funds")
 def billing_topup_esewa_action():
+    wants_json = request.headers.get("X-Requested-With") == "fetch"
+
+    def fail(message: str):
+        if wants_json:
+            return {"ok": False, "error": message}, 400
+        return redirect(f"/billing?error={quote(message)}", 303)
+
     session, redir = require_sandbox_user()
     if redir:
+        if wants_json:
+            return {"ok": False, "error": "Not authenticated."}, 401
         return redirect("/login", 303)
     user = session.user
     entity_type, entity_id = _resolve_billing_entity(user)
     if entity_type is None:
-        return redirect("/billing?error=Only+the+organization+owner+can+add+funds.", 303)
+        return fail("Only the organization owner can add funds.")
 
     try:
         amount = Decimal(request.form.get("amount", ""))
     except InvalidOperation:
-        return redirect("/billing?error=Invalid+amount.", 303)
+        return fail("Invalid amount.")
 
     settings = get_settings()
     try:
@@ -183,45 +243,50 @@ def billing_topup_esewa_action():
             failure_url=f"{settings.app_url}/billing/topup/esewa/failure",
         )
     except esewa_gateway.EsewaTopupError as exc:
-        return redirect(f"/billing?error={quote(str(exc))}", 303)
+        return fail(str(exc))
     except Exception:
         log.exception("eSewa form build failed")
-        return redirect("/billing?error=Could+not+start+eSewa+payment.+Please+try+again.", 303)
+        return fail("Could not start eSewa payment. Please try again.")
 
     # eSewa requires an actual browser POST to their payment page — a plain
-    # redirect can't carry a POST body, so this returns a minimal
-    # self-submitting form instead. All interpolated values are
-    # server-generated (amount/uuid/product code/our own URLs), still HTML
-    # -escaped as defense in depth.
+    # redirect can't carry a POST body. The billing page JS fetches this as
+    # JSON and submits a dynamically-built form, so the browser navigates
+    # straight to eSewa with no intermediate page.
+    if wants_json:
+        return {"ok": True, "form_url": form["form_url"], "fields": form["fields"]}
+
+    # Non-fetch fallback: a visible continue button, NOT an inline onload
+    # auto-submit — the app's CSP has no 'unsafe-inline' in script-src, so an
+    # inline handler silently never runs (this page then sat at "Redirecting
+    # to eSewa…" forever, which is exactly the bug this replaced).
     inputs = "\n".join(
         f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">'
         for k, v in form["fields"].items()
     )
     body = f"""<!doctype html>
-<html><body onload="document.forms[0].submit()">
+<html><body>
 <form method="POST" action="{html.escape(form["form_url"])}">
 {inputs}
+<button type="submit">Continue to eSewa</button>
 </form>
-<p>Redirecting to eSewa…</p>
 </body></html>"""
     return Response(body, mimetype="text/html")
 
 
 @web_bp.get("/billing/topup/esewa/success")
 def billing_topup_esewa_success():
-    # The redirect's own payload is never trusted for confirmation (see
-    # esewa_gateway module docstring) — it's only used to extract which
-    # transaction to re-verify server-to-server.
     raw = request.args.get("data", "")
-    transaction_uuid = None
     try:
-        decoded = json.loads(base64.b64decode(raw).decode())
-        transaction_uuid = decoded.get("transaction_uuid")
-    except Exception:
-        pass
+        decoded = esewa_gateway.decode_and_verify_success_payload(raw)
+    except esewa_gateway.EsewaTopupError as exc:
+        log.warning("Rejected eSewa success callback: %s", exc)
+        return redirect(f"/billing?error={quote(str(exc))}", 303)
 
+    transaction_uuid = str(decoded.get("transaction_uuid") or "")
     if not transaction_uuid:
         return redirect("/billing?error=Missing+transaction+reference.", 303)
+    if str(decoded.get("status") or "").upper() != "COMPLETE":
+        return redirect("/billing?error=Payment+was+not+completed.", 303)
 
     credited, message = esewa_gateway.confirm_by_transaction_uuid(transaction_uuid)
     if credited:

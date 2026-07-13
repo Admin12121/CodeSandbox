@@ -188,37 +188,39 @@
       {% call table.table(variant="card") %}
         {% call table.table_header() %}
           {% call table.table_row() %}
-            {{ table.table_head("Date") }}
             {{ table.table_head("Type") }}
-            {{ table.table_head("Description") }}
+            {{ table.table_head("Reference") }}
             {{ table.table_head("Amount", class="text-right") }}
+            {{ table.table_head("Provider") }}
+            {{ table.table_head("Status", class="text-right") }}
+            {{ table.table_head("Date", class="text-right") }}
           {% endcall %}
         {% endcall %}
         {% call table.table_body() %}
           {% if transactions %}
             {% for tx in transactions %}
               {% call table.table_row() %}
-                {{ table.table_cell(tx.created_at.strftime('%b %d, %Y') if tx.created_at else '-', class="text-muted-foreground") }}
                 {% call table.table_cell() %}
-                  {% if tx.type in ("topup", "refund") %}
-                    {{ badge.badge(tx.type | capitalize, variant="success") }}
-                  {% elif tx.type in ("charge", "usage", "usage_charge") %}
-                    {{ badge.badge(tx.type | capitalize, variant="warning") }}
-                  {% else %}
-                    {{ badge.badge(tx.type | capitalize, variant="secondary") }}
-                  {% endif %}
+                  <div class="flex items-center gap-2">
+                    {{ badge.badge(tx.type_label if tx.type_label is defined else tx.type | capitalize, variant="outline") }}
+                  </div>
                 {% endcall %}
-                {{ table.table_cell(tx.description or "-", class="max-w-[28rem] truncate") }}
-                {% call table.table_cell(class="text-right font-mono font-medium") %}
-                  <span class="{{ 'text-success-foreground' if tx.is_credit else 'text-destructive' }}">
-                    {{ '+' if tx.is_credit else '-' }}£{{ tx.absolute_amount }}
-                  </span>
+                {% call table.table_cell() %}
+                  <div class="max-w-60 truncate text-sm">{{ tx.reference or tx.id[:8] }}</div>
+                  {% if tx.description %}<div class="mt-1 max-w-60 truncate text-[10px] text-muted-foreground">{{ tx.description }}</div>{% endif %}
                 {% endcall %}
+                {{ table.table_cell(('+' if tx.is_credit else '-') ~ '£' ~ tx.absolute_amount, class="text-right font-mono tabular-nums " ~ ("text-emerald-500" if tx.is_credit else "text-rose-500")) }}
+                {{ table.table_cell(tx.provider if tx.provider is defined else "internal") }}
+                {% call table.table_cell(class="text-right") %}
+                  {% set tx_status = tx.status if tx.status is defined else "completed" %}
+                  {{ badge.badge(tx_status | title, variant=("error" if tx_status == "failed" else "success")) }}
+                {% endcall %}
+                {{ table.table_cell(tx.created_at.strftime('%d %b %Y %H:%M') if tx.created_at else '-', class="text-right text-xs text-muted-foreground") }}
               {% endcall %}
             {% endfor %}
           {% else %}
             {% call table.table_row() %}
-              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "4"}) %}
+              {% call table.table_cell(class="h-28 text-center text-muted-foreground", attrs={"colspan": "6"}) %}
                 Transactions appear here after funds are added or sandboxes run.
               {% endcall %}
             {% endcall %}
@@ -245,11 +247,11 @@
             {% for invoice in invoices %}
               {% call table.table_row() %}
                 {{ table.table_cell(invoice.number or invoice.id, class="font-medium") }}
-                {{ table.table_cell(invoice.created_at.strftime('%b %d, %Y') if invoice.created_at else "-", class="text-muted-foreground") }}
+                {{ table.table_cell(invoice.created_at.strftime('%d %b %Y %H:%M') if invoice.created_at else "-", class="text-xs text-muted-foreground") }}
                 {% call table.table_cell() %}
-                  {{ badge.badge(invoice.status | capitalize, variant=("success" if invoice.status == "paid" else "secondary")) }}
+                  {{ badge.badge(invoice.status | title, variant=("success" if invoice.status == "paid" else "outline")) }}
                 {% endcall %}
-                {{ table.table_cell("£" ~ invoice.total, class="text-right font-mono font-medium") }}
+                {{ table.table_cell("£" ~ invoice.total, class="text-right font-mono tabular-nums") }}
               {% endcall %}
             {% endfor %}
           {% else %}
@@ -329,15 +331,72 @@
     return value;
   }
 
-  // ── eSewa: server builds + signs the form; this only mirrors the amount
-  // in and submits — no client-side involvement in signing whatsoever. ──
+  function fetchJson(url, options, timeoutMs) {
+    var controller = window.AbortController ? new AbortController() : null;
+    var timer = null;
+    options = options || {};
+    if (controller) {
+      options.signal = controller.signal;
+      timer = setTimeout(function () { controller.abort(); }, timeoutMs || 20000);
+    }
+    return fetch(url, options).then(function (response) {
+      return response.text().then(function (text) {
+        var data = {};
+        if (text) {
+          try { data = JSON.parse(text); }
+          catch (_) { throw new Error("The server returned an invalid response."); }
+        }
+        if (!response.ok || data.ok === false) {
+          throw new Error(data.error || ("Request failed (HTTP " + response.status + ")."));
+        }
+        return data;
+      });
+    }).finally(function () {
+      if (timer) clearTimeout(timer);
+    });
+  }
+
+  // ── eSewa: the server creates the exact signed form payload. ──────────
   var esewaForm = document.getElementById("esewa-topup-form");
-  var esewaAmountField = document.getElementById("esewa-amount-field");
+  var esewaPayBtn = document.getElementById("esewa-pay-btn");
   if (esewaForm) {
     esewaForm.addEventListener("submit", function (e) {
+      e.preventDefault();
       var value = validAmount();
-      if (value === null) { e.preventDefault(); return; }
-      esewaAmountField.value = value;
+      if (value === null) return;
+      esewaPayBtn.disabled = true;
+      esewaPayBtn.textContent = "Redirecting…";
+
+      fetchJson("/billing/topup/esewa", {
+        method: "POST",
+        headers: {
+          "X-Requested-With": "fetch",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ amount: String(value) }).toString(),
+      }, 20000)
+        .then(function (data) {
+          var f = document.createElement("form");
+          f.method = "POST";
+          f.action = data.form_url;
+          f.hidden = true;
+          Object.keys(data.fields).forEach(function (key) {
+            var input = document.createElement("input");
+            input.type = "hidden";
+            input.name = key;
+            input.value = String(data.fields[key]);
+            f.appendChild(input);
+          });
+          document.body.appendChild(f);
+          f.submit();
+        })
+        .catch(function (error) {
+          showAmountError(error.name === "AbortError"
+            ? "eSewa request timed out — please try again."
+            : (error.message || "Could not start eSewa payment."));
+          esewaPayBtn.disabled = false;
+          esewaPayBtn.textContent = "Pay with eSewa";
+        });
     });
   }
 
@@ -351,51 +410,105 @@
     });
   }
 
-  // ── Card: Stripe Elements (CardElement) + PaymentIntent ───────────────
+  // ── Card: Stripe Elements + server-side PaymentIntent verification. ──
   var stripeInstance = null, cardElement = null, stripeMounted = false;
 
-  function ensureStripeMounted() {
-    if (stripeMounted || !stripeKey) return;
-    stripeMounted = true;
-    var s = document.createElement("script");
-    s.src = "https://js.stripe.com/v3/";
-    s.onload = function () {
-      stripeInstance = Stripe(stripeKey);
-      var elements = stripeInstance.elements();
-      cardElement = elements.create("card", { hidePostalCode: true });
-      cardElement.mount("#billing-card-element");
-    };
-    document.head.appendChild(s);
+  function resolvedCssColor(varName, fallback) {
+    var probe = document.createElement("span");
+    probe.style.color = "var(" + varName + ")";
+    probe.style.display = "none";
+    document.body.appendChild(probe);
+    var color = getComputedStyle(probe).color;
+    probe.remove();
+    return color || fallback;
   }
 
   var cardPayBtn = document.getElementById("card-pay-btn");
   var cardError = document.getElementById("billing-card-error");
 
+  function resetPayBtn() {
+    if (!cardPayBtn) return;
+    cardPayBtn.disabled = false;
+    cardPayBtn.textContent = "Place order";
+  }
+
   function setCardError(msg) {
-    if (!msg) { cardError.classList.add("hidden"); cardError.textContent = ""; return; }
+    if (!cardError) return;
+    if (!msg) {
+      cardError.classList.add("hidden");
+      cardError.textContent = "";
+      return;
+    }
     cardError.textContent = msg;
     cardError.classList.remove("hidden");
   }
 
-  function pollTopupStatus(gateway, ref, attempt) {
+  function ensureStripeMounted() {
+    if (stripeMounted || !stripeKey) return;
+    stripeMounted = true;
+    var script = document.createElement("script");
+    script.src = "https://js.stripe.com/v3/";
+    script.async = true;
+    script.onload = function () {
+      try {
+        stripeInstance = Stripe(stripeKey);
+        var elements = stripeInstance.elements();
+        cardElement = elements.create("card", {
+          hidePostalCode: true,
+          style: {
+            base: {
+              color: resolvedCssColor("--foreground", "#171717"),
+              iconColor: resolvedCssColor("--muted-foreground", "#737373"),
+              "::placeholder": { color: resolvedCssColor("--muted-foreground", "#737373") },
+              fontSize: "14px",
+            },
+            invalid: { color: resolvedCssColor("--destructive", "#ef4444") },
+          },
+        });
+        cardElement.on("change", function (event) {
+          setCardError(event.error ? event.error.message : null);
+        });
+        cardElement.mount("#billing-card-element");
+      } catch (_) {
+        stripeMounted = false;
+        setCardError("Stripe payment form could not be initialized.");
+      }
+    };
+    script.onerror = function () {
+      stripeMounted = false;
+      setCardError("Stripe.js could not be loaded. Check the network connection.");
+    };
+    document.head.appendChild(script);
+  }
+
+  function finishStripePayment(paymentIntentId, attempt) {
     attempt = attempt || 0;
-    fetch("/billing/topup/status/" + encodeURIComponent(gateway) + "/" + encodeURIComponent(ref))
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.ok && data.status === "completed") {
-          window.Toast && window.Toast.create({ title: "Payment confirmed", description: "Funds added to your balance.", type: "success" });
-          window.location.href = "/billing?topup=success";
-        } else if (data.ok && data.status === "failed") {
-          setCardError("Payment could not be completed.");
-          cardPayBtn.disabled = false;
-        } else if (attempt < 10) {
-          setTimeout(function () { pollTopupStatus(gateway, ref, attempt + 1); }, 1500);
-        } else {
-          window.Toast && window.Toast.create({ title: "Payment received", description: "Funds will appear shortly — refresh in a moment.", type: "info" });
-          cardPayBtn.disabled = false;
-        }
-      })
-      .catch(function () { cardPayBtn.disabled = false; });
+    return fetchJson("/billing/topup/stripe/finalize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payment_intent_id: paymentIntentId }),
+    }, 20000).then(function (data) {
+      if (data.status === "completed") {
+        window.Toast && window.Toast.create({
+          title: "Payment confirmed",
+          description: "Funds added to your balance.",
+          type: "success",
+        });
+        window.location.href = "/billing?topup=success";
+        return;
+      }
+      if (data.status === "failed" || data.status === "canceled") {
+        throw new Error("Payment could not be completed.");
+      }
+      if (attempt < 8) {
+        return new Promise(function (resolve) {
+          setTimeout(resolve, 1250);
+        }).then(function () {
+          return finishStripePayment(paymentIntentId, attempt + 1);
+        });
+      }
+      throw new Error("Stripe is still processing the payment. Refresh shortly to see the result.");
+    });
   }
 
   var activeTopupKey = null;
@@ -408,8 +521,10 @@
         setCardError("Payment form is still loading — try again in a moment.");
         return;
       }
+
       setCardError(null);
       cardPayBtn.disabled = true;
+      cardPayBtn.textContent = "Processing…";
       if (!activeTopupKey || activeTopupAmount !== value) {
         activeTopupKey = (window.crypto && window.crypto.randomUUID)
           ? window.crypto.randomUUID()
@@ -417,33 +532,48 @@
         activeTopupAmount = value;
       }
 
-      fetch("/billing/topup/stripe", {
+      fetchJson("/billing/topup/stripe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount: value, idempotency_key: activeTopupKey }),
-      })
-        .then(function (r) { return r.json(); })
+      }, 20000)
         .then(function (data) {
-          if (!data.ok) { setCardError(data.error || "Could not start payment."); cardPayBtn.disabled = false; return; }
           return stripeInstance.confirmCardPayment(data.client_secret, {
             payment_method: { card: cardElement },
-          }).then(function (result) {
-            if (result.error) {
-              setCardError(result.error.message || "Payment failed.");
-              cardPayBtn.disabled = false;
-              return;
-            }
-            if (result.paymentIntent && result.paymentIntent.status === "succeeded") {
-              pollTopupStatus("stripe", result.paymentIntent.id);
-            } else {
-              cardPayBtn.disabled = false;
-            }
+            return_url: window.location.origin + "/billing",
           });
         })
-        .catch(function () {
-          setCardError("Network error — please try again.");
-          cardPayBtn.disabled = false;
+        .then(function (result) {
+          if (result.error) throw new Error(result.error.message || "Payment failed.");
+          if (!result.paymentIntent || !result.paymentIntent.id) {
+            throw new Error("Stripe did not return a PaymentIntent.");
+          }
+          if (result.paymentIntent.status === "requires_payment_method") {
+            throw new Error("The card was declined. Use another payment method.");
+          }
+          return finishStripePayment(result.paymentIntent.id, 0);
+        })
+        .catch(function (error) {
+          setCardError(error.name === "AbortError"
+            ? "Stripe request timed out — please try again."
+            : (error.message || "Payment failed."));
+          resetPayBtn();
         });
+    });
+  }
+
+  // Some 3DS/card flows return to this page instead of resolving only in
+  // the original promise. Reconcile that PaymentIntent server-side too.
+  var returnedParams = new URLSearchParams(window.location.search);
+  var returnedPaymentIntent = returnedParams.get("payment_intent");
+  if (returnedPaymentIntent && returnedParams.get("redirect_status") === "succeeded") {
+    if (cardPayBtn) {
+      cardPayBtn.disabled = true;
+      cardPayBtn.textContent = "Confirming…";
+    }
+    finishStripePayment(returnedPaymentIntent, 0).catch(function (error) {
+      setCardError(error.message || "Could not verify the Stripe payment.");
+      resetPayBtn();
     });
   }
 })();

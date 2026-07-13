@@ -1,0 +1,23 @@
+{# Standalone, self-contained HTML file served as an attachment by
+   /platform/finance/ledger/download — the "Download" action on a financial
+   document. Mirrors layout.html's head (Tailwind browser CDN + style.css
+   tokens) so the document renders identically outside the app, with the
+   in-app action toolbar hidden since its handlers don't exist here. #}
+{% import "(admin)/platform/finance/ledger/_components/financial_document.html" as doc %}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ receipt.title }} {{ receipt.number }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style type="text/tailwindcss">
+      {% include "style.css" %}
+    </style>
+  </head>
+  <body class="bg-neutral-950 antialiased">
+    <div class="mx-auto min-h-screen max-w-4xl">
+      {{ doc.financial_document(receipt, can_manage_refunds=false, show_toolbar=false) }}
+    </div>
+  </body>
+</html>

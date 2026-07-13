@@ -6,8 +6,8 @@
 {% import "components/ui/label.html" as label_ui %}
 {% import "components/ui/textarea.html" as textarea %}
 {% import "components/ui/select.html" as select %}
-{% import "components/ui/combobox.html" as combobox %}
 {% import "components/ui/checkbox.html" as checkbox %}
+{% import "(admin)/platform/finance/_components/entity_search.html" as entity_search %}
 
 {% macro select_chevron() %}
   <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -35,20 +35,7 @@
             {% call select.select_item(value="org") %}Organization{% endcall %}
           {% endcall %}
         {% endcall %}
-        {% call combobox.combobox() %}
-          {{ combobox.combobox_input(placeholder="Search users or organizations…", attrs={"autocomplete": "off"}) }}
-          {% call combobox.combobox_popup(class="w-full") %}
-            {{ combobox.combobox_empty("No matching recipient.") }}
-            {% for option in entity_options %}
-              {% call combobox.combobox_item(value=option.label, attrs={"data-entity-id": option.id, "data-entity-type": option.type, "data-finance-entity-option": ""}) %}
-                <div class="grid gap-0.5">
-                  <span>{{ option.label }}</span>
-                  <span class="text-xs text-muted-foreground">{{ option.description }} · {{ option.type }}</span>
-                </div>
-              {% endcall %}
-            {% endfor %}
-          {% endcall %}
-        {% endcall %}
+        {{ entity_search.entity_combobox(entity_options, empty_text="No matching recipient.") }}
       </div>
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="grid gap-1.5">

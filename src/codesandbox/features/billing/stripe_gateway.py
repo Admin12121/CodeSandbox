@@ -1,11 +1,11 @@
-"""Stripe PaymentIntent top-ups credited only by signed webhook events."""
-
+"""Stripe PaymentIntent top-ups with webhook and server-side reconciliation."""
 from __future__ import annotations
 
 import hashlib
 import logging
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from typing import Any
 
 import stripe
 
@@ -13,6 +13,9 @@ from codesandbox.config import get_settings
 from codesandbox.features.billing import repository as billing_repo
 
 log = logging.getLogger(__name__)
+
+# Fail reasonably quickly when the app container cannot reach Stripe.
+stripe.default_http_client = stripe.RequestsClient(timeout=10)
 
 MIN_TOPUP_GBP = Decimal("1.00")
 MAX_TOPUP_GBP = Decimal("10000.00")
@@ -22,31 +25,56 @@ class StripeTopupError(Exception):
     pass
 
 
+def _configure_stripe() -> None:
+    secret = get_settings().stripe_secret_key.strip()
+    if not secret:
+        raise StripeTopupError("Stripe is not configured.")
+    stripe.api_key = secret
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    to_dict = getattr(value, "to_dict_recursive", None)
+    if callable(to_dict):
+        result = to_dict()
+        if isinstance(result, dict):
+            return result
+    try:
+        return dict(value)
+    except (TypeError, ValueError) as exc:
+        raise StripeTopupError("Stripe returned an invalid PaymentIntent.") from exc
+
+
 def create_payment_intent(
     entity_type: str,
     entity_id: str,
     amount_gbp: Decimal,
     request_key: str | None = None,
 ) -> str:
-    amount_gbp = amount_gbp.quantize(Decimal("0.01"))
-    if amount_gbp < MIN_TOPUP_GBP:
+    try:
+        amount_gbp = Decimal(str(amount_gbp)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError) as exc:
+        raise StripeTopupError("Invalid amount.") from exc
+    if not amount_gbp.is_finite() or amount_gbp < MIN_TOPUP_GBP:
         raise StripeTopupError(f"Minimum top-up is GBP {MIN_TOPUP_GBP}.")
     if amount_gbp > MAX_TOPUP_GBP:
         raise StripeTopupError("Top-up amount exceeds the per-payment limit.")
 
-    settings = get_settings()
-    if not settings.stripe_secret_key:
-        raise StripeTopupError("Stripe is not configured.")
-    stripe.api_key = settings.stripe_secret_key
-
+    _configure_stripe()
     raw_key = request_key or str(uuid.uuid4())
     scoped_key = "stripe:" + hashlib.sha256(
-        f"{entity_type}:{entity_id}:{raw_key}".encode()
+        f"{entity_type}:{entity_id}:{raw_key}".encode("utf-8")
     ).hexdigest()
     existing = billing_repo.get_topup_intent_by_idempotency_key(scoped_key)
     if existing is not None:
+        if existing.status in {"failed", "expired"}:
+            raise StripeTopupError("This payment attempt is no longer usable. Please retry.")
         payment_intent = stripe.PaymentIntent.retrieve(existing.external_ref)
-        return payment_intent.client_secret
+        client_secret = getattr(payment_intent, "client_secret", None)
+        if not client_secret:
+            raise StripeTopupError("Stripe did not return a client secret.")
+        return str(client_secret)
 
     intent_id = str(uuid.uuid4())
     payment_intent = stripe.PaymentIntent.create(
@@ -60,55 +88,75 @@ def create_payment_intent(
         },
         idempotency_key=scoped_key,
     )
+    external_ref = str(getattr(payment_intent, "id", "") or "")
+    client_secret = str(getattr(payment_intent, "client_secret", "") or "")
+    if not external_ref or not client_secret:
+        raise StripeTopupError("Stripe did not create a usable PaymentIntent.")
+
     stored = billing_repo.create_topup_intent(
         entity_type=entity_type,
         entity_id=entity_id,
         gateway="stripe",
         charge_currency="GBP",
         charge_amount=amount_gbp,
-        external_ref=payment_intent.id,
+        external_ref=external_ref,
         intent_id=intent_id,
         idempotency_key=scoped_key,
     )
-    if stored.external_ref != payment_intent.id:
+    if stored.external_ref != external_ref:
         payment_intent = stripe.PaymentIntent.retrieve(stored.external_ref)
-    return payment_intent.client_secret
+        client_secret = str(getattr(payment_intent, "client_secret", "") or "")
+        if not client_secret:
+            raise StripeTopupError("Stripe did not return a client secret.")
+    return client_secret
 
 
-def handle_webhook(payload: bytes, sig_header: str) -> None:
-    settings = get_settings()
-    if not settings.stripe_webhook_secret:
-        raise StripeTopupError("Stripe webhook secret is not configured.")
-    event = stripe.Webhook.construct_event(
-        payload, sig_header, settings.stripe_webhook_secret
-    )
-    event_type = str(event["type"])
-    if event_type not in {
-        "payment_intent.succeeded",
-        "payment_intent.payment_failed",
-        "payment_intent.canceled",
-    }:
-        return
+def _validate_and_complete(
+    payment_intent_value: Any,
+    *,
+    provider_event_id: str | None,
+) -> str:
+    payment_intent = _as_dict(payment_intent_value)
+    external_ref = str(payment_intent.get("id") or "")
+    if not external_ref:
+        raise StripeTopupError("Stripe PaymentIntent id is missing.")
 
-    payment_intent = event["data"]["object"].to_dict()
-    external_ref = str(payment_intent["id"])
     intent = billing_repo.get_topup_intent_by_ref("stripe", external_ref)
     if intent is None:
-        log.warning("Stripe event for unknown PaymentIntent id=%s", external_ref)
-        return
-    provider_event_id = str(event["id"])
-    if event_type != "payment_intent.succeeded":
+        raise StripeTopupError("Unknown Stripe PaymentIntent.")
+    if intent.status == "completed":
+        return "completed"
+    if intent.status in {"failed", "expired"}:
+        return "failed"
+
+    status = str(payment_intent.get("status") or "")
+    if status == "canceled":
         billing_repo.mark_topup_failed(
             "stripe", external_ref, provider_event_id=provider_event_id
         )
-        return
+        return "failed"
+    if status != "succeeded":
+        # A failed card attempt usually leaves the PaymentIntent in
+        # requires_payment_method and it can be retried. Do not permanently
+        # fail our local intent on payment_intent.payment_failed.
+        return status or "pending"
 
-    amount_gbp = Decimal(str(payment_intent["amount_received"])) / 100
-    if str(payment_intent.get("currency") or "").lower() != "gbp":
+    currency = str(payment_intent.get("currency") or "").lower()
+    if currency != "gbp":
         raise StripeTopupError("Stripe payment currency does not match the intent.")
-    if amount_gbp != Decimal(str(intent.charge_amount)):
+    try:
+        amount_gbp = (Decimal(str(payment_intent.get("amount_received"))) / 100).quantize(
+            Decimal("0.01")
+        )
+        expected_amount = Decimal(str(intent.charge_amount)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError) as exc:
+        raise StripeTopupError("Stripe payment amount is invalid.") from exc
+    if amount_gbp != expected_amount:
         raise StripeTopupError("Stripe payment amount does not match the intent.")
+
     metadata = payment_intent.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        metadata = dict(metadata)
     if (
         str(metadata.get("entity_type") or "") != intent.entity_type
         or str(metadata.get("entity_id") or "") != intent.entity_id
@@ -124,4 +172,49 @@ def handle_webhook(payload: bytes, sig_header: str) -> None:
         provider_event_id=provider_event_id,
         provider_reference=external_ref,
         description=f"Stripe top-up ({external_ref})",
+    )
+    return "completed"
+
+
+def reconcile_payment_intent(external_ref: str) -> str:
+    """Retrieve a PaymentIntent from Stripe and reconcile it idempotently.
+
+    This supports local development where Stripe cannot call a localhost
+    webhook. Production should still configure the signed webhook endpoint.
+    """
+    if not external_ref.startswith("pi_") or len(external_ref) > 120:
+        raise StripeTopupError("Invalid Stripe PaymentIntent reference.")
+    _configure_stripe()
+    payment_intent = stripe.PaymentIntent.retrieve(external_ref)
+    return _validate_and_complete(payment_intent, provider_event_id=None)
+
+
+def handle_webhook(payload: bytes, sig_header: str) -> None:
+    settings = get_settings()
+    webhook_secret = settings.stripe_webhook_secret.strip()
+    if not webhook_secret:
+        raise StripeTopupError("Stripe webhook secret is not configured.")
+    _configure_stripe()
+    event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    event_type = str(event["type"])
+    if event_type not in {
+        "payment_intent.succeeded",
+        "payment_intent.payment_failed",
+        "payment_intent.canceled",
+    }:
+        return
+
+    payment_intent = event["data"]["object"]
+    external_ref = str(payment_intent.get("id") or "")
+    if billing_repo.get_topup_intent_by_ref("stripe", external_ref) is None:
+        log.warning("Stripe event for unknown PaymentIntent id=%s", external_ref)
+        return
+
+    # payment_failed is not terminal for a reusable PaymentIntent. The UI can
+    # submit another card against the same intent; only canceled is terminal.
+    if event_type == "payment_intent.payment_failed":
+        return
+    _validate_and_complete(
+        payment_intent,
+        provider_event_id=str(event["id"]),
     )

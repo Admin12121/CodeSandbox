@@ -236,8 +236,12 @@ def test_finance_templates_split_and_no_internal_tabs(ctx: TestContext) -> None:
         text = path.read_text()
         assert "finance_tabs" not in text
         assert "page_header" not in text
-    assert "period_toolbar" not in (base / "page.html").read_text()
-    assert "period_toolbar" not in (base / "revenue" / "page.html").read_text()
+    # Usage & Margin renders period_toolbar() directly (not just the chart's
+    # own Weekly/Monthly/Yearly pills) so Today/7 days/Custom range are
+    # reachable as a real page-level filter. Overview intentionally relies
+    # on the chart's own toggle only (snapshot-style page, no page.html
+    # period_toolbar).
+    assert "period_toolbar" in (base / "revenue" / "page.html").read_text()
     assert not (base / "overview.html").exists()
     assert not (base / "revenue.html").exists()
     assert not (base / "ledger.html").exists()
@@ -520,12 +524,27 @@ def test_credit_grant_creates_ledger_transaction(ctx: TestContext) -> None:
     assert any(tx.type == "credit_grant" and Decimal(str(tx.amount)) == Decimal("7.5000") for tx in txs)
 
 
+def test_csv_export_neutralizes_formula_injection(ctx: TestContext) -> None:
+    from codesandbox.features.finance.pages import _csv_safe
+
+    assert _csv_safe("=cmd|'/c calc'!A1") == "'=cmd|'/c calc'!A1"
+    assert _csv_safe("+1+1") == "'+1+1"
+    assert _csv_safe("-1+1") == "'-1+1"
+    assert _csv_safe("@SUM(A1)") == "'@SUM(A1)"
+    assert _csv_safe("\t=evil") == "'\t=evil"
+    assert _csv_safe("\r=evil") == "'\r=evil"
+    assert _csv_safe("CodeSandbox Platform") == "CodeSandbox Platform"
+    assert _csv_safe("user@example.com") == "user@example.com"
+    assert _csv_safe(None) == ""
+
+
 TESTS: list[TestCase] = [
     TestCase("finance permissions seed and sidebar nav", "finance", test_finance_permissions_seed_and_nav),
     TestCase("finance console route contract", "finance", test_finance_console_route_contract),
     TestCase("finance console shapes and ledger preview", "finance", test_finance_console_shapes_and_ledger_preview),
     TestCase("finance templates split and no internal tabs", "finance", test_finance_templates_split_and_no_internal_tabs),
     TestCase("finance empty periods do not emit fake timelines", "finance", test_finance_empty_periods_do_not_emit_fake_timelines),
+    TestCase("CSV export neutralizes formula injection", "finance", test_csv_export_neutralizes_formula_injection),
     TestCase("UsageCharge is idempotent", "finance", test_usage_charge_is_idempotent),
     TestCase("finance admin mutations validate entity", "finance", test_finance_admin_mutations_validate_entity),
     TestCase("coupon limit scope and expiry", "finance", test_coupon_limit_scope_and_expiry),

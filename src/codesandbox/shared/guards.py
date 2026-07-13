@@ -54,7 +54,7 @@ def verified_email(action: str = "continuing"):
                 return _unauth()
             if not cs.user.email_verified:
                 message = f"Verify your email before {action}."
-                if request.is_json:
+                if request.is_json or request.headers.get("X-Requested-With") == "fetch":
                     return jsonify({"ok": False, "error": message}), 403
                 return redirect(f"/settings?tab=security&error={urllib.parse.quote(message)}")
             return f(*args, **kwargs)

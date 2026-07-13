@@ -29,6 +29,12 @@ log = logging.getLogger(__name__)
 
 _CACHE_KEY = "billing:fx:gbp_npr"
 _STALE_FALLBACK_KEY = _CACHE_KEY + ":last_known"
+# Set (short TTL) after a failed NRB fetch so every page render doesn't
+# re-pay the full network timeout while NRB is unreachable — without this,
+# any page showing a NPR amount (billing, the header balance) blocked for
+# the whole connect timeout on every request until a fetch succeeded.
+_FETCH_FAILED_KEY = _CACHE_KEY + ":fetch_failed"
+_FETCH_FAILED_TTL_SECONDS = 300
 
 _redis_client: "redis.Redis | None" = None
 
@@ -48,7 +54,7 @@ def _fetch_from_nrb() -> tuple[Decimal, date] | None:
         resp = requests.get(
             settings.nrb_forex_url,
             params={"from": frm.isoformat(), "to": today.isoformat(), "page": 1, "per_page": 10},
-            timeout=5,
+            timeout=(2, 5),  # (connect, read) — a dead network fails in 2s, not 5+
         )
         resp.raise_for_status()
         data = resp.json()
@@ -96,7 +102,11 @@ def get_gbp_npr_rate() -> Decimal:
         except (KeyError, ValueError, InvalidOperation, TypeError):
             pass
 
-    fetched = _fetch_from_nrb()
+    fetched = None
+    if not r.get(_FETCH_FAILED_KEY):
+        fetched = _fetch_from_nrb()
+        if fetched is None:
+            r.set(_FETCH_FAILED_KEY, "1", ex=_FETCH_FAILED_TTL_SECONDS)
     if fetched is not None:
         rate, rate_date = fetched
         payload = json.dumps({"rate": str(rate), "date": rate_date.isoformat()})

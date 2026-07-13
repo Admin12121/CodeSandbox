@@ -2,8 +2,9 @@
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/table.html" as table %}
 
-{% macro financial_document(receipt, can_manage_refunds=false) %}
+{% macro financial_document(receipt, can_manage_refunds=false, show_toolbar=true) %}
 <div class="flex h-full flex-col bg-background">
+  {% if show_toolbar %}
   <div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
     <div class="min-w-0">
       <div class="flex items-center gap-2">
@@ -11,10 +12,10 @@
       </div>
     </div>
     <div class="flex items-center gap-2">
-      {% call button.button(variant="secondary", size="icon", attrs={"data-finance-print-document": ""}) %}
+      {% call button.button(variant="secondary", size="icon", attrs={"data-finance-print-document": "", "title": "Print"}) %}
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
       {% endcall %}
-      {% call button.button(variant="secondary", size="icon", attrs={"data-finance-print-document": ""}) %}
+      {% call button.button(variant="secondary", size="icon", attrs={"data-finance-download-document": "", "data-transaction-id": receipt.transaction_id, "title": "Download"}) %}
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-down-icon lucide-file-down"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
       {% endcall %}
       {% if can_manage_refunds and receipt.refundable %}
@@ -31,10 +32,12 @@
       {% endif %}
     </div>
   </div>
+  {% endif %}
   <div class="flex-1 overflow-y-auto bg-neutral-950 print:bg-white py-5">
     <article data-financial-document-print class="mx-auto flex h-full min-h-full max-w-3xl flex-col text-neutral-100 print:h-auto print:min-h-0 print:text-neutral-950 border border-neutral-800">
-      <header class="border-b border-neutral-800 px-8 py-6 print:border-neutral-200">
+      <header class="flex flex-wrap items-center gap-3 border-b border-neutral-800 px-8 py-6 print:border-neutral-200">
         <h1 class="truncate text-4xl font-bold tracking-tight">{{ receipt.title }} {{ receipt.number }}</h1>
+        {{ badge.badge(receipt.status|replace("_", " ")|title, variant=("error" if receipt.status == "failed" else "outline"), class="shrink-0") }}
       </header>
       <section class="flex border-b border-neutral-800 text-[10px] print:border-neutral-200">
         <div class="grid w-72 shrink-0 grid-cols-[auto_1fr] gap-x-6 gap-y-2 border-r border-neutral-800 px-4 py-3 print:border-neutral-200">
@@ -90,7 +93,7 @@
           {% if receipt.refund != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Refund</span><span class="font-mono">{{ receipt.refund }}</span></div>{% endif %}
           <div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span>Total</span><span class="font-mono text-lg font-semibold">{{ receipt.total }}</span></div>
           <div class="px-4 py-3">
-            <div class="text-[10px] tracking-wide text-neutral-500">Invoice Total (in words)</div>
+            <div class="text-[10px] tracking-wide text-neutral-500">Total (in words)</div>
             <div class="mt-1 text-xs font-medium">{{ receipt.total_in_words }}</div>
           </div>
         </div>
@@ -112,29 +115,12 @@
   [data-financial-document-print] { position: absolute; inset: 0 auto auto 0; width: 100%; max-width: none; box-shadow: none !important; }
 }
 </style>
-{% app_script "finance-document-actions" %}
-(function(){
-  document.addEventListener('click', function(event){
-    if(event.target.closest('[data-finance-print-document]')){
-      window.print();
-      return;
-    }
-    var refund = event.target.closest('[data-finance-open-refund]');
-    if(refund){
-      var dialog = document.getElementById('finance-refund-dialog');
-      if(!dialog) return;
-      var charge = dialog.querySelector('[name="charge_id"]');
-      var selected = dialog.querySelector('[name="selected_tx_id"]');
-      var amount = dialog.querySelector('[name="amount"]');
-      if(charge) charge.value = refund.dataset.chargeId || '';
-      if(selected) selected.value = refund.dataset.transactionId || '';
-      if(amount) amount.value = refund.dataset.refundableRemaining || '';
-      try { dialog.showModal(); } catch(e) { dialog.setAttribute('open', ''); }
-      dialog.dataset.state = 'open';
-    }
-  });
-})();
-{% end_app_script %}
+{# No app_script here on purpose: this component is injected via innerHTML
+   by the ledger preview fetch, where inline scripts never execute — and on
+   SSR loads the ledger page.html already owns identical delegated handlers
+   (having both made one Print click open the dialog twice). page.html's
+   "finance-ledger-console" script is the single owner of print/download/
+   refund click handling. #}
 {% endmacro %}
 
 {% if receipt is defined and receipt %}

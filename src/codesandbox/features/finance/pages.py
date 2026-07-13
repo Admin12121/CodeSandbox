@@ -15,6 +15,19 @@ from codesandbox.web.blueprint import router
 from . import service
 
 
+# Formula-triggering leading characters per OWASP CSV injection guidance —
+# a cell starting with one of these can be interpreted as a spreadsheet
+# formula by Excel/Sheets/LibreOffice when the exported file is opened.
+_CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value) -> str:
+    text = "" if value is None else str(value)
+    if text and text[0] in _CSV_FORMULA_PREFIXES:
+        return "'" + text
+    return text
+
+
 def _int_arg(name: str, default: int) -> int:
     try:
         return max(1, int(request.args.get(name, str(default)) or default))
@@ -37,6 +50,8 @@ def _base(section: str, title: str, description: str, **extra):
     user = cs.user
     return {
         "_meta": {"title": f"{title} — CodeSandbox"},
+        "page_title": title,
+        "page_description": description,
         "user": _user_ctx(user),
         "nav": build_nav(request.path, user),
         **_workspaces_ctx(user),
@@ -143,6 +158,30 @@ def finance_ledger_preview():
     )
 
 
+@router.api("/platform/finance/entities")
+@platform_perm("platform.finance.read")
+def finance_entity_search():
+    q = (request.args.get("q") or "").strip()
+    return {"options": service.entity_options(limit=20, search=q or None)}
+
+
+@router.api("/platform/finance/ledger/download")
+@platform_perm("platform.finance.read")
+def finance_ledger_download():
+    receipt = service.transaction_document(request.args.get("transaction"))
+    if receipt is None:
+        abort(404)
+    filename = f"{receipt['number']}.html"
+    return Response(
+        render_template(
+            "(admin)/platform/finance/ledger/_components/document_download.html",
+            receipt=receipt,
+        ),
+        mimetype="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.api("/platform/finance/ledger/export")
 @platform_perm("platform.finance.read")
 def finance_ledger_export():
@@ -162,10 +201,10 @@ def finance_ledger_export():
             row["id"],
             row["type"],
             row["entity_type"],
-            row["entity_label"],
-            row["reference"],
+            _csv_safe(row["entity_label"]),
+            _csv_safe(row["reference"]),
             row["amount"],
-            row["provider"],
+            _csv_safe(row["provider"]),
             row["status"],
             row["created_label"],
         ])

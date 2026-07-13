@@ -28,11 +28,11 @@ TAILWIND_CDN_CSP = (
     # / SRI — it's part of their PCI-DSS SAQ A compliance story), it opens a
     # frame for the actual card input (frame-src), and confirmCardPayment
     # calls out to their API directly from the browser (connect-src).
-    "script-src 'self' https://cdn.jsdelivr.net https://esm.sh https://js.stripe.com; "
+    "script-src 'self' https://cdn.jsdelivr.net https://esm.sh https://js.stripe.com https://*.js.stripe.com; "
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "img-src 'self' data:; "
+    "img-src 'self' data: https://*.stripe.com; "
     "font-src 'self' https://cdn.jsdelivr.net; "
-    "frame-src https://js.stripe.com; "
+    "frame-src https://js.stripe.com https://*.js.stripe.com https://hooks.stripe.com; "
     "connect-src 'self' https://api.stripe.com; "
     "object-src 'none'; "
     "base-uri 'self'; "

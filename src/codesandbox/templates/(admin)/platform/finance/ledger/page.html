@@ -76,6 +76,11 @@
       window.print();
       return;
     }
+    var download = event.target.closest('[data-finance-download-document]');
+    if(download){
+      window.location.href = '/platform/finance/ledger/download?transaction=' + encodeURIComponent(download.dataset.transactionId || '');
+      return;
+    }
     var exportLedger = event.target.closest('[data-finance-export-ledger]');
     if(exportLedger){
       window.location.href = exportLedger.dataset.exportUrl || '/platform/finance/ledger/export';
