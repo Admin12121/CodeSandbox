@@ -7,7 +7,7 @@
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 flex-col gap-2">
           <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Active coupons</h2>
-          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.active_coupons }}</div>
+          <div class="text-7xl font-semibold tabular-nums text-foreground">{{ summary.active_coupons }}</div>
         </div>
       </div>
     {% endcall %}
@@ -18,7 +18,7 @@
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 flex-col gap-2">
           <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Credit outstanding</h2>
-          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.credit_outstanding.display }}</div>
+          <div class="text-7xl font-semibold tabular-nums text-foreground">{{ summary.credit_outstanding.display }}</div>
         </div>
       </div>
     {% endcall %}
@@ -29,7 +29,7 @@
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 flex-col gap-2">
           <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Redemptions this period</h2>
-          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.redemptions_this_period }}</div>
+          <div class="text-7xl font-semibold tabular-nums text-foreground">{{ summary.redemptions_this_period }}</div>
         </div>
       </div>
     {% endcall %}
@@ -40,7 +40,7 @@
       <div class="flex items-center justify-between gap-3">
         <div class="flex min-w-0 flex-col gap-2">
           <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Discounts applied</h2>
-          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.discounts_this_period.display }}</div>
+          <div class="text-7xl font-semibold tabular-nums text-foreground">{{ summary.discounts_this_period.display }}</div>
         </div>
       </div>
     {% endcall %}

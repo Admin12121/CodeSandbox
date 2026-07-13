@@ -1,5 +1,15 @@
 {% include "components/ui/_runtime.html" %}
-{% macro sheet(open=false, class="", attrs={}) -%}<dialog class="{{ cn('fixed inset-y-0 right-0 m-0 h-full w-3/4 max-w-sm border-l bg-background p-0 shadow-lg backdrop:bg-black/50', class) }}" data-slot="sheet" data-state="{{ 'open' if open else 'closed' }}" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</dialog>{%- endmacro %}
+{# Chrome's UA stylesheet applies `dialog:modal { inset: 0 }` once opened via
+   showModal() — that sets `left: 0` at the UA layer, and since we only ever
+   set `right-0` (never an explicit `left`), the UA's `left: 0` is left
+   uncontested and wins, pinning the sheet to the left edge instead of the
+   right. `left-auto` is the explicit author-origin override that fixes it.
+   The same UA stylesheet also sets `dialog:modal { max-height: calc(100% -
+   6px - 2em); max-width: calc(100% - 6px - 2em) }` (its auto-centering size
+   cap) — since we never set our own `max-h-*`, that UA max-height wins over
+   our `h-full`, clipping the sheet ~38px short of the viewport. `max-h-none`
+   (mirroring the existing `max-w-none` override) fixes it. #}
+{% macro sheet(open=false, class="", attrs={}) -%}<dialog class="{{ cn('fixed inset-y-0 right-0 left-auto m-0 h-full max-h-none w-3/4 max-w-sm border-l bg-background p-0 shadow-lg backdrop:bg-black/50', class) }}" data-slot="sheet" data-state="{{ 'open' if open else 'closed' }}" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</dialog>{%- endmacro %}
 {% macro sheet_trigger(text="", target="", class="", attrs={}) -%}<button type="button" class="{{ cn('', class) }}" data-slot="sheet-trigger" {% if target %}data-target="{{ target }}" aria-controls="{{ target.lstrip('#') }}"{% endif %} aria-expanded="false" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</button>{%- endmacro %}
 {% macro sheet_close(text="", class="", attrs={}) -%}<button type="button" class="{{ cn('absolute right-4 top-4 opacity-70 hover:opacity-100', class) }}" data-slot="sheet-close" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text or '×' }}{% endif %}</button>{%- endmacro %}
 {% macro sheet_backdrop(class="", attrs={}) -%}<div class="{{ cn('fixed inset-0 z-50 bg-black/50', class) }}" data-slot="sheet-backdrop" {{ html_attrs(**attrs) }}></div>{%- endmacro %}

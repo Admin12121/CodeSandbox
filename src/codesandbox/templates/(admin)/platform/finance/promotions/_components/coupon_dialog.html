@@ -1,8 +1,15 @@
 {% import "components/ui/dialog.html" as dialog %}
 {% import "components/ui/button.html" as button %}
+{% import "components/ui/form.html" as form_ui %}
 {% import "components/ui/input.html" as input %}
+{% import "components/ui/label.html" as label_ui %}
+{% import "components/ui/number-field.html" as number_field %}
+{% import "components/ui/select.html" as select %}
 {% import "components/ui/textarea.html" as textarea %}
-{% import "components/ui/select-native.html" as select_native %}
+
+{% macro select_chevron() %}
+  <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+{% endmacro %}
 
 {% macro coupon_dialog(templates, plans) %}
 {% call dialog.dialog(class="w-[min(96vw,38rem)]", attrs={"id": "finance-coupon-dialog"}) %}
@@ -12,74 +19,113 @@
       {{ dialog.dialog_title("Create coupon") }}
       {{ dialog.dialog_description("Coupons apply server-side to usage charges when eligible.") }}
     {% endcall %}
-    <form method="post" action="/platform/finance/coupons/new" class="grid gap-4">
+    {% call form_ui.form(method="post", action="/platform/finance/coupons/new", class="grid gap-4") %}
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Code</label>
-          {{ input.input(name="code", required=true, placeholder="WELCOME20") }}
+          {{ label_ui.label("Code", class="text-xs font-medium text-muted-foreground") }}
+          {{ input.input(name="code", required=true, placeholder="Enter coupon code") }}
         </div>
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Name</label>
-          {{ input.input(name="name", required=true, placeholder="Welcome discount") }}
+          {{ label_ui.label("Name", class="text-xs font-medium text-muted-foreground") }}
+          {{ input.input(name="name", required=true, placeholder="Internal campaign name") }}
         </div>
       </div>
+
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Discount type</label>
-          {{ select_native.select_native(name="discount_type", options=[
-            {"value": "percent", "label": "Percent"},
-            {"value": "fixed", "label": "Fixed amount"},
-            {"value": "free_minutes", "label": "Free minutes"},
-            {"value": "free_credit", "label": "Free credit"},
-          ]) }}
+          {{ label_ui.label("Discount type", class="text-xs font-medium text-muted-foreground") }}
+          {% call select.select(name="discount_type", value="percent") %}
+            {% call select.select_trigger(target="finance-coupon-discount-type-popup") %}
+              {{ select.select_value("Percent") }}
+              {{ select_chevron() }}
+            {% endcall %}
+            {% call select.select_popup(attrs={"id": "finance-coupon-discount-type-popup"}) %}
+              {% call select.select_item(value="percent", selected=true) %}Percent{% endcall %}
+              {% call select.select_item(value="fixed") %}Fixed amount{% endcall %}
+              {% call select.select_item(value="free_minutes") %}Free minutes{% endcall %}
+              {% call select.select_item(value="free_credit") %}Free credit{% endcall %}
+            {% endcall %}
+          {% endcall %}
         </div>
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Value</label>
-          {{ input.input(type="number", name="value", required=true, attrs={"min": "0", "step": "0.01"}) }}
+          {{ label_ui.label("Value", class="text-xs font-medium text-muted-foreground") }}
+          {% call number_field.number_field() %}
+            {% call number_field.number_field_group(class="w-full") %}
+              {{ number_field.number_field_input(name="value", min="0", step="0.01", class="h-8.5 w-full text-left", attrs={"required": ""}) }}
+            {% endcall %}
+          {% endcall %}
         </div>
       </div>
+
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Max redemptions</label>
-          {{ input.input(type="number", name="max_redemptions", attrs={"min": "1"}) }}
+          {{ label_ui.label("Max redemptions", class="text-xs font-medium text-muted-foreground") }}
+          {% call number_field.number_field() %}
+            {% call number_field.number_field_group(class="w-full") %}
+              {{ number_field.number_field_input(name="max_redemptions", min="1", step="1", class="h-8.5 w-full text-left") }}
+            {% endcall %}
+          {% endcall %}
         </div>
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Per entity limit</label>
-          {{ input.input(type="number", name="per_entity_limit", attrs={"min": "1"}) }}
+          {{ label_ui.label("Per entity limit", class="text-xs font-medium text-muted-foreground") }}
+          {% call number_field.number_field() %}
+            {% call number_field.number_field_group(class="w-full") %}
+              {{ number_field.number_field_input(name="per_entity_limit", min="1", step="1", class="h-8.5 w-full text-left") }}
+            {% endcall %}
+          {% endcall %}
         </div>
       </div>
+
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Template scope</label>
-          <select name="applies_to_template_id" class="h-8 rounded-lg border border-input bg-background px-2 text-sm">
-            <option value="">Any template</option>
-            {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
-          </select>
+          {{ label_ui.label("Template scope", class="text-xs font-medium text-muted-foreground") }}
+          {% call select.select(name="applies_to_template_id", value="") %}
+            {% call select.select_trigger(target="finance-coupon-template-popup") %}
+              {{ select.select_value("Any template") }}
+              {{ select_chevron() }}
+            {% endcall %}
+            {% call select.select_popup(attrs={"id": "finance-coupon-template-popup"}) %}
+              {% call select.select_item(value="", selected=true) %}Any template{% endcall %}
+              {% for t in templates %}
+                {% call select.select_item(value=t.id) %}{{ t.name }}{% endcall %}
+              {% endfor %}
+            {% endcall %}
+          {% endcall %}
         </div>
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Plan scope</label>
-          <select name="applies_to_plan_id" class="h-8 rounded-lg border border-input bg-background px-2 text-sm">
-            <option value="">Any plan</option>
-            {% for p in plans %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
-          </select>
+          {{ label_ui.label("Plan scope", class="text-xs font-medium text-muted-foreground") }}
+          {% call select.select(name="applies_to_plan_id", value="") %}
+            {% call select.select_trigger(target="finance-coupon-plan-popup") %}
+              {{ select.select_value("Any plan") }}
+              {{ select_chevron() }}
+            {% endcall %}
+            {% call select.select_popup(attrs={"id": "finance-coupon-plan-popup"}) %}
+              {% call select.select_item(value="", selected=true) %}Any plan{% endcall %}
+              {% for p in plans %}
+                {% call select.select_item(value=p.id) %}{{ p.name }}{% endcall %}
+              {% endfor %}
+            {% endcall %}
+          {% endcall %}
         </div>
       </div>
+
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Starts</label>
-          {{ input.input(type="date", name="starts_at") }}
+          {{ label_ui.label("Starts", class="text-xs font-medium text-muted-foreground") }}
+          {{ input.input(name="starts_at", placeholder="YYYY-MM-DD", attrs={"autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
         </div>
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Expires</label>
-          {{ input.input(type="date", name="expires_at") }}
+          {{ label_ui.label("Expires", class="text-xs font-medium text-muted-foreground") }}
+          {{ input.input(name="expires_at", placeholder="YYYY-MM-DD", attrs={"autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
         </div>
       </div>
+
       {{ textarea.textarea(name="description", rows=3, placeholder="Optional internal description.") }}
       {% call dialog.dialog_footer() %}
         {{ dialog.dialog_cancel("Cancel") }}
         {% call button.button(type="submit") %}Create coupon{% endcall %}
       {% endcall %}
-    </form>
+    {% endcall %}
   {% endcall %}
 {% endcall %}
 {% endmacro %}

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import math
 import uuid
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_UP
 from urllib.parse import urlencode
@@ -62,6 +61,36 @@ def _signed_money(value) -> Decimal:
 def _format_money(value, currency: str = "GBP") -> str:
     symbol = "£" if currency == "GBP" else f"{currency} "
     return f"{symbol}{_decimal(value):.2f}"
+
+
+_ONES = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+         "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+_SCALES = [(1_000_000_000, "billion"), (1_000_000, "million"), (1_000, "thousand"), (100, "hundred")]
+
+
+def _int_to_words(n: int) -> str:
+    if n == 0:
+        return "zero"
+    if n < 20:
+        return _ONES[n]
+    if n < 100:
+        tens, rest = divmod(n, 10)
+        return _TENS[tens] + (f"-{_ONES[rest]}" if rest else "")
+    for scale, name in _SCALES:
+        if n >= scale:
+            whole, rest = divmod(n, scale)
+            words = f"{_int_to_words(whole)} {name}"
+            return f"{words} {_int_to_words(rest)}" if rest else words
+    return str(n)
+
+
+def _amount_in_words(value, currency: str = "GBP") -> str:
+    amount = abs(_decimal(value))
+    whole = int(amount)
+    cents = int((amount - whole) * 100)
+    words = _int_to_words(whole).capitalize()
+    return f"{words} and {cents:02d}/100" if cents else words
 
 
 def _safe_date(value: str | None) -> datetime | None:
@@ -878,6 +907,35 @@ def _mini_bar_series(values: list[str | Decimal | int | float]) -> list[dict]:
     return bars
 
 
+# Every period (today/week/month/year/custom) slices into this many
+# equal-width real time buckets for the mini sparklines — a fixed target
+# density rather than a fixed semantic unit (was: 24 hourly buckets for
+# "today", 7 daily for "week", ~30 daily for "month", 12 monthly for
+# "year"), so "week" and "year" no longer render visibly sparser than
+# "month" just because their calendar-aligned unit was coarser. Each
+# bucket still sums real events within its exact sub-range — no mock data,
+# just a consistent number of real sub-totals.
+_TARGET_BAR_COUNT = 30
+
+
+def _bucketed_values(period_info: dict, events: list[tuple[datetime | None, Decimal]]) -> list[Decimal]:
+    if not events:
+        return []
+    begin = _as_utc(period_info["begin"]) or period_info["begin"]
+    finish = _as_utc(period_info["finish"]) or period_info["finish"]
+    total_seconds = max(1.0, (finish - begin).total_seconds())
+    bucket_seconds = total_seconds / _TARGET_BAR_COUNT
+    values = [Decimal("0") for _ in range(_TARGET_BAR_COUNT)]
+    for when, amount in events:
+        when_utc = _as_utc(when)
+        if when_utc is None or when_utc < begin or when_utc >= finish:
+            continue
+        index = int((when_utc - begin).total_seconds() // bucket_seconds)
+        index = max(0, min(_TARGET_BAR_COUNT - 1, index))
+        values[index] += _decimal(amount)
+    return values
+
+
 def _duration_display(seconds: int) -> str:
     seconds = max(0, int(seconds or 0))
     if seconds < 60:
@@ -988,20 +1046,11 @@ def _balance_split() -> dict:
     }
 
 
-def _timeline(begin: datetime, finish: datetime, stats: dict, *, include_gross: bool = False) -> list[dict]:
+def _timeline(begin: datetime, finish: datetime, stats: dict) -> list[dict]:
     charges = stats["revenue_charges"]
     refunds = stats["refunds"]
     by_charge = stats["compute_by_charge"]
-    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
     buckets: dict[str, dict[str, Decimal]] = {}
-    if days <= 370:
-        for i in range(days):
-            buckets[(begin.date() + timedelta(days=i)).isoformat()] = {
-                "gross": Decimal("0"),
-                "net": Decimal("0"),
-                "compute_cost": Decimal("0"),
-                "refunds": Decimal("0"),
-            }
     for charge in charges:
         if not charge.created_at:
             continue
@@ -1026,16 +1075,11 @@ def _timeline(begin: datetime, finish: datetime, stats: dict, *, include_gross: 
             "refunds": f"{values['refunds']:.4f}",
         }
         for key, values in sorted(buckets.items())
-        if include_gross or any(value != 0 for value in values.values()) or days <= 370
     ]
 
 
 def _transaction_timeline(begin: datetime, finish: datetime, transactions: list[BalanceTransaction]) -> list[dict]:
-    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
     buckets: dict[str, Decimal] = {}
-    if days <= 370:
-        for i in range(days):
-            buckets[(begin.date() + timedelta(days=i)).isoformat()] = Decimal("0")
     for tx in transactions:
         if not tx.created_at:
             continue
@@ -1044,29 +1088,7 @@ def _transaction_timeline(begin: datetime, finish: datetime, transactions: list[
     return [
         {"label": key, "value": f"{value:.4f}"}
         for key, value in sorted(buckets.items())
-        if value != 0 or days <= 370
     ]
-
-
-def _balance_liability_timeline(begin: datetime, finish: datetime, current_total: Decimal) -> list[dict]:
-    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
-    keys = [(begin.date() + timedelta(days=i)).isoformat() for i in range(days)]
-    period_txs = sorted(_all_balance_transactions(begin, finish), key=lambda tx: tx.created_at)
-    after_period_total = repository.sum_decimal(
-        _decimal(tx.amount) for tx in _all_balance_transactions(finish, None)
-    )
-    balance = current_total - after_period_total
-    changes_by_day: dict[str, Decimal] = defaultdict(Decimal)
-    for tx in period_txs:
-        if not tx.created_at:
-            continue
-        key = (_as_utc(tx.created_at) or tx.created_at).date().isoformat()
-        changes_by_day[key] += _decimal(tx.amount)
-    rows = []
-    for key in keys:
-        balance += changes_by_day.get(key, Decimal("0"))
-        rows.append({"label": key, "value": f"{balance:.4f}"})
-    return rows
 
 
 def _ranked_templates(charges: list[UsageCharge], compute_by_charge: dict[str, dict], limit: int = 8) -> list[dict]:
@@ -1219,11 +1241,26 @@ def overview_console(period: str = "30d", start: str | None = None, end: str | N
     balances = _balance_split()
     margin_pct = _percent(current["profit"], current["net_revenue"])
     timeline = _timeline(period_info["begin"], period_info["finish"], current)
-    net_revenue_series = [row["net"] for row in timeline]
-    balance_movement_timeline = _transaction_timeline(period_info["begin"], period_info["finish"], current["transactions"])
-    balance_movement_series = [row["value"] for row in balance_movement_timeline]
+    net_revenue_series = _bucketed_values(
+        period_info,
+        [(charge.created_at, _decimal(charge.final_amount)) for charge in current["revenue_charges"]]
+        + [(refund.created_at, -_decimal(refund.amount)) for refund in current["refunds"]],
+    )
+    balance_movement_series = _bucketed_values(
+        period_info,
+        [(tx.created_at, _decimal(tx.amount)) for tx in current["transactions"]],
+    )
     balance_movement_total = repository.sum_decimal(_decimal(tx.amount) for tx in current["transactions"])
-    compute_cost_series = [row["compute_cost"] for row in timeline]
+    compute_cost_series = _bucketed_values(
+        period_info,
+        [
+            (
+                charge.created_at,
+                current["compute_by_charge"].get(str(charge.id), {}).get("compute_cost", Decimal("0")),
+            )
+            for charge in current["revenue_charges"]
+        ],
+    )
     return {
         "period": period_info,
         "health": {
@@ -1297,7 +1334,7 @@ def usage_margin_console(
             {"label": "Estimated compute cost", **_amount(current["compute_cost"]), "delta": _delta(current["compute_cost"], previous["compute_cost"])},
             {"label": "Estimated margin", **_amount(current["profit"]), "suffix": None if margin_pct is None else f"{margin_pct:.2f}%"},
         ],
-        "economics_timeline": _timeline(period_info["begin"], period_info["finish"], current, include_gross=True),
+        "economics_timeline": _timeline(period_info["begin"], period_info["finish"], current),
         "template_unit_economics": _ranked_templates(charges, current["compute_by_charge"]),
         "usage_efficiency": _usage_efficiency(current, period_info["begin"], period_info["finish"]),
         "breakdown": {
@@ -1490,6 +1527,7 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
         })
     else:
         receipt["items"] = [{"label": tx.type.replace("_", " ").title(), "quantity": "1", "rate": str(absolute), "amount": str(absolute)}]
+    receipt["total_in_words"] = _amount_in_words(receipt["total"], receipt["currency"])
     return receipt
 
 
@@ -1578,11 +1616,7 @@ def entity_options(limit: int = 30) -> list[dict]:
 
 
 def _redemption_timeline(redemptions: list, begin: datetime, finish: datetime) -> list[dict]:
-    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
     buckets: dict[str, dict[str, Decimal | int]] = {}
-    if days <= 75:
-        for i in range(days):
-            buckets[(begin.date() + timedelta(days=i)).isoformat()] = {"amount": Decimal("0"), "count": 0}
     for redemption in redemptions:
         if not redemption.created_at:
             continue
@@ -1594,9 +1628,8 @@ def _redemption_timeline(redemptions: list, begin: datetime, finish: datetime) -
         bucket["amount"] = _decimal(bucket["amount"]) + _decimal(redemption.redeemed_amount)
         bucket["count"] = int(bucket["count"]) + 1
     return [
-        {"label": key, "amount": f"{_decimal(values['amount']):.4f}", "count": int(values["count"])}
+        {"label": key, "net": f"{_decimal(values['amount']):.4f}", "compute_cost": "0", "count": int(values["count"])}
         for key, values in sorted(buckets.items())
-        if int(values["count"]) > 0 or days <= 75
     ]
 
 

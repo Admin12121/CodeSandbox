@@ -1,38 +1,45 @@
-{% import "components/ui/button.html" as button %}
-{% import "components/ui/select-native.html" as select_native %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/select.html" as select %}
 
 {% macro period_toolbar(period, action="", extra={}) %}
+{% set period_options = [
+  {"value": "today", "label": "Today"},
+  {"value": "week", "label": "This week"},
+  {"value": "7d", "label": "7 days"},
+  {"value": "30d", "label": "30 days"},
+  {"value": "month", "label": "This month"},
+  {"value": "year", "label": "This year"},
+  {"value": "custom", "label": "Custom"},
+] %}
+{% set selected_period = period_options | selectattr("value", "equalto", period.key) | list %}
 <form method="get" action="{{ action or request.path }}" class="flex flex-wrap items-center justify-end gap-2" data-finance-period-form>
   {% for key, value in extra.items() %}
     {% if value not in (None, "", "all") %}
       <input type="hidden" name="{{ key }}" value="{{ value }}">
     {% endif %}
   {% endfor %}
-  {{ select_native.select_native(
-    name="period",
-    value=period.key,
-    size="sm",
-    options=[
-      {"value": "today", "label": "Today"},
-      {"value": "week", "label": "This week"},
-      {"value": "7d", "label": "7 days"},
-      {"value": "30d", "label": "30 days"},
-      {"value": "month", "label": "This month"},
-      {"value": "year", "label": "This year"},
-      {"value": "custom", "label": "Custom"},
-    ],
-    attrs={"data-finance-period-select": ""}
-  ) }}
+  {% call select.select(name="period", value=period.key, class="min-w-32", attrs={"data-finance-period-select": ""}) %}
+    {% call select.select_trigger(size="sm", target="finance-period-popup") %}
+      {{ select.select_value(selected_period[0].label if selected_period else period.label) }}
+      <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    {% endcall %}
+    {% call select.select_popup(attrs={"id": "finance-period-popup"}) %}
+      {% for option in period_options %}
+        {% call select.select_item(value=option.value, selected=(option.value == period.key)) %}{{ option.label }}{% endcall %}
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
   <div class="{{ 'flex' if period.is_custom else 'hidden' }} items-center gap-2" data-finance-custom-range>
-    <input type="date" name="start" value="{{ period.start }}" class="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-xs/5">
+    {{ input.input(name="start", value=period.start, placeholder="YYYY-MM-DD", size="sm", class="w-32", attrs={"autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
     <span class="text-xs text-muted-foreground">to</span>
-    <input type="date" name="end" value="{{ period.end }}" class="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-xs/5">
+    {{ input.input(name="end", value=period.end, placeholder="YYYY-MM-DD", size="sm", class="w-32", attrs={"autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
   </div>
 </form>
 {% app_script "finance-period-toolbar" %}
 (function(){
   document.querySelectorAll('[data-finance-period-form]').forEach(function(form){
-    var select = form.querySelector('[data-finance-period-select]');
+    var selectRoot = form.querySelector('[data-finance-period-select]');
+    var select = selectRoot && selectRoot.querySelector('input[name="period"]');
     var range = form.querySelector('[data-finance-custom-range]');
     if(!select || !range) return;
     function sync(){

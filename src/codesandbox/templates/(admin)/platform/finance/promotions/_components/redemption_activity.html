@@ -1,31 +1,23 @@
-{% import "components/ui/chart.html" as chart %}
 {% import "components/ui/frame.html" as frame %}
+{% import "(admin)/platform/finance/_components/revenue_cost_chart.html" as chart_ui %}
 
 {% macro redemption_activity(redemptions, timeline, has_redemptions) %}
+{{ chart_ui.revenue_cost_chart(
+  "finance-redemptions",
+  "Redemption activity",
+  timeline,
+  mode="redemptions",
+  total_label="Total Redeemed",
+  show_secondary=false,
+  primary_tooltip_label="Redeemed amount",
+  show_period_toggle=false
+) }}
 {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
   {% call frame.frame_header() %}
-    <h2 class="text-sm font-semibold text-foreground">Redemption activity</h2>
+    <h2 class="text-sm font-semibold text-foreground">Recent redemptions</h2>
   {% endcall %}
   {% call frame.frame_panel() %}
   {% if has_redemptions %}
-    {% set config = {"amount": {"label": "Redeemed amount", "color": "var(--chart-1)"}} %}
-    {{ chart.area_chart("finance-redemptions-chart", config, height=180) }}
-    <script type="application/json" id="finance-redemptions-seed">{{ timeline|tojson }}</script>
-    {% app_script "finance-redemptions-chart-seed" %}
-    (function(){
-      var seed = document.getElementById('finance-redemptions-seed');
-      if(!seed) return;
-      var rows = JSON.parse(seed.textContent || '[]');
-      function run(){
-        var api = window.csCharts && window.csCharts['finance-redemptions-chart'];
-        if(!api){ setTimeout(run, 50); return; }
-        api.reset();
-        api.setWindow(Math.max(rows.length, 8));
-        rows.forEach(function(row){ api.addPoint('amount', Number(row.amount || 0), row.label); });
-      }
-      run();
-    })();
-    {% end_app_script %}
     <div class="mt-5 divide-y">
       {% for redemption in redemptions[:8] %}
         <div class="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">

@@ -220,9 +220,12 @@ def test_finance_console_shapes_and_ledger_preview(ctx: TestContext) -> None:
 
 def test_finance_templates_split_and_no_internal_tabs(ctx: TestContext) -> None:
     from pathlib import Path
+
+    import codesandbox
     from codesandbox.web.blueprint import router
 
-    base = Path("src/codesandbox/templates/(admin)/platform/finance")
+    package_root = Path(next(iter(codesandbox.__path__))).resolve()
+    base = package_root / "templates" / "(admin)" / "platform" / "finance"
     page_paths = [
         base / "page.html",
         base / "revenue" / "page.html",
@@ -232,6 +235,9 @@ def test_finance_templates_split_and_no_internal_tabs(ctx: TestContext) -> None:
     for path in page_paths:
         text = path.read_text()
         assert "finance_tabs" not in text
+        assert "page_header" not in text
+    assert "period_toolbar" not in (base / "page.html").read_text()
+    assert "period_toolbar" not in (base / "revenue" / "page.html").read_text()
     assert not (base / "overview.html").exists()
     assert not (base / "revenue.html").exists()
     assert not (base / "ledger.html").exists()
@@ -240,11 +246,8 @@ def test_finance_templates_split_and_no_internal_tabs(ctx: TestContext) -> None:
     assert (base / "revenue" / "_components").is_dir()
     assert (base / "ledger" / "_components").is_dir()
     assert (base / "promotions" / "_components").is_dir()
-    assert '(admin)/platform/finance/_components' not in (base / "revenue" / "page.html").read_text()
-    assert '(admin)/platform/finance/_components' not in (base / "ledger" / "page.html").read_text()
-    assert '(admin)/platform/finance/_components' not in (base / "promotions" / "page.html").read_text()
     assert '(admin)/platform/finance/ledger/_components/financial_document.html' in (
-        Path("src/codesandbox/features/finance/pages.py").read_text()
+        (package_root / "features" / "finance" / "pages.py").read_text()
     )
 
     finance_routes = {
@@ -257,6 +260,27 @@ def test_finance_templates_split_and_no_internal_tabs(ctx: TestContext) -> None:
         route = router._page_routes[endpoint]
         assert route.template_explicit is False
         assert route.template.endswith("/page.html")
+
+
+def test_finance_empty_periods_do_not_emit_fake_timelines(ctx: TestContext) -> None:
+    from codesandbox.features.finance import service as finance_service
+
+    start = "2099-01-01"
+    end = "2099-01-31"
+
+    overview = finance_service.dashboard(period="custom", start=start, end=end)
+    assert overview["revenue_cost_timeline"] == []
+    assert overview["health"]["net_revenue"]["sparkline"] == []
+    assert overview["health"]["cash_liability"]["sparkline"] == []
+    assert overview["health"]["margin_compute"]["sparkline"] == []
+
+    report = finance_service.revenue_console(period="custom", start=start, end=end)
+    assert report["economics_timeline"] == []
+    assert report["usage_charges"]["total"] == 0
+
+    promotions = finance_service.promotions_console(period="custom", start=start, end=end)
+    assert promotions["redemption_timeline"] == []
+    assert promotions["has_redemptions"] is False
 
 
 def test_usage_charge_is_idempotent(ctx: TestContext) -> None:
@@ -501,6 +525,7 @@ TESTS: list[TestCase] = [
     TestCase("finance console route contract", "finance", test_finance_console_route_contract),
     TestCase("finance console shapes and ledger preview", "finance", test_finance_console_shapes_and_ledger_preview),
     TestCase("finance templates split and no internal tabs", "finance", test_finance_templates_split_and_no_internal_tabs),
+    TestCase("finance empty periods do not emit fake timelines", "finance", test_finance_empty_periods_do_not_emit_fake_timelines),
     TestCase("UsageCharge is idempotent", "finance", test_usage_charge_is_idempotent),
     TestCase("finance admin mutations validate entity", "finance", test_finance_admin_mutations_validate_entity),
     TestCase("coupon limit scope and expiry", "finance", test_coupon_limit_scope_and_expiry),

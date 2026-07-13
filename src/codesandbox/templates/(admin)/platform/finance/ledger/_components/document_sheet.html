@@ -2,7 +2,18 @@
 {% import "(admin)/platform/finance/ledger/_components/financial_document.html" as doc %}
 
 {% macro document_sheet(receipt, can_manage_refunds=false) %}
-{% call sheet.sheet(open=receipt is not none, class="w-[min(100vw,56rem)] max-w-none", attrs={"id": "finance-document-sheet"}) %}
+{# !-prefixed: cn() is plain string concatenation with no Tailwind-merge
+   dedup, so an override class only wins over the base w-3/4 max-w-sm if it
+   happens to land later in the generated stylesheet — not guaranteed.
+   !important forces it regardless of rule order. #}
+{# open is always rendered false here on purpose: a raw `open` boolean
+   attribute makes <dialog> non-modal, which never enters the browser's top
+   layer — it then obeys normal stacking order and loses to the sticky
+   z-40 header on page load (looks squashed/behind-header). The bootstrap
+   script below calls showModal() instead, same as the JS click-to-open
+   path, so a page reload with ?selected=... ends up in the exact same
+   (correct) top-layer state as opening it by clicking a row. #}
+{% call sheet.sheet(open=false, class="!w-[min(100vw,56rem)] !max-w-none", attrs={"id": "finance-document-sheet"}) %}
   <div id="finance-document-content" class="h-full overflow-hidden">
     {% if receipt %}
       {{ doc.financial_document(receipt, can_manage_refunds) }}
@@ -11,4 +22,14 @@
     {% endif %}
   </div>
 {% endcall %}
+{% if receipt %}
+{% app_script "finance-document-sheet-open-on-load" %}
+(function(){
+  var d = document.getElementById('finance-document-sheet');
+  if(!d) return;
+  d.dataset.state = 'open';
+  try { d.showModal(); } catch(e) { d.setAttribute('open', ''); }
+})();
+{% end_app_script %}
+{% endif %}
 {% endmacro %}

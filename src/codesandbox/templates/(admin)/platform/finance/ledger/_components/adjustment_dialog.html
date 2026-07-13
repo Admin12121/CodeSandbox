@@ -1,11 +1,17 @@
 {% import "components/ui/dialog.html" as dialog %}
 {% import "components/ui/alert-dialog.html" as alert %}
 {% import "components/ui/button.html" as button %}
+{% import "components/ui/form.html" as form_ui %}
 {% import "components/ui/input.html" as input %}
+{% import "components/ui/label.html" as label_ui %}
 {% import "components/ui/textarea.html" as textarea %}
-{% import "components/ui/select-native.html" as select_native %}
+{% import "components/ui/select.html" as select %}
 {% import "components/ui/combobox.html" as combobox %}
 {% import "components/ui/checkbox.html" as checkbox %}
+
+{% macro select_chevron() %}
+  <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+{% endmacro %}
 
 {% macro adjustment_dialog(entity_options) %}
 {% call dialog.dialog(class="w-[min(96vw,34rem)]", attrs={"id": "finance-adjustment-dialog"}) %}
@@ -15,11 +21,20 @@
       {{ dialog.dialog_title("Create adjustment") }}
       {{ dialog.dialog_description("Manual adjustments directly change a user or organization balance.") }}
     {% endcall %}
-    <form method="post" action="/platform/finance/adjustments/new" class="grid gap-4" data-finance-confirm-form>
+    {% call form_ui.form(method="post", action="/platform/finance/adjustments/new", class="grid gap-4", attrs={"data-finance-confirm-form": ""}) %}
       <input type="hidden" name="entity_id" data-finance-entity-id>
       <div class="grid gap-2">
-        <label class="text-xs font-medium text-muted-foreground">Entity</label>
-        {{ select_native.select_native(name="entity_type", value="user", options=[{"value": "user", "label": "User"}, {"value": "org", "label": "Organization"}]) }}
+        {{ label_ui.label("Entity", class="text-xs font-medium text-muted-foreground") }}
+        {% call select.select(name="entity_type", value="user", attrs={"data-finance-entity-type-select": ""}) %}
+          {% call select.select_trigger(target="finance-adjustment-entity-type-popup") %}
+            {{ select.select_value("User") }}
+            {{ select_chevron() }}
+          {% endcall %}
+          {% call select.select_popup(attrs={"id": "finance-adjustment-entity-type-popup"}) %}
+            {% call select.select_item(value="user", selected=true) %}User{% endcall %}
+            {% call select.select_item(value="org") %}Organization{% endcall %}
+          {% endcall %}
+        {% endcall %}
         {% call combobox.combobox() %}
           {{ combobox.combobox_input(placeholder="Search users or organizations…", attrs={"autocomplete": "off"}) }}
           {% call combobox.combobox_popup(class="w-full") %}
@@ -37,23 +52,32 @@
       </div>
       <div class="grid gap-2 sm:grid-cols-2">
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Direction</label>
-          {{ select_native.select_native(name="direction", options=[{"value": "add", "label": "Add credit"}, {"value": "deduct", "label": "Deduct balance"}]) }}
+          {{ label_ui.label("Direction", class="text-xs font-medium text-muted-foreground") }}
+          {% call select.select(name="direction", value="add") %}
+            {% call select.select_trigger(target="finance-adjustment-direction-popup") %}
+              {{ select.select_value("Add credit") }}
+              {{ select_chevron() }}
+            {% endcall %}
+            {% call select.select_popup(attrs={"id": "finance-adjustment-direction-popup"}) %}
+              {% call select.select_item(value="add", selected=true) %}Add credit{% endcall %}
+              {% call select.select_item(value="deduct") %}Deduct balance{% endcall %}
+            {% endcall %}
+          {% endcall %}
         </div>
         <div class="grid gap-1.5">
-          <label class="text-xs font-medium text-muted-foreground">Amount</label>
+          {{ label_ui.label("Amount", class="text-xs font-medium text-muted-foreground") }}
           {{ input.input(type="number", name="amount", attrs={"min": "0.01", "step": "0.01", "required": ""}) }}
         </div>
       </div>
       <div class="grid gap-1.5">
-        <label class="text-xs font-medium text-muted-foreground">Reason</label>
+        {{ label_ui.label("Reason", class="text-xs font-medium text-muted-foreground") }}
         {{ input.input(name="reason", required=true, placeholder="Customer support credit, correction…") }}
       </div>
       <div class="grid gap-1.5">
-        <label class="text-xs font-medium text-muted-foreground">Internal note</label>
+        {{ label_ui.label("Internal note", class="text-xs font-medium text-muted-foreground") }}
         {{ textarea.textarea(name="internal_note", rows=3, placeholder="Internal context, not exported to customer documents.") }}
       </div>
-      <label class="flex items-start gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+      <label class="flex items-start gap-2 p-3 text-xs text-muted-foreground">
         {{ checkbox.checkbox(name="acknowledged", attrs={"required": ""}) }}
         <span>I understand this directly changes the selected balance.</span>
       </label>
@@ -61,7 +85,7 @@
         {{ dialog.dialog_cancel("Cancel") }}
         {% call button.button(type="submit") %}Continue{% endcall %}
       {% endcall %}
-    </form>
+    {% endcall %}
   {% endcall %}
 {% endcall %}
 

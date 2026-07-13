@@ -131,10 +131,10 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
             finance_items = permitted(finance_items)
             sandbox_items = permitted(sandbox_items)
         sections = [{"label": "Platform", "items": core_items}]
-        if finance_items:
-            sections.append({"label": "Finance", "items": finance_items})
         if sandbox_items:
             sections.append({"label": "Sandboxes", "items": sandbox_items})
+        if finance_items:
+            sections.append({"label": "Finance", "items": finance_items})
         return {
             "sections": sections,
             "secondary": secondary_items,

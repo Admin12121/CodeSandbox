@@ -8,13 +8,15 @@
     <div class="min-w-0">
       <div class="flex items-center gap-2">
         <h2 class="truncate text-base font-semibold text-foreground">{{ receipt.title }}</h2>
-        {{ badge.badge(receipt.status|replace("_", " ")|title, variant=("error" if receipt.status == "failed" else "outline")) }}
       </div>
-      <p class="mt-1 truncate text-xs text-muted-foreground">{{ receipt.number }} · {{ receipt.transaction_id }}</p>
     </div>
     <div class="flex items-center gap-2">
-      {% call button.button(variant="outline", size="xs", attrs={"data-finance-print-document": ""}) %}Print{% endcall %}
-      {% call button.button(variant="outline", size="xs", attrs={"data-finance-print-document": ""}) %}Download PDF{% endcall %}
+      {% call button.button(variant="secondary", size="icon", attrs={"data-finance-print-document": ""}) %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-printer-icon lucide-printer"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+      {% endcall %}
+      {% call button.button(variant="secondary", size="icon", attrs={"data-finance-print-document": ""}) %}
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-down-icon lucide-file-down"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
+      {% endcall %}
       {% if can_manage_refunds and receipt.refundable %}
         {% call button.button(
           variant="destructive-outline",
@@ -27,67 +29,77 @@
           }
         ) %}Refund{% endcall %}
       {% endif %}
-      <button type="button" data-slot="sheet-close" class="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">Close</button>
     </div>
   </div>
-  <div class="flex-1 overflow-y-auto bg-muted/30 p-4 sm:p-8">
-    <article data-financial-document-print class="mx-auto min-h-[720px] max-w-3xl rounded-sm bg-white p-8 text-neutral-950 shadow-xl print:shadow-none">
-      <header class="flex items-start justify-between gap-6 border-b border-neutral-200 pb-6">
-        <div>
-          <div class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">CodeSandbox Platform</div>
-          <h1 class="mt-3 text-3xl font-semibold tracking-tight text-neutral-950">{{ receipt.title }}</h1>
-          <p class="mt-1 text-sm text-neutral-500">{{ receipt.number }}</p>
-        </div>
-        <div class="text-right text-sm text-neutral-600">
-          <div>{{ receipt.date.strftime("%d %b %Y") if receipt.date else "" }}</div>
-          <div class="mt-1">{{ receipt.currency }}</div>
-        </div>
+  <div class="flex-1 overflow-y-auto bg-neutral-950 print:bg-white py-5">
+    <article data-financial-document-print class="mx-auto flex h-full min-h-full max-w-3xl flex-col text-neutral-100 print:h-auto print:min-h-0 print:text-neutral-950 border border-neutral-800">
+      <header class="border-b border-neutral-800 px-8 py-6 print:border-neutral-200">
+        <h1 class="truncate text-4xl font-bold tracking-tight">{{ receipt.title }} {{ receipt.number }}</h1>
       </header>
-      <section class="grid gap-6 border-b border-neutral-200 py-6 sm:grid-cols-2">
-        <div>
-          <div class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Billed by</div>
-          <div class="mt-2 text-sm font-medium">{{ receipt.billed_by }}</div>
+      <section class="flex border-b border-neutral-800 text-[10px] print:border-neutral-200">
+        <div class="grid w-72 shrink-0 grid-cols-[auto_1fr] gap-x-6 gap-y-2 border-r border-neutral-800 px-4 py-3 print:border-neutral-200">
+          <div class="text-neutral-500">Serial Number</div><div class="font-medium">{{ receipt.number }}</div>
+          <div class="text-neutral-500">Date</div><div class="font-medium">{{ receipt.date.strftime("%d/%m/%Y") if receipt.date else "" }}</div>
+          <div class="text-neutral-500">Currency</div><div class="font-medium">{{ receipt.currency }}</div>
         </div>
-        <div>
-          <div class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Billed to</div>
-          <div class="mt-2 text-sm font-medium">{{ receipt.billed_to }}</div>
-          <div class="mt-1 text-xs text-neutral-500">{{ receipt.entity_type }} · {{ receipt.entity_id }}</div>
+        <div class="flex justify-end w-full pr-5">
+            <img src="/logo.webp" class="h-[80px]">
+        </div>
+        <div class="flex-1"></div>
+      </section>
+      <section class="flex border-b border-neutral-800 print:border-neutral-200">
+        <div class="min-w-0 flex-1 border-r border-neutral-800 px-4 py-3 print:border-neutral-200">
+          <div class="text-xs font-semibold tracking-wide text-neutral-500">Billed By</div>
+          <div class="mt-2 truncate text-sm font-medium">{{ receipt.billed_by }}</div>
+        </div>
+        <div class="min-w-0 flex-1 px-4 py-3">
+          <div class="text-xs font-semibold tracking-wide text-neutral-500">Billed To</div>
+          <div class="mt-2 truncate text-sm font-medium">{{ receipt.billed_to }}</div>
+          <div class="mt-1 truncate text-xs text-neutral-500">{{ receipt.entity_type }} · {{ receipt.entity_id }}</div>
         </div>
       </section>
-      <section class="py-6">
+      <section class="border-b border-neutral-800 print:border-neutral-200">
         {% call table.table(class="text-left text-sm") %}
-          {% call table.table_header(class="text-xs uppercase tracking-wide text-neutral-500") %}
-            {% call table.table_row(class="border-b border-neutral-200") %}
-              {{ table.table_head("Item", class="py-2 text-neutral-500") }}
-              {{ table.table_head("Quantity", class="py-2 text-right text-neutral-500") }}
-              {{ table.table_head("Rate", class="py-2 text-right text-neutral-500") }}
-              {{ table.table_head("Amount", class="py-2 text-right text-neutral-500") }}
+          {% call table.table_header(class="text-xs tracking-wide text-neutral-500") %}
+            {% call table.table_row(class="border-b border-neutral-800 print:border-neutral-200") %}
+              {{ table.table_head("Item", class="py-3 text-neutral-500") }}
+              {{ table.table_head("Qty", class="py-3 text-right text-neutral-500") }}
+              {{ table.table_head("Price", class="py-3 text-right text-neutral-500") }}
+              {{ table.table_head("Total", class="py-3 text-right text-neutral-500") }}
             {% endcall %}
           {% endcall %}
           {% call table.table_body(class="before:hidden") %}
             {% for item in receipt["items"] %}
-              {% call table.table_row(class="border-b border-neutral-100") %}
-                {{ table.table_cell(item.label, class="py-4 font-medium text-neutral-950") }}
-                {{ table.table_cell(item.quantity, class="py-4 text-right text-neutral-600") }}
-                {{ table.table_cell(item.rate, class="py-4 text-right text-neutral-600") }}
-                {{ table.table_cell(item.amount, class="py-4 text-right font-mono text-neutral-950") }}
+              {% call table.table_row(class="border-none") %}
+                {{ table.table_cell(item.label, class="py-4 font-medium") }}
+                {{ table.table_cell(item.quantity, class="py-4 text-right text-neutral-400 print:text-neutral-600") }}
+                {{ table.table_cell(item.rate, class="py-4 text-right text-neutral-400 print:text-neutral-600") }}
+                {{ table.table_cell(item.amount, class="py-4 text-right font-mono") }}
               {% endcall %}
             {% endfor %}
           {% endcall %}
         {% endcall %}
       </section>
-      <section class="ml-auto grid max-w-xs gap-2 border-t border-neutral-200 pt-5 text-sm">
-        <div class="flex justify-between"><span class="text-neutral-500">Subtotal</span><span class="font-mono">{{ receipt.subtotal }}</span></div>
-        {% if receipt.discount != "0" %}<div class="flex justify-between"><span class="text-neutral-500">Discount</span><span class="font-mono">-{{ receipt.discount }}</span></div>{% endif %}
-        {% if receipt.credit != "0" %}<div class="flex justify-between"><span class="text-neutral-500">Credit</span><span class="font-mono">-{{ receipt.credit }}</span></div>{% endif %}
-        {% if receipt.refund != "0" %}<div class="flex justify-between"><span class="text-neutral-500">Refund</span><span class="font-mono">{{ receipt.refund }}</span></div>{% endif %}
-        <div class="mt-2 flex justify-between border-t border-neutral-200 pt-3 text-base font-semibold"><span>Total</span><span class="font-mono">{{ receipt.total }}</span></div>
+      <div class="flex-1"></div>
+      <section class="grid sm:grid-cols-2">
+        <div class="border-t border-neutral-800 print:border-neutral-200"></div>
+        <div class="border-t border-neutral-800 text-sm sm:border-l print:border-neutral-200">
+          <div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Subtotal</span><span class="font-mono">{{ receipt.subtotal }}</span></div>
+          {% if receipt.discount != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Discount</span><span class="font-mono">-{{ receipt.discount }}</span></div>{% endif %}
+          {% if receipt.credit != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Credit</span><span class="font-mono">-{{ receipt.credit }}</span></div>{% endif %}
+          {% if receipt.refund != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Refund</span><span class="font-mono">{{ receipt.refund }}</span></div>{% endif %}
+          <div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span>Total</span><span class="font-mono text-lg font-semibold">{{ receipt.total }}</span></div>
+          <div class="px-4 py-3">
+            <div class="text-[10px] tracking-wide text-neutral-500">Invoice Total (in words)</div>
+            <div class="mt-1 text-xs font-medium">{{ receipt.total_in_words }}</div>
+          </div>
+        </div>
       </section>
-      <section class="mt-8 grid gap-2 text-xs text-neutral-500">
-        <div><span class="font-medium text-neutral-700">Provider:</span> {{ receipt.provider }}</div>
-        {% if receipt.provider_reference %}<div><span class="font-medium text-neutral-700">Provider reference:</span> {{ receipt.provider_reference }}</div>{% endif %}
+      <section class="grid gap-2 border-t border-neutral-800 px-8 py-6 text-xs text-neutral-500 print:border-neutral-200">
+        <div><span class="font-medium text-neutral-300 print:text-neutral-700">Provider:</span> {{ receipt.provider }}</div>
+        {% if receipt.provider_reference %}<div class="truncate"><span class="font-medium text-neutral-300 print:text-neutral-700">Provider reference : </span> {{ receipt.provider_reference }}</div>{% endif %}
         {% for label, value in receipt.meta %}
-          {% if value %}<div><span class="font-medium text-neutral-700">{{ label }}:</span> {{ value }}</div>{% endif %}
+          {% if value %}<div><span class="font-medium text-neutral-300 print:text-neutral-700">{{ label }}:</span> {{ value }}</div>{% endif %}
         {% endfor %}
       </section>
     </article>

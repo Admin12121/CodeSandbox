@@ -1,10 +1,14 @@
 {% import "components/ui/frame.html" as frame %}
 
 {% macro mini_bars(bars) %}
-    <div class="flex h-6 w-full items-end gap-[2px] overflow-hidden" aria-label="Period trend">
+    <div
+        class="grid h-6 w-full items-end gap-[2px] overflow-hidden"
+        style="grid-template-columns: repeat({{ bars|length if bars else 1 }}, minmax(0, 1fr));"
+        aria-label="Period trend"
+    >
         {% for bar in bars %}
             <span
-                class="block w-0.5 shrink-0 rounded-full bg-foreground/85 {{ 'opacity-45' if bar.zero else 'opacity-100' }} shadow-[0_0_10px_color-mix(in_srgb,var(--foreground)_12%,transparent)]"
+                class="block w-full max-w-[3px] justify-self-center rounded-full bg-foreground/85 {{ 'opacity-45' if bar.zero else 'opacity-100' }} shadow-[0_0_10px_color-mix(in_srgb,var(--foreground)_12%,transparent)]"
                 style="height: {{ bar.height }}px"
                 title="{{ bar.value }}"
             ></span>

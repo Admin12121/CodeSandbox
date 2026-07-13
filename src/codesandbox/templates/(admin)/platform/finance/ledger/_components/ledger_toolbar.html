@@ -41,10 +41,10 @@
   {% endcall %}
 
   {% call input_group.input_group() %}
-    {{ input_group.input_group_input(name="start", value=ledger.start, attrs={"type": "date", "aria-label": "Start date", "data-cs-autosubmit": ""}) }}
+    {{ input_group.input_group_input(name="start", value=ledger.start, placeholder="YYYY-MM-DD", attrs={"type": "text", "aria-label": "Start date", "data-cs-autosubmit": "", "autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
   {% endcall %}
   {% call input_group.input_group() %}
-    {{ input_group.input_group_input(name="end", value=ledger.end, attrs={"type": "date", "aria-label": "End date", "data-cs-autosubmit": ""}) }}
+    {{ input_group.input_group_input(name="end", value=ledger.end, placeholder="YYYY-MM-DD", attrs={"type": "text", "aria-label": "End date", "data-cs-autosubmit": "", "autocomplete": "off", "inputmode": "numeric", "pattern": "[0-9]{4}-[0-9]{2}-[0-9]{2}"}) }}
   {% endcall %}
 
   {% if can_export_ledger %}

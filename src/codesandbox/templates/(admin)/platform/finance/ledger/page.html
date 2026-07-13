@@ -102,9 +102,14 @@
       if(!form) return;
       var hidden = form.querySelector('[data-finance-entity-id]');
       var type = form.querySelector('[name="entity_type"]');
+      var typeSelect = form.querySelector('[data-finance-entity-type-select]');
       var input = option.closest('[data-slot="combobox"]')?.querySelector('[data-slot="combobox-input"]');
       if(hidden) hidden.value = option.dataset.entityId || '';
       if(type) type.value = option.dataset.entityType || type.value;
+      if(typeSelect){
+        var display = typeSelect.querySelector('[data-slot="select-value"]');
+        if(display) display.textContent = (option.dataset.entityType === 'org') ? 'Organization' : 'User';
+      }
       if(input) input.value = option.textContent.trim().replace(/\\s+/g, ' ');
       var popup = option.closest('[data-slot="combobox-popup"]');
       if(popup){ popup.hidden = true; popup.dataset.state = 'closed'; }
@@ -120,6 +125,12 @@
   var sheet = document.getElementById('finance-document-sheet');
   if(sheet){
     sheet.addEventListener('close', clearSelectedUrl);
+    sheet.addEventListener('click', function(event){
+      var rect = sheet.getBoundingClientRect();
+      var inBounds = event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom;
+      if(!inBounds) closeSheet();
+    });
   }
   var pendingForm = null;
   document.addEventListener('submit', function(event){

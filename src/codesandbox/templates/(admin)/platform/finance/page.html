@@ -14,13 +14,7 @@
 
   {{ health_ui.financial_health(health) }}
 
-  {% if has_activity %}
-    {{ chart_ui.revenue_cost_chart("finance-overview-revenue-cost", "Revenue and compute cost", revenue_cost_timeline) }}
-  {% else %}
-    <section class="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-      No billable usage or payments were recorded in the selected period. Change the date range to inspect earlier activity.
-    </section>
-  {% endif %}
+  {{ chart_ui.revenue_cost_chart("finance-overview-revenue-cost", "Revenue and compute cost", revenue_cost_timeline) }}
 
   <section class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,0.85fr)]">
     {{ ranked.ranked_bars("Top templates", template_contribution) }}

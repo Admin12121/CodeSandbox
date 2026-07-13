@@ -1,6 +1,6 @@
 {% import "components/ui/frame.html" as frame %}
 
-{% macro revenue_cost_chart(chart_id, title, rows, mode="overview") %}
+{% macro revenue_cost_chart(chart_id, title, rows, mode="overview", total_label="Total Revenue", show_secondary=true, secondary_label="Compute Cost", primary_tooltip_label="Net revenue", secondary_tooltip_label="Compute cost", show_period_toggle=true) %}
 {% set active_period = request.args.get("period", "month") %}
 {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
     {% call frame.frame_header(class="py-3") %}
@@ -11,24 +11,27 @@
         </div>
     {% endcall %}
     {% call frame.frame_panel(class="p-4") %}
-    {% if rows %}
-        <div id="{{ chart_id }}-pixel" class="grid gap-4 rounded-xl bg-background" data-finance-pixel-chart data-mode="{{ mode }}" data-period="{{ active_period }}">
+        <div id="{{ chart_id }}-pixel" class="grid gap-4 rounded-xl bg-background" data-finance-pixel-chart data-mode="{{ mode }}" data-period="{{ active_period }}" data-show-secondary="{{ 'true' if show_secondary else 'false' }}">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-baseline gap-2">
-                    <span class="text-xs text-muted-foreground">Total Revenue:</span>
+                    <span class="text-xs text-muted-foreground">{{ total_label }}:</span>
                     <span class="font-mono text-3xl font-semibold tracking-tight text-foreground tabular-nums" data-finance-pixel-total>£0.00</span>
                 </div>
+                {% if show_secondary %}
                 <div class="flex flex-wrap items-center gap-5 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
                     <span class="inline-flex items-center gap-1.5">
                         <span class="size-1.5 rounded-full bg-foreground/35"></span>
-                        Compute Cost
+                        {{ secondary_label }}
                     </span>
                 </div>
+                {% endif %}
+                {% if show_period_toggle %}
                 <div class="inline-flex rounded-full bg-muted/70 p-1 text-xs text-muted-foreground">
                     <a href="{{ request.path }}?period=week" class="rounded-full px-3 py-1 {{ 'bg-background text-foreground shadow-xs/5' if active_period in ('week', '7d') else 'hover:text-foreground' }}">Weekly</a>
                     <a href="{{ request.path }}?period=month" class="rounded-full px-3 py-1 {{ 'bg-background text-foreground shadow-xs/5' if active_period in ('30d', 'month', '') else 'hover:text-foreground' }}">Monthly</a>
                     <a href="{{ request.path }}?period=year" class="rounded-full px-3 py-1 {{ 'bg-background text-foreground shadow-xs/5' if active_period == 'year' else 'hover:text-foreground' }}">Yearly</a>
                 </div>
+                {% endif %}
             </div>
 
             <div class="relative h-[300px] overflow-hidden rounded-xl bg-background">
@@ -52,12 +55,8 @@
             </div>
         </div>
         <script type="application/json" id="{{ chart_id }}-finance-seed">{{ rows|tojson }}</script>
-    {% else %}
-        <div class="flex min-h-36 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">No chart data for this period.</div>
-    {% endif %}
     {% endcall %}
 {% endcall %}
-{% if rows %}
 {% app_script "finance-chart-" ~ chart_id %}
 (function(){
   var root = document.getElementById('{{ chart_id }}-pixel');
@@ -78,10 +77,12 @@
   var axis1 = root.querySelector('[data-finance-pixel-axis-1]');
 
   var activePeriod = root.getAttribute('data-period') || 'month';
+  var showSecondary = root.getAttribute('data-show-secondary') !== 'false';
   var cellSize = 8;
   var cellGap = 3;
   var emptyPixelOpacity = 0.01;
   var levels = Math.max(1, Math.ceil(((plot.getBoundingClientRect().height || plot.clientHeight || 268) + cellGap) / (cellSize + cellGap)));
+  var hasRows = rows.length > 0;
 
   function number(value){
     var parsed = Number(value || 0);
@@ -181,6 +182,18 @@
     }
     return columnEl;
   }
+  function emptyColumn(){
+    var columnEl = document.createElement('div');
+    columnEl.style.display = 'flex';
+    columnEl.style.height = '100%';
+    columnEl.style.flexDirection = 'column-reverse';
+    columnEl.style.alignItems = 'center';
+    columnEl.style.justifyContent = 'flex-start';
+    columnEl.style.gap = cellGap + 'px';
+    columnEl.style.minWidth = cellSize + 'px';
+    for(var i = 0; i < levels; i++) columnEl.appendChild(square(false, emptyPixelOpacity));
+    return columnEl;
+  }
 
   var max = rows.reduce(function(current, row){
     return Math.max(current, Math.max(0, number(row.net)) + Math.max(0, number(row.compute_cost)));
@@ -193,22 +206,20 @@
   if(axis2) axis2.textContent = money((max || 1) * 0.4, true);
   if(axis1) axis1.textContent = money((max || 1) * 0.2, true);
 
-  function denseRows(sourceRows){
-    if(sourceRows.length <= 1) {
-      return sourceRows.map(function(row, index){ return { row: row, sourceIndex: index }; });
-    }
+  function realRows(sourceRows){
+    return sourceRows.map(function(row, index){
+      return { row: row, sourceIndex: index };
+    });
+  }
+  function blankRows(){
     var plotWidth = plot.getBoundingClientRect().width || plot.clientWidth || 900;
     var targetColumns = Math.floor((plotWidth + cellGap) / (cellSize + cellGap));
-    targetColumns = Math.max(1, Math.min(160, targetColumns));
+    targetColumns = Math.max(1, Math.min(180, targetColumns));
     var result = [];
-    for(var i = 0; i < targetColumns; i++){
-      var sourceIndex = targetColumns === 1 ? 0 : Math.round(i * (sourceRows.length - 1) / (targetColumns - 1));
-      result.push({ row: sourceRows[sourceIndex], sourceIndex: sourceIndex });
-    }
+    for(var i = 0; i < targetColumns; i++) result.push({ row: null, sourceIndex: i });
     return result;
   }
-  function axisText(row, sourceIndex, isFirstForSource){
-    if(!isFirstForSource) return '';
+  function axisText(row, sourceIndex){
     if(activePeriod === 'week' || activePeriod === '7d') return weekdayLabel(row.label);
     if(activePeriod === 'year') return sourceIndex === 0 ? monthYearLabel(row.label) : monthLabel(row.label);
 
@@ -219,22 +230,21 @@
     return '';
   }
 
-  var displayRows = denseRows(rows);
+  var displayRows = hasRows ? realRows(rows) : blankRows();
   plot.innerHTML = '';
   xAxis.innerHTML = '';
   plot.style.gridTemplateColumns = 'repeat(' + Math.max(displayRows.length, 1) + ', ' + cellSize + 'px)';
   plot.style.columnGap = cellGap + 'px';
-  plot.style.justifyContent = 'center';
+  plot.style.justifyContent = displayRows.length <= 1 ? 'center' : 'start';
   xAxis.style.gridTemplateColumns = plot.style.gridTemplateColumns;
   xAxis.style.columnGap = cellGap + 'px';
-  xAxis.style.justifyContent = 'center';
+  xAxis.style.justifyContent = plot.style.justifyContent;
 
   var previousSourceIndex = -1;
   var previousYearMonth = "";
   displayRows.forEach(function(item, index){
     var row = item.row;
     var sourceIndex = item.sourceIndex;
-    var isFirstForSource = sourceIndex !== previousSourceIndex;
     var hit = document.createElement('button');
     hit.type = 'button';
     hit.style.height = '100%';
@@ -244,12 +254,13 @@
     hit.style.padding = '0';
     hit.style.border = '0';
     hit.style.background = 'transparent';
-    hit.style.cursor = 'crosshair';
-    hit.appendChild(column(row, max));
+    hit.style.cursor = hasRows ? 'crosshair' : 'default';
+    hit.disabled = !hasRows;
+    hit.appendChild(hasRows ? column(row, max) : emptyColumn());
     plot.appendChild(hit);
 
     var tick = document.createElement('span');
-    var tickText = axisText(row, sourceIndex, isFirstForSource);
+    var tickText = hasRows ? axisText(row, sourceIndex) : '';
     if(activePeriod === 'year' && tickText){
       var yearMonthKey = monthLabel(row.label);
       if(yearMonthKey === previousYearMonth) tickText = '';
@@ -276,8 +287,8 @@
       tooltip.innerHTML =
         '<div class="mb-2 text-base text-muted-foreground">' + escapeHtml(row.label || '') + '</div>' +
         '<div class="grid gap-2">' +
-          '<div class="flex justify-between gap-8"><span class="text-muted-foreground">Compute cost</span><span class="font-mono font-semibold text-foreground">' + money(compute, false) + '</span></div>' +
-          '<div class="flex justify-between gap-8"><span class="text-muted-foreground">Net revenue</span><span class="font-mono font-semibold text-foreground">' + money(net, false) + '</span></div>' +
+          (showSecondary ? '<div class="flex justify-between gap-8"><span class="text-muted-foreground">{{ secondary_tooltip_label }}</span><span class="font-mono font-semibold text-foreground">' + money(compute, false) + '</span></div>' : '') +
+          '<div class="flex justify-between gap-8"><span class="text-muted-foreground">{{ primary_tooltip_label }}</span><span class="font-mono font-semibold text-foreground">' + money(net, false) + '</span></div>' +
         '</div>';
       tooltip.classList.remove('hidden');
       var ttWidth = tooltip.offsetWidth || 210;
@@ -289,12 +300,13 @@
       hoverDot.classList.add('hidden');
       tooltip.classList.add('hidden');
     }
-    hit.addEventListener('mouseenter', show);
-    hit.addEventListener('focus', show);
-    hit.addEventListener('mouseleave', hide);
-    hit.addEventListener('blur', hide);
+    if(hasRows){
+      hit.addEventListener('mouseenter', show);
+      hit.addEventListener('focus', show);
+      hit.addEventListener('mouseleave', hide);
+      hit.addEventListener('blur', hide);
+    }
   });
 })();
 {% end_app_script %}
-{% endif %}
 {% endmacro %}
