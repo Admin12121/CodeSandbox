@@ -1,0 +1,34 @@
+{% import "components/ui/frame.html" as frame %}
+
+
+{% macro recent_activity(rows) %}
+{% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+  {% call frame.frame_header(class="flex justify-between w-full flex-row") %}
+    <h2 class="text-sm font-semibold text-foreground">Recent financial activity</h2>
+    <a href="/platform/finance/ledger" class="text-xs font-medium text-primary hover:underline">View all</a>
+  {% endcall %}
+  {% call frame.frame_panel() %}
+  {% if rows %}
+    <div class="divide-y">
+      {% for item in rows %}
+        <div class="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <span class="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{{ item.label }}</span>
+              <span class="truncate text-sm font-medium text-foreground">{{ item.entity_label }}</span>
+            </div>
+            <div class="mt-1 truncate text-xs text-muted-foreground">{{ item.reference }} · {{ item.created_label }}</div>
+          </div>
+          <div class="text-right">
+            <div class="font-mono text-sm tabular-nums {{ 'text-rose-500' if item.is_negative else 'text-emerald-500' }}">{{ item.amount_display }}</div>
+            <div class="mt-1 text-[10px] uppercase text-muted-foreground">{{ item.status }}</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="py-6 text-sm text-muted-foreground">No financial activity in this period.</p>
+  {% endif %}
+  {% endcall %}
+{% endcall %}
+{% endmacro %}

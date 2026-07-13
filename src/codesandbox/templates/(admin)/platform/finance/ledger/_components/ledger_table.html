@@ -1,0 +1,66 @@
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/table-pagination.html" as tp %}
+{% import "components/ui/frame.html" as frame %}
+
+{% macro ledger_table(ledger) %}
+<section class="grid gap-3" data-finance-ledger>
+  {% call frame.frame() %}
+  {% call table.table(variant="card") %}
+    {% call table.table_header() %}
+      {% call table.table_row() %}
+        {{ table.table_head("Type") }}
+        {{ table.table_head("Entity") }}
+        {{ table.table_head("Reference") }}
+        {{ table.table_head("Amount", class="text-right") }}
+        {{ table.table_head("Provider") }}
+        {{ table.table_head("Status", class="text-right") }}
+        {{ table.table_head("Date", class="text-right") }}
+      {% endcall %}
+    {% endcall %}
+    {% call table.table_body() %}
+      {% if ledger.rows %}
+        {% for row in ledger.rows %}
+          {% call table.table_row(
+            selected=row.selected,
+            class="cursor-pointer focus-within:bg-accent/40",
+            attrs={"tabindex": "0", "role": "button", "data-ledger-row": "", "data-transaction-id": row.id, "aria-label": "Open " ~ row.label ~ " document"}
+          ) %}
+            {% call table.table_cell() %}
+              <div class="flex items-center gap-2">
+                {{ badge.badge(row.label, variant="outline") }}
+              </div>
+            {% endcall %}
+            {% call table.table_cell() %}
+              <div class="font-medium">{{ row.entity_label }}</div>
+              <div class="mt-1 text-[10px] text-muted-foreground">{{ row.entity_type }}</div>
+            {% endcall %}
+            {% call table.table_cell() %}
+              <div class="max-w-60 truncate text-sm">{{ row.reference or row.id[:8] }}</div>
+              {% if row.description %}<div class="mt-1 max-w-60 truncate text-[10px] text-muted-foreground">{{ row.description }}</div>{% endif %}
+            {% endcall %}
+            {{ table.table_cell(row.amount_display, class="text-right font-mono tabular-nums " ~ ("text-rose-500" if row.is_negative else "text-emerald-500")) }}
+            {{ table.table_cell(row.provider or "internal") }}
+            {% call table.table_cell(class="text-right") %}
+              {{ badge.badge(row.status|title, variant=("error" if row.status == "failed" else "success")) }}
+            {% endcall %}
+            {{ table.table_cell(row.created_label, class="text-right text-xs text-muted-foreground") }}
+          {% endcall %}
+        {% endfor %}
+      {% else %}
+        {% call table.table_row() %}
+          {{ table.table_cell("No ledger transactions match the current filters.", class="py-10 text-center text-muted-foreground", attrs={"colspan": "7"}) }}
+        {% endcall %}
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+  {% endcall %}
+  {{ tp.table_pagination(
+    current_page=ledger.page,
+    total_pages=ledger.total_pages,
+    total_items=ledger.total,
+    page_size=ledger.page_size,
+    base_url=ledger.base_url
+  ) }}
+</section>
+{% endmacro %}

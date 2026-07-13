@@ -1,0 +1,40 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+
+{% macro coupon_list(coupons, can_manage_coupons=false) %}
+{% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+  {% call frame.frame_header(class="flex gap-3") %}
+      <h2 class="text-sm font-semibold text-foreground">Active offers</h2>
+  {% endcall %}
+  {% call frame.frame_panel() %}
+  {% if coupons %}
+    <div class="grid gap-3">
+      {% for coupon in coupons %}
+        <div class="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-mono text-sm font-semibold tracking-wide">{{ coupon.code }}</span>
+              {{ badge.badge(coupon.status|title, variant=("success" if coupon.status == "active" else "outline")) }}
+            </div>
+            <div class="mt-1 text-sm text-foreground">{{ coupon.name }}</div>
+            <div class="mt-1 text-xs text-muted-foreground">
+              {{ coupon.discount_type|replace("_", " ")|title }} · {{ coupon.value }}{% if coupon.currency %} {{ coupon.currency }}{% endif %}
+              · {{ coupon.redemptions }} used{% if coupon.max_redemptions %} / {{ coupon.max_redemptions }}{% endif %}
+              {% if coupon.expires_at %} · expires {{ coupon.expires_at.strftime("%d %b %Y") }}{% endif %}
+            </div>
+          </div>
+          {% if can_manage_coupons and coupon.status == "active" %}
+            <form method="post" action="/platform/finance/coupons/{{ coupon.id }}/disable">
+              {% call button.button(type="submit", variant="outline", size="xs") %}Disable{% endcall %}
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="py-6 text-sm text-muted-foreground">No active promotions. Create a coupon when you need a targeted discount.</p>
+  {% endif %}
+  {% endcall %}
+{% endcall %}
+{% endmacro %}

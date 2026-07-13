@@ -105,7 +105,7 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
         ]
         finance_items = [
             item("Overview", "/platform/finance", "platform.finance.read", exact=True),
-            item("Revenue", "/platform/finance/revenue", "platform.finance.read"),
+            item("Usage & Margin", "/platform/finance/revenue", "platform.finance.read"),
             item("Ledger", "/platform/finance/ledger", "platform.finance.read"),
             item("Promotions", "/platform/finance/promotions", "platform.finance.read"),
         ]

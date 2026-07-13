@@ -1,0 +1,28 @@
+{% import "components/ui/frame.html" as frame %}
+
+{% macro economics_summary(summary) %}
+<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+  {% for item in summary %}
+    {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+      {% call frame.frame_panel(class="flex flex-col justify-end p-4") %}
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex min-w-0 gap-2 flex-col">
+            <h2 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">{{ item.label }}</h2>
+            <div class="flex items-baseline gap-2">
+                <span class="font-mono text-7xl tabular-nums text-foreground">{{ item.display }}</span>
+                {% if item.suffix %}
+                    <span class="text-xs text-muted-foreground">{{ item.suffix }}</span>
+                {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endcall %}
+      {% call frame.frame_footer(class="py-3") %}
+        {% if item.delta %}
+          <div class="mt-1 text-[11px] {{ 'text-emerald-500' if item.delta.direction == 'up' else 'text-rose-500' if item.delta.direction == 'down' else 'text-muted-foreground' }}">{{ item.delta.text }}</div>
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endfor %}
+</section>
+{% endmacro %}

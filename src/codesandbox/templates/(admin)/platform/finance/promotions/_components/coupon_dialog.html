@@ -1,0 +1,85 @@
+{% import "components/ui/dialog.html" as dialog %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/textarea.html" as textarea %}
+{% import "components/ui/select-native.html" as select_native %}
+
+{% macro coupon_dialog(templates, plans) %}
+{% call dialog.dialog(class="w-[min(96vw,38rem)]", attrs={"id": "finance-coupon-dialog"}) %}
+  {% call dialog.dialog_popup(class="max-w-none") %}
+    {{ dialog.dialog_close(class="top-3 right-3") }}
+    {% call dialog.dialog_header() %}
+      {{ dialog.dialog_title("Create coupon") }}
+      {{ dialog.dialog_description("Coupons apply server-side to usage charges when eligible.") }}
+    {% endcall %}
+    <form method="post" action="/platform/finance/coupons/new" class="grid gap-4">
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Code</label>
+          {{ input.input(name="code", required=true, placeholder="WELCOME20") }}
+        </div>
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Name</label>
+          {{ input.input(name="name", required=true, placeholder="Welcome discount") }}
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Discount type</label>
+          {{ select_native.select_native(name="discount_type", options=[
+            {"value": "percent", "label": "Percent"},
+            {"value": "fixed", "label": "Fixed amount"},
+            {"value": "free_minutes", "label": "Free minutes"},
+            {"value": "free_credit", "label": "Free credit"},
+          ]) }}
+        </div>
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Value</label>
+          {{ input.input(type="number", name="value", required=true, attrs={"min": "0", "step": "0.01"}) }}
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Max redemptions</label>
+          {{ input.input(type="number", name="max_redemptions", attrs={"min": "1"}) }}
+        </div>
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Per entity limit</label>
+          {{ input.input(type="number", name="per_entity_limit", attrs={"min": "1"}) }}
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Template scope</label>
+          <select name="applies_to_template_id" class="h-8 rounded-lg border border-input bg-background px-2 text-sm">
+            <option value="">Any template</option>
+            {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Plan scope</label>
+          <select name="applies_to_plan_id" class="h-8 rounded-lg border border-input bg-background px-2 text-sm">
+            <option value="">Any plan</option>
+            {% for p in plans %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Starts</label>
+          {{ input.input(type="date", name="starts_at") }}
+        </div>
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Expires</label>
+          {{ input.input(type="date", name="expires_at") }}
+        </div>
+      </div>
+      {{ textarea.textarea(name="description", rows=3, placeholder="Optional internal description.") }}
+      {% call dialog.dialog_footer() %}
+        {{ dialog.dialog_cancel("Cancel") }}
+        {% call button.button(type="submit") %}Create coupon{% endcall %}
+      {% endcall %}
+    </form>
+  {% endcall %}
+{% endcall %}
+{% endmacro %}

@@ -1,0 +1,62 @@
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/table-pagination.html" as tp %}
+{% import "components/ui/frame.html" as frame %}
+
+{% macro usage_charge_table(charges) %}
+<section class="grid gap-3">
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Usage charges — " ~ charges.total) }}
+          {{ table.table_head("Plan") }}
+          {{ table.table_head("Entity") }}
+          {{ table.table_head("Billable runtime", class="text-right") }}
+          {{ table.table_head("Rate/hr", class="text-right") }}
+          {{ table.table_head("Gross", class="text-right") }}
+          {{ table.table_head("Discounts/Credits", class="text-right") }}
+          {{ table.table_head("Net revenue", class="text-right") }}
+          {{ table.table_head("Status", class="text-right") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if charges.rows %}
+          {% for row in charges.rows %}
+            {% call table.table_row() %}
+              {% call table.table_cell() %}
+                <div class="font-medium">{{ row.template_name }}</div>
+                <div class="mt-1 text-[10px] text-muted-foreground">{{ row.instance_id[:8] if row.instance_id else "No instance" }}</div>
+              {% endcall %}
+              {{ table.table_cell(row.plan_name) }}
+              {% call table.table_cell() %}
+                <div>{{ row.entity_label }}</div>
+                <div class="mt-1 text-[10px] text-muted-foreground">{{ row.entity_type }}</div>
+              {% endcall %}
+              {{ table.table_cell(row.billable_runtime, class="text-right font-mono tabular-nums") }}
+              {{ table.table_cell(row.cost_hr_display, class="text-right font-mono tabular-nums") }}
+              {{ table.table_cell(row.gross_display, class="text-right font-mono tabular-nums") }}
+              {{ table.table_cell(row.discounts_display, class="text-right font-mono tabular-nums") }}
+              {{ table.table_cell(row.final_display, class="text-right font-mono tabular-nums") }}
+              {% call table.table_cell(class="text-right") %}
+                {{ badge.badge(row.status|replace("_", " ")|title, variant="outline") }}
+              {% endcall %}
+            {% endcall %}
+          {% endfor %}
+        {% else %}
+          {% call table.table_row() %}
+            {{ table.table_cell("No usage charges in this period.", class="py-8 text-center text-muted-foreground", attrs={"colspan": "9"}) }}
+          {% endcall %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+  {{ tp.table_pagination(
+    current_page=charges.page,
+    total_pages=charges.total_pages,
+    total_items=charges.total,
+    page_size=charges.page_size,
+    base_url=charges.base_url
+  ) }}
+</section>
+{% endmacro %}

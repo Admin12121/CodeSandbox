@@ -1,0 +1,41 @@
+{% import "components/ui/dialog.html" as dialog %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/textarea.html" as textarea %}
+{% import "components/ui/checkbox.html" as checkbox %}
+
+{% macro refund_dialog() %}
+{% call dialog.dialog(class="w-[min(96vw,32rem)]", attrs={"id": "finance-refund-dialog"}) %}
+  {% call dialog.dialog_popup(class="max-w-none") %}
+    {{ dialog.dialog_close(class="top-3 right-3") }}
+    {% call dialog.dialog_header() %}
+      {{ dialog.dialog_title("Issue refund") }}
+      {{ dialog.dialog_description("Refunds credit the customer balance and reduce net revenue.") }}
+    {% endcall %}
+    <form method="post" action="/platform/finance/refunds" class="grid gap-4" data-finance-confirm-form>
+      <input type="hidden" name="charge_id">
+      <input type="hidden" name="selected_tx_id">
+      <div class="grid gap-1.5">
+        <label class="text-xs font-medium text-muted-foreground">Refund amount</label>
+        {{ input.input(type="number", name="amount", attrs={"min": "0.01", "step": "0.01", "required": ""}) }}
+      </div>
+      <div class="grid gap-1.5">
+        <label class="text-xs font-medium text-muted-foreground">Reason</label>
+        {{ input.input(name="reason", required=true, placeholder="Requested refund, duplicate charge…") }}
+      </div>
+      <div class="grid gap-1.5">
+        <label class="text-xs font-medium text-muted-foreground">Internal note</label>
+        {{ textarea.textarea(name="internal_note", rows=3) }}
+      </div>
+      <label class="flex items-start gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+        {{ checkbox.checkbox(name="acknowledged", attrs={"required": ""}) }}
+        <span>I understand this creates a refund ledger entry.</span>
+      </label>
+      {% call dialog.dialog_footer() %}
+        {{ dialog.dialog_cancel("Cancel") }}
+        {% call button.button(type="submit", variant="destructive") %}Continue{% endcall %}
+      {% endcall %}
+    </form>
+  {% endcall %}
+{% endcall %}
+{% endmacro %}

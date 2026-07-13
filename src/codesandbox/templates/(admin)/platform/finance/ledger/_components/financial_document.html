@@ -1,0 +1,130 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/table.html" as table %}
+
+{% macro financial_document(receipt, can_manage_refunds=false) %}
+<div class="flex h-full flex-col bg-background">
+  <div class="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
+    <div class="min-w-0">
+      <div class="flex items-center gap-2">
+        <h2 class="truncate text-base font-semibold text-foreground">{{ receipt.title }}</h2>
+        {{ badge.badge(receipt.status|replace("_", " ")|title, variant=("error" if receipt.status == "failed" else "outline")) }}
+      </div>
+      <p class="mt-1 truncate text-xs text-muted-foreground">{{ receipt.number }} · {{ receipt.transaction_id }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      {% call button.button(variant="outline", size="xs", attrs={"data-finance-print-document": ""}) %}Print{% endcall %}
+      {% call button.button(variant="outline", size="xs", attrs={"data-finance-print-document": ""}) %}Download PDF{% endcall %}
+      {% if can_manage_refunds and receipt.refundable %}
+        {% call button.button(
+          variant="destructive-outline",
+          size="xs",
+          attrs={
+            "data-finance-open-refund": "",
+            "data-charge-id": receipt.refundable_charge_id,
+            "data-transaction-id": receipt.transaction_id,
+            "data-refundable-remaining": receipt.refundable_remaining
+          }
+        ) %}Refund{% endcall %}
+      {% endif %}
+      <button type="button" data-slot="sheet-close" class="rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">Close</button>
+    </div>
+  </div>
+  <div class="flex-1 overflow-y-auto bg-muted/30 p-4 sm:p-8">
+    <article data-financial-document-print class="mx-auto min-h-[720px] max-w-3xl rounded-sm bg-white p-8 text-neutral-950 shadow-xl print:shadow-none">
+      <header class="flex items-start justify-between gap-6 border-b border-neutral-200 pb-6">
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">CodeSandbox Platform</div>
+          <h1 class="mt-3 text-3xl font-semibold tracking-tight text-neutral-950">{{ receipt.title }}</h1>
+          <p class="mt-1 text-sm text-neutral-500">{{ receipt.number }}</p>
+        </div>
+        <div class="text-right text-sm text-neutral-600">
+          <div>{{ receipt.date.strftime("%d %b %Y") if receipt.date else "" }}</div>
+          <div class="mt-1">{{ receipt.currency }}</div>
+        </div>
+      </header>
+      <section class="grid gap-6 border-b border-neutral-200 py-6 sm:grid-cols-2">
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Billed by</div>
+          <div class="mt-2 text-sm font-medium">{{ receipt.billed_by }}</div>
+        </div>
+        <div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Billed to</div>
+          <div class="mt-2 text-sm font-medium">{{ receipt.billed_to }}</div>
+          <div class="mt-1 text-xs text-neutral-500">{{ receipt.entity_type }} · {{ receipt.entity_id }}</div>
+        </div>
+      </section>
+      <section class="py-6">
+        {% call table.table(class="text-left text-sm") %}
+          {% call table.table_header(class="text-xs uppercase tracking-wide text-neutral-500") %}
+            {% call table.table_row(class="border-b border-neutral-200") %}
+              {{ table.table_head("Item", class="py-2 text-neutral-500") }}
+              {{ table.table_head("Quantity", class="py-2 text-right text-neutral-500") }}
+              {{ table.table_head("Rate", class="py-2 text-right text-neutral-500") }}
+              {{ table.table_head("Amount", class="py-2 text-right text-neutral-500") }}
+            {% endcall %}
+          {% endcall %}
+          {% call table.table_body(class="before:hidden") %}
+            {% for item in receipt["items"] %}
+              {% call table.table_row(class="border-b border-neutral-100") %}
+                {{ table.table_cell(item.label, class="py-4 font-medium text-neutral-950") }}
+                {{ table.table_cell(item.quantity, class="py-4 text-right text-neutral-600") }}
+                {{ table.table_cell(item.rate, class="py-4 text-right text-neutral-600") }}
+                {{ table.table_cell(item.amount, class="py-4 text-right font-mono text-neutral-950") }}
+              {% endcall %}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+      </section>
+      <section class="ml-auto grid max-w-xs gap-2 border-t border-neutral-200 pt-5 text-sm">
+        <div class="flex justify-between"><span class="text-neutral-500">Subtotal</span><span class="font-mono">{{ receipt.subtotal }}</span></div>
+        {% if receipt.discount != "0" %}<div class="flex justify-between"><span class="text-neutral-500">Discount</span><span class="font-mono">-{{ receipt.discount }}</span></div>{% endif %}
+        {% if receipt.credit != "0" %}<div class="flex justify-between"><span class="text-neutral-500">Credit</span><span class="font-mono">-{{ receipt.credit }}</span></div>{% endif %}
+        {% if receipt.refund != "0" %}<div class="flex justify-between"><span class="text-neutral-500">Refund</span><span class="font-mono">{{ receipt.refund }}</span></div>{% endif %}
+        <div class="mt-2 flex justify-between border-t border-neutral-200 pt-3 text-base font-semibold"><span>Total</span><span class="font-mono">{{ receipt.total }}</span></div>
+      </section>
+      <section class="mt-8 grid gap-2 text-xs text-neutral-500">
+        <div><span class="font-medium text-neutral-700">Provider:</span> {{ receipt.provider }}</div>
+        {% if receipt.provider_reference %}<div><span class="font-medium text-neutral-700">Provider reference:</span> {{ receipt.provider_reference }}</div>{% endif %}
+        {% for label, value in receipt.meta %}
+          {% if value %}<div><span class="font-medium text-neutral-700">{{ label }}:</span> {{ value }}</div>{% endif %}
+        {% endfor %}
+      </section>
+    </article>
+  </div>
+</div>
+<style>
+@media print {
+  body * { visibility: hidden !important; }
+  [data-financial-document-print], [data-financial-document-print] * { visibility: visible !important; }
+  [data-financial-document-print] { position: absolute; inset: 0 auto auto 0; width: 100%; max-width: none; box-shadow: none !important; }
+}
+</style>
+{% app_script "finance-document-actions" %}
+(function(){
+  document.addEventListener('click', function(event){
+    if(event.target.closest('[data-finance-print-document]')){
+      window.print();
+      return;
+    }
+    var refund = event.target.closest('[data-finance-open-refund]');
+    if(refund){
+      var dialog = document.getElementById('finance-refund-dialog');
+      if(!dialog) return;
+      var charge = dialog.querySelector('[name="charge_id"]');
+      var selected = dialog.querySelector('[name="selected_tx_id"]');
+      var amount = dialog.querySelector('[name="amount"]');
+      if(charge) charge.value = refund.dataset.chargeId || '';
+      if(selected) selected.value = refund.dataset.transactionId || '';
+      if(amount) amount.value = refund.dataset.refundableRemaining || '';
+      try { dialog.showModal(); } catch(e) { dialog.setAttribute('open', ''); }
+      dialog.dataset.state = 'open';
+    }
+  });
+})();
+{% end_app_script %}
+{% endmacro %}
+
+{% if receipt is defined and receipt %}
+  {{ financial_document(receipt, can_manage_refunds|default(false)) }}
+{% endif %}

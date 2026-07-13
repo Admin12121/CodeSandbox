@@ -1,0 +1,300 @@
+{% import "components/ui/frame.html" as frame %}
+
+{% macro revenue_cost_chart(chart_id, title, rows, mode="overview") %}
+{% set active_period = request.args.get("period", "month") %}
+{% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+    {% call frame.frame_header(class="py-3") %}
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <h2 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{{ title }}</h2>
+            </div>
+        </div>
+    {% endcall %}
+    {% call frame.frame_panel(class="p-4") %}
+    {% if rows %}
+        <div id="{{ chart_id }}-pixel" class="grid gap-4 rounded-xl bg-background" data-finance-pixel-chart data-mode="{{ mode }}" data-period="{{ active_period }}">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-baseline gap-2">
+                    <span class="text-xs text-muted-foreground">Total Revenue:</span>
+                    <span class="font-mono text-3xl font-semibold tracking-tight text-foreground tabular-nums" data-finance-pixel-total>£0.00</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-5 text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="size-1.5 rounded-full bg-foreground/35"></span>
+                        Compute Cost
+                    </span>
+                </div>
+                <div class="inline-flex rounded-full bg-muted/70 p-1 text-xs text-muted-foreground">
+                    <a href="{{ request.path }}?period=week" class="rounded-full px-3 py-1 {{ 'bg-background text-foreground shadow-xs/5' if active_period in ('week', '7d') else 'hover:text-foreground' }}">Weekly</a>
+                    <a href="{{ request.path }}?period=month" class="rounded-full px-3 py-1 {{ 'bg-background text-foreground shadow-xs/5' if active_period in ('30d', 'month', '') else 'hover:text-foreground' }}">Monthly</a>
+                    <a href="{{ request.path }}?period=year" class="rounded-full px-3 py-1 {{ 'bg-background text-foreground shadow-xs/5' if active_period == 'year' else 'hover:text-foreground' }}">Yearly</a>
+                </div>
+            </div>
+
+            <div class="relative h-[300px] overflow-hidden rounded-xl bg-background">
+                <div class="pointer-events-none absolute left-0 top-1 bottom-8 w-10 select-none text-[11px] text-muted-foreground">
+                    <span class="absolute left-0 top-0 font-mono tabular-nums" data-finance-pixel-axis-top>£0</span>
+                    <span class="absolute left-0 top-1/5 -translate-y-1/2 font-mono tabular-nums" data-finance-pixel-axis-4>£0</span>
+                    <span class="absolute left-0 top-2/5 -translate-y-1/2 font-mono tabular-nums" data-finance-pixel-axis-3>£0</span>
+                    <span class="absolute left-0 top-3/5 -translate-y-1/2 font-mono tabular-nums" data-finance-pixel-axis-2>£0</span>
+                    <span class="absolute left-0 top-4/5 -translate-y-1/2 font-mono tabular-nums" data-finance-pixel-axis-1>£0</span>
+                    <span class="absolute left-0 bottom-0 font-mono tabular-nums">£0</span>
+                </div>
+
+                <div class="absolute left-12 right-0 top-1 bottom-8">
+                    <div class="absolute inset-0 grid items-end gap-[3px]" data-finance-pixel-plot></div>
+                    <div class="pointer-events-none absolute top-0 bottom-0 hidden border-l border-dashed border-foreground/35" data-finance-pixel-guide></div>
+                    <div class="pointer-events-none absolute hidden size-2 -translate-x-1/2 rounded-full bg-foreground shadow-[0_0_0_3px_var(--background)]" data-finance-pixel-dot></div>
+                    <div class="pointer-events-none absolute z-10 hidden min-w-44 rounded-xl border border-border bg-background/95 px-4 py-3 text-sm shadow-xl" data-finance-pixel-tooltip></div>
+                </div>
+
+                <div class="absolute left-12 right-0 bottom-0 grid h-7 items-start text-xs uppercase tracking-[0.12em] text-muted-foreground" data-finance-pixel-axis-x></div>
+            </div>
+        </div>
+        <script type="application/json" id="{{ chart_id }}-finance-seed">{{ rows|tojson }}</script>
+    {% else %}
+        <div class="flex min-h-36 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">No chart data for this period.</div>
+    {% endif %}
+    {% endcall %}
+{% endcall %}
+{% if rows %}
+{% app_script "finance-chart-" ~ chart_id %}
+(function(){
+  var root = document.getElementById('{{ chart_id }}-pixel');
+  var rowsEl = document.getElementById('{{ chart_id }}-finance-seed');
+  if(!root || !rowsEl) return;
+
+  var rows = JSON.parse(rowsEl.textContent || '[]');
+  var plot = root.querySelector('[data-finance-pixel-plot]');
+  var xAxis = root.querySelector('[data-finance-pixel-axis-x]');
+  var tooltip = root.querySelector('[data-finance-pixel-tooltip]');
+  var guide = root.querySelector('[data-finance-pixel-guide]');
+  var hoverDot = root.querySelector('[data-finance-pixel-dot]');
+  var totalEl = root.querySelector('[data-finance-pixel-total]');
+  var axisTop = root.querySelector('[data-finance-pixel-axis-top]');
+  var axis4 = root.querySelector('[data-finance-pixel-axis-4]');
+  var axis3 = root.querySelector('[data-finance-pixel-axis-3]');
+  var axis2 = root.querySelector('[data-finance-pixel-axis-2]');
+  var axis1 = root.querySelector('[data-finance-pixel-axis-1]');
+
+  var activePeriod = root.getAttribute('data-period') || 'month';
+  var cellSize = 8;
+  var cellGap = 3;
+  var emptyPixelOpacity = 0.01;
+  var levels = Math.max(1, Math.ceil(((plot.getBoundingClientRect().height || plot.clientHeight || 268) + cellGap) / (cellSize + cellGap)));
+
+  function number(value){
+    var parsed = Number(value || 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function money(value, compact){
+    var sign = value < 0 ? '-' : '';
+    var abs = Math.abs(value);
+    if(compact && abs >= 1000) return sign + '£' + (abs / 1000).toFixed(abs >= 10000 ? 0 : 1) + 'k';
+    return sign + '£' + abs.toFixed(2);
+  }
+  function monthLabel(value){
+    var parsed = parseDate(value);
+    if(!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+    return String(value || '').slice(0, 3).toUpperCase();
+  }
+  function monthYearLabel(value){
+    var parsed = parseDate(value);
+    if(!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase() + ' ' + parsed.getUTCFullYear();
+    }
+    return monthLabel(value);
+  }
+  function parseDate(value){
+    var raw = String(value || '');
+    return new Date(raw + (raw.length === 10 ? 'T00:00:00Z' : ''));
+  }
+  function dayMonthLabel(value){
+    var parsed = parseDate(value);
+    if(!Number.isNaN(parsed.getTime())) {
+      return parsed.getUTCDate() + ' ' + parsed.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase();
+    }
+    return String(value || '').toUpperCase();
+  }
+  function weekdayLabel(value){
+    var parsed = parseDate(value);
+    if(!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString('en-US', { weekday: 'short', timeZone: 'UTC' }).toUpperCase();
+    }
+    return String(value || '').slice(0, 3).toUpperCase();
+  }
+  function escapeHtml(value){
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+  function foregroundMix(opacity){
+    return 'color-mix(in srgb, var(--foreground) ' + (opacity * 100).toFixed(2) + '%, transparent)';
+  }
+  function square(fill, opacity){
+    var cell = document.createElement('span');
+    cell.style.display = 'block';
+    cell.style.width = cellSize + 'px';
+    cell.style.height = cellSize + 'px';
+    cell.style.borderRadius = '1px';
+    cell.style.background = foregroundMix(fill ? opacity : emptyPixelOpacity);
+    return cell;
+  }
+  function column(row, max){
+    var net = Math.max(0, number(row.net));
+    var compute = Math.max(0, number(row.compute_cost));
+    var total = net + compute;
+    var filled = max <= 0 ? 0 : Math.ceil(total / max * levels);
+    var netCells = total <= 0 ? 0 : Math.round(net / total * filled);
+    var computeCells = Math.max(0, filled - netCells);
+    var columnEl = document.createElement('div');
+    columnEl.style.display = 'flex';
+    columnEl.style.height = '100%';
+    columnEl.style.flexDirection = 'column-reverse';
+    columnEl.style.alignItems = 'center';
+    columnEl.style.justifyContent = 'flex-start';
+    columnEl.style.gap = cellGap + 'px';
+    columnEl.style.minWidth = cellSize + 'px';
+    columnEl.dataset.net = String(net);
+    columnEl.dataset.compute = String(compute);
+    columnEl.dataset.total = String(total);
+
+    for(var i = 0; i < levels; i++){
+      if(filled === 0 && i === 0){
+        var dot = document.createElement('span');
+        dot.style.width = '3px';
+        dot.style.height = '3px';
+        dot.style.borderRadius = '999px';
+        dot.style.background = foregroundMix(0.45);
+        dot.style.display = 'block';
+        columnEl.appendChild(dot);
+      } else if(i < netCells) {
+        columnEl.appendChild(square(true, 0.92));
+      } else if(i < netCells + computeCells) {
+        columnEl.appendChild(square(true, 0.22));
+      } else {
+        columnEl.appendChild(square(false, emptyPixelOpacity));
+      }
+    }
+    return columnEl;
+  }
+
+  var max = rows.reduce(function(current, row){
+    return Math.max(current, Math.max(0, number(row.net)) + Math.max(0, number(row.compute_cost)));
+  }, 0);
+  var total = rows.reduce(function(sum, row){ return sum + number(row.net); }, 0);
+  if(totalEl) totalEl.textContent = money(total, false);
+  if(axisTop) axisTop.textContent = money(max || 1, true);
+  if(axis4) axis4.textContent = money((max || 1) * 0.8, true);
+  if(axis3) axis3.textContent = money((max || 1) * 0.6, true);
+  if(axis2) axis2.textContent = money((max || 1) * 0.4, true);
+  if(axis1) axis1.textContent = money((max || 1) * 0.2, true);
+
+  function denseRows(sourceRows){
+    if(sourceRows.length <= 1) {
+      return sourceRows.map(function(row, index){ return { row: row, sourceIndex: index }; });
+    }
+    var plotWidth = plot.getBoundingClientRect().width || plot.clientWidth || 900;
+    var targetColumns = Math.floor((plotWidth + cellGap) / (cellSize + cellGap));
+    targetColumns = Math.max(1, Math.min(160, targetColumns));
+    var result = [];
+    for(var i = 0; i < targetColumns; i++){
+      var sourceIndex = targetColumns === 1 ? 0 : Math.round(i * (sourceRows.length - 1) / (targetColumns - 1));
+      result.push({ row: sourceRows[sourceIndex], sourceIndex: sourceIndex });
+    }
+    return result;
+  }
+  function axisText(row, sourceIndex, isFirstForSource){
+    if(!isFirstForSource) return '';
+    if(activePeriod === 'week' || activePeriod === '7d') return weekdayLabel(row.label);
+    if(activePeriod === 'year') return sourceIndex === 0 ? monthYearLabel(row.label) : monthLabel(row.label);
+
+    var monthlyInterval = Math.max(1, Math.ceil(rows.length / 6));
+    if(sourceIndex === 0 || sourceIndex === rows.length - 1 || sourceIndex % monthlyInterval === 0) {
+      return dayMonthLabel(row.label);
+    }
+    return '';
+  }
+
+  var displayRows = denseRows(rows);
+  plot.innerHTML = '';
+  xAxis.innerHTML = '';
+  plot.style.gridTemplateColumns = 'repeat(' + Math.max(displayRows.length, 1) + ', ' + cellSize + 'px)';
+  plot.style.columnGap = cellGap + 'px';
+  plot.style.justifyContent = 'center';
+  xAxis.style.gridTemplateColumns = plot.style.gridTemplateColumns;
+  xAxis.style.columnGap = cellGap + 'px';
+  xAxis.style.justifyContent = 'center';
+
+  var previousSourceIndex = -1;
+  var previousYearMonth = "";
+  displayRows.forEach(function(item, index){
+    var row = item.row;
+    var sourceIndex = item.sourceIndex;
+    var isFirstForSource = sourceIndex !== previousSourceIndex;
+    var hit = document.createElement('button');
+    hit.type = 'button';
+    hit.style.height = '100%';
+    hit.style.display = 'flex';
+    hit.style.alignItems = 'end';
+    hit.style.justifyContent = 'center';
+    hit.style.padding = '0';
+    hit.style.border = '0';
+    hit.style.background = 'transparent';
+    hit.style.cursor = 'crosshair';
+    hit.appendChild(column(row, max));
+    plot.appendChild(hit);
+
+    var tick = document.createElement('span');
+    var tickText = axisText(row, sourceIndex, isFirstForSource);
+    if(activePeriod === 'year' && tickText){
+      var yearMonthKey = monthLabel(row.label);
+      if(yearMonthKey === previousYearMonth) tickText = '';
+      else previousYearMonth = yearMonthKey;
+    }
+    tick.textContent = tickText;
+    tick.style.justifySelf = 'center';
+    xAxis.appendChild(tick);
+    previousSourceIndex = sourceIndex;
+
+    function show(){
+      var box = hit.getBoundingClientRect();
+      var plotBox = plot.getBoundingClientRect();
+      var x = box.left - plotBox.left + box.width / 2;
+      var net = number(row.net);
+      var compute = number(row.compute_cost);
+      var totalValue = Math.max(0, net) + Math.max(0, compute);
+      var y = max <= 0 ? plotBox.height - 2 : plotBox.height - (totalValue / max * plotBox.height);
+      guide.style.left = x + 'px';
+      guide.classList.remove('hidden');
+      hoverDot.style.left = x + 'px';
+      hoverDot.style.top = Math.max(0, Math.min(plotBox.height - 8, y)) + 'px';
+      hoverDot.classList.remove('hidden');
+      tooltip.innerHTML =
+        '<div class="mb-2 text-base text-muted-foreground">' + escapeHtml(row.label || '') + '</div>' +
+        '<div class="grid gap-2">' +
+          '<div class="flex justify-between gap-8"><span class="text-muted-foreground">Compute cost</span><span class="font-mono font-semibold text-foreground">' + money(compute, false) + '</span></div>' +
+          '<div class="flex justify-between gap-8"><span class="text-muted-foreground">Net revenue</span><span class="font-mono font-semibold text-foreground">' + money(net, false) + '</span></div>' +
+        '</div>';
+      tooltip.classList.remove('hidden');
+      var ttWidth = tooltip.offsetWidth || 210;
+      tooltip.style.left = Math.max(4, Math.min(plotBox.width - ttWidth - 4, x + 14)) + 'px';
+      tooltip.style.top = Math.max(8, Math.min(plotBox.height - 108, y - 42)) + 'px';
+    }
+    function hide(){
+      guide.classList.add('hidden');
+      hoverDot.classList.add('hidden');
+      tooltip.classList.add('hidden');
+    }
+    hit.addEventListener('mouseenter', show);
+    hit.addEventListener('focus', show);
+    hit.addEventListener('mouseleave', hide);
+    hit.addEventListener('blur', hide);
+  });
+})();
+{% end_app_script %}
+{% endif %}
+{% endmacro %}

@@ -1,0 +1,30 @@
+{% import "components/ui/frame.html" as frame %}
+
+{% macro usage_efficiency(metrics) %}
+{% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+  {% call frame.frame_header(class="flex justify-between w-full flex-row") %}
+    <h2 class="text-sm font-semibold text-foreground">Usage efficiency</h2>
+  {% endcall %}
+  {% call frame.frame_panel() %}
+  <div class="grid gap-3 text-sm">
+    {% set rows = [
+      ("Instances started", metrics.instances_started),
+      ("Completion rate", metrics.completion_rate ~ "%"),
+      ("Failed instances", metrics.instances_failed),
+      ("Runtime hours", metrics.runtime_hours),
+      ("Billable runtime hours", metrics.billable_hours),
+      ("Average runtime", metrics.average_runtime),
+      ("vCPU hours", metrics.vcpu_hours),
+      ("RAM GB-hours", metrics.ram_gb_hours),
+      ("Revenue / compute hour", metrics.revenue_per_compute_hour),
+    ] %}
+    {% for label, value in rows %}
+      <div class="flex items-center justify-between gap-3 border-b pb-2 last:border-0 last:pb-0">
+        <span class="text-muted-foreground">{{ label }}</span>
+        <span class="font-mono tabular-nums text-foreground">{{ value }}</span>
+      </div>
+    {% endfor %}
+  </div>
+  {% endcall %}
+{% endcall %}
+{% endmacro %}

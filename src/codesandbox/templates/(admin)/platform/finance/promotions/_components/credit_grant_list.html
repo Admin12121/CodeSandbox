@@ -1,0 +1,29 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/badge.html" as badge %}
+
+{% macro credit_grant_list(credits) %}
+{% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+  {% call frame.frame_header() %}
+    <h2 class="text-sm font-semibold text-foreground">Credit grants</h2>
+  {% endcall %}
+  {% call frame.frame_panel() %}
+  {% if credits %}
+    <div class="divide-y">
+      {% for credit in credits %}
+        <div class="grid gap-2 py-3 first:pt-0 last:pb-0 md:grid-cols-[1fr_auto_auto_auto] md:items-center">
+          <div class="min-w-0">
+            <div class="truncate text-sm font-medium text-foreground">{{ credit.entity_label }}</div>
+            <div class="mt-1 truncate text-xs text-muted-foreground">{{ credit.reason or "No reason recorded" }}</div>
+          </div>
+          <div class="font-mono text-sm">{{ credit.remaining_amount }} / {{ credit.amount }} {{ credit.currency }}</div>
+          <div class="text-xs text-muted-foreground">{{ credit.expires_at.strftime("%d %b %Y") if credit.expires_at else "No expiry" }}</div>
+          <div class="md:text-right">{{ badge.badge(credit.status|title, variant=("success" if credit.status == "active" else "outline")) }}</div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="py-6 text-sm text-muted-foreground">No free credit grants have been issued.</p>
+  {% endif %}
+  {% endcall %}
+{% endcall %}
+{% endmacro %}

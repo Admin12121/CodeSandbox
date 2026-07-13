@@ -150,11 +150,22 @@ def get_date_range(period: str = "30d", start: str | None = None, end: str | Non
     if period == "today":
         begin = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return begin, begin + timedelta(days=1)
+    if period == "week":
+        days_since_sunday = (now.weekday() + 1) % 7
+        begin = (now - timedelta(days=days_since_sunday)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return begin, begin + timedelta(days=7)
     if period == "7d":
         return now - timedelta(days=7), now + timedelta(seconds=1)
     if period == "month":
         begin = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        return begin, now + timedelta(seconds=1)
+        if begin.month == 12:
+            finish = begin.replace(year=begin.year + 1, month=1)
+        else:
+            finish = begin.replace(month=begin.month + 1)
+        return begin, finish
+    if period == "year":
+        begin = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        return begin, begin.replace(year=begin.year + 1)
     if period == "custom":
         begin = _safe_date(start) or now - timedelta(days=30)
         finish = _safe_date(end)
@@ -785,152 +796,553 @@ def _estimated_compute_cost_for_charge(charge: UsageCharge) -> Decimal:
     ).quantize(MONEY, rounding=ROUND_UP)
 
 
-def dashboard(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
+def _display_end(finish: datetime) -> datetime:
+    return finish - timedelta(seconds=1)
+
+
+def _period_context(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
     begin, finish = get_date_range(period, start, end)
-    charges = repository.list_usage_charges(start=begin, end=finish)
-    txs = _all_balance_transactions(begin, finish)
-    balances = Balance.objects.all()
-    topups = [t for t in txs if t.type == "topup"]
-    refunds = [t for t in txs if t.type == "refund"]
-    adjustments = [t for t in txs if t.type in {"adjustment", "credit_grant"}]
-    compute_cost = repository.sum_decimal(_estimated_compute_cost_for_charge(c) for c in charges)
-    usage_revenue = repository.sum_decimal(c.final_amount for c in charges if c.status in {"charged", "refunded"})
-    refund_amount = repository.sum_decimal(r.amount for r in refunds)
-    adjustment_amount = repository.sum_decimal(a.amount for a in adjustments)
-    runtime_hours = Decimal(sum(int(c.billable_seconds or 0) for c in charges)) / Decimal(3600)
-    cards = [
-        {"label": "Usage Revenue", "value": _format_money(usage_revenue), "hint": "Usage charges are revenue."},
-        {"label": "Top-ups Received", "value": _format_money(repository.sum_decimal(t.amount for t in topups)), "hint": "Cash received; not revenue."},
-        {"label": "Outstanding Balances", "value": _format_money(repository.sum_decimal(b.amount for b in balances)), "hint": "Remaining balances are liability."},
-        {"label": "Refunds", "value": _format_money(refund_amount), "hint": "Refunds reduce net revenue."},
-        {"label": "Adjustments", "value": _format_money(adjustment_amount), "hint": "Manual ledger changes."},
-        {"label": "Runtime Hours", "value": f"{runtime_hours:.2f}", "hint": "Billable sandbox runtime."},
-        {"label": "Estimated Compute Cost", "value": _format_money(compute_cost), "hint": "Internal estimate."},
-        {"label": "Estimated Profit", "value": _format_money(usage_revenue - refund_amount - compute_cost), "hint": "Net usage revenue minus estimated compute."},
-    ]
+    duration = finish - begin
+    if duration.total_seconds() <= 0:
+        duration = timedelta(days=1)
+        finish = begin + duration
+    previous_begin = begin - duration
+    previous_finish = begin
+    labels = {
+        "today": "Today",
+        "week": "This week",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "month": "This month",
+        "year": "This year",
+        "custom": "Custom range",
+    }
     return {
-        "period": period,
+        "key": period or "30d",
+        "label": labels.get(period or "30d", "Last 30 days"),
         "start": begin.date().isoformat(),
-        "end": (finish - timedelta(days=1)).date().isoformat() if period == "custom" else finish.date().isoformat(),
-        "cards": cards,
-        "revenue_by_day": _revenue_by_day(charges),
-        "top_templates": _top_by(charges, "template_id"),
-        "top_plans": _top_by(charges, "plan_id"),
-        "top_entities": _top_entities(charges),
-        "recent_topups": [transaction_dict(t) for t in topups[:10]],
-        "recent_usage_charges": [usage_charge_dict(c) for c in charges[:10]],
-        "recent_refunds_adjustments": [transaction_dict(t) for t in (refunds + adjustments)[:10]],
+        "end": _display_end(finish).date().isoformat(),
+        "begin": begin,
+        "finish": finish,
+        "previous_begin": previous_begin,
+        "previous_finish": previous_finish,
+        "is_custom": period == "custom",
     }
 
 
-def _revenue_by_day(charges: list[UsageCharge]) -> list[dict]:
-    buckets: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    for c in charges:
-        if c.created_at:
-            buckets[c.created_at.date().isoformat()] += _decimal(c.final_amount)
-    return [{"label": k, "amount": f"{v:.4f}"} for k, v in sorted(buckets.items())]
+def _percent(value: Decimal, total: Decimal) -> Decimal | None:
+    if total == 0:
+        return None
+    return (value / total * Decimal("100")).quantize(Decimal("0.01"))
 
 
-def _top_by(charges: list[UsageCharge], field: str) -> list[dict]:
-    totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    for c in charges:
-        key = str(getattr(c, field) or "unknown")
-        totals[key] += _decimal(c.final_amount)
-    def label_for(key: str) -> str:
-        if field == "template_id":
-            return _template_label(None if key == "unknown" else key)
-        if field == "plan_id":
-            return _plan_label(None if key == "unknown" else key)
-        return key
-    return [
-        {"label": label_for(k), "amount": f"{v:.4f}", "id": k}
-        for k, v in sorted(totals.items(), key=lambda item: item[1], reverse=True)[:10]
-    ]
-
-
-def _top_entities(charges: list[UsageCharge]) -> list[dict]:
-    totals: dict[tuple[str, str], Decimal] = defaultdict(lambda: Decimal("0"))
-    for c in charges:
-        totals[(c.entity_type, str(c.entity_id))] += _decimal(c.final_amount)
-    return [
-        {"entity_type": et, "entity_id": eid, "label": _entity_label(et, eid), "amount": f"{amount:.4f}"}
-        for (et, eid), amount in sorted(totals.items(), key=lambda item: item[1], reverse=True)[:10]
-    ]
-
-
-def revenue_report(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
-    begin, finish = get_date_range(period, start, end)
-    charges = repository.list_usage_charges(start=begin, end=finish)
-    refunds = [t for t in _all_balance_transactions(begin, finish) if t.type == "refund"]
-    gross = repository.sum_decimal(c.gross_amount for c in charges)
-    discounts = repository.sum_decimal(c.discount_amount for c in charges)
-    credits = repository.sum_decimal(c.credit_amount for c in charges)
-    final = repository.sum_decimal(c.final_amount for c in charges)
-    refund_total = repository.sum_decimal(r.amount for r in refunds)
+def _delta(current: Decimal, previous: Decimal, currency: str = "GBP") -> dict:
+    amount = current - previous
+    pct = None if previous == 0 else ((amount / abs(previous)) * Decimal("100")).quantize(Decimal("0.01"))
+    if pct is None:
+        text = "No previous period" if current == 0 else "New activity"
+    else:
+        sign = "+" if pct > 0 else ""
+        text = f"{sign}{pct:.2f}% vs previous period"
     return {
-        "period": period,
-        "start": begin.date().isoformat(),
-        "end": finish.date().isoformat(),
-        "summary": [
-            {"label": "Gross usage", "value": _format_money(gross)},
-            {"label": "Discounts", "value": _format_money(discounts)},
-            {"label": "Credits used", "value": _format_money(credits)},
-            {"label": "Refunds", "value": _format_money(refund_total)},
-            {"label": "Net revenue", "value": _format_money(final - refund_total)},
-        ],
-        "by_day": _revenue_by_day(charges),
-        "by_template": _top_by(charges, "template_id"),
-        "by_plan": _top_by(charges, "plan_id"),
-        "by_entity": _top_entities(charges),
-        "charges": [usage_charge_dict(c) for c in charges[:200]],
+        "amount": f"{amount:.4f}",
+        "amount_display": _format_money(amount, currency),
+        "percent": None if pct is None else f"{pct:.2f}",
+        "text": text,
+        "direction": "up" if amount > 0 else "down" if amount < 0 else "flat",
     }
 
 
-def usage_report(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
-    begin, finish = get_date_range(period, start, end)
-    charges = repository.list_usage_charges(start=begin, end=finish)
-    instances = SandboxInstance.objects.all()
-    instances = [
-        i for i in instances
-        if _as_utc(i.created_at) and _as_utc(begin) <= _as_utc(i.created_at) < _as_utc(finish)
-    ]
-    billable_seconds = sum(int(c.billable_seconds or 0) for c in charges)
-    runtime_seconds = sum(int(c.runtime_seconds or 0) for c in charges)
-    vcpu_hours = Decimal("0")
-    ram_gb_hours = Decimal("0")
-    disk_gb_hours = Decimal("0")
+def _amount(value: Decimal, currency: str = "GBP") -> dict:
+    return {"raw": f"{value:.4f}", "display": _format_money(value, currency)}
+
+
+def _mini_bar_series(values: list[str | Decimal | int | float]) -> list[dict]:
+    decimals = [_decimal(value) for value in values]
+    if not decimals:
+        decimals = [Decimal("0")]
+    max_abs = max(abs(value) for value in decimals)
+    bars = []
+    for value in decimals:
+        if max_abs == 0:
+            height = 2
+        else:
+            height = int((abs(value) / max_abs * Decimal("22")).to_integral_value(rounding=ROUND_UP))
+            height = max(2, min(22, height))
+        bars.append({
+            "value": f"{value:.4f}",
+            "height": height,
+            "negative": value < 0,
+            "zero": value == 0,
+        })
+    return bars
+
+
+def _duration_display(seconds: int) -> str:
+    seconds = max(0, int(seconds or 0))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs}s"
+    hours, mins = divmod(minutes, 60)
+    return f"{hours}h {mins}m"
+
+
+def _date_label(value: datetime | None) -> str:
+    if not value:
+        return ""
+    value = _as_utc(value) or value
+    return value.strftime("%d %b %Y %H:%M")
+
+
+def _compute_stats(charges: list[UsageCharge]) -> tuple[dict[str, dict], dict]:
+    settings = get_settings()
+    vcpu_cost = _decimal(settings.finance_cost_per_vcpu_hour)
+    ram_cost = _decimal(settings.finance_cost_per_ram_gb_hour)
+    disk_cost = _decimal(settings.finance_cost_per_disk_gb_hour)
+    by_charge: dict[str, dict] = {}
+    totals = {
+        "compute_cost": Decimal("0"),
+        "vcpu_hours": Decimal("0"),
+        "ram_gb_hours": Decimal("0"),
+        "disk_gb_hours": Decimal("0"),
+    }
     for charge in charges:
         inst = SandboxInstance.objects.filter(id=charge.instance_id).first() if charge.instance_id else None
         hours = Decimal(int(charge.billable_seconds or 0)) / Decimal(3600)
-        if inst:
-            vcpu_hours += Decimal(int(inst.allocated_vcpu or 0)) * hours
-            ram_gb_hours += Decimal(int(inst.allocated_ram_gb or 0)) * hours
-            disk_gb_hours += Decimal(int(inst.allocated_disk_gb or 0)) * hours
-    revenue = repository.sum_decimal(c.final_amount for c in charges)
-    compute_cost = repository.sum_decimal(_estimated_compute_cost_for_charge(c) for c in charges)
+        vcpu_hours = Decimal(int(inst.allocated_vcpu or 0)) * hours if inst else Decimal("0")
+        ram_gb_hours = Decimal(int(inst.allocated_ram_gb or 0)) * hours if inst else Decimal("0")
+        disk_gb_hours = Decimal(int(inst.allocated_disk_gb or 0)) * hours if inst else Decimal("0")
+        compute_cost = (
+            vcpu_hours * vcpu_cost
+            + ram_gb_hours * ram_cost
+            + disk_gb_hours * disk_cost
+        ).quantize(MONEY, rounding=ROUND_UP)
+        by_charge[str(charge.id)] = {
+            "instance": inst,
+            "compute_cost": compute_cost,
+            "vcpu_hours": vcpu_hours,
+            "ram_gb_hours": ram_gb_hours,
+            "disk_gb_hours": disk_gb_hours,
+        }
+        totals["compute_cost"] += compute_cost
+        totals["vcpu_hours"] += vcpu_hours
+        totals["ram_gb_hours"] += ram_gb_hours
+        totals["disk_gb_hours"] += disk_gb_hours
+    return by_charge, totals
+
+
+def _period_financials(begin: datetime, finish: datetime) -> dict:
+    charges = repository.list_usage_charges(start=begin, end=finish)
+    txs = _all_balance_transactions(begin, finish)
+    revenue_charges = [c for c in charges if c.status in {"charged", "refunded"}]
+    refunds = [t for t in txs if t.type == "refund"]
+    topups = [t for t in txs if t.type == "topup"]
+    adjustments = [t for t in txs if t.type in {"adjustment", "credit_grant"}]
+    compute_by_charge, compute_totals = _compute_stats(revenue_charges)
+    gross = repository.sum_decimal(c.gross_amount for c in revenue_charges)
+    discounts = repository.sum_decimal(c.discount_amount for c in revenue_charges)
+    credits = repository.sum_decimal(c.credit_amount for c in revenue_charges)
+    usage_revenue = repository.sum_decimal(c.final_amount for c in revenue_charges)
+    refund_total = repository.sum_decimal(t.amount for t in refunds)
+    net_revenue = usage_revenue - refund_total
+    compute_cost = compute_totals["compute_cost"]
+    billable_seconds = sum(int(c.billable_seconds or 0) for c in revenue_charges)
+    runtime_seconds = sum(int(c.runtime_seconds or 0) for c in revenue_charges)
     return {
-        "summary": [
-            {"label": "Runtime hours", "value": f"{Decimal(runtime_seconds) / Decimal(3600):.2f}"},
-            {"label": "Billable runtime hours", "value": f"{Decimal(billable_seconds) / Decimal(3600):.2f}"},
-            {"label": "Instances started", "value": str(len([i for i in instances if i.started_at]))},
-            {"label": "Instances failed", "value": str(len([i for i in instances if i.status == 'failed']))},
-            {"label": "Average runtime", "value": f"{(Decimal(runtime_seconds) / max(1, len(charges))):.0f}s"},
-            {"label": "vCPU hours", "value": f"{vcpu_hours:.2f}"},
-            {"label": "RAM GB-hours", "value": f"{ram_gb_hours:.2f}"},
-            {"label": "Disk GB-hours", "value": f"{disk_gb_hours:.2f}"},
-            {"label": "Revenue / compute hour", "value": _format_money(revenue / max(Decimal("1"), vcpu_hours))},
-            {"label": "Estimated profit", "value": _format_money(revenue - compute_cost)},
-        ],
-        "charges": [usage_charge_dict(c) for c in charges[:200]],
+        "charges": charges,
+        "revenue_charges": revenue_charges,
+        "transactions": txs,
+        "topups": topups,
+        "refunds": refunds,
+        "adjustments": adjustments,
+        "compute_by_charge": compute_by_charge,
+        "compute_totals": compute_totals,
+        "gross": gross,
+        "discounts": discounts,
+        "credits": credits,
+        "usage_revenue": usage_revenue,
+        "refund_total": refund_total,
+        "net_revenue": net_revenue,
+        "compute_cost": compute_cost,
+        "profit": net_revenue - compute_cost,
+        "topups_total": repository.sum_decimal(t.amount for t in topups),
+        "adjustment_total": repository.sum_decimal(t.amount for t in adjustments),
+        "billable_seconds": billable_seconds,
+        "runtime_seconds": runtime_seconds,
     }
 
 
-def revenue_console(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
-    revenue = revenue_report(period, start, end)
-    usage = usage_report(period, start, end)
-    revenue["usage_summary"] = usage["summary"]
-    revenue["usage_charges"] = usage["charges"]
-    return revenue
+def _balance_split() -> dict:
+    balances = Balance.objects.all()
+    user_balance = repository.sum_decimal(b.amount for b in balances if b.entity_type == "user")
+    org_balance = repository.sum_decimal(b.amount for b in balances if b.entity_type == "org")
+    total = user_balance + org_balance
+    return {
+        "total": _amount(total),
+        "user": _amount(user_balance),
+        "org": _amount(org_balance),
+        "user_share": "0" if total == 0 else f"{(user_balance / total * Decimal('100')):.2f}",
+        "org_share": "0" if total == 0 else f"{(org_balance / total * Decimal('100')):.2f}",
+    }
+
+
+def _timeline(begin: datetime, finish: datetime, stats: dict, *, include_gross: bool = False) -> list[dict]:
+    charges = stats["revenue_charges"]
+    refunds = stats["refunds"]
+    by_charge = stats["compute_by_charge"]
+    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
+    buckets: dict[str, dict[str, Decimal]] = {}
+    if days <= 370:
+        for i in range(days):
+            buckets[(begin.date() + timedelta(days=i)).isoformat()] = {
+                "gross": Decimal("0"),
+                "net": Decimal("0"),
+                "compute_cost": Decimal("0"),
+                "refunds": Decimal("0"),
+            }
+    for charge in charges:
+        if not charge.created_at:
+            continue
+        key = (_as_utc(charge.created_at) or charge.created_at).date().isoformat()
+        bucket = buckets.setdefault(key, {"gross": Decimal("0"), "net": Decimal("0"), "compute_cost": Decimal("0"), "refunds": Decimal("0")})
+        bucket["gross"] += _decimal(charge.gross_amount)
+        bucket["net"] += _decimal(charge.final_amount)
+        bucket["compute_cost"] += by_charge.get(str(charge.id), {}).get("compute_cost", Decimal("0"))
+    for refund in refunds:
+        if not refund.created_at:
+            continue
+        key = (_as_utc(refund.created_at) or refund.created_at).date().isoformat()
+        bucket = buckets.setdefault(key, {"gross": Decimal("0"), "net": Decimal("0"), "compute_cost": Decimal("0"), "refunds": Decimal("0")})
+        bucket["refunds"] += _decimal(refund.amount)
+        bucket["net"] -= _decimal(refund.amount)
+    return [
+        {
+            "label": key,
+            "gross": f"{values['gross']:.4f}",
+            "net": f"{values['net']:.4f}",
+            "compute_cost": f"{values['compute_cost']:.4f}",
+            "refunds": f"{values['refunds']:.4f}",
+        }
+        for key, values in sorted(buckets.items())
+        if include_gross or any(value != 0 for value in values.values()) or days <= 370
+    ]
+
+
+def _transaction_timeline(begin: datetime, finish: datetime, transactions: list[BalanceTransaction]) -> list[dict]:
+    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
+    buckets: dict[str, Decimal] = {}
+    if days <= 370:
+        for i in range(days):
+            buckets[(begin.date() + timedelta(days=i)).isoformat()] = Decimal("0")
+    for tx in transactions:
+        if not tx.created_at:
+            continue
+        key = (_as_utc(tx.created_at) or tx.created_at).date().isoformat()
+        buckets[key] = buckets.get(key, Decimal("0")) + _decimal(tx.amount)
+    return [
+        {"label": key, "value": f"{value:.4f}"}
+        for key, value in sorted(buckets.items())
+        if value != 0 or days <= 370
+    ]
+
+
+def _balance_liability_timeline(begin: datetime, finish: datetime, current_total: Decimal) -> list[dict]:
+    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
+    keys = [(begin.date() + timedelta(days=i)).isoformat() for i in range(days)]
+    period_txs = sorted(_all_balance_transactions(begin, finish), key=lambda tx: tx.created_at)
+    after_period_total = repository.sum_decimal(
+        _decimal(tx.amount) for tx in _all_balance_transactions(finish, None)
+    )
+    balance = current_total - after_period_total
+    changes_by_day: dict[str, Decimal] = defaultdict(Decimal)
+    for tx in period_txs:
+        if not tx.created_at:
+            continue
+        key = (_as_utc(tx.created_at) or tx.created_at).date().isoformat()
+        changes_by_day[key] += _decimal(tx.amount)
+    rows = []
+    for key in keys:
+        balance += changes_by_day.get(key, Decimal("0"))
+        rows.append({"label": key, "value": f"{balance:.4f}"})
+    return rows
+
+
+def _ranked_templates(charges: list[UsageCharge], compute_by_charge: dict[str, dict], limit: int = 8) -> list[dict]:
+    rows: dict[str, dict] = {}
+    for charge in charges:
+        key = str(charge.template_id or "unknown")
+        row = rows.setdefault(key, {"id": key, "label": _template_label(None if key == "unknown" else key), "revenue": Decimal("0"), "compute_cost": Decimal("0")})
+        row["revenue"] += _decimal(charge.final_amount)
+        row["compute_cost"] += compute_by_charge.get(str(charge.id), {}).get("compute_cost", Decimal("0"))
+    total = repository.sum_decimal(row["revenue"] for row in rows.values())
+    ranked = sorted(rows.values(), key=lambda row: row["revenue"], reverse=True)[:limit]
+    result = []
+    for row in ranked:
+        margin = row["revenue"] - row["compute_cost"]
+        margin_pct = _percent(margin, row["revenue"])
+        share = _percent(row["revenue"], total)
+        result.append({
+            "id": row["id"],
+            "label": row["label"],
+            "revenue": f"{row['revenue']:.4f}",
+            "revenue_display": _format_money(row["revenue"]),
+            "compute_cost": f"{row['compute_cost']:.4f}",
+            "compute_cost_display": _format_money(row["compute_cost"]),
+            "margin": f"{margin:.4f}",
+            "margin_display": _format_money(margin),
+            "margin_percent": None if margin_pct is None else f"{margin_pct:.2f}",
+            "share": "0" if share is None else f"{share:.2f}",
+        })
+    return result
+
+
+def _breakdown_rows(charges: list[UsageCharge], compute_by_charge: dict[str, dict], key: str, limit: int = 12) -> list[dict]:
+    rows: dict[str, dict] = {}
+    for charge in charges:
+        if key == "entity":
+            row_key = f"{charge.entity_type}:{charge.entity_id}"
+            label = _entity_label(charge.entity_type, str(charge.entity_id))
+            meta = charge.entity_type.title()
+        elif key == "plan":
+            row_key = str(charge.plan_id or "default")
+            label = _plan_label(None if row_key == "default" else row_key)
+            meta = "Sandbox plan"
+        else:
+            row_key = str(charge.template_id or "unknown")
+            label = _template_label(None if row_key == "unknown" else row_key)
+            meta = "Sandbox template"
+        row = rows.setdefault(row_key, {"id": row_key, "label": label, "meta": meta, "revenue": Decimal("0"), "compute_cost": Decimal("0"), "count": 0})
+        row["revenue"] += _decimal(charge.final_amount)
+        row["compute_cost"] += compute_by_charge.get(str(charge.id), {}).get("compute_cost", Decimal("0"))
+        row["count"] += 1
+    result = []
+    for row in sorted(rows.values(), key=lambda item: item["revenue"], reverse=True)[:limit]:
+        margin = row["revenue"] - row["compute_cost"]
+        margin_pct = _percent(margin, row["revenue"])
+        result.append({
+            "id": row["id"],
+            "label": row["label"],
+            "meta": row["meta"],
+            "count": row["count"],
+            "revenue": f"{row['revenue']:.4f}",
+            "revenue_display": _format_money(row["revenue"]),
+            "compute_cost": f"{row['compute_cost']:.4f}",
+            "compute_cost_display": _format_money(row["compute_cost"]),
+            "margin_display": _format_money(margin),
+            "margin_percent": None if margin_pct is None else f"{margin_pct:.2f}",
+        })
+    return result
+
+
+def _activity_item_from_tx(tx: BalanceTransaction) -> dict:
+    amount = _decimal(tx.amount)
+    labels = {
+        "usage_charge": "Usage charge",
+        "topup": "Top-up",
+        "refund": "Refund",
+        "adjustment": "Adjustment",
+        "credit_grant": "Credit grant",
+        "failed_payment": "Failed payment",
+    }
+    return {
+        "id": str(tx.id),
+        "type": tx.type,
+        "label": labels.get(tx.type, tx.type.replace("_", " ").title()),
+        "entity_label": _entity_label(tx.entity_type, str(tx.entity_id)),
+        "entity_type": tx.entity_type,
+        "reference": tx.reference or str(tx.id)[:8],
+        "provider": tx.provider or "internal",
+        "amount": f"{amount:.4f}",
+        "amount_display": _format_money(amount),
+        "is_negative": amount < 0,
+        "status": "completed" if tx.type != "failed_payment" else "failed",
+        "created_at": tx.created_at,
+        "created_label": _date_label(tx.created_at),
+    }
+
+
+def _usage_charge_row(charge: UsageCharge, compute_by_charge: dict[str, dict]) -> dict:
+    row = usage_charge_dict(charge)
+    compute = compute_by_charge.get(str(charge.id), {})
+    revenue = _decimal(charge.final_amount)
+    compute_cost = _decimal(compute.get("compute_cost", "0"))
+    row.update({
+        "template_name": _template_label(str(charge.template_id) if charge.template_id else None),
+        "plan_name": _plan_label(charge.plan_id),
+        "billable_runtime": _duration_display(int(charge.billable_seconds or 0)),
+        "runtime": _duration_display(int(charge.runtime_seconds or 0)),
+        "cost_hr_display": _format_money(charge.cost_hr_snapshot),
+        "gross_display": _format_money(charge.gross_amount),
+        "discounts_display": _format_money(_decimal(charge.discount_amount) + _decimal(charge.credit_amount)),
+        "final_display": _format_money(revenue),
+        "compute_cost_display": _format_money(compute_cost),
+        "margin_display": _format_money(revenue - compute_cost),
+    })
+    return row
+
+
+def _usage_efficiency(stats: dict, begin: datetime, finish: datetime) -> dict:
+    instances = [
+        inst for inst in SandboxInstance.objects.all()
+        if _as_utc(inst.created_at) and _as_utc(begin) <= _as_utc(inst.created_at) < _as_utc(finish)
+    ]
+    started = len([inst for inst in instances if inst.started_at])
+    failed = len([inst for inst in instances if inst.status == "failed"])
+    completed = len([inst for inst in instances if inst.status in {"stopped", "expired", "killed"}])
+    total_terminal = completed + failed
+    completion_rate = Decimal("0") if total_terminal == 0 else (Decimal(completed) / Decimal(total_terminal) * Decimal("100")).quantize(Decimal("0.01"))
+    billable_hours = Decimal(stats["billable_seconds"]) / Decimal(3600)
+    runtime_hours = Decimal(stats["runtime_seconds"]) / Decimal(3600)
+    avg_runtime = Decimal(stats["runtime_seconds"]) / Decimal(max(1, len(stats["revenue_charges"])))
+    compute_hours = stats["compute_totals"]["vcpu_hours"]
+    revenue_per_compute_hour = Decimal("0") if compute_hours == 0 else (stats["net_revenue"] / compute_hours).quantize(MONEY, rounding=ROUND_UP)
+    return {
+        "instances_started": started,
+        "instances_failed": failed,
+        "completion_rate": f"{completion_rate:.2f}",
+        "runtime_hours": f"{runtime_hours:.2f}",
+        "billable_hours": f"{billable_hours:.2f}",
+        "average_runtime": _duration_display(int(avg_runtime)),
+        "vcpu_hours": f"{stats['compute_totals']['vcpu_hours']:.2f}",
+        "ram_gb_hours": f"{stats['compute_totals']['ram_gb_hours']:.2f}",
+        "disk_gb_hours": f"{stats['compute_totals']['disk_gb_hours']:.2f}",
+        "revenue_per_compute_hour": _format_money(revenue_per_compute_hour),
+    }
+
+
+def overview_console(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
+    period_info = _period_context(period, start, end)
+    current = _period_financials(period_info["begin"], period_info["finish"])
+    previous = _period_financials(period_info["previous_begin"], period_info["previous_finish"])
+    balances = _balance_split()
+    margin_pct = _percent(current["profit"], current["net_revenue"])
+    timeline = _timeline(period_info["begin"], period_info["finish"], current)
+    net_revenue_series = [row["net"] for row in timeline]
+    balance_movement_timeline = _transaction_timeline(period_info["begin"], period_info["finish"], current["transactions"])
+    balance_movement_series = [row["value"] for row in balance_movement_timeline]
+    balance_movement_total = repository.sum_decimal(_decimal(tx.amount) for tx in current["transactions"])
+    compute_cost_series = [row["compute_cost"] for row in timeline]
+    return {
+        "period": period_info,
+        "health": {
+            "net_revenue": {
+                **_amount(current["net_revenue"]),
+                "delta": _delta(current["net_revenue"], previous["net_revenue"]),
+                "gross": _amount(current["gross"]),
+                "refunds": _amount(current["refund_total"]),
+                "discounts": _amount(current["discounts"] + current["credits"]),
+                "sparkline": net_revenue_series,
+                "bars": _mini_bar_series(net_revenue_series),
+            },
+            "cash_liability": {
+                "topups": _amount(current["topups_total"]),
+                "liability": balances["total"],
+                "user_balance": balances["user"],
+                "org_balance": balances["org"],
+                "user_share": balances["user_share"],
+                "org_share": balances["org_share"],
+                "movement": _amount(balance_movement_total),
+                "sparkline": balance_movement_series,
+                "bars": _mini_bar_series(balance_movement_series),
+            },
+            "margin_compute": {
+                "profit": _amount(current["profit"]),
+                "compute_cost": _amount(current["compute_cost"]),
+                "margin_percent": None if margin_pct is None else f"{margin_pct:.2f}",
+                "revenue": _amount(current["net_revenue"]),
+                "runtime_hours": f"{Decimal(current['billable_seconds']) / Decimal(3600):.2f}",
+                "sparkline": compute_cost_series,
+                "bars": _mini_bar_series(compute_cost_series),
+            },
+        },
+        "revenue_cost_timeline": timeline,
+        "template_contribution": _ranked_templates(current["revenue_charges"], current["compute_by_charge"]),
+        "recent_activity": [_activity_item_from_tx(tx) for tx in current["transactions"][:8]],
+        "has_activity": bool(current["revenue_charges"] or current["transactions"]),
+    }
+
+
+def dashboard(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
+    return overview_console(period, start, end)
+
+
+def usage_margin_console(
+    period: str = "30d",
+    start: str | None = None,
+    end: str | None = None,
+    *,
+    page: int = 1,
+    page_size: int = 25,
+    breakdown: str = "plan",
+) -> dict:
+    period_info = _period_context(period, start, end)
+    current = _period_financials(period_info["begin"], period_info["finish"])
+    previous = _period_financials(period_info["previous_begin"], period_info["previous_finish"])
+    margin_pct = _percent(current["profit"], current["net_revenue"])
+    charges = current["revenue_charges"]
+    total = len(charges)
+    total_pages = max(1, math.ceil(total / page_size))
+    page = max(1, min(page, total_pages))
+    start_index = (page - 1) * page_size
+    page_rows = charges[start_index:start_index + page_size]
+    breakdown = breakdown if breakdown in {"plan", "entity", "template"} else "plan"
+    return {
+        "period": period_info,
+        "summary": [
+            {"label": "Gross usage", **_amount(current["gross"]), "delta": _delta(current["gross"], previous["gross"])},
+            {"label": "Discounts and credits", **_amount(current["discounts"] + current["credits"]), "delta": _delta(current["discounts"] + current["credits"], previous["discounts"] + previous["credits"])},
+            {"label": "Net revenue", **_amount(current["net_revenue"]), "delta": _delta(current["net_revenue"], previous["net_revenue"])},
+            {"label": "Estimated compute cost", **_amount(current["compute_cost"]), "delta": _delta(current["compute_cost"], previous["compute_cost"])},
+            {"label": "Estimated margin", **_amount(current["profit"]), "suffix": None if margin_pct is None else f"{margin_pct:.2f}%"},
+        ],
+        "economics_timeline": _timeline(period_info["begin"], period_info["finish"], current, include_gross=True),
+        "template_unit_economics": _ranked_templates(charges, current["compute_by_charge"]),
+        "usage_efficiency": _usage_efficiency(current, period_info["begin"], period_info["finish"]),
+        "breakdown": {
+            "selected": breakdown,
+            "rows": _breakdown_rows(charges, current["compute_by_charge"], breakdown),
+            "options": [
+                {"value": "plan", "label": "Plan"},
+                {"value": "entity", "label": "User/Organization"},
+                {"value": "template", "label": "Template"},
+            ],
+        },
+        "usage_charges": {
+            "rows": [_usage_charge_row(c, current["compute_by_charge"]) for c in page_rows],
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+            "base_url": "/platform/finance/revenue?" + filter_query_args(
+                period=period_info["key"],
+                start=period_info["start"] if period_info["is_custom"] else None,
+                end=period_info["end"] if period_info["is_custom"] else None,
+            ),
+        },
+        "has_activity": bool(charges),
+    }
+
+
+def revenue_report(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
+    return usage_margin_console(period, start, end)
+
+
+def usage_report(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
+    return usage_margin_console(period, start, end)
+
+
+def revenue_console(
+    period: str = "30d",
+    start: str | None = None,
+    end: str | None = None,
+    *,
+    page: int = 1,
+    page_size: int = 25,
+    breakdown: str = "plan",
+) -> dict:
+    return usage_margin_console(period, start, end, page=page, page_size=page_size, breakdown=breakdown)
 
 
 def _template_label(template_id: str | None) -> str:
@@ -1007,7 +1419,7 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
             plan_name = _plan_label(charge.plan_id)
             remaining_refund = max(Decimal("0"), _decimal(charge.final_amount) - _decimal(charge.refunded_amount))
             receipt.update({
-                "title": "Usage Invoice / Sandbox Usage",
+                "title": "Usage Invoice",
                 "number": f"USG-{str(charge.id)[:8].upper()}",
                 "currency": charge.currency or "GBP",
                 "status": charge.status,
@@ -1034,7 +1446,7 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
                 "refundable_remaining": str(remaining_refund),
             })
         else:
-            receipt["title"] = "Usage Invoice / Sandbox Usage"
+            receipt["title"] = "Usage Invoice"
             receipt["items"] = [{"label": "Sandbox usage", "quantity": "1", "rate": str(absolute), "amount": str(absolute)}]
     elif tx.type == "topup":
         topup = _topup_for_transaction(tx)
@@ -1060,7 +1472,7 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
         adjustment = _adjustment_for_transaction(tx)
         direction = "Add credit" if amount >= 0 else "Deduct balance"
         receipt.update({
-            "title": "Manual Adjustment Receipt" if tx.type == "adjustment" else "Credit Grant Receipt",
+            "title": "Internal Adjustment Note" if tx.type == "adjustment" else "Credit Grant Receipt",
             "number": f"ADJ-{str(tx.id)[:8].upper()}",
             "items": [{"label": direction, "quantity": "1", "rate": str(absolute), "amount": str(absolute)}],
             "meta": [
@@ -1068,6 +1480,13 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
                 ("Reason", (adjustment.reason if adjustment else tx.description) or ""),
                 ("Adjusted by", tx.provider or "finance"),
             ],
+        })
+    elif tx.type == "failed_payment":
+        receipt.update({
+            "title": "Failed Payment Record",
+            "number": f"FAIL-{str(tx.id)[:8].upper()}",
+            "status": "failed",
+            "items": [{"label": "Failed payment", "quantity": "1", "rate": str(absolute), "amount": str(absolute)}],
         })
     else:
         receipt["items"] = [{"label": tx.type.replace("_", " ").title(), "quantity": "1", "rate": str(absolute), "amount": str(absolute)}]
@@ -1079,10 +1498,16 @@ def ledger_console(
     selected_id: str | None = None,
     tx_type: str | None = None,
     search: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
     page: int = 1,
     page_size: int = 25,
 ) -> dict:
-    rows = _all_balance_transactions()
+    begin = _safe_date(start)
+    finish = _safe_date(end)
+    if finish:
+        finish = finish + timedelta(days=1) if finish.hour == finish.minute == finish.second == 0 else finish
+    rows = _all_balance_transactions(begin, finish)
     if tx_type and tx_type != "all":
         rows = [r for r in rows if r.type == tx_type]
     if search:
@@ -1097,24 +1522,31 @@ def ledger_console(
     total = len(rows)
     total_pages = max(1, math.ceil(total / page_size))
     page = max(1, min(page, total_pages))
-    start = (page - 1) * page_size
-    page_rows = rows[start:start + page_size]
+    offset = (page - 1) * page_size
+    page_rows = rows[offset:offset + page_size]
     selected = repository.get_balance_transaction(selected_id) if selected_id else None
-    if selected is None and page_rows:
-        selected = page_rows[0]
     selected_id = str(selected.id) if selected else ""
     return {
-        "rows": [transaction_dict(r) | {"selected": str(r.id) == selected_id} for r in page_rows],
+        "rows": [transaction_dict(r) | _activity_item_from_tx(r) | {"selected": str(r.id) == selected_id} for r in page_rows],
         "selected_receipt": transaction_receipt_dict(selected),
         "selected_tx_id": selected_id,
         "tx_type": tx_type or "all",
         "search": search or "",
+        "start": start or "",
+        "end": end or "",
         "page": page,
         "page_size": page_size,
         "total": total,
         "total_pages": total_pages,
-        "base_url": "/platform/finance/ledger?" + filter_query_args(type=tx_type or "all", search=search or "", selected=selected_id),
+        "base_url": "/platform/finance/ledger?" + filter_query_args(type=tx_type or "all", search=search or "", start=start or "", end=end or ""),
     }
+
+
+def transaction_document(transaction_id: str | None) -> dict | None:
+    if not transaction_id:
+        return None
+    tx = repository.get_balance_transaction(transaction_id)
+    return transaction_receipt_dict(tx)
 
 
 def coupon_redemption_dict(redemption) -> dict:
@@ -1145,11 +1577,52 @@ def entity_options(limit: int = 30) -> list[dict]:
     return options
 
 
-def promotions_console() -> dict:
+def _redemption_timeline(redemptions: list, begin: datetime, finish: datetime) -> list[dict]:
+    days = max(1, (_display_end(finish).date() - begin.date()).days + 1)
+    buckets: dict[str, dict[str, Decimal | int]] = {}
+    if days <= 75:
+        for i in range(days):
+            buckets[(begin.date() + timedelta(days=i)).isoformat()] = {"amount": Decimal("0"), "count": 0}
+    for redemption in redemptions:
+        if not redemption.created_at:
+            continue
+        created_at = _as_utc(redemption.created_at) or redemption.created_at
+        if created_at < begin or created_at >= finish:
+            continue
+        key = created_at.date().isoformat()
+        bucket = buckets.setdefault(key, {"amount": Decimal("0"), "count": 0})
+        bucket["amount"] = _decimal(bucket["amount"]) + _decimal(redemption.redeemed_amount)
+        bucket["count"] = int(bucket["count"]) + 1
+    return [
+        {"label": key, "amount": f"{_decimal(values['amount']):.4f}", "count": int(values["count"])}
+        for key, values in sorted(buckets.items())
+        if int(values["count"]) > 0 or days <= 75
+    ]
+
+
+def promotions_console(period: str = "30d", start: str | None = None, end: str | None = None) -> dict:
+    period_info = _period_context(period, start, end)
+    coupons = list_coupon_dicts()
+    credits = list_credit_grant_dicts()
+    all_redemptions = repository.list_coupon_redemptions(limit=200)
+    period_redemptions = [
+        r for r in all_redemptions
+        if _as_utc(r.created_at) and period_info["begin"] <= _as_utc(r.created_at) < period_info["finish"]
+    ]
+    period_charges = repository.list_usage_charges(start=period_info["begin"], end=period_info["finish"])
     return {
-        "coupons": list_coupon_dicts(),
-        "credits": list_credit_grant_dicts(),
-        "redemptions": [coupon_redemption_dict(r) for r in repository.list_coupon_redemptions(limit=100)],
+        "period": period_info,
+        "summary": {
+            "active_coupons": len([c for c in coupons if c["status"] == "active"]),
+            "credit_outstanding": _amount(repository.sum_decimal(c["remaining_amount"] for c in credits if c["status"] == "active")),
+            "redemptions_this_period": len(period_redemptions),
+            "discounts_this_period": _amount(repository.sum_decimal(_decimal(c.discount_amount) + _decimal(c.credit_amount) for c in period_charges)),
+        },
+        "coupons": coupons,
+        "credits": credits,
+        "redemptions": [coupon_redemption_dict(r) for r in all_redemptions[:30]],
+        "redemption_timeline": _redemption_timeline(all_redemptions, period_info["begin"], period_info["finish"]),
+        "has_redemptions": bool(period_redemptions),
         "entity_options": entity_options(),
     }
 

@@ -1,0 +1,51 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/select-native.html" as select_native %}
+
+{% macro period_toolbar(period, action="", extra={}) %}
+<form method="get" action="{{ action or request.path }}" class="flex flex-wrap items-center justify-end gap-2" data-finance-period-form>
+  {% for key, value in extra.items() %}
+    {% if value not in (None, "", "all") %}
+      <input type="hidden" name="{{ key }}" value="{{ value }}">
+    {% endif %}
+  {% endfor %}
+  {{ select_native.select_native(
+    name="period",
+    value=period.key,
+    size="sm",
+    options=[
+      {"value": "today", "label": "Today"},
+      {"value": "week", "label": "This week"},
+      {"value": "7d", "label": "7 days"},
+      {"value": "30d", "label": "30 days"},
+      {"value": "month", "label": "This month"},
+      {"value": "year", "label": "This year"},
+      {"value": "custom", "label": "Custom"},
+    ],
+    attrs={"data-finance-period-select": ""}
+  ) }}
+  <div class="{{ 'flex' if period.is_custom else 'hidden' }} items-center gap-2" data-finance-custom-range>
+    <input type="date" name="start" value="{{ period.start }}" class="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-xs/5">
+    <span class="text-xs text-muted-foreground">to</span>
+    <input type="date" name="end" value="{{ period.end }}" class="h-7 rounded-md border border-input bg-background px-2 text-xs text-foreground shadow-xs/5">
+  </div>
+</form>
+{% app_script "finance-period-toolbar" %}
+(function(){
+  document.querySelectorAll('[data-finance-period-form]').forEach(function(form){
+    var select = form.querySelector('[data-finance-period-select]');
+    var range = form.querySelector('[data-finance-custom-range]');
+    if(!select || !range) return;
+    function sync(){
+      var custom = select.value === 'custom';
+      range.classList.toggle('hidden', !custom);
+      range.classList.toggle('flex', custom);
+    }
+    select.addEventListener('change', function(){
+      sync();
+      if(select.value !== 'custom') form.submit();
+    });
+    sync();
+  });
+})();
+{% end_app_script %}
+{% endmacro %}

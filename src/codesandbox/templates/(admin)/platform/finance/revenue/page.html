@@ -1,0 +1,26 @@
+{% import "components/ui/alert.html" as alert %}
+{% import "(admin)/platform/finance/revenue/_components/economics_summary.html" as summary_ui %}
+{% import "(admin)/platform/finance/_components/revenue_cost_chart.html" as chart_ui %}
+{% import "(admin)/platform/finance/revenue/_components/ranked_bars.html" as ranked %}
+{% import "(admin)/platform/finance/revenue/_components/usage_efficiency.html" as efficiency_ui %}
+{% import "(admin)/platform/finance/revenue/_components/usage_charge_table.html" as usage_table %}
+
+<div class="grid auto-rows-max content-start gap-8 p-4 lg:p-6 h-[calc(100vh-43px)] overflow-y-auto">
+  {% if error %}
+    {% call alert.alert(variant="error") %}{{ alert.alert_title("Finance action failed") }}{{ alert.alert_description(error) }}{% endcall %}
+  {% endif %}
+  {% if info %}
+    {% call alert.alert(variant="success") %}{{ alert.alert_title("Finance updated") }}{{ alert.alert_description(info) }}{% endcall %}
+  {% endif %}
+
+  {{ summary_ui.economics_summary(report.summary) }}
+
+  {{ chart_ui.revenue_cost_chart("finance-usage-economics", "Usage economics over time", report.economics_timeline, "economics") }}
+
+  <section class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.72fr)]">
+    {{ ranked.ranked_bars("Revenue by template", report.template_unit_economics, "No template revenue in this period.") }}
+    {{ efficiency_ui.usage_efficiency(report.usage_efficiency) }}
+  </section>
+
+  {{ usage_table.usage_charge_table(report.usage_charges) }}
+</div>

@@ -141,7 +141,7 @@ def test_finance_permissions_seed_and_nav(ctx: TestContext) -> None:
     nav_with = build_nav("/platform/finance/revenue", staff)
     finance_section = next((s for s in nav_with["sections"] if s["label"] == "Finance"), None)
     assert finance_section is not None
-    assert [item["label"] for item in finance_section["items"]] == ["Overview", "Revenue", "Ledger", "Promotions"]
+    assert [item["label"] for item in finance_section["items"]] == ["Overview", "Usage & Margin", "Ledger", "Promotions"]
     assert [item["href"] for item in finance_section["items"]] == [
         "/platform/finance",
         "/platform/finance/revenue",
@@ -158,6 +158,8 @@ def test_finance_console_route_contract(ctx: TestContext) -> None:
     assert "/platform/finance" in rules
     assert "/platform/finance/revenue" in rules
     assert "/platform/finance/ledger" in rules
+    assert "/platform/finance/ledger/preview" in rules
+    assert "/platform/finance/ledger/export" in rules
     assert "/platform/finance/promotions" in rules
     assert "/platform/finance/transactions/<id>" not in rules
     assert "/platform/finance/transactions/<transaction_id>" not in rules
@@ -170,6 +172,91 @@ def test_finance_console_route_contract(ctx: TestContext) -> None:
     assert "/platform/finance/credits" in rules
     assert "/platform/finance/usage" in rules
     assert "/platform/finance/costs" in rules
+
+
+def test_finance_console_shapes_and_ledger_preview(ctx: TestContext) -> None:
+    from codesandbox.features.finance import service as finance_service
+
+    user = _make_user(ctx, "finconsole")
+    _id_repo().update_user(str(user.id), email_verified=True)
+    _set_balance(str(user.id), "100.0000")
+    inst = _fixture_instance(ctx, user=user, cost_hr="3.0000")
+    charge, tx, revenue, status = finance_service.create_usage_charge_for_instance(
+        str(inst.id),
+        runtime_seconds=3600,
+        billable_seconds=3600,
+        description="console shape test",
+    )
+    assert charge is not None and tx is not None
+    assert revenue == Decimal("3.0000")
+    assert status == "charged"
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    overview = finance_service.dashboard(period="custom", start=today, end=today)
+    assert "health" in overview
+    assert overview["health"]["net_revenue"]["raw"] == "3.0000"
+    assert overview["template_contribution"]
+    assert overview["recent_activity"]
+
+    report = finance_service.revenue_console(period="custom", start=today, end=today, page=1, page_size=1)
+    assert report["summary"][2]["label"] == "Net revenue"
+    assert report["usage_charges"]["total"] >= 1
+    assert len(report["usage_charges"]["rows"]) == 1
+    assert report["usage_charges"]["rows"][0]["template_name"]
+
+    ledger = finance_service.ledger_console(page=1, page_size=10)
+    assert ledger["selected_tx_id"] == ""
+    assert ledger["selected_receipt"] is None
+
+    selected = finance_service.ledger_console(selected_id=str(tx.id), page=1, page_size=10)
+    assert selected["selected_tx_id"] == str(tx.id)
+    assert selected["selected_receipt"]["title"] == "Usage Invoice"
+
+    document = finance_service.transaction_document(str(tx.id))
+    assert document is not None
+    assert document["title"] == "Usage Invoice"
+    assert document["transaction_id"] == str(tx.id)
+
+
+def test_finance_templates_split_and_no_internal_tabs(ctx: TestContext) -> None:
+    from pathlib import Path
+    from codesandbox.web.blueprint import router
+
+    base = Path("src/codesandbox/templates/(admin)/platform/finance")
+    page_paths = [
+        base / "page.html",
+        base / "revenue" / "page.html",
+        base / "ledger" / "page.html",
+        base / "promotions" / "page.html",
+    ]
+    for path in page_paths:
+        text = path.read_text()
+        assert "finance_tabs" not in text
+    assert not (base / "overview.html").exists()
+    assert not (base / "revenue.html").exists()
+    assert not (base / "ledger.html").exists()
+    assert not (base / "promotions.html").exists()
+    assert (base / "_components").is_dir()
+    assert (base / "revenue" / "_components").is_dir()
+    assert (base / "ledger" / "_components").is_dir()
+    assert (base / "promotions" / "_components").is_dir()
+    assert '(admin)/platform/finance/_components' not in (base / "revenue" / "page.html").read_text()
+    assert '(admin)/platform/finance/_components' not in (base / "ledger" / "page.html").read_text()
+    assert '(admin)/platform/finance/_components' not in (base / "promotions" / "page.html").read_text()
+    assert '(admin)/platform/finance/ledger/_components/financial_document.html' in (
+        Path("src/codesandbox/features/finance/pages.py").read_text()
+    )
+
+    finance_routes = {
+        "finance_dashboard",
+        "finance_revenue",
+        "finance_ledger",
+        "finance_promotions",
+    }
+    for endpoint in finance_routes:
+        route = router._page_routes[endpoint]
+        assert route.template_explicit is False
+        assert route.template.endswith("/page.html")
 
 
 def test_usage_charge_is_idempotent(ctx: TestContext) -> None:
@@ -412,6 +499,8 @@ def test_credit_grant_creates_ledger_transaction(ctx: TestContext) -> None:
 TESTS: list[TestCase] = [
     TestCase("finance permissions seed and sidebar nav", "finance", test_finance_permissions_seed_and_nav),
     TestCase("finance console route contract", "finance", test_finance_console_route_contract),
+    TestCase("finance console shapes and ledger preview", "finance", test_finance_console_shapes_and_ledger_preview),
+    TestCase("finance templates split and no internal tabs", "finance", test_finance_templates_split_and_no_internal_tabs),
     TestCase("UsageCharge is idempotent", "finance", test_usage_charge_is_idempotent),
     TestCase("finance admin mutations validate entity", "finance", test_finance_admin_mutations_validate_entity),
     TestCase("coupon limit scope and expiry", "finance", test_coupon_limit_scope_and_expiry),

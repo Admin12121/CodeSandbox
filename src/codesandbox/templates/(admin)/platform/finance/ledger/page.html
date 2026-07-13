@@ -1,0 +1,143 @@
+{% import "components/ui/alert.html" as alert %}
+{% import "(admin)/platform/finance/ledger/_components/ledger_toolbar.html" as toolbar %}
+{% import "(admin)/platform/finance/ledger/_components/ledger_table.html" as ledger_table %}
+{% import "(admin)/platform/finance/ledger/_components/document_sheet.html" as doc_sheet %}
+{% import "(admin)/platform/finance/ledger/_components/adjustment_dialog.html" as adjustment %}
+{% import "(admin)/platform/finance/ledger/_components/refund_dialog.html" as refund %}
+
+<div class="grid auto-rows-max content-start gap-4 p-4 lg:p-6 h-[calc(100vh-43px)] overflow-y-auto">
+  {% if error %}
+    {% call alert.alert(variant="error") %}{{ alert.alert_title("Finance action failed") }}{{ alert.alert_description(error) }}{% endcall %}
+  {% endif %}
+  {% if info %}
+    {% call alert.alert(variant="success") %}{{ alert.alert_title("Finance updated") }}{{ alert.alert_description(info) }}{% endcall %}
+  {% endif %}
+
+  {{ toolbar.ledger_toolbar(ledger, can_export_ledger, can_manage_finance) }}
+  {{ ledger_table.ledger_table(ledger) }}
+  {{ doc_sheet.document_sheet(ledger.selected_receipt, can_manage_refunds) }}
+
+  {% if can_manage_finance %}
+    {{ adjustment.adjustment_dialog(entity_options) }}
+  {% endif %}
+  {% if can_manage_refunds %}
+    {{ refund.refund_dialog() }}
+  {% endif %}
+</div>
+
+{% app_script "finance-ledger-console" %}
+(function(){
+  function openSheet() {
+    var sheet = document.getElementById('finance-document-sheet');
+    if (!sheet) return;
+    sheet.dataset.state = 'open';
+    try { sheet.showModal(); } catch(e) { sheet.setAttribute('open', ''); }
+  }
+  function closeSheet() {
+    var sheet = document.getElementById('finance-document-sheet');
+    if (!sheet) return;
+    sheet.dataset.state = 'closed';
+    if (sheet.open) sheet.close();
+    else sheet.removeAttribute('open');
+  }
+  function clearSelectedUrl(){
+    var url = new URL(window.location.href);
+    if(!url.searchParams.has('selected')) return;
+    url.searchParams.delete('selected');
+    history.pushState({}, '', url.pathname + (url.search ? url.search : ''));
+  }
+  function openTransaction(id){
+    var content = document.getElementById('finance-document-content');
+    if(!id || !content) return;
+    content.innerHTML = '<div class="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">Loading document…</div>';
+    openSheet();
+    fetch('/platform/finance/ledger/preview?transaction=' + encodeURIComponent(id), {headers: {'X-Requested-With': 'fetch'}})
+      .then(function(resp){ if(!resp.ok) throw new Error('Preview failed'); return resp.text(); })
+      .then(function(html){
+        content.innerHTML = html;
+        var url = new URL(window.location.href);
+        url.searchParams.set('selected', id);
+        history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
+      })
+      .catch(function(){
+        content.innerHTML = '<div class="flex h-full items-center justify-center p-8 text-sm text-destructive">Could not load this financial document.</div>';
+      });
+  }
+  document.addEventListener('click', function(event){
+    var row = event.target.closest('[data-ledger-row]');
+    if(row){
+      openTransaction(row.dataset.transactionId);
+      return;
+    }
+    if(event.target.closest('#finance-document-sheet [data-slot="sheet-close"]')){
+      clearSelectedUrl();
+    }
+    if(event.target.closest('[data-finance-print-document]')){
+      window.print();
+      return;
+    }
+    var exportLedger = event.target.closest('[data-finance-export-ledger]');
+    if(exportLedger){
+      window.location.href = exportLedger.dataset.exportUrl || '/platform/finance/ledger/export';
+      return;
+    }
+    var refund = event.target.closest('[data-finance-open-refund]');
+    if(refund){
+      var dialog = document.getElementById('finance-refund-dialog');
+      if(!dialog) return;
+      var charge = dialog.querySelector('[name="charge_id"]');
+      var selected = dialog.querySelector('[name="selected_tx_id"]');
+      var amount = dialog.querySelector('[name="amount"]');
+      if(charge) charge.value = refund.dataset.chargeId || '';
+      if(selected) selected.value = refund.dataset.transactionId || '';
+      if(amount) amount.value = refund.dataset.refundableRemaining || '';
+      try { dialog.showModal(); } catch(e) { dialog.setAttribute('open', ''); }
+      dialog.dataset.state = 'open';
+      return;
+    }
+    var option = event.target.closest('[data-finance-entity-option]');
+    if(option){
+      var form = option.closest('form');
+      if(!form) form = option.closest('dialog') && option.closest('dialog').querySelector('form');
+      if(!form) return;
+      var hidden = form.querySelector('[data-finance-entity-id]');
+      var type = form.querySelector('[name="entity_type"]');
+      var input = option.closest('[data-slot="combobox"]')?.querySelector('[data-slot="combobox-input"]');
+      if(hidden) hidden.value = option.dataset.entityId || '';
+      if(type) type.value = option.dataset.entityType || type.value;
+      if(input) input.value = option.textContent.trim().replace(/\\s+/g, ' ');
+      var popup = option.closest('[data-slot="combobox-popup"]');
+      if(popup){ popup.hidden = true; popup.dataset.state = 'closed'; }
+    }
+  });
+  document.addEventListener('keydown', function(event){
+    var row = event.target.closest('[data-ledger-row]');
+    if(row && (event.key === 'Enter' || event.key === ' ')){
+      event.preventDefault();
+      openTransaction(row.dataset.transactionId);
+    }
+  });
+  var sheet = document.getElementById('finance-document-sheet');
+  if(sheet){
+    sheet.addEventListener('close', clearSelectedUrl);
+  }
+  var pendingForm = null;
+  document.addEventListener('submit', function(event){
+    var form = event.target.closest('[data-finance-confirm-form]');
+    if(!form || form.dataset.confirmed === 'true') return;
+    event.preventDefault();
+    pendingForm = form;
+    var confirm = document.getElementById('finance-confirm-dialog');
+    if(confirm){
+      try { confirm.showModal(); } catch(e) { confirm.setAttribute('open', ''); }
+      confirm.dataset.state = 'open';
+    }
+  });
+  document.addEventListener('click', function(event){
+    if(event.target.closest('#finance-confirm-submit') && pendingForm){
+      pendingForm.dataset.confirmed = 'true';
+      pendingForm.submit();
+    }
+  });
+})();
+{% end_app_script %}

@@ -20,4 +20,4 @@ def prepare_runtime() -> None:
     configure_db(settings.database_url)
 
     import codesandbox.models  # noqa: F401 — registers all models
-
+    import codesandbox.features.finance  # noqa: F401 — registers finance platform permissions

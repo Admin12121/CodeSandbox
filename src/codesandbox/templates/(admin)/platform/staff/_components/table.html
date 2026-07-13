@@ -22,7 +22,7 @@
 
 {# ═══ LIST VIEW ═══ #}
 {% macro staff_list(visible_staff, staff, search, error, page=1, page_size=20, total=none, total_pages=1, is_super_admin=False) %}
-<div class="grid gap-4 p-2">
+<div class="flex flex-col gap-4 p-2 h-[calc(100vh-43px)] overflow-y-auto">
   <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
     <form method="get" action="/platform/staff">
       {% call ig.input_group() %}

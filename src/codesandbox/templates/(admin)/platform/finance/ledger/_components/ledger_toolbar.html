@@ -1,0 +1,64 @@
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/input-group.html" as input_group %}
+{% import "components/ui/select.html" as select %}
+
+{% macro ledger_toolbar(ledger, can_export_ledger=false, can_manage_finance=false) %}
+{% set type_options = [
+  {"value": "all", "label": "All types"},
+  {"value": "usage_charge", "label": "Usage charges"},
+  {"value": "topup", "label": "Top-ups"},
+  {"value": "refund", "label": "Refunds"},
+  {"value": "adjustment", "label": "Adjustments"},
+  {"value": "credit_grant", "label": "Credit grants"},
+  {"value": "failed_payment", "label": "Failed payments"},
+] %}
+{% set selected_type = type_options | selectattr("value", "equalto", ledger.tx_type) | list %}
+<form method="get" action="/platform/finance/ledger" class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_10rem_10rem_auto_auto]">
+  {% call input_group.input_group() %}
+    {{ input_group.input_group_input(
+      name="search",
+      placeholder="Search entity, reference, description…",
+      value=ledger.search,
+      attrs={"type": "search", "aria-label": "Search ledger"}
+    ) }}
+    {% call input_group.input_group_addon() %}
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    {% endcall %}
+  {% endcall %}
+
+  <div aria-hidden class="hidden lg:block"></div>
+
+  {% call select.select(name="type", value=ledger.tx_type, attrs={"data-cs-autosubmit": ""}) %}
+    {% call select.select_trigger(target="finance-ledger-type-popup") %}
+      {{ select.select_value(selected_type[0].label if selected_type else "All types") }}
+      <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    {% endcall %}
+    {% call select.select_popup(attrs={"id": "finance-ledger-type-popup"}) %}
+      {% for option in type_options %}
+        {% call select.select_item(value=option.value, selected=(option.value == ledger.tx_type)) %}{{ option.label }}{% endcall %}
+      {% endfor %}
+    {% endcall %}
+  {% endcall %}
+
+  {% call input_group.input_group() %}
+    {{ input_group.input_group_input(name="start", value=ledger.start, attrs={"type": "date", "aria-label": "Start date", "data-cs-autosubmit": ""}) }}
+  {% endcall %}
+  {% call input_group.input_group() %}
+    {{ input_group.input_group_input(name="end", value=ledger.end, attrs={"type": "date", "aria-label": "End date", "data-cs-autosubmit": ""}) }}
+  {% endcall %}
+
+  {% if can_export_ledger %}
+    {% call button.button(
+      variant="outline",
+      attrs={
+        "data-finance-export-ledger": "",
+        "data-export-url": "/platform/finance/ledger/export?type=" ~ (ledger.tx_type|urlencode) ~ "&search=" ~ (ledger.search|urlencode) ~ "&start=" ~ (ledger.start|urlencode) ~ "&end=" ~ (ledger.end|urlencode)
+      }
+    ) %}Export{% endcall %}
+  {% endif %}
+
+  {% if can_manage_finance %}
+    {% call button.button(variant="outline", attrs={"data-dialog-trigger": "", "data-target": "finance-adjustment-dialog"}) %}Create Adjustment{% endcall %}
+  {% endif %}
+</form>
+{% endmacro %}

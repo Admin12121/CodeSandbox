@@ -1,0 +1,14 @@
+{% import "components/ui/sheet.html" as sheet %}
+{% import "(admin)/platform/finance/ledger/_components/financial_document.html" as doc %}
+
+{% macro document_sheet(receipt, can_manage_refunds=false) %}
+{% call sheet.sheet(open=receipt is not none, class="w-[min(100vw,56rem)] max-w-none", attrs={"id": "finance-document-sheet"}) %}
+  <div id="finance-document-content" class="h-full overflow-hidden">
+    {% if receipt %}
+      {{ doc.financial_document(receipt, can_manage_refunds) }}
+    {% else %}
+      <div class="flex h-full items-center justify-center p-8 text-sm text-muted-foreground">Select a ledger transaction to preview its financial document.</div>
+    {% endif %}
+  </div>
+{% endcall %}
+{% endmacro %}

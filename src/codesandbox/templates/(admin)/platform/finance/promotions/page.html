@@ -1,0 +1,79 @@
+{% import "components/ui/alert.html" as alert %}
+{% import "components/ui/button.html" as button %}
+{% import "(admin)/platform/finance/_components/period_toolbar.html" as period_ui %}
+{% import "(admin)/platform/finance/promotions/_components/promotions_summary.html" as summary_ui %}
+{% import "(admin)/platform/finance/promotions/_components/coupon_list.html" as coupons_ui %}
+{% import "(admin)/platform/finance/promotions/_components/credit_grant_list.html" as credits_ui %}
+{% import "(admin)/platform/finance/promotions/_components/redemption_activity.html" as redemption_ui %}
+{% import "(admin)/platform/finance/promotions/_components/coupon_dialog.html" as coupon_dialog %}
+{% import "(admin)/platform/finance/promotions/_components/credit_dialog.html" as credit_dialog %}
+
+<div class="grid auto-rows-max content-start gap-8 p-4 lg:p-6 h-[calc(100vh-43px)] overflow-y-auto">
+  <div class="flex flex-wrap items-center justify-end gap-2">
+    {{ period_ui.period_toolbar(period, "/platform/finance/promotions") }}
+    {% if can_manage_coupons %}
+      {% call button.button(size="sm", attrs={"data-dialog-trigger": "", "data-target": "finance-coupon-dialog"}) %}Create Coupon{% endcall %}
+    {% endif %}
+    {% if can_manage_credits %}
+      {% call button.button(variant="outline", size="sm", attrs={"data-dialog-trigger": "", "data-target": "finance-credit-dialog"}) %}Grant Credit{% endcall %}
+    {% endif %}
+  </div>
+
+  {% if error %}
+    {% call alert.alert(variant="error") %}{{ alert.alert_title("Finance action failed") }}{{ alert.alert_description(error) }}{% endcall %}
+  {% endif %}
+  {% if info %}
+    {% call alert.alert(variant="success") %}{{ alert.alert_title("Finance updated") }}{{ alert.alert_description(info) }}{% endcall %}
+  {% endif %}
+
+  {{ summary_ui.promotions_summary(summary) }}
+  {{ coupons_ui.coupon_list(coupons, can_manage_coupons) }}
+  {{ credits_ui.credit_grant_list(credits) }}
+  {{ redemption_ui.redemption_activity(redemptions, redemption_timeline, has_redemptions) }}
+
+  {% if can_manage_coupons %}
+    {{ coupon_dialog.coupon_dialog(templates, plans) }}
+  {% endif %}
+  {% if can_manage_credits %}
+    {{ credit_dialog.credit_dialog(entity_options) }}
+  {% endif %}
+</div>
+
+{% app_script "finance-promotions-console" %}
+(function(){
+  document.addEventListener('click', function(event){
+    var option = event.target.closest('[data-finance-entity-option]');
+    if(option){
+      var form = option.closest('form');
+      if(!form) form = option.closest('dialog') && option.closest('dialog').querySelector('form');
+      if(!form) return;
+      var hidden = form.querySelector('[data-finance-entity-id]');
+      var type = form.querySelector('[name="entity_type"]');
+      var input = option.closest('[data-slot="combobox"]')?.querySelector('[data-slot="combobox-input"]');
+      if(hidden) hidden.value = option.dataset.entityId || '';
+      if(type) type.value = option.dataset.entityType || type.value;
+      if(input) input.value = option.textContent.trim().replace(/\\s+/g, ' ');
+      var popup = option.closest('[data-slot="combobox-popup"]');
+      if(popup){ popup.hidden = true; popup.dataset.state = 'closed'; }
+    }
+  });
+  var pendingForm = null;
+  document.addEventListener('submit', function(event){
+    var form = event.target.closest('[data-finance-confirm-form]');
+    if(!form || form.dataset.confirmed === 'true') return;
+    event.preventDefault();
+    pendingForm = form;
+    var confirm = document.getElementById('finance-confirm-dialog');
+    if(confirm){
+      try { confirm.showModal(); } catch(e) { confirm.setAttribute('open', ''); }
+      confirm.dataset.state = 'open';
+    }
+  });
+  document.addEventListener('click', function(event){
+    if(event.target.closest('#finance-confirm-submit') && pendingForm){
+      pendingForm.dataset.confirmed = 'true';
+      pendingForm.submit();
+    }
+  });
+})();
+{% end_app_script %}

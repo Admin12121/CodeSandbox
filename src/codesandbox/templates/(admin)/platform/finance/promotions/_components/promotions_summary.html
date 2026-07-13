@@ -1,0 +1,49 @@
+{% import "components/ui/frame.html" as frame %}
+
+{% macro promotions_summary(summary) %}
+<section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+    {% call frame.frame_panel(class="flex min-h-24 flex-col justify-end p-4") %}
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 flex-col gap-2">
+          <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Active coupons</h2>
+          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.active_coupons }}</div>
+        </div>
+      </div>
+    {% endcall %}
+  {% endcall %}
+
+  {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+    {% call frame.frame_panel(class="flex min-h-24 flex-col justify-end p-4") %}
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 flex-col gap-2">
+          <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Credit outstanding</h2>
+          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.credit_outstanding.display }}</div>
+        </div>
+      </div>
+    {% endcall %}
+  {% endcall %}
+
+  {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+    {% call frame.frame_panel(class="flex min-h-24 flex-col justify-end p-4") %}
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 flex-col gap-2">
+          <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Redemptions this period</h2>
+          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.redemptions_this_period }}</div>
+        </div>
+      </div>
+    {% endcall %}
+  {% endcall %}
+
+  {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+    {% call frame.frame_panel(class="flex min-h-24 flex-col justify-end p-4") %}
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 flex-col gap-2">
+          <h2 class="truncate text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Discounts applied</h2>
+          <div class="font-mono text-7xl font-semibold tabular-nums text-foreground">{{ summary.discounts_this_period.display }}</div>
+        </div>
+      </div>
+    {% endcall %}
+  {% endcall %}
+</section>
+{% endmacro %}

@@ -1,0 +1,80 @@
+{% import "components/ui/dialog.html" as dialog %}
+{% import "components/ui/alert-dialog.html" as alert %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/textarea.html" as textarea %}
+{% import "components/ui/select-native.html" as select_native %}
+{% import "components/ui/combobox.html" as combobox %}
+{% import "components/ui/checkbox.html" as checkbox %}
+
+{% macro adjustment_dialog(entity_options) %}
+{% call dialog.dialog(class="w-[min(96vw,34rem)]", attrs={"id": "finance-adjustment-dialog"}) %}
+  {% call dialog.dialog_popup(class="max-w-none") %}
+    {{ dialog.dialog_close(class="top-3 right-3") }}
+    {% call dialog.dialog_header() %}
+      {{ dialog.dialog_title("Create adjustment") }}
+      {{ dialog.dialog_description("Manual adjustments directly change a user or organization balance.") }}
+    {% endcall %}
+    <form method="post" action="/platform/finance/adjustments/new" class="grid gap-4" data-finance-confirm-form>
+      <input type="hidden" name="entity_id" data-finance-entity-id>
+      <div class="grid gap-2">
+        <label class="text-xs font-medium text-muted-foreground">Entity</label>
+        {{ select_native.select_native(name="entity_type", value="user", options=[{"value": "user", "label": "User"}, {"value": "org", "label": "Organization"}]) }}
+        {% call combobox.combobox() %}
+          {{ combobox.combobox_input(placeholder="Search users or organizations…", attrs={"autocomplete": "off"}) }}
+          {% call combobox.combobox_popup(class="w-full") %}
+            {{ combobox.combobox_empty("No matching entity.") }}
+            {% for option in entity_options %}
+              {% call combobox.combobox_item(value=option.label, attrs={"data-entity-id": option.id, "data-entity-type": option.type, "data-finance-entity-option": ""}) %}
+                <div class="grid gap-0.5">
+                  <span>{{ option.label }}</span>
+                  <span class="text-xs text-muted-foreground">{{ option.description }} · {{ option.type }}</span>
+                </div>
+              {% endcall %}
+            {% endfor %}
+          {% endcall %}
+        {% endcall %}
+      </div>
+      <div class="grid gap-2 sm:grid-cols-2">
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Direction</label>
+          {{ select_native.select_native(name="direction", options=[{"value": "add", "label": "Add credit"}, {"value": "deduct", "label": "Deduct balance"}]) }}
+        </div>
+        <div class="grid gap-1.5">
+          <label class="text-xs font-medium text-muted-foreground">Amount</label>
+          {{ input.input(type="number", name="amount", attrs={"min": "0.01", "step": "0.01", "required": ""}) }}
+        </div>
+      </div>
+      <div class="grid gap-1.5">
+        <label class="text-xs font-medium text-muted-foreground">Reason</label>
+        {{ input.input(name="reason", required=true, placeholder="Customer support credit, correction…") }}
+      </div>
+      <div class="grid gap-1.5">
+        <label class="text-xs font-medium text-muted-foreground">Internal note</label>
+        {{ textarea.textarea(name="internal_note", rows=3, placeholder="Internal context, not exported to customer documents.") }}
+      </div>
+      <label class="flex items-start gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+        {{ checkbox.checkbox(name="acknowledged", attrs={"required": ""}) }}
+        <span>I understand this directly changes the selected balance.</span>
+      </label>
+      {% call dialog.dialog_footer() %}
+        {{ dialog.dialog_cancel("Cancel") }}
+        {% call button.button(type="submit") %}Continue{% endcall %}
+      {% endcall %}
+    </form>
+  {% endcall %}
+{% endcall %}
+
+{% call alert.alert_dialog(attrs={"id": "finance-confirm-dialog"}) %}
+  {% call alert.alert_dialog_popup() %}
+    {% call alert.alert_dialog_header() %}
+      {{ alert.alert_dialog_title("Confirm balance-changing action") }}
+      {{ alert.alert_dialog_description("This will write a ledger transaction and update the selected balance.") }}
+    {% endcall %}
+    {% call alert.alert_dialog_footer() %}
+      {{ alert.alert_dialog_close("Cancel", class="rounded-md border px-3 py-2 text-sm") }}
+      {% call button.button(type="button", attrs={"id": "finance-confirm-submit"}) %}Confirm{% endcall %}
+    {% endcall %}
+  {% endcall %}
+{% endcall %}
+{% endmacro %}
