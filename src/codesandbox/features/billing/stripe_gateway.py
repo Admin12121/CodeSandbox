@@ -32,18 +32,50 @@ def _configure_stripe() -> None:
     stripe.api_key = secret
 
 
-def _as_dict(value: Any) -> dict[str, Any]:
+def _plain_stripe_value(value: Any) -> Any:
+    """Convert StripeObject values into plain Python containers.
+
+    StripeObject exposes mapping-like access, but it is not safely compatible
+    with ``dict(value)``. Python falls back to sequence-style ``__getitem__(0)``
+    and Stripe raises ``KeyError: 0``. Use Stripe's serializers or its internal
+    data mapping instead.
+    """
     if isinstance(value, dict):
-        return value
-    to_dict = getattr(value, "to_dict_recursive", None)
-    if callable(to_dict):
-        result = to_dict()
-        if isinstance(result, dict):
-            return result
+        return {str(key): _plain_stripe_value(inner) for key, inner in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_stripe_value(inner) for inner in value]
+
+    for method_name in ("to_dict_recursive", "to_dict"):
+        serializer = getattr(value, method_name, None)
+        if callable(serializer):
+            try:
+                result = serializer()
+            except Exception:
+                result = None
+            if isinstance(result, dict):
+                return _plain_stripe_value(result)
+
+    data = getattr(value, "_data", None)
+    if isinstance(data, dict):
+        return {str(key): _plain_stripe_value(inner) for key, inner in data.items()}
+    return value
+
+
+def _as_dict(value: Any) -> dict[str, Any]:
+    result = _plain_stripe_value(value)
+    if isinstance(result, dict):
+        return result
+    raise StripeTopupError("Stripe returned an invalid PaymentIntent.")
+
+
+def _payment_intent_amount_gbp(payment_intent: dict[str, Any]) -> Decimal:
+    raw_amount = payment_intent.get("amount_received")
+    if raw_amount in (None, ""):
+        raw_amount = payment_intent.get("amount")
     try:
-        return dict(value)
-    except (TypeError, ValueError) as exc:
-        raise StripeTopupError("Stripe returned an invalid PaymentIntent.") from exc
+        return (Decimal(str(raw_amount)) / 100).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise StripeTopupError("Stripe payment amount is invalid.") from exc
 
 
 def create_payment_intent(
@@ -71,6 +103,9 @@ def create_payment_intent(
         if existing.status in {"failed", "expired"}:
             raise StripeTopupError("This payment attempt is no longer usable. Please retry.")
         payment_intent = stripe.PaymentIntent.retrieve(existing.external_ref)
+        if str(getattr(payment_intent, "status", "") or "") == "canceled":
+            billing_repo.mark_topup_failed("stripe", existing.external_ref)
+            raise StripeTopupError("This payment attempt expired. Please try again.")
         client_secret = getattr(payment_intent, "client_secret", None)
         if not client_secret:
             raise StripeTopupError("Stripe did not return a client secret.")
@@ -145,11 +180,9 @@ def _validate_and_complete(
     if currency != "gbp":
         raise StripeTopupError("Stripe payment currency does not match the intent.")
     try:
-        amount_gbp = (Decimal(str(payment_intent.get("amount_received"))) / 100).quantize(
-            Decimal("0.01")
-        )
+        amount_gbp = _payment_intent_amount_gbp(payment_intent)
         expected_amount = Decimal(str(intent.charge_amount)).quantize(Decimal("0.01"))
-    except (InvalidOperation, ValueError) as exc:
+    except (InvalidOperation, ValueError, TypeError) as exc:
         raise StripeTopupError("Stripe payment amount is invalid.") from exc
     if amount_gbp != expected_amount:
         raise StripeTopupError("Stripe payment amount does not match the intent.")

@@ -695,6 +695,23 @@ def list_transactions(entity_type: str, entity_id: str, limit: int = 50) -> list
     return sorted(txs, key=lambda t: t.created_at, reverse=True)[:limit]
 
 
+def list_transactions_paginated(
+    entity_type: str,
+    entity_id: str,
+    *,
+    page: int = 1,
+    page_size: int = 20,
+) -> tuple[list[BalanceTransaction], int, int, int]:
+    txs = BalanceTransaction.objects.filter(entity_type=entity_type, entity_id=entity_id).all()
+    ordered = sorted(txs, key=lambda t: t.created_at, reverse=True)
+    total = len(ordered)
+    page_size = max(1, min(int(page_size), 100))
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(int(page), total_pages))
+    start = (page - 1) * page_size
+    return ordered[start:start + page_size], total, page, total_pages
+
+
 # ── SandboxAuditLog ───────────────────────────────────────────────────────────
 
 def log_instance_event(

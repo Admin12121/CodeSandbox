@@ -1,4 +1,3 @@
-{% import "components/ui/alert.html" as alert %}
 {% import "components/ui/button.html" as button %}
 {% import "(admin)/platform/finance/_components/period_toolbar.html" as period_ui %}
 {% import "(admin)/platform/finance/promotions/_components/promotions_summary.html" as summary_ui %}
@@ -19,11 +18,22 @@
     {% endif %}
   </div>
 
-  {% if error %}
-    {% call alert.alert(variant="error") %}{{ alert.alert_title("Finance action failed") }}{{ alert.alert_description(error) }}{% endcall %}
-  {% endif %}
-  {% if info %}
-    {% call alert.alert(variant="success") %}{{ alert.alert_title("Finance updated") }}{{ alert.alert_description(info) }}{% endcall %}
+  {% if error or info %}
+  {% app_script "finance-promotions-toasts" %}
+  (function(){
+    var error = {{ (error or "")|tojson }};
+    var info = {{ (info or "")|tojson }};
+    function show(){
+      if(!window.Toast){ setTimeout(show, 50); return; }
+      if(error) window.Toast.create({title: "Finance action failed", description: error, type: "error"});
+      if(info) window.Toast.create({title: "Finance updated", description: info, type: "success"});
+      var url = new URL(window.location.href);
+      ["error", "info", "action"].forEach(function(key){ url.searchParams.delete(key); });
+      history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+    }
+    show();
+  })();
+  {% end_app_script %}
   {% endif %}
 
   {{ summary_ui.promotions_summary(summary) }}

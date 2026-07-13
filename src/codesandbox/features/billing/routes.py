@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
 import stripe
-from flask import Response, redirect, request
+from flask import Response, abort, redirect, render_template, request
 
 from codesandbox.config import get_settings
 from codesandbox.features.billing import esewa_gateway, repository as billing_repo, stripe_gateway
@@ -145,6 +145,55 @@ def billing_topup_status_action(gateway: str, external_ref: str):
         return {"ok": False, "error": "Not found."}, 404  # don't leak existence
 
     return {"ok": True, "status": intent.status}
+
+
+def _owned_billing_transaction_receipt(transaction_id: str | None):
+    session, redir = require_sandbox_user()
+    if redir:
+        abort(401)
+    entity_type, entity_id = _resolve_billing_entity(session.user)
+    if entity_type is None:
+        abort(403)
+    if not transaction_id:
+        abort(404)
+
+    from codesandbox.features.finance import service as finance_service
+    from codesandbox.features.sandbox.models import BalanceTransaction
+
+    tx = BalanceTransaction.objects.filter(id=str(transaction_id)).first()
+    if tx is None or (tx.entity_type, str(tx.entity_id)) != (entity_type, entity_id):
+        abort(404)
+    receipt = finance_service.transaction_receipt_dict(tx)
+    if receipt is None:
+        abort(404)
+    return receipt
+
+
+@web_bp.get("/billing/transactions/receipt")
+def billing_transaction_receipt_action():
+    receipt = _owned_billing_transaction_receipt(request.args.get("transaction"))
+    return Response(
+        render_template(
+            "(admin)/platform/finance/ledger/_components/financial_document.html",
+            receipt=receipt,
+            can_manage_refunds=False,
+        ),
+        mimetype="text/html",
+    )
+
+
+@web_bp.get("/billing/transactions/receipt/download")
+def billing_transaction_receipt_download_action():
+    receipt = _owned_billing_transaction_receipt(request.args.get("transaction"))
+    filename = f"{receipt['number']}.html"
+    return Response(
+        render_template(
+            "(admin)/platform/finance/ledger/_components/document_download.html",
+            receipt=receipt,
+        ),
+        mimetype="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @web_bp.post("/billing/topup/dev")

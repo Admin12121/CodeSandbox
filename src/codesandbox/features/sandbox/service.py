@@ -2288,19 +2288,37 @@ def _transaction_dict(tx) -> dict:
     }
 
 
-def get_user_billing(user_id: str) -> dict:
+def get_user_billing(user_id: str, *, page: int = 1, page_size: int = 20) -> dict:
     b = repository.get_or_create_balance("user", user_id)
-    txs = repository.list_transactions("user", user_id)
+    txs, total, page, total_pages = repository.list_transactions_paginated(
+        "user",
+        user_id,
+        page=page,
+        page_size=page_size,
+    )
     return {
         "balance": _balance_dict(b),
         "transactions": [_transaction_dict(t) for t in txs],
+        "transactions_total": total,
+        "transactions_page": page,
+        "transactions_total_pages": total_pages,
+        "transactions_page_size": page_size,
     }
 
 
-def get_org_billing(org_id: str) -> dict:
+def get_org_billing(org_id: str, *, page: int = 1, page_size: int = 20) -> dict:
     b = repository.get_or_create_balance("org", org_id)
-    txs = repository.list_transactions("org", org_id)
+    txs, total, page, total_pages = repository.list_transactions_paginated(
+        "org",
+        org_id,
+        page=page,
+        page_size=page_size,
+    )
     return {
         "balance": _balance_dict(b),
         "transactions": [_transaction_dict(t) for t in txs],
+        "transactions_total": total,
+        "transactions_page": page,
+        "transactions_total_pages": total_pages,
+        "transactions_page_size": page_size,
     }

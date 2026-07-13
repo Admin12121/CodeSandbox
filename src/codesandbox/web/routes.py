@@ -316,6 +316,11 @@ def billing():
     user = session.user
     ws_ctx = _workspaces_ctx(user)
     active_workspace = ws_ctx.get("active_workspace")
+    try:
+        tx_page = int(request.args.get("page", "1"))
+    except (TypeError, ValueError):
+        tx_page = 1
+    tx_page_size = 20
 
     if active_workspace:
         org_id = str(active_workspace["id"])
@@ -323,10 +328,10 @@ def billing():
             return {"_redirect": "/dashboard"}
         if not org_repo.is_org_owner(org_id, str(user.id)):
             return {"_redirect": "/dashboard"}
-        billing_data = get_org_billing(org_id)
+        billing_data = get_org_billing(org_id, page=tx_page, page_size=tx_page_size)
         billing_label = active_workspace.get("name", "Org")
     else:
-        billing_data = get_user_billing(str(user.id))
+        billing_data = get_user_billing(str(user.id), page=tx_page, page_size=tx_page_size)
         billing_label = user.name or user.email
 
     from decimal import Decimal
@@ -351,6 +356,7 @@ def billing():
         "billing_dev_topup_enabled": get_settings().billing_dev_topup_enabled,
         "min_topup_gbp": stripe_gateway.MIN_TOPUP_GBP,
         "min_topup_npr": esewa_gateway.MIN_TOPUP_NPR,
+        "error": request.args.get("error"),
         **billing_data,
         **ws_ctx,
     }

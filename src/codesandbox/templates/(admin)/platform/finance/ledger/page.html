@@ -1,4 +1,3 @@
-{% import "components/ui/alert.html" as alert %}
 {% import "(admin)/platform/finance/ledger/_components/ledger_toolbar.html" as toolbar %}
 {% import "(admin)/platform/finance/ledger/_components/ledger_table.html" as ledger_table %}
 {% import "(admin)/platform/finance/ledger/_components/document_sheet.html" as doc_sheet %}
@@ -6,11 +5,22 @@
 {% import "(admin)/platform/finance/ledger/_components/refund_dialog.html" as refund %}
 
 <div class="grid auto-rows-max content-start gap-4 p-4 lg:p-6 h-[calc(100vh-43px)] overflow-y-auto">
-  {% if error %}
-    {% call alert.alert(variant="error") %}{{ alert.alert_title("Finance action failed") }}{{ alert.alert_description(error) }}{% endcall %}
-  {% endif %}
-  {% if info %}
-    {% call alert.alert(variant="success") %}{{ alert.alert_title("Finance updated") }}{{ alert.alert_description(info) }}{% endcall %}
+  {% if error or info %}
+  {% app_script "finance-ledger-toasts" %}
+  (function(){
+    var error = {{ (error or "")|tojson }};
+    var info = {{ (info or "")|tojson }};
+    function show(){
+      if(!window.Toast){ setTimeout(show, 50); return; }
+      if(error) window.Toast.create({title: "Finance action failed", description: error, type: "error"});
+      if(info) window.Toast.create({title: "Finance updated", description: info, type: "success"});
+      var url = new URL(window.location.href);
+      ["error", "info", "action"].forEach(function(key){ url.searchParams.delete(key); });
+      history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+    }
+    show();
+  })();
+  {% end_app_script %}
   {% endif %}
 
   {{ toolbar.ledger_toolbar(ledger, can_export_ledger, can_manage_finance) }}
@@ -61,6 +71,9 @@
       })
       .catch(function(){
         content.innerHTML = '<div class="flex h-full items-center justify-center p-8 text-sm text-destructive">Could not load this financial document.</div>';
+        if(window.Toast){
+          window.Toast.create({title: "Document unavailable", description: "Could not load this financial document.", type: "error"});
+        }
       });
   }
   document.addEventListener('click', function(event){
@@ -69,8 +82,10 @@
       openTransaction(row.dataset.transactionId);
       return;
     }
-    if(event.target.closest('#finance-document-sheet [data-slot="sheet-close"]')){
+    if(event.target.closest('#finance-document-sheet [data-slot="sheet-close"], #finance-document-sheet [data-document-sheet-close]')){
+      closeSheet();
       clearSelectedUrl();
+      return;
     }
     if(event.target.closest('[data-finance-print-document]')){
       window.print();

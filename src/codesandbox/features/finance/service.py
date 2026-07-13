@@ -1512,14 +1512,16 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
             receipt["items"] = [{"label": "Sandbox usage", "quantity": "1", "rate": str(absolute), "amount": str(absolute)}]
     elif tx.type == "topup":
         topup = _topup_for_transaction(tx)
+        topup_provider = (topup.gateway if topup else tx.provider) or "payment"
+        topup_reference = tx.reference or (topup.external_ref if topup else "") or ""
         receipt.update({
             "title": "Payment Receipt",
             "number": f"PAY-{str(tx.id)[:8].upper()}",
             "status": topup.status if topup else "completed",
-            "provider": (topup.provider if topup else tx.provider) or "payment",
-            "provider_reference": (topup.external_ref if topup else tx.reference) or "",
+            "provider": topup_provider,
+            "provider_reference": topup_reference,
             "items": [{"label": "Balance top-up", "quantity": "1", "rate": str(absolute), "amount": str(absolute)}],
-            "meta": [("Payment provider", (topup.provider if topup else tx.provider) or ""), ("Provider reference", (topup.external_ref if topup else tx.reference) or "")],
+            "meta": [("Payment provider", topup_provider), ("Provider reference", topup_reference)],
         })
     elif tx.type == "refund":
         receipt.update({
