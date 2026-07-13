@@ -26,12 +26,24 @@ def record_heartbeat(payload: dict) -> WorkerNode | None:
         str(payload["worker_id"]),
         used_vcpu=payload.get("used_vcpu"),
         used_ram_gb=payload.get("used_ram_gb"),
+        used_disk_gb=payload.get("used_disk_gb"),
         running_instances=payload.get("running_instances"),
     )
 
 
-def select_worker_for_instance(required_vcpu: int, required_ram_gb: int) -> WorkerNode | None:
-    return repository.select_worker_for_instance(required_vcpu, required_ram_gb)
+def select_worker_for_instance(
+    required_vcpu: int,
+    required_ram_gb: int,
+    *,
+    required_disk_gb: int = 0,
+    runtime_class: str | None = None,
+) -> WorkerNode | None:
+    return repository.select_worker_for_instance(
+        required_vcpu,
+        required_ram_gb,
+        required_disk_gb=required_disk_gb,
+        runtime_class=runtime_class,
+    )
 
 
 def is_worker_online(worker_id: str | None) -> bool:
@@ -61,17 +73,29 @@ def worker_supports_runtime_class(worker_id: str | None, runtime_class: str) -> 
     return runtime_class in (capabilities.get("runtime_class") or [])
 
 
-def release_worker_capacity(worker_id: str | None, *, vcpu: int, ram_gb: int) -> None:
+def release_worker_capacity(
+    worker_id: str | None, *, vcpu: int, ram_gb: int, disk_gb: int
+) -> None:
     if not worker_id:
         return
     repository.adjust_worker_load(
-        worker_id, vcpu_delta=-vcpu, ram_gb_delta=-ram_gb, instance_delta=-1
+        worker_id,
+        vcpu_delta=-vcpu,
+        ram_gb_delta=-ram_gb,
+        disk_gb_delta=-disk_gb,
+        instance_delta=-1,
     )
 
 
-def reserve_worker_capacity(worker_id: str | None, *, vcpu: int, ram_gb: int) -> None:
+def reserve_worker_capacity(
+    worker_id: str | None, *, vcpu: int, ram_gb: int, disk_gb: int
+) -> None:
     if not worker_id:
         return
     repository.adjust_worker_load(
-        worker_id, vcpu_delta=vcpu, ram_gb_delta=ram_gb, instance_delta=1
+        worker_id,
+        vcpu_delta=vcpu,
+        ram_gb_delta=ram_gb,
+        disk_gb_delta=disk_gb,
+        instance_delta=1,
     )

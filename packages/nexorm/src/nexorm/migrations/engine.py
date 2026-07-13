@@ -6,7 +6,8 @@ from nexorm.migrations.state import read_state, write_state
 
 class MigrationEngine:
     def __init__(self, migrations_dir="migrations", db=None, dialect=None):
-        self.migrations_dir = Path(migrations_dir)
+        self.migrations_dir = Path(migrations_dir).resolve()
+        self.state_path = self.migrations_dir / "schema_state.json"
         self.db = db or default_db
         self.dialect = dialect or self.db.dialect
 
@@ -15,7 +16,7 @@ class MigrationEngine:
         self.db.commit()
 
     def migration_files(self):
-        self.migrations_dir.mkdir(exist_ok=True)
+        self.migrations_dir.mkdir(parents=True, exist_ok=True)
         return sorted(self.migrations_dir.glob("[0-9][0-9][0-9][0-9]_*.py"))
 
     def applied(self):
@@ -40,7 +41,7 @@ class MigrationEngine:
             state = getattr(self.load_module(path), "schema_state", None)
             if state is not None:
                 latest_state = state
-        return latest_state or read_state()
+        return latest_state or read_state(self.state_path)
 
     def apply_pending(self):
         applied = self.applied()
@@ -70,7 +71,7 @@ class MigrationEngine:
                     self.db.commit()
             state = getattr(module, "schema_state", None)
             if state is not None:
-                write_state(state)
+                write_state(state, self.state_path)
             done.append(path.name)
         return done
 
@@ -108,7 +109,7 @@ class MigrationEngine:
                 )
                 if state is not None:
                     previous = state
-        write_state(previous or {"tables": {}})
+        write_state(previous or {"tables": {}}, self.state_path)
         return name
 
     def status(self):

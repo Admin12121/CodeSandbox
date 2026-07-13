@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
+import time
 
 import docker
+
+
+log = logging.getLogger("codesandbox-worker.docker-client")
 
 
 class DockerBackendError(RuntimeError):
@@ -68,6 +73,55 @@ class DockerClientFactory:
                 "if you have deliberately accepted this risk."
             )
 
+
+    @classmethod
+    def preflight(cls) -> "docker.DockerClient":
+        """Fail before worker registration when Docker/TLS is unusable.
+
+        The retry loop covers the short period where DinD is healthy enough to
+        answer its own local healthcheck but the client certificates are still
+        becoming visible in the shared volume.
+        """
+
+        cls.validate_production_safety()
+        retries = max(1, int(os.environ.get("SANDBOX_PREFLIGHT_RETRIES", "20")))
+        delay = max(0.1, float(os.environ.get("SANDBOX_PREFLIGHT_DELAY_SECONDS", "2")))
+        last_error: Exception | None = None
+
+        for attempt in range(1, retries + 1):
+            client = None
+            try:
+                client = cls.create()
+                if not client.ping():
+                    raise DockerBackendError("Docker daemon ping returned false.")
+                version = client.version()
+                log.info(
+                    "Docker runtime ready version=%s api=%s backend=%s",
+                    version.get("Version", "unknown"),
+                    version.get("ApiVersion", "unknown"),
+                    cls.backend_name(),
+                )
+                return client
+            except Exception as exc:
+                last_error = exc
+                if client is not None:
+                    try:
+                        client.close()
+                    except Exception:
+                        pass
+                if attempt < retries:
+                    log.warning(
+                        "Docker runtime preflight failed attempt=%s/%s error=%s",
+                        attempt,
+                        retries,
+                        exc,
+                    )
+                    time.sleep(delay)
+
+        raise DockerBackendError(
+            f"Docker runtime preflight failed after {retries} attempts: {last_error}"
+        ) from last_error
+
     @classmethod
     def create(cls) -> "docker.DockerClient":
         backend = cls.backend_name()
@@ -92,14 +146,23 @@ class DockerClientFactory:
         cert_path = os.environ.get("DOCKER_CERT_PATH", "").strip()
         tls_config: docker.tls.TLSConfig | bool
         if cert_path:
+            cert_file = os.path.join(cert_path, "cert.pem")
+            key_file = os.path.join(cert_path, "key.pem")
+            ca_file = os.path.join(cert_path, "ca.pem")
+            missing = [path for path in (cert_file, key_file, ca_file) if not os.path.isfile(path)]
+            if missing:
+                raise DockerBackendError(
+                    "Docker TLS certificate files are missing: " + ", ".join(missing)
+                )
             tls_config = docker.tls.TLSConfig(
-                client_cert=(
-                    os.path.join(cert_path, "cert.pem"),
-                    os.path.join(cert_path, "key.pem"),
-                ),
-                ca_cert=os.path.join(cert_path, "ca.pem"),
+                client_cert=(cert_file, key_file),
+                ca_cert=ca_file,
                 verify=tls_verify,
             )
         else:
-            tls_config = tls_verify
+            if tls_verify:
+                raise DockerBackendError(
+                    "DOCKER_TLS_VERIFY=1 requires DOCKER_CERT_PATH with ca.pem, cert.pem and key.pem."
+                )
+            tls_config = False
         return docker.DockerClient(base_url=docker_host, tls=tls_config, timeout=60)

@@ -66,6 +66,17 @@ def _sandboxes_redirect(template_id: str | None = None, error: str | None = None
     return redirect(url, code=303)
 
 
+
+
+def _form_int(name: str, default: int, label: str) -> int:
+    raw = request.form.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a whole number.") from exc
+
 def _plans_redirect(plan_id: str | None = None, error: str | None = None):
     url = "/platform/sandbox-plans"
     params = []
@@ -89,6 +100,13 @@ def save_template_action():
     icon_path = (_save_thumbnail(request.files.get("icon_file"))
                  or request.form.get("existing_icon_path", ""))
 
+    try:
+        max_timeout_hr = _form_int("max_timeout_hr", 2, "Max timeout")
+        max_upload_mb = _form_int("max_upload_mb", 50, "Upload limit")
+        pids_limit = _form_int("pids_limit", 256, "PID limit")
+    except ValueError as exc:
+        return _sandboxes_redirect(template_id or "new", str(exc))
+
     result, error = save_template(
         template_id=template_id,
         name=request.form.get("name", ""),
@@ -105,17 +123,17 @@ def save_template_action():
         interface_behavior=request.form.get("interface_behavior", "single"),
         network_mode=request.form.get("network_mode", "disabled"),
         allow_root=request.form.get("allow_root") == "1",
-        max_timeout_hr=int(request.form.get("max_timeout_hr") or 2),
+        max_timeout_hr=max_timeout_hr,
         default_command=request.form.get("default_command", ""),
         working_dir=request.form.get("working_dir", "/workspace"),
-        input_mount_path=request.form.get("input_mount_path", "/input"),
-        output_mount_path=request.form.get("output_mount_path", "/output"),
+        input_mount_path=request.form.get("input_mount_path", ""),
+        output_mount_path=request.form.get("output_mount_path", ""),
         artifact_paths=request.form.get("artifact_paths", ""),
         input_required=request.form.get("input_required") == "1",
-        max_upload_mb=int(request.form.get("max_upload_mb") or 50),
+        max_upload_mb=max_upload_mb,
         read_only_root=request.form.get("read_only_root") == "1",
         run_as_user=request.form.get("run_as_user", ""),
-        pids_limit=int(request.form.get("pids_limit") or 256),
+        pids_limit=pids_limit,
         allow_full_internet=request.form.get("allow_full_internet") == "1",
     )
     if error:
@@ -203,19 +221,32 @@ def delete_template_action(template_id: str):
 def save_plan_action():
     cs = get_current_session()
 
+    try:
+        ind_vcpu = _form_int("ind_vcpu", 1, "Individual vCPU")
+        ind_ram_gb = _form_int("ind_ram_gb", 1, "Individual RAM")
+        ind_disk_gb = _form_int("ind_disk_gb", 10, "Individual disk")
+        org_vcpu = _form_int("org_vcpu", 2, "Organization vCPU")
+        org_ram_gb = _form_int("org_ram_gb", 2, "Organization RAM")
+        org_disk_gb = _form_int("org_disk_gb", 20, "Organization disk")
+        min_billable_minutes = _form_int(
+            "min_billable_minutes", 1, "Minimum billable minutes"
+        )
+    except ValueError as exc:
+        return _plans_redirect(request.form.get("plan_id") or "new", str(exc))
+
     result, error = save_plan(
         plan_id=request.form.get("plan_id", ""),
         name=request.form.get("name", ""),
-        ind_vcpu=int(request.form.get("ind_vcpu") or 1),
-        ind_ram_gb=int(request.form.get("ind_ram_gb") or 1),
-        ind_disk_gb=int(request.form.get("ind_disk_gb") or 10),
+        ind_vcpu=ind_vcpu,
+        ind_ram_gb=ind_ram_gb,
+        ind_disk_gb=ind_disk_gb,
         ind_cost_hr=request.form.get("ind_cost_hr", "0"),
-        org_vcpu=int(request.form.get("org_vcpu") or 2),
-        org_ram_gb=int(request.form.get("org_ram_gb") or 2),
-        org_disk_gb=int(request.form.get("org_disk_gb") or 20),
+        org_vcpu=org_vcpu,
+        org_ram_gb=org_ram_gb,
+        org_disk_gb=org_disk_gb,
         org_cost_hr=request.form.get("org_cost_hr", "0"),
         updated_by_id=str(cs.user.id),
-        min_billable_minutes=int(request.form.get("min_billable_minutes") or 0),
+        min_billable_minutes=min_billable_minutes,
         allowed_network_modes=request.form.getlist("allowed_network_modes"),
     )
     if error:

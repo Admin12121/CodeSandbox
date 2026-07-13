@@ -120,6 +120,7 @@ def main(argv=None):
     parser.add_argument("--user")
     parser.add_argument("--password")
     parser.add_argument("--models")
+    parser.add_argument("--migrations-dir")
     sub = parser.add_subparsers(dest="command", required=True)
     init = sub.add_parser("init")
     init.add_argument("--force", action="store_true")
@@ -131,10 +132,18 @@ def main(argv=None):
     sqlmigrate.add_argument("name")
     sub.add_parser("dbshell")
     args = parser.parse_args(argv)
+    config_path = Path(args.config).expanduser().resolve() if args.config else find_config()
     try:
-        config = load_config(args.config)
+        config = load_config(config_path)
     except ValueError as exc:
         parser.error(str(exc))
+
+    project_root = config_path.parent if config_path is not None else Path.cwd()
+    migrations_dir = Path(
+        args.migrations_dir or pick_config_value(config, "migrations_dir", "migrations")
+    ).expanduser()
+    if not migrations_dir.is_absolute():
+        migrations_dir = (project_root / migrations_dir).resolve()
 
     if args.command == "init":
         init_project(args.force)
@@ -152,36 +161,43 @@ def main(argv=None):
         for key, value in db_options.items()
     }
     db_options = {key: value for key, value in db_options.items() if value is not None}
-    try:
-        database = configured_database(args, config)
-    except ValueError as exc:
-        parser.error(str(exc))
     backend = args.backend or pick_config_value(config, "backend", "sqlite")
 
-    configure(database, backend=backend, **db_options)
+    if args.command == "makemigrations":
+        # Schema diffing does not need a live database. Avoid requiring
+        # DATABASE_URL merely to generate migration files.
+        configure(":memory:", backend="sqlite")
+    else:
+        try:
+            database = configured_database(args, config)
+        except ValueError as exc:
+            parser.error(str(exc))
+        configure(database, backend=backend, **db_options)
     if args.command != "dbshell":
         load_models(args.models or pick_config_value(config, "models", "app.models"))
 
+    engine = MigrationEngine(migrations_dir=migrations_dir)
+
     if args.command == "makemigrations":
-        old = MigrationEngine().project_state()
+        old = engine.project_state()
         new = model_state()
         ops = MigrationAutodetector(old, new).changes()
         if not ops:
             print("No changes detected")
             return
-        path = MigrationWriter(ops, new).write()
+        path = MigrationWriter(ops, new, migrations_dir=migrations_dir).write()
         print(f"Created {path}")
     elif args.command == "migrate":
-        for name in MigrationEngine().apply_pending():
+        for name in engine.apply_pending():
             print(f"Applied {name}")
     elif args.command == "showmigrations":
-        for name, applied in MigrationEngine().status():
+        for name, applied in engine.status():
             print(f"[{'x' if applied else ' '}] {name}")
     elif args.command == "rollback":
-        name = MigrationEngine().rollback_latest()
+        name = engine.rollback_latest()
         print(f"Rolled back {name}" if name else "No migrations to rollback")
     elif args.command == "sqlmigrate":
-        for sql in MigrationEngine().sqlmigrate(args.name):
+        for sql in engine.sqlmigrate(args.name):
             print(sql + ";")
     elif args.command == "dbshell":
         code.interact(local={"db": default_db})

@@ -38,6 +38,7 @@ class WorkerNode(Model):
     total_disk_gb = IntegerField(default=0)
     used_vcpu = IntegerField(default=0)
     used_ram_gb = IntegerField(default=0)
+    used_disk_gb = IntegerField(default=0)
     running_instances = IntegerField(default=0)
 
     last_heartbeat_at = DateTimeField(nullable=True)

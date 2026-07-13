@@ -66,12 +66,20 @@ class WorkerRegistryClient:
         )
         return bool(result and result.get("ok"))
 
-    def heartbeat(self, *, used_vcpu: int, used_ram_gb: int, running_instances: int) -> bool:
+    def heartbeat(
+        self,
+        *,
+        used_vcpu: int,
+        used_ram_gb: int,
+        used_disk_gb: int,
+        running_instances: int,
+    ) -> bool:
         result = self._post(
             "/internal/worker/heartbeat",
             {
                 "used_vcpu": used_vcpu,
                 "used_ram_gb": used_ram_gb,
+                "used_disk_gb": used_disk_gb,
                 "running_instances": running_instances,
             },
         )

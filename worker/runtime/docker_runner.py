@@ -4,20 +4,21 @@ import hashlib
 import logging
 import os
 import platform
+import posixpath
 import re
 import threading
 import time
 import uuid
 from typing import Any
 
-import docker
-from docker.errors import ImageNotFound, NotFound
+from docker.errors import NotFound
 from docker.types import Mount
 
 from .artifacts import ArtifactCollector, ObjectStore, tar_bytes
 from .base import RuntimeRunner
 from .docker_client import DockerClientFactory
 from .filesystem import DockerFilesystem
+from .image_policy import ensure_image, normalize_image_reference
 from .metrics import DockerMetrics
 
 log = logging.getLogger("codesandbox-worker.docker")
@@ -36,10 +37,17 @@ class DockerRunner(RuntimeRunner):
         self.publish = publish
         self.client = DockerClientFactory.create()
         self.store = store or ObjectStore()
-        self.collector = ArtifactCollector(self.store)
+        disk_limit_bytes = max(1, int(self.policy.get("disk_gb") or 1)) * 1024**3
+        global_artifact_limit = int(
+            os.environ.get("SANDBOX_MAX_ARTIFACT_BYTES", str(500 * 1024 * 1024))
+        )
+        self.collector = ArtifactCollector(
+            self.store, max_bytes=min(global_artifact_limit, disk_limit_bytes)
+        )
         self.container = None
         self.workspace_volume = None
         self.input_volume = None
+        self.network = None
         self.started_monotonic = time.monotonic()
         self.external_control = threading.Event()
         self._operation_lock = threading.RLock()
@@ -66,29 +74,21 @@ class DockerRunner(RuntimeRunner):
             raise ValueError("Unsupported runtime class.")
         if self.policy.get("runtime_provider") != "docker":
             raise ValueError("Runtime provider must be Docker.")
-        image = str(self.policy.get("docker_image") or "").strip()
-        if not image or any(char.isspace() for char in image):
-            raise ValueError("Invalid Docker image reference.")
-        allowed = {
-            value.strip()
-            for value in os.environ.get("SANDBOX_ALLOWED_IMAGES", "").split(",")
-            if value.strip()
-        }
-        require_allowlist = os.environ.get(
-            "SANDBOX_REQUIRE_IMAGE_ALLOWLIST", "false"
-        ).lower() in {"1", "true", "yes", "on"}
-        if (allowed and image not in allowed) or (require_allowlist and not allowed):
-            raise ValueError("Docker image is not approved by this worker.")
+        image = normalize_image_reference(
+            str(self.policy.get("runtime_image") or self.policy.get("docker_image") or "")
+        )
+        self.policy["runtime_image"] = image
+        self.policy["docker_image"] = image
+        pull_policy = str(self.policy.get("image_pull_policy") or "if_not_present")
+        if pull_policy not in {"always", "if_not_present", "never"}:
+            raise ValueError("Unsupported image pull policy.")
+        self.policy["image_pull_policy"] = pull_policy
         if self.policy.get("network_mode") not in _SUPPORTED_NETWORK_MODES:
             raise ValueError("Unsupported network mode.")
         if self.policy.get("network_mode") == "full_internet" and not self.policy.get(
             "full_internet_enabled"
         ):
             raise ValueError("Full internet was not explicitly enabled.")
-        if self.policy.get("sandbox_type") in {"malware", "reverse_engineering"} and self.policy.get(
-            "network_mode"
-        ) == "full_internet":
-            raise ValueError("Full internet is prohibited for this sandbox type.")
         for name, minimum, maximum in (
             ("vcpu", 1, 128),
             ("ram_gb", 1, 1024),
@@ -111,12 +111,52 @@ class DockerRunner(RuntimeRunner):
         run_as_user = str(self.policy.get("run_as_user") or "")
         if run_as_user and not _USER_RE.fullmatch(run_as_user):
             raise ValueError("Invalid container user.")
-        for path_name in (
-            "working_dir", "input_mount_path", "output_mount_path"
-        ):
-            value = str(self.policy.get(path_name) or "")
-            if not value.startswith("/") or ".." in value.split("/"):
+        mount_paths: dict[str, str] = {}
+        for path_name in ("working_dir", "input_mount_path", "output_mount_path"):
+            value = str(self.policy.get(path_name) or "").strip()
+            if path_name != "working_dir" and not value:
+                self.policy[path_name] = None
+                continue
+            normalized_path = posixpath.normpath(value)
+            if (
+                not value.startswith("/")
+                or normalized_path in {"/", "."}
+                or ".." in value.split("/")
+            ):
                 raise ValueError(f"Invalid {path_name}.")
+            self.policy[path_name] = normalized_path
+            if path_name != "working_dir" or bool(self.policy.get("workspace_enabled", True)):
+                mount_paths[path_name] = normalized_path
+
+        if self.policy.get("input_required") and not self.policy.get("input_mount_path"):
+            raise ValueError("Input is required but no input mount path is configured.")
+        primary_input_alias = str(self.policy.get("primary_input_alias") or "").strip()
+        if primary_input_alias and not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,254}", primary_input_alias
+        ):
+            raise ValueError("Invalid primary input alias.")
+
+        path_items = list(mount_paths.items())
+        for index, (left_name, left_path) in enumerate(path_items):
+            for right_name, right_path in path_items[index + 1 :]:
+                if (
+                    left_path == right_path
+                    or left_path.startswith(right_path + "/")
+                    or right_path.startswith(left_path + "/")
+                ):
+                    raise ValueError(
+                        f"{left_name} and {right_name} must be separate, non-overlapping paths."
+                    )
+
+        unsupported_modes = set(self.policy.get("interface_modes") or []) & {
+            "desktop_gui",
+            "android_ui",
+        }
+        if unsupported_modes:
+            raise ValueError(
+                "The Docker container worker does not implement desktop_gui or android_ui. "
+                "Use a worker/runtime driver that explicitly advertises those capabilities."
+            )
         # Generic (not slug-specific) required/forbidden-argument re-check —
         # sourced entirely from this template's own runtime_config, same as
         # the control-plane-side check in runtime/policy.py.
@@ -131,79 +171,76 @@ class DockerRunner(RuntimeRunner):
             if present:
                 raise ValueError(f"Default command must not include: {', '.join(present)}.")
 
-    def _ensure_image(self, image: str) -> None:
-        try:
-            self.client.images.get(image)
-        except ImageNotFound:
-            log.info("pulling image=%s", image)
-            self.client.images.pull(image)
+    def _ensure_image(self, image: str, *, pull_policy: str | None = None) -> str:
+        normalized = normalize_image_reference(image)
+        policy = pull_policy or str(self.policy.get("image_pull_policy") or "if_not_present")
+        log.info("ensuring image=%s pull_policy=%s", normalized, policy)
+        ensure_image(self.client, normalized, pull_policy=policy)
+        return normalized
 
-    def _restricted_network(self) -> str:
-        name = os.environ.get("SANDBOX_RESTRICTED_NETWORK", "codesandbox-restricted")
+    def _instance_network_name(self) -> str:
+        return f"cs-net-{uuid.UUID(self.instance_id).hex}"
+
+    def _instance_network(self):
+        if self.network is not None:
+            return self.network
+
+        network_mode = self.policy["network_mode"]
+        if network_mode == "disabled":
+            return None
+
+        name = self._instance_network_name()
         try:
-            self.client.networks.get(name)
+            self.network = self.client.networks.get(name)
         except NotFound:
-            self.client.networks.create(
+            self.network = self.client.networks.create(
                 name,
                 driver="bridge",
-                internal=True,
-                # attachable=True (not the Docker default) so the worker
-                # itself can join dynamically per-instance for GUI/Android
-                # proxying (see _ensure_worker_reachable) — this network
-                # stays `internal=True` regardless, so sandbox containers on
-                # it still can't reach the real internet or the platform's
-                # own default network.
-                attachable=True,
-                labels={"com.codesandbox.managed": "true"},
+                internal=(network_mode == "restricted"),
+                attachable=False,
+                labels={
+                    "com.codesandbox.managed": "true",
+                    "com.codesandbox.instance_id": self.instance_id,
+                    "com.codesandbox.worker_id": _WORKER_ID,
+                },
+                check_duplicate=True,
             )
-        return name
-
-    def _ensure_worker_reachable(self, network_name: str | None) -> None:
-        """Join the worker's own container to the sandbox's network so it
-        can reach the GUI/Android port by container name — see
-        docs/plan.md Phase 10.6 (no host port publishing; the worker relays
-        bytes over NATS instead of the browser ever touching the container
-        directly). `network_name` is None when network_mode="none"
-        (disabled) — nothing to join, GUI/Android are unreachable for that
-        instance and worker/runtime/gui.py will honestly report so."""
-        if not network_name or network_name in {"none", "host"}:
-            log.warning(
-                "instance=%s requested desktop_gui/android_ui with network_mode=disabled — "
-                "no network to proxy over.", self.instance_id[:8],
-            )
-            return
-        try:
-            # WORKER_ID (_WORKER_ID) is the logical routing name used in NATS
-            # subjects — NOT the Docker container's own name/ID. The
-            # container's hostname *is* its short ID by default (Docker
-            # convention, not overridden by this compose file), which is
-            # what containers.get() needs here.
-            worker_container = self.client.containers.get(platform.node())
-            network = self.client.networks.get(network_name)
-            network.connect(worker_container)
-            log.info(
-                "worker joined network=%s for instance=%s", network_name, self.instance_id[:8]
-            )
-        except docker.errors.APIError as exc:
-            if "already exists" not in str(exc).lower() and "already connected" not in str(exc).lower():
-                log.warning(
-                    "could not join worker to network=%s for instance=%s error=%s",
-                    network_name, self.instance_id[:8], exc,
-                )
+        return self.network
 
     def _stage_volumes(self) -> None:
-        helper_image = os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36")
-        self._ensure_image(helper_image)
-        mounts = [
-            Mount("/workspace", self.workspace_volume.name, type="volume", no_copy=True),
-            Mount("/output", self.workspace_volume.name, type="volume", no_copy=True),
-            Mount("/input", self.input_volume.name, type="volume", no_copy=True),
-        ]
+        inputs = list(self.policy.get("inputs") or [])
+        disk_limit_bytes = max(1, int(self.policy.get("disk_gb") or 1)) * 1024**3
+        declared_input_bytes = sum(max(0, int(item.get("size_bytes") or 0)) for item in inputs)
+        if declared_input_bytes > disk_limit_bytes:
+            raise ValueError("Input files exceed the disk allocation selected by the plan.")
+        needs_workspace = self.workspace_volume is not None
+        needs_input = self.input_volume is not None
+        if not needs_workspace and not needs_input:
+            if inputs:
+                raise ValueError("Inputs were supplied but this template has no input mount.")
+            return
+
+        helper_image = self._ensure_image(
+            os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36"),
+            pull_policy="if_not_present",
+        )
+        mounts = []
+        if needs_workspace:
+            mounts.append(Mount("/workspace", self.workspace_volume.name, type="volume", no_copy=True))
+        if needs_input:
+            mounts.append(Mount("/input", self.input_volume.name, type="volume", no_copy=True))
         helper = self.client.containers.create(
             helper_image,
             command=["sh", "-c", "sleep 300"],
             network_mode="none",
             mounts=mounts,
+            read_only=True,
+            tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=16m,mode=1777"},
+            cap_drop=["ALL"],
+            cap_add=["CHOWN", "FOWNER", "DAC_OVERRIDE"],
+            security_opt=["no-new-privileges:true"],
+            pids_limit=64,
+            mem_limit=128 * 1024 * 1024,
             labels={
                 "com.codesandbox.managed": "true",
                 "com.codesandbox.instance_id": self.instance_id,
@@ -213,7 +250,9 @@ class DockerRunner(RuntimeRunner):
         try:
             helper.start()
             max_bytes = int(self.policy.get("max_upload_bytes") or 0)
-            for index, item in enumerate(self.policy.get("inputs") or []):
+            if inputs and not needs_input:
+                raise ValueError("Inputs were supplied but this template has no input mount.")
+            for index, item in enumerate(inputs):
                 storage_key = str(item.get("storage_key") or "")
                 data = self.store.get_input(self.instance_id, storage_key, max_bytes)
                 expected_checksum = str(item.get("checksum") or "")
@@ -222,24 +261,24 @@ class DockerRunner(RuntimeRunner):
                 name = str(item.get("name") or f"input-{index + 1}")
                 safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip(".") or f"input-{index + 1}"
                 helper.put_archive("/input", tar_bytes(safe_name, data, 0o444))
-                if index == 0 and safe_name != "sample":
-                    helper.put_archive("/input", tar_bytes("sample", data, 0o444))
+                alias = str(self.policy.get("primary_input_alias") or "").strip()
+                if index == 0 and alias and alias != safe_name:
+                    helper.put_archive("/input", tar_bytes(alias, data, 0o444))
 
             run_as_user = self._container_user()
             numeric = re.fullmatch(r"([0-9]+)(?::([0-9]+))?", run_as_user or "")
             if numeric:
                 uid = numeric.group(1)
                 gid = numeric.group(2) or uid
-                ownership = helper.exec_run([
-                    "sh", "-c",
-                    (
-                        f"chown -R {uid}:{gid} /workspace /output "
-                        f"&& chmod 0770 /workspace /output "
-                        "&& chmod -R a-w /input"
-                    ),
-                ])
-                if ownership.exit_code != 0:
-                    raise ValueError("Workspace ownership could not be prepared.")
+                commands = []
+                if needs_workspace:
+                    commands.append(f"chown -R {uid}:{gid} /workspace && chmod 0770 /workspace")
+                if needs_input:
+                    commands.append("chmod -R a-w /input")
+                if commands:
+                    ownership = helper.exec_run(["sh", "-c", " && ".join(commands)])
+                    if ownership.exit_code != 0:
+                        raise ValueError("Sandbox volume ownership could not be prepared.")
         finally:
             helper.remove(force=True)
 
@@ -255,22 +294,34 @@ class DockerRunner(RuntimeRunner):
         self._validate()
         self.client.ping()
         image = str(self.policy["docker_image"])
-        self._ensure_image(image)
+        self.policy["docker_image"] = self._ensure_image(image)
+        self.policy["runtime_image"] = self.policy["docker_image"]
         labels = {
             "com.codesandbox.managed": "true",
             "com.codesandbox.instance_id": self.instance_id,
         }
-        workspace_name = f"cs-workspace-{self.instance_id}"
-        input_name = f"cs-input-{self.instance_id}"
-        for volume_name in (workspace_name, input_name):
+
+        needs_workspace_volume = bool(self.policy.get("workspace_enabled", True)) or bool(
+            self.policy.get("output_mount_path")
+        ) or bool(self.policy.get("artifact_paths"))
+        if needs_workspace_volume:
+            workspace_name = f"cs-workspace-{self.instance_id}"
             try:
-                self.client.volumes.get(volume_name).remove(force=True)
+                self.client.volumes.get(workspace_name).remove(force=True)
             except NotFound:
                 pass
-        self.workspace_volume = self.client.volumes.create(
-            name=workspace_name, labels=labels
-        )
-        self.input_volume = self.client.volumes.create(name=input_name, labels=labels)
+            self.workspace_volume = self.client.volumes.create(
+                name=workspace_name, labels=labels
+            )
+
+        if self.policy.get("input_mount_path"):
+            input_name = f"cs-input-{self.instance_id}"
+            try:
+                self.client.volumes.get(input_name).remove(force=True)
+            except NotFound:
+                pass
+            self.input_volume = self.client.volumes.create(name=input_name, labels=labels)
+
         self._stage_volumes()
 
     def _container_labels(self) -> dict[str, str]:
@@ -287,38 +338,42 @@ class DockerRunner(RuntimeRunner):
 
     def _container_command(self) -> list[str] | None:
         command = self.policy.get("default_command")
-        if command:
-            return [str(value) for value in command]
-        modes = set(self.policy.get("interface_modes") or [])
-        if modes.intersection({"terminal", "editor", "terminal_only", "lab_ui"}):
-            return ["/bin/sh", "-c", "trap : TERM INT; sleep infinity & wait"]
-        return None
+        # No platform-injected shell command: a template without an explicit
+        # command uses the image's own CMD. This keeps arbitrary/distroless
+        # images valid and leaves lifecycle behavior under admin control.
+        return [str(value) for value in command] if command else None
 
     def start(self) -> dict[str, Any]:
-        mounts = [
-            Mount(
-                self.policy["working_dir"],
-                self.workspace_volume.name,
-                type="volume",
-                no_copy=True,
-            ),
-            Mount(
-                self.policy["output_mount_path"],
-                self.workspace_volume.name,
-                type="volume",
-                no_copy=True,
-            ),
-            Mount(
+        mounts = []
+        if self.workspace_volume is not None:
+            if bool(self.policy.get("workspace_enabled", True)):
+                mounts.append(Mount(
+                    self.policy["working_dir"],
+                    self.workspace_volume.name,
+                    type="volume",
+                    no_copy=True,
+                ))
+            output_mount = self.policy.get("output_mount_path")
+            if output_mount:
+                mounts.append(Mount(
+                    output_mount,
+                    self.workspace_volume.name,
+                    type="volume",
+                    no_copy=True,
+                ))
+        if self.input_volume is not None and self.policy.get("input_mount_path"):
+            mounts.append(Mount(
                 self.policy["input_mount_path"],
                 self.input_volume.name,
                 type="volume",
                 read_only=True,
                 no_copy=True,
-            ),
-        ]
+            ))
         kwargs: dict[str, Any] = {
             "image": self.policy["docker_image"],
             "command": self._container_command(),
+            "entrypoint": self.policy.get("entrypoint") or None,
+            "environment": dict(self.policy.get("environment") or {}),
             "name": f"cs-{self.instance_id}",
             "detach": True,
             "stdin_open": False,
@@ -341,21 +396,20 @@ class DockerRunner(RuntimeRunner):
         network_mode = self.policy["network_mode"]
         if network_mode == "disabled":
             kwargs["network_mode"] = "none"
-        elif network_mode == "restricted":
-            kwargs["network"] = self._restricted_network()
         else:
-            kwargs["network_mode"] = "bridge"
+            network = self._instance_network()
+            if network is None:
+                raise RuntimeError("Sandbox network could not be created.")
+            kwargs["network"] = network.name
+
         self.container = self.client.containers.create(**kwargs)
         self.container.start()
         self.started_monotonic = time.monotonic()
-        modes = set(self.policy.get("interface_modes") or [])
-        if modes & {"desktop_gui", "android_ui"}:
-            self._ensure_worker_reachable(kwargs.get("network") or kwargs.get("network_mode"))
         return {
             "runtime_provider": "docker",
             "runtime_id": self.container.id,
             "runtime_node_id": os.environ.get("RUNTIME_NODE_ID", platform.node()),
-            "workspace_volume_id": self.workspace_volume.name,
+            "workspace_volume_id": self.workspace_volume.name if self.workspace_volume is not None else None,
             "worker_id": _WORKER_ID,
         }
 
@@ -424,32 +478,50 @@ class DockerRunner(RuntimeRunner):
             return {"exit_code": state.get("ExitCode"), "reason": "killed"}
 
     def collect_artifacts(self) -> list[dict[str, Any]]:
-        if self.container is None:
+        artifact_paths = list(self.policy.get("artifact_paths") or [])
+        if self.container is None or not artifact_paths:
             return []
         target = self.container
         helper = None
-        if not self.is_running and self.workspace_volume is not None:
-            helper_image = os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36")
+        if self.workspace_volume is not None:
+            helper_image = self._ensure_image(
+                os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36")
+            )
             helper = self.client.containers.create(
                 helper_image,
                 command=["sh", "-c", "sleep 300"],
                 network_mode="none",
-                mounts=[
-                    Mount(
-                        self.policy["working_dir"],
-                        self.workspace_volume.name,
-                        type="volume",
-                        read_only=True,
-                        no_copy=True,
-                    ),
-                    Mount(
-                        self.policy["output_mount_path"],
-                        self.workspace_volume.name,
-                        type="volume",
-                        read_only=True,
-                        no_copy=True,
-                    ),
-                ],
+                mounts=(
+                    [
+                        Mount(
+                            self.policy["working_dir"],
+                            self.workspace_volume.name,
+                            type="volume",
+                            read_only=True,
+                            no_copy=True,
+                        )
+                    ]
+                    if bool(self.policy.get("workspace_enabled", True))
+                    else []
+                ) + (
+                    [
+                        Mount(
+                            self.policy["output_mount_path"],
+                            self.workspace_volume.name,
+                            type="volume",
+                            read_only=True,
+                            no_copy=True,
+                        )
+                    ]
+                    if self.policy.get("output_mount_path")
+                    else []
+                ),
+                read_only=True,
+                tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=16m,mode=1777"},
+                cap_drop=["ALL"],
+                security_opt=["no-new-privileges:true"],
+                pids_limit=64,
+                mem_limit=128 * 1024 * 1024,
                 labels={
                     "com.codesandbox.managed": "true",
                     "com.codesandbox.instance_id": self.instance_id,
@@ -461,7 +533,7 @@ class DockerRunner(RuntimeRunner):
         try:
             return self.collector.collect(
                 target,
-                list(self.policy.get("artifact_paths") or []),
+                artifact_paths,
                 str(self.policy.get("artifact_prefix") or f"sandboxes/{self.instance_id}/artifacts"),
             )
         finally:
@@ -482,8 +554,13 @@ class DockerRunner(RuntimeRunner):
                 if volume is not None:
                     try:
                         volume.remove(force=True)
-                    except (NotFound, Exception) as exc:
+                    except Exception as exc:
                         log.warning("volume cleanup failed instance=%s error=%s", self.instance_id[:8], exc)
+            if self.network is not None:
+                try:
+                    self.network.remove()
+                except Exception as exc:
+                    log.warning("network cleanup failed instance=%s error=%s", self.instance_id[:8], exc)
 
     @classmethod
     def recover(cls, job: dict, publish, store: ObjectStore | None = None):
@@ -501,4 +578,9 @@ class DockerRunner(RuntimeRunner):
             runner.input_volume = runner.client.volumes.get(f"cs-input-{runner.instance_id}")
         except NotFound:
             runner.input_volume = None
+        if str(runner.policy.get("network_mode") or "disabled") != "disabled":
+            try:
+                runner.network = runner.client.networks.get(runner._instance_network_name())
+            except NotFound:
+                runner.network = None
         return runner

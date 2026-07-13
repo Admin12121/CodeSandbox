@@ -9,7 +9,7 @@ WORKDIR /worker
 COPY pyproject.toml ./
 RUN uv sync --no-dev --no-install-project
 
-COPY worker.py main.py ./
+COPY worker.py main.py smoke_test.py ./
 COPY runtime ./runtime
 
 ENV PATH="/worker/.venv/bin:${PATH}"

@@ -50,14 +50,6 @@ class Settings:
         self.sandbox_job_signing_key = os.environ.get(
             "SANDBOX_JOB_SIGNING_KEY", self.secret_key
         )
-        self.sandbox_allowed_images = tuple(
-            image.strip()
-            for image in os.environ.get("SANDBOX_ALLOWED_IMAGES", "").split(",")
-            if image.strip()
-        )
-        self.sandbox_require_image_allowlist = env_bool(
-            "SANDBOX_REQUIRE_IMAGE_ALLOWLIST", False
-        )
         self.sandbox_provisioning_stale_seconds = int(
             os.environ.get("SANDBOX_PROVISIONING_STALE_SECONDS", "300")
         )

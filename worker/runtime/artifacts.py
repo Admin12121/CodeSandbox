@@ -9,6 +9,7 @@ import uuid
 
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
 
 def safe_relative_name(value: str) -> str:
@@ -26,7 +27,15 @@ class ObjectStore:
             endpoint_url=os.environ.get("S3_ENDPOINT", "http://minio:9000"),
             aws_access_key_id=os.environ.get("S3_ACCESS_KEY", "minioadmin"),
             aws_secret_access_key=os.environ.get("S3_SECRET_KEY", "minioadmin"),
-            config=Config(signature_version="s3v4"),
+            config=Config(
+                signature_version="s3v4",
+                connect_timeout=int(os.environ.get("S3_CONNECT_TIMEOUT_SECONDS", "5")),
+                read_timeout=int(os.environ.get("S3_READ_TIMEOUT_SECONDS", "30")),
+                retries={
+                    "max_attempts": int(os.environ.get("S3_MAX_ATTEMPTS", "3")),
+                    "mode": "standard",
+                },
+            ),
             region_name="us-east-1",
         )
         self._ensure_bucket()
@@ -34,8 +43,20 @@ class ObjectStore:
     def _ensure_bucket(self) -> None:
         try:
             self.client.head_bucket(Bucket=self.bucket)
-        except Exception:
+            return
+        except ClientError as exc:
+            status = int(exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode") or 0)
+            code = str(exc.response.get("Error", {}).get("Code") or "")
+            if status not in {404} and code not in {"404", "NoSuchBucket", "NotFound"}:
+                raise
+
+        try:
             self.client.create_bucket(Bucket=self.bucket)
+        except ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code") or "")
+            if code not in {"BucketAlreadyExists", "BucketAlreadyOwnedByYou"}:
+                raise
+            self.client.head_bucket(Bucket=self.bucket)
 
     def get_input(self, instance_id: str, storage_key: str, max_bytes: int) -> bytes:
         expected = f"sandboxes/{instance_id}/inputs/"

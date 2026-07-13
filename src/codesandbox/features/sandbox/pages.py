@@ -4,6 +4,8 @@ import math
 
 from flask import request
 
+from codesandbox.config import get_settings
+
 from codesandbox.shared.permissions import has_platform_permission
 from codesandbox.shared.session import build_nav, require_platform_role
 from codesandbox.web.blueprint import router
@@ -62,8 +64,8 @@ def platform_sandboxes():
             "ui_workflow": {"mode": "workflow", "start_node_id": None, "nodes": [], "edges": []},
             "network_mode": "disabled", "allow_root": False,
             "default_command": "", "working_dir": "/workspace",
-            "input_mount_path": "/input", "output_mount_path": "/output",
-            "artifact_paths": '["/output"]', "input_required": False,
+            "input_mount_path": "", "output_mount_path": "",
+            "artifact_paths": "[]", "input_required": False,
             "max_upload_mb": 50, "read_only_root": True, "run_as_user": "",
             "pids_limit": 256, "allow_full_internet": False,
             "max_timeout_hr": 2, "status": "active", "runtime_config": "",

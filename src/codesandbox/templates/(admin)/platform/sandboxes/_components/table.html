@@ -561,9 +561,9 @@
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Input / Output Mounts{% endcall %}
                     {% call table.table_cell() %}
                       <div class="grid grid-cols-2 gap-2">
-                        <input name="input_mount_path" type="text" value="{{ selected_template.input_mount_path or '/input' }}" required
+                        <input name="input_mount_path" type="text" value="{{ selected_template.input_mount_path or '' }}" placeholder="Optional, e.g. /input"
                           class="h-8 rounded-md border border-input bg-background px-3 py-1 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                        <input name="output_mount_path" type="text" value="{{ selected_template.output_mount_path or '/output' }}" required
+                        <input name="output_mount_path" type="text" value="{{ selected_template.output_mount_path or '' }}" placeholder="Optional, e.g. /output"
                           class="h-8 rounded-md border border-input bg-background px-3 py-1 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       </div>
                     {% endcall %}
@@ -572,7 +572,7 @@
                     {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Artifact Paths{% endcall %}
                     {% call table.table_cell() %}
                       <textarea name="artifact_paths" rows="2" spellcheck="false"
-                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y">{{ selected_template.artifact_paths or '["/output"]' }}</textarea>
+                        class="w-full rounded-md border border-input bg-background px-3 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y">{{ selected_template.artifact_paths or '' }}</textarea>
                     {% endcall %}
                   {% endcall %}
 
@@ -684,7 +684,7 @@
         <div>
           <h2 class="text-sm font-semibold">Plans</h2>
           <p class="text-xs text-muted-foreground mt-0.5">
-            Resolved specs for plans available on this template.
+            Resources and pricing are inherited only from Sandbox Plans. This tab only enables or disables each plan for this template.
             <a href="/platform/sandbox-plans" class="underline underline-offset-2 hover:text-foreground">Manage plans</a>.
           </p>
         </div>
@@ -721,14 +721,14 @@
                     <div class="font-medium text-sm">{{ gp.name }}</div>
                     <code class="text-[10px] text-muted-foreground">{{ gp.id }}</code>
                   {% endcall %}
-                  {% call table.table_cell(class="border-l text-center font-mono text-xs") %}{{ cfg.ind_vcpu if cfg.ind_vcpu is not none else gp.ind_vcpu }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ cfg.ind_ram_gb if cfg.ind_ram_gb is not none else gp.ind_ram_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ cfg.ind_disk_gb if cfg.ind_disk_gb is not none else gp.ind_disk_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ cfg.ind_cost_hr if cfg.ind_cost_hr is not none else gp.ind_cost_hr }}{% endcall %}
-                  {% call table.table_cell(class="border-l text-center font-mono text-xs") %}{{ cfg.org_vcpu if cfg.org_vcpu is not none else gp.org_vcpu }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ cfg.org_ram_gb if cfg.org_ram_gb is not none else gp.org_ram_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ cfg.org_disk_gb if cfg.org_disk_gb is not none else gp.org_disk_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ cfg.org_cost_hr if cfg.org_cost_hr is not none else gp.org_cost_hr }}{% endcall %}
+                  {% call table.table_cell(class="border-l text-center font-mono text-xs") %}{{ gp.ind_vcpu }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.ind_ram_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.ind_disk_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.ind_cost_hr }}{% endcall %}
+                  {% call table.table_cell(class="border-l text-center font-mono text-xs") %}{{ gp.org_vcpu }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.org_ram_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.org_disk_gb }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.org_cost_hr }}{% endcall %}
                   {% call table.table_cell(class="border-l text-center") %}
                     <div class="flex justify-center">
                       {{ sw.switch(checked=cfg.is_enabled, attrs={"data-plan-toggle": "", "data-plan-id": gp.id, "data-template-id": tid}) }}
@@ -1171,17 +1171,21 @@
 
 {% app_script "sandbox-identity-form" %}
 (function(){
+  // Images/targets are entered by the platform administrator and stored on
+  // the template. No environment-variable allowlist or hardcoded catalog is
+  // used as a second source of truth.
+  var dockerImageOptions = [];
   var RC_CFG = {
     container:        { label:'Docker Image',    ph:'ubuntu:22.04',   ifaces:['terminal_only','lab_ui','background_run'],  def:'terminal_only',
-                        opts:['ubuntu:22.04','ubuntu:20.04','debian:12','kali:latest','alpine:3.19','python:3.12','node:20','parrotsec/core'] },
+                        opts:dockerImageOptions },
     tool_job:         { label:'Docker Image',    ph:'python:3.12',    ifaces:['background_run'],                         def:'background_run',
-                        opts:['python:3.12','ubuntu:22.04','debian:12','alpine:3.19'] },
+                        opts:dockerImageOptions },
     microvm:          { label:'Kernel Image',    ph:'vmlinux-5.10.0', ifaces:['terminal_only','lab_ui','background_run'],  def:'terminal_only',
-                        opts:['vmlinux-5.10.0','vmlinux-5.15.0','vmlinux-6.1.0'] },
+                        opts:[] },
     fullvm:           { label:'VM Image',        ph:'win10.qcow2',    ifaces:['desktop_gui','background_run','terminal_only'],  def:'desktop_gui',
-                        opts:['win10.qcow2','win11.qcow2','ubuntu-22.04.qcow2','debian-12.qcow2'] },
+                        opts:[] },
     android_emulator: { label:'Emulator Target', ph:'android:30',     ifaces:['android_ui'],                      def:'android_ui',
-                        opts:['android:30','android:31','android:33','android:34'] },
+                        opts:[] },
   };
 
   function initForm() {
@@ -1475,66 +1479,20 @@ try { var raw = JSON.parse(SEED_EL ? SEED_EL.textContent : '{}'); SEED = (raw &&
 var FS = {};
 var NL = String.fromCharCode(10);
 
-var DEFAULT_SANDBOX = [
-'# Sandbox - Container Definition',
-'# Syntax compatible with Dockerfile.',
-'',
-'FROM ubuntu:22.04',
-'',
-'LABEL org.codesandbox.type="sandbox"',
-'',
-'RUN apt-get update && apt-get install -y --no-install-recommends curl wget git vim nano python3 python3-pip build-essential && rm -rf /var/lib/apt/lists/*',
-'',
-'WORKDIR /workspace',
-'',
-'CMD ["/bin/bash"]',
-].join(NL);
-
-var DEFAULT_RESOURCES = [
-'# Resource and runtime configuration.',
-'# Merged with platform defaults at dispatch time.',
-'',
-'[runtime]',
-'class          = "container"     # container | microvm | fullvm | android_emulator',
-'ui_modes       = ["terminal_only"] # terminal_only | lab_ui | background_run | desktop_gui | android_ui',
-'default_ui_mode= "terminal_only"',
-'network        = "disabled"      # disabled | isolated | fake_internet | controlled_proxy | allowlist',
-'allow_root     = false',
-'max_timeout_hr = 2',
-'',
-'[container]',
-'working_dir    = "/workspace"',
-'user           = ""              # leave empty for image default',
-'env            = {}              # { "KEY" = "value" }',
-'',
-'[hooks]',
-'on_start       = ""              # script path or shell command after container starts',
-'on_stop        = ""              # script path or shell command before container stops',
-'health_check   = ""              # command used for health check polling',
-'',
-'[features]',
-'gpu            = false',
-'persist_home   = false',
-'snapshot       = false',
-'privileged     = false',
-'',
-'[network]',
-'ports          = []              # ["8080:8080", "3000:3000"]',
-'dns            = []              # custom DNS server addresses',
-'proxy_url      = ""',
-'allowlist      = []              # domains allowed in allowlist network mode',
-'',
-'[resources]',
-'# Hard caps — overrides the selected SandboxPlan tier for this template.',
-'# Leave empty to use the allocated values from the plan.',
-'cpu_limit      = ""              # max vCPU cores, e.g. "2"',
-'memory_limit_gb  = ""            # max RAM in GB, e.g. "4"',
-'disk_limit_gb    = ""            # max disk in GB, e.g. "20"',
-].join(NL);
+// runtime.json and workflow.json are the only built-in configuration files.
+// The runtime image/VM target is selected in Identity; this editor does not
+// pretend to build an unused Dockerfile-like `Sandbox` file.
 
 var DEFAULT_RUNTIME_JSON = JSON.stringify({
+  image_pull_policy: "if_not_present",
+  workspace_enabled: true,
+  entrypoint: null,
+  environment: {},
+  exposed_ports: [],
+  driver: {},
   required_args: [],
   forbidden_args: [],
+  primary_input_alias: "",
   allowed_file_types: [],
   max_input_size_mb: 50,
   success_condition: "",
@@ -1569,8 +1527,6 @@ var DEFAULT_WORKFLOW_JSON = JSON.stringify({
 if (Object.keys(SEED).length > 0) {
   Object.assign(FS, SEED);
 } else {
-  FS['Sandbox'] = DEFAULT_SANDBOX;
-  FS['resources.toml'] = DEFAULT_RESOURCES;
   FS['runtime.json'] = DEFAULT_RUNTIME_JSON;
   FS['workflow.json'] = DEFAULT_WORKFLOW_JSON;
 }

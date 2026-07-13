@@ -33,6 +33,7 @@ def seed_reverse_decompile(admin_user_id: str) -> None:
         runtime_config = json.dumps({
             "runtime.json": json.dumps({
                 "required_args": ["--no-ai"],
+                "primary_input_alias": "sample",
                 "allowed_file_types": ["exe", "elf", "apk", "jar", "dex", "dll", "so", "ipa"],
                 "max_input_size_mb": 500,
             }),
@@ -43,7 +44,7 @@ def seed_reverse_decompile(admin_user_id: str) -> None:
             description="Static reverse engineering and decompilation workspace.",
             icon_path=None,
             docker_image="docker.io/admin12121/decompile:stable",
-            default_command="decompile --no-ai /input/sample /output",
+            default_command="--no-ai --no-open /input/sample /output",
             working_dir="/workspace",
             input_mount_path="/input",
             output_mount_path="/output",

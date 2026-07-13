@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 
@@ -54,6 +55,7 @@ def heartbeat_worker_node(
     *,
     used_vcpu: int | None = None,
     used_ram_gb: int | None = None,
+    used_disk_gb: int | None = None,
     running_instances: int | None = None,
 ) -> WorkerNode | None:
     node = get_worker_node(worker_id)
@@ -66,6 +68,8 @@ def heartbeat_worker_node(
         node.used_vcpu = used_vcpu
     if used_ram_gb is not None:
         node.used_ram_gb = used_ram_gb
+    if used_disk_gb is not None:
+        node.used_disk_gb = used_disk_gb
     if running_instances is not None:
         node.running_instances = running_instances
     node.save()
@@ -90,27 +94,58 @@ def mark_stale_workers_offline(timeout_seconds: int) -> list[WorkerNode]:
     return stale
 
 
+def _worker_runtime_classes(node: WorkerNode) -> set[str]:
+    try:
+        capabilities = json.loads(node.capabilities_json or "{}")
+    except (TypeError, ValueError):
+        return set()
+    values = capabilities.get("runtime_class") or capabilities.get("runtime_classes") or []
+    return {str(value) for value in values}
+
+
 def select_worker_for_instance(
-    required_vcpu: int, required_ram_gb: int
+    required_vcpu: int,
+    required_ram_gb: int,
+    *,
+    required_disk_gb: int = 0,
+    runtime_class: str | None = None,
 ) -> WorkerNode | None:
-    """Pick the least-loaded online worker with enough free capacity."""
+    """Pick the least-loaded compatible worker with enough plan capacity."""
     candidates = [
         node
         for node in list_online_workers()
         if (node.total_vcpu - node.used_vcpu) >= required_vcpu
         and (node.total_ram_gb - node.used_ram_gb) >= required_ram_gb
+        and (int(node.total_disk_gb or 0) - int(node.used_disk_gb or 0)) >= required_disk_gb
+        and (not runtime_class or runtime_class in _worker_runtime_classes(node))
     ]
     if not candidates:
         return None
-    return min(candidates, key=lambda node: node.running_instances)
+    return min(
+        candidates,
+        key=lambda node: (
+            node.running_instances,
+            node.used_vcpu,
+            node.used_ram_gb,
+            node.used_disk_gb,
+        ),
+    )
 
 
-def adjust_worker_load(worker_id: str, *, vcpu_delta: int, ram_gb_delta: int, instance_delta: int) -> None:
+def adjust_worker_load(
+    worker_id: str,
+    *,
+    vcpu_delta: int,
+    ram_gb_delta: int,
+    disk_gb_delta: int,
+    instance_delta: int,
+) -> None:
     node = get_worker_node(worker_id)
     if node is None:
         return
     node.used_vcpu = max(0, int(node.used_vcpu or 0) + vcpu_delta)
     node.used_ram_gb = max(0, int(node.used_ram_gb or 0) + ram_gb_delta)
+    node.used_disk_gb = max(0, int(node.used_disk_gb or 0) + disk_gb_delta)
     node.running_instances = max(0, int(node.running_instances or 0) + instance_delta)
     node.updated_at = _now()
     node.save()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import posixpath
 import os
 import re
 import uuid as _uuid
@@ -16,6 +17,7 @@ from codesandbox.shared.storage import (
 )
 
 from . import repository
+from .image_refs import normalize_image_reference
 from .runtime.policy import (
     EffectivePlan,
     PolicyBuilder,
@@ -55,6 +57,37 @@ def _parse_decimal(value: str) -> Decimal | None:
         return None
 
 
+_RUNTIME_EXECUTION_CONFIG_KEYS = (
+    "image_pull_policy",
+    "workspace_enabled",
+    "entrypoint",
+    "environment",
+    "exposed_ports",
+    "driver",
+    "required_args",
+    "forbidden_args",
+    "allowed_file_types",
+    "max_input_size_mb",
+    "success_condition",
+    "test_config",
+    "ui",
+    "workflow",
+    "stage_graph_json",
+)
+
+
+def _runtime_execution_config(config: dict) -> dict:
+    """Return only configuration that can change execution or test results.
+
+    Notes and unrelated files in the Config IDE do not force a retest, but any
+    runtime, driver, environment, security-adjacent UI, or validation change
+    does. This prevents a published template from being tested with one policy
+    and then silently executing another.
+    """
+    source = config if isinstance(config, dict) else {}
+    return {key: source.get(key) for key in _RUNTIME_EXECUTION_CONFIG_KEYS}
+
+
 def _runtime_fields_changed(
     existing_t,
     values: dict,
@@ -63,21 +96,10 @@ def _runtime_fields_changed(
 ) -> bool:
     if any(getattr(existing_t, key, None) != value for key, value in values.items()):
         return True
-    # GUI/Android connection config lives inside the free-form runtime_config
-    # JSON blob, not a typed column, but changing it is just as dangerous as
-    # changing runtime_class/network_mode — it points the browser at a
-    # different VNC/emulator endpoint.
-    for key in ("desktop_gui", "android_ui"):
-        if _ui_feature_config(existing_runtime_config, key) != _ui_feature_config(new_runtime_config, key):
-            return True
-    return False
+    return _runtime_execution_config(existing_runtime_config) != _runtime_execution_config(
+        new_runtime_config
+    )
 
-
-def _image_allowed(image: str) -> bool:
-    settings = get_settings()
-    if not settings.sandbox_allowed_images:
-        return not settings.sandbox_require_image_allowlist
-    return image in settings.sandbox_allowed_images
 
 
 # ── SandboxTemplate ───────────────────────────────────────────────────────────
@@ -228,6 +250,14 @@ def validate_ui_mode_config(
 ) -> str | None:
     if default_ui_mode not in allowed_ui_modes:
         return "Default UI mode must be one of the allowed UI modes."
+
+    if runtime_class in {"container", "tool_job"} and any(
+        mode in allowed_ui_modes for mode in ("desktop_gui", "android_ui")
+    ):
+        return (
+            "The current Docker worker supports terminal, lab, and background modes only; "
+            "Desktop GUI and Android UI require a dedicated VM/emulator runtime driver."
+        )
 
     if "android_ui" in allowed_ui_modes and runtime_class != "android_emulator":
         return "Android UI requires the android_emulator runtime class."
@@ -590,9 +620,9 @@ def _template_dict(t) -> dict:
         "icon_path": t.icon_path or "",
         "docker_image": t.docker_image,
         "default_command": t.default_command or "",
-        "working_dir": t.working_dir or "/workspace",
-        "input_mount_path": t.input_mount_path or "/input",
-        "output_mount_path": t.output_mount_path or "/output",
+        "working_dir": t.working_dir or "",
+        "input_mount_path": t.input_mount_path or "",
+        "output_mount_path": t.output_mount_path or "",
         "artifact_paths": t.artifact_paths or "",
         "input_required": bool(t.input_required),
         "max_upload_mb": int(t.max_upload_mb or 50),
@@ -643,8 +673,8 @@ def save_template(
     max_timeout_hr: int = 2,
     default_command: str = "",
     working_dir: str = "/workspace",
-    input_mount_path: str = "/input",
-    output_mount_path: str = "/output",
+    input_mount_path: str = "",
+    output_mount_path: str = "",
     artifact_paths: str | list[str] = "",
     input_required: bool = False,
     max_upload_mb: int = 50,
@@ -658,12 +688,18 @@ def save_template(
         return None, "Name is required."
     if sandbox_type not in SANDBOX_TYPES:
         return None, "Invalid sandbox type."
+    if runtime_class not in RUNTIME_CLASSES:
+        return None, "Invalid runtime class."
     docker_image = docker_image.strip()
     if not docker_image:
-        return None, "Docker image is required."
-    if not _image_allowed(docker_image):
-        return None, "Docker image is not in the configured runtime allowlist."
-    runtime_class = runtime_class if runtime_class in RUNTIME_CLASSES else "container"
+        return None, "A runtime image or target is required."
+    if runtime_class in {"container", "tool_job"}:
+        try:
+            docker_image = normalize_image_reference(docker_image)
+        except ValueError as exc:
+            return None, str(exc)
+    elif any(char.isspace() for char in docker_image):
+        return None, "Runtime image or target must not contain whitespace."
     interface_behavior = interface_behavior if interface_behavior in ("single", "workflow") else "single"
 
     existing_t = repository.get_template(template_id) if template_id else None
@@ -705,11 +741,14 @@ def save_template(
     )
     if network_mode == "full_internet" and not allow_full_internet:
         return None, "Enable full internet explicitly before selecting that network mode."
-    if sandbox_type in {"malware", "reverse_engineering"} and network_mode == "full_internet":
-        return None, "Full internet is disabled for malware and reverse-engineering templates."
     max_timeout_hr = max(1, min(72, int(max_timeout_hr or 2)))
     max_upload_mb = max(1, min(1024, int(max_upload_mb or 50)))
     pids_limit = max(32, min(4096, int(pids_limit or 256)))
+    working_dir = working_dir.strip() or "/workspace"
+    input_mount_path = input_mount_path.strip()
+    output_mount_path = output_mount_path.strip()
+    if input_required and not input_mount_path:
+        return None, "Require Input needs an input mount path."
     default_command = default_command.strip()
     parsed_runtime_config = parse_runtime_config(runtime_config)
     ui_error = validate_ui_mode_config(
@@ -729,23 +768,42 @@ def save_template(
     )
     if command_error:
         return None, command_error
-    mounts = [working_dir.strip(), input_mount_path.strip(), output_mount_path.strip()]
-    if any(not path.startswith("/") for path in mounts) or len(set(mounts)) != 3:
-        return None, "Workspace, input, and output mounts must be distinct absolute paths."
+    # Input/output mounts are optional. Only configured paths participate in
+    # validation; the working directory remains required for every runtime.
+    workspace_enabled = bool(parsed_runtime_config.get("workspace_enabled", True))
+    configured_paths = []
+    if workspace_enabled:
+        configured_paths.append(("Working directory", working_dir.strip()))
+    elif not working_dir.strip().startswith("/"):
+        return None, "Working directory must be an absolute container path."
+    if input_mount_path:
+        configured_paths.append(("Input mount", input_mount_path))
+    if output_mount_path:
+        configured_paths.append(("Output mount", output_mount_path))
+    for label, path in configured_paths:
+        if not path.startswith("/"):
+            return None, f"{label} must be an absolute container path."
+    for index, (left_label, left_path) in enumerate(configured_paths):
+        for right_label, right_path in configured_paths[index + 1:]:
+            left = posixpath.normpath(left_path)
+            right = posixpath.normpath(right_path)
+            if left == right or left.startswith(right + "/") or right.startswith(left + "/"):
+                return None, f"{left_label} and {right_label} must be separate, non-overlapping paths."
+
     if isinstance(artifact_paths, str):
         raw_artifacts = artifact_paths.strip()
         try:
-            artifact_values = json.loads(raw_artifacts) if raw_artifacts else [output_mount_path]
+            artifact_values = json.loads(raw_artifacts) if raw_artifacts else []
         except ValueError:
             artifact_values = [line.strip() for line in raw_artifacts.splitlines() if line.strip()]
     else:
-        artifact_values = artifact_paths
+        artifact_values = artifact_paths or []
     if not isinstance(artifact_values, list) or any(
-        not str(path).startswith("/") for path in artifact_values
+        not str(path).strip().startswith("/") for path in artifact_values
     ):
-        return None, "Artifact paths must be absolute container paths."
+        return None, "Artifact paths must be a JSON list (or one path per line) of absolute container paths."
     artifact_paths_json = json.dumps(
-        [str(path) for path in artifact_values], separators=(",", ":")
+        [str(path).strip() for path in artifact_values], separators=(",", ":")
     )
 
     runtime_values = dict(
@@ -886,15 +944,16 @@ def save_template_config(template_id: str, config_json: str, actor_user_id: str 
     new_config = config_json.strip() or None
     update_kwargs: dict = {"runtime_config": new_config}
     if existing_t is not None:
-        # The Config tab autosaves on every edit, so only the fields that are
-        # actually dangerous (GUI/Android connection config — same list as
-        # _runtime_fields_changed) force a retest; everything else (notes,
-        # workflow labels, etc.) autosaves without touching publish status.
+        # The Config tab autosaves, but execution-affecting changes must never
+        # inherit a Test Launch result from an older policy. Notes and unrelated
+        # IDE files may change without taking a live template out of rotation.
         old_cfg = parse_runtime_config(existing_t.runtime_config)
         new_cfg = parse_runtime_config(new_config)
+        old_execution_cfg = _runtime_execution_config(old_cfg)
+        new_execution_cfg = _runtime_execution_config(new_cfg)
         changed_keys = [
-            key for key in ("desktop_gui", "android_ui")
-            if _ui_feature_config(old_cfg, key) != _ui_feature_config(new_cfg, key)
+            key for key in _RUNTIME_EXECUTION_CONFIG_KEYS
+            if old_execution_cfg.get(key) != new_execution_cfg.get(key)
         ]
         if changed_keys:
             update_kwargs["last_test_status"] = "untested"
@@ -1016,10 +1075,22 @@ def save_plan(
     if not re.match(r'^[a-z0-9_-]{1,40}$', plan_id):
         return None, "Plan ID must be lowercase letters, digits, hyphens, or underscores."
 
+    resource_values = {
+        "Individual vCPU": (ind_vcpu, 1, 128),
+        "Individual RAM": (ind_ram_gb, 1, 1024),
+        "Individual disk": (ind_disk_gb, 1, 4096),
+        "Organization vCPU": (org_vcpu, 1, 128),
+        "Organization RAM": (org_ram_gb, 1, 1024),
+        "Organization disk": (org_disk_gb, 1, 4096),
+    }
+    for label, (value, minimum, maximum) in resource_values.items():
+        if not minimum <= int(value) <= maximum:
+            return None, f"{label} must be between {minimum} and {maximum}."
+
     ind_cost = _parse_decimal(ind_cost_hr)
     org_cost = _parse_decimal(org_cost_hr)
-    if ind_cost is None or org_cost is None:
-        return None, "Invalid cost per hour value."
+    if ind_cost is None or org_cost is None or ind_cost < 0 or org_cost < 0:
+        return None, "Cost per hour must be a non-negative decimal value."
     min_billable_minutes = max(0, min(1440, int(min_billable_minutes or 0)))
     if isinstance(allowed_network_modes, str):
         try:
@@ -1104,7 +1175,7 @@ def get_effective_plan(
 
 
 def get_template_plans_for_hub(template_id: str) -> list[dict]:
-    """Active global plans merged with template-level overrides, in sort order."""
+    """Active global plans enabled for this template, in sort order."""
     template = repository.get_template(template_id)
     if template is None:
         return []
@@ -1124,103 +1195,59 @@ def get_template_plans_for_hub(template_id: str) -> list[dict]:
 
 
 def get_template_plan_configs(template_id: str) -> list[dict]:
-    """All global plans + their template overrides, for the admin Plans tab."""
+    """All global plans and whether each one is enabled for this template.
+
+    CPU, RAM, disk and prices are always inherited from SandboxPlan.
+    """
     global_plans = get_platform_plans()
     tp_rows = repository.list_template_plans(template_id)
     tp_by_plan = {str(tp.plan_id): tp for tp in tp_rows}
-    result = []
-    for gp in global_plans:
-        tp = tp_by_plan.get(gp["id"])
-        result.append({
+    return [
+        {
             "global": gp,
-            "is_enabled": bool(tp.is_enabled) if tp is not None else True,
-            "ind_vcpu": int(tp.ind_vcpu) if (tp is not None and tp.ind_vcpu is not None) else None,
-            "ind_ram_gb": int(tp.ind_ram_gb) if (tp is not None and tp.ind_ram_gb is not None) else None,
-            "ind_disk_gb": int(tp.ind_disk_gb) if (tp is not None and tp.ind_disk_gb is not None) else None,
-            "ind_cost_hr": str(tp.ind_cost_hr) if (tp is not None and tp.ind_cost_hr is not None) else None,
-            "org_vcpu": int(tp.org_vcpu) if (tp is not None and tp.org_vcpu is not None) else None,
-            "org_ram_gb": int(tp.org_ram_gb) if (tp is not None and tp.org_ram_gb is not None) else None,
-            "org_disk_gb": int(tp.org_disk_gb) if (tp is not None and tp.org_disk_gb is not None) else None,
-            "org_cost_hr": str(tp.org_cost_hr) if (tp is not None and tp.org_cost_hr is not None) else None,
-            "max_timeout_hr": int(tp.max_timeout_hr) if (tp is not None and tp.max_timeout_hr is not None) else None,
-            "network_mode": tp.network_mode if tp is not None else None,
-            "min_billable_minutes": int(tp.min_billable_minutes) if (tp is not None and tp.min_billable_minutes is not None) else None,
-            "full_internet_enabled": bool(tp.full_internet_enabled) if (tp is not None and tp.full_internet_enabled is not None) else None,
-        })
-    return result
+            "is_enabled": bool(tp_by_plan[gp["id"]].is_enabled)
+            if gp["id"] in tp_by_plan
+            else True,
+        }
+        for gp in global_plans
+    ]
 
 
 def toggle_template_plan_enabled(template_id: str, plan_id: str, is_enabled: bool) -> str | None:
-    """Flip whether a global plan is available on this template. Returns an
-    error message, or None on success. Only touches is_enabled — any existing
-    per-template overrides (ind_vcpu, etc.) are left untouched."""
+    if not repository.get_template(template_id):
+        return "Template not found."
     if not repository.get_plan(plan_id):
         return "Plan not found."
-    repository.upsert_template_plan(template_id=template_id, plan_id=plan_id, is_enabled=is_enabled)
+    repository.upsert_template_plan(
+        template_id=template_id,
+        plan_id=plan_id,
+        is_enabled=is_enabled,
+        # Clear deprecated per-template resource overrides so the database
+        # cannot silently retain a second source of truth.
+        ind_vcpu=None, ind_ram_gb=None, ind_disk_gb=None, ind_cost_hr=None,
+        org_vcpu=None, org_ram_gb=None, org_disk_gb=None, org_cost_hr=None,
+        max_timeout_hr=None, network_mode=None, min_billable_minutes=None,
+        full_internet_enabled=None,
+    )
     return None
 
 
 def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> str | None:
-    """Upsert per-template plan overrides from the admin Plans tab."""
-    template = repository.get_template(template_id)
-    if template is None:
+    """Compatibility endpoint: only plan availability is accepted.
+
+    Resource/pricing overrides from older clients are ignored and cleared.
+    """
+    if repository.get_template(template_id) is None:
         return "Template not found."
-    normalized_rows: list[dict] = []
     for row in plan_data:
         plan_id = str(row.get("plan_id", "")).strip()
         if not plan_id or not repository.get_plan(plan_id):
             return "A selected plan no longer exists."
-        normalized = {
-            "plan_id": plan_id,
-            "is_enabled": bool(row.get("is_enabled", True)),
-            "ind_vcpu": _int_or_none(row.get("ind_vcpu")),
-            "ind_ram_gb": _int_or_none(row.get("ind_ram_gb")),
-            "ind_disk_gb": _int_or_none(row.get("ind_disk_gb")),
-            "ind_cost_hr": _parse_decimal(str(row["ind_cost_hr"]).strip()) if row.get("ind_cost_hr") else None,
-            "org_vcpu": _int_or_none(row.get("org_vcpu")),
-            "org_ram_gb": _int_or_none(row.get("org_ram_gb")),
-            "org_disk_gb": _int_or_none(row.get("org_disk_gb")),
-            "org_cost_hr": _parse_decimal(str(row["org_cost_hr"]).strip()) if row.get("org_cost_hr") else None,
-            "max_timeout_hr": _int_or_none(row.get("max_timeout_hr")),
-            "network_mode": normalize_network_mode(row.get("network_mode")) if row.get("network_mode") else None,
-            "min_billable_minutes": _int_or_none(row.get("min_billable_minutes")),
-            "full_internet_enabled": row.get("full_internet_enabled"),
-        }
-        if any(
-            row.get(field) not in (None, "") and normalized[field] is None
-            for field in ("ind_cost_hr", "org_cost_hr")
-        ):
-            return "Cost overrides must be valid decimal values."
-        if normalized["full_internet_enabled"] not in (None, True, False):
-            return "Invalid full internet override."
-        resource_fields = (
-            "ind_vcpu", "ind_ram_gb", "ind_disk_gb",
-            "org_vcpu", "org_ram_gb", "org_disk_gb",
+        error = toggle_template_plan_enabled(
+            template_id, plan_id, bool(row.get("is_enabled", True))
         )
-        if any(normalized[field] is not None and normalized[field] <= 0 for field in resource_fields):
-            return "Resource overrides must be positive values."
-        if any(
-            normalized[field] is not None and normalized[field] < 0
-            for field in ("ind_cost_hr", "org_cost_hr")
-        ):
-            return "Cost overrides cannot be negative."
-        if normalized["max_timeout_hr"] is not None and not 1 <= normalized["max_timeout_hr"] <= 72:
-            return "Timeout overrides must be between 1 and 72 hours."
-        if normalized["min_billable_minutes"] is not None and not 0 <= normalized["min_billable_minutes"] <= 1440:
-            return "Minimum billing must be between 0 and 1440 minutes."
-        if normalized["network_mode"] not in {None, "disabled", "restricted", "full_internet"}:
-            return "Invalid network override."
-        requests_internet = (
-            normalized["network_mode"] == "full_internet"
-            or normalized["full_internet_enabled"] is True
-        )
-        if requests_internet and (
-            not template.allow_full_internet
-            or template.sandbox_type in {"malware", "reverse_engineering"}
-        ):
-            return "Full internet is not permitted for this template."
-        normalized_rows.append(normalized)
-    repository.save_template_plan_overrides(template_id, normalized_rows)
+        if error:
+            return error
     return None
 
 
@@ -1613,16 +1640,27 @@ def get_artifact_for_download(
     return artifact, None
 
 
-# Admin test launches are a no-billing preview run — they don't need a real
-# SandboxPlan to exist, so a minimal fixed resource envelope stands in for one.
-_TEST_PLAN = {
-    "id": "__test__", "name": "Test",
-    "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 5, "ind_cost_hr": "0",
-    "org_vcpu": 1, "org_ram_gb": 1, "org_disk_gb": 5, "org_cost_hr": "0",
-    "min_billable_minutes": 0,
-    "allowed_network_modes": '["disabled","restricted","full_internet"]',
-    "is_active": True,
-}
+# Admin Test Launch uses the first active plan enabled for the template.
+# It preserves that plan's CPU/RAM/disk limits but zeroes billing.
+def _test_effective_plan(template) -> EffectivePlan:
+    from dataclasses import replace
+
+    for plan in repository.list_plans():
+        if not plan.is_active:
+            continue
+        template_plan = repository.get_template_plan(str(template.id), str(plan.id))
+        if template_plan is not None and not template_plan.is_enabled:
+            continue
+        resolved = resolve_effective_plan(template, plan, template_plan)
+        return replace(
+            resolved,
+            ind_cost_hr=Decimal("0"),
+            org_cost_hr=Decimal("0"),
+            min_billable_minutes=0,
+        )
+    raise RuntimePolicyError(
+        "Test Launch requires at least one active plan enabled for this template."
+    )
 
 
 def start_instance(
@@ -1650,12 +1688,9 @@ def start_instance(
         return None, "Template no longer exists."
     if inst.workspace_type != "test" and t.status != "active":
         return None, "Template is not active."
-    if not _image_allowed(t.docker_image):
-        return None, "Docker image is not in the configured runtime allowlist."
-
     if inst.workspace_type == "test":
         try:
-            effective_plan = resolve_effective_plan(t, _TEST_PLAN, None)
+            effective_plan = _test_effective_plan(t)
         except RuntimePolicyError as exc:
             return None, str(exc)
     else:
@@ -1708,9 +1743,14 @@ def start_instance(
         select_worker_for_instance,
     )
 
-    worker_node = select_worker_for_instance(int(tier["vcpu"]), int(tier["ram_gb"]))
+    worker_node = select_worker_for_instance(
+        int(tier["vcpu"]),
+        int(tier["ram_gb"]),
+        required_disk_gb=int(tier["disk_gb"]),
+        runtime_class=str(runtime_policy["runtime_class"]),
+    )
     if worker_node is None:
-        return None, "No worker capacity is currently available. Try again shortly."
+        return None, f"No online worker supports runtime class '{runtime_policy["runtime_class"]}' with the selected plan capacity."
     worker_id = worker_node.worker_id
 
     job_payload = {
@@ -1737,7 +1777,12 @@ def start_instance(
         / Decimal(3600)
     ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
     now = datetime.now(timezone.utc)
-    reserve_worker_capacity(worker_id, vcpu=int(tier["vcpu"]), ram_gb=int(tier["ram_gb"]))
+    reserve_worker_capacity(
+        worker_id,
+        vcpu=int(tier["vcpu"]),
+        ram_gb=int(tier["ram_gb"]),
+        disk_gb=int(tier["disk_gb"]),
+    )
     inst, begin_error = repository.begin_instance_start(
         instance_id,
         actor=actor,
@@ -1757,12 +1802,22 @@ def start_instance(
         minimum_required=minimum_required,
     )
     if begin_error or inst is None:
-        release_worker_capacity(worker_id, vcpu=int(tier["vcpu"]), ram_gb=int(tier["ram_gb"]))
+        release_worker_capacity(
+            worker_id,
+            vcpu=int(tier["vcpu"]),
+            ram_gb=int(tier["ram_gb"]),
+            disk_gb=int(tier["disk_gb"]),
+        )
         return None, begin_error or "Could not start instance."
     try:
         enqueue_job(job_payload)
     except Exception:
-        release_worker_capacity(worker_id, vcpu=int(tier["vcpu"]), ram_gb=int(tier["ram_gb"]))
+        release_worker_capacity(
+            worker_id,
+            vcpu=int(tier["vcpu"]),
+            ram_gb=int(tier["ram_gb"]),
+            disk_gb=int(tier["disk_gb"]),
+        )
         repository.release_instance_reservation(instance_id)
         repository.transition_instance_status(
             instance_id,
@@ -1904,6 +1959,7 @@ def _release_worker_capacity_for(inst) -> None:
         inst.worker_id,
         vcpu=int(inst.allocated_vcpu or 0),
         ram_gb=int(inst.allocated_ram_gb or 0),
+        disk_gb=int(inst.allocated_disk_gb or 0),
     )
 
 
@@ -2167,7 +2223,7 @@ def start_test_instance(
 ) -> tuple[dict | None, str | None]:
     """Admin: create + immediately start a single-use test instance of a template.
 
-    No-billing preview run — doesn't require a SandboxPlan to exist (see _TEST_PLAN).
+    No-billing preview run using the first active plan enabled for the template.
     """
     t = repository.get_template(template_id)
     if t is None:
@@ -2179,9 +2235,14 @@ def start_test_instance(
     if test_config.get("requires_input") and test_input_file is None:
         return None, "This template's test config requires an input file — upload one to run the test."
 
+    try:
+        test_plan = _test_effective_plan(t)
+    except RuntimePolicyError as exc:
+        return None, str(exc)
+
     inst = repository.create_instance(
         template_id=template_id,
-        plan_id=_TEST_PLAN["id"],
+        plan_id=test_plan.id,
         workspace_type="test",
         workspace_user_id=actor_user_id,
         created_by_user_id=actor_user_id,

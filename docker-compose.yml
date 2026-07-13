@@ -27,8 +27,6 @@ x-app-environment: &app-environment
   COOKIE_SECURE: ${COOKIE_SECURE:?Set COOKIE_SECURE in .env}
   WORKER_CALLBACK_TOKEN_TTL_SECONDS: ${WORKER_CALLBACK_TOKEN_TTL_SECONDS:?Set WORKER_CALLBACK_TOKEN_TTL_SECONDS in .env}
   SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:?Set SANDBOX_JOB_SIGNING_KEY in .env}
-  SANDBOX_ALLOWED_IMAGES: ${SANDBOX_ALLOWED_IMAGES:?Set SANDBOX_ALLOWED_IMAGES in .env}
-  SANDBOX_REQUIRE_IMAGE_ALLOWLIST: ${SANDBOX_REQUIRE_IMAGE_ALLOWLIST:?Set SANDBOX_REQUIRE_IMAGE_ALLOWLIST in .env}
   SANDBOX_PROVISIONING_STALE_SECONDS: ${SANDBOX_PROVISIONING_STALE_SECONDS:?Set SANDBOX_PROVISIONING_STALE_SECONDS in .env}
   SANDBOX_HEARTBEAT_STALE_SECONDS: ${SANDBOX_HEARTBEAT_STALE_SECONDS:?Set SANDBOX_HEARTBEAT_STALE_SECONDS in .env}
   SANDBOX_STOPPING_STALE_SECONDS: ${SANDBOX_STOPPING_STALE_SECONDS:?Set SANDBOX_STOPPING_STALE_SECONDS in .env}
@@ -202,12 +200,13 @@ services:
     environment: *app-environment
     volumes: *app-source-volumes
     networks:
-      web:
-        gw_priority: 1
+      web: {}
       database: {}
       cache: {}
       messaging: {}
       storage: {}
+      internet:
+        gw_priority: 100
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -363,8 +362,8 @@ services:
       - docker_engine_client_certs:/certs/client
     networks:
       sandbox_runtime: {}
-      runtime_egress:
-        gw_priority: 1
+      internet:
+        gw_priority: 100
     healthcheck:
       test: ["CMD-SHELL", "docker info >/dev/null 2>&1 || exit 1"]
       interval: 10s
@@ -393,32 +392,37 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
       S3_ARTIFACT_BUCKET: ${S3_ARTIFACT_BUCKET:?Set S3_ARTIFACT_BUCKET in .env}
+      S3_CONNECT_TIMEOUT_SECONDS: ${S3_CONNECT_TIMEOUT_SECONDS:-5}
+      S3_READ_TIMEOUT_SECONDS: ${S3_READ_TIMEOUT_SECONDS:-30}
+      S3_MAX_ATTEMPTS: ${S3_MAX_ATTEMPTS:-3}
       SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:?Set SANDBOX_JOB_SIGNING_KEY in .env}
       SANDBOX_JOB_MAX_AGE_SECONDS: ${SANDBOX_JOB_MAX_AGE_SECONDS:?Set SANDBOX_JOB_MAX_AGE_SECONDS in .env}
-      SANDBOX_ALLOWED_IMAGES: ${SANDBOX_ALLOWED_IMAGES:?Set SANDBOX_ALLOWED_IMAGES in .env}
-      SANDBOX_REQUIRE_IMAGE_ALLOWLIST: ${SANDBOX_REQUIRE_IMAGE_ALLOWLIST:?Set SANDBOX_REQUIRE_IMAGE_ALLOWLIST in .env}
       SANDBOX_VOLUME_INIT_IMAGE: ${SANDBOX_VOLUME_INIT_IMAGE:?Set SANDBOX_VOLUME_INIT_IMAGE in .env}
-      SANDBOX_RESTRICTED_NETWORK: ${SANDBOX_RESTRICTED_NETWORK:?Set SANDBOX_RESTRICTED_NETWORK in .env}
+      SANDBOX_RUNTIME_EGRESS_TEST_URL: ${SANDBOX_RUNTIME_EGRESS_TEST_URL:-http://example.com/}
+      SANDBOX_REGISTRY_SERVER: ${SANDBOX_REGISTRY_SERVER:-}
+      SANDBOX_REGISTRY_USERNAME: ${SANDBOX_REGISTRY_USERNAME:-}
+      SANDBOX_REGISTRY_PASSWORD: ${SANDBOX_REGISTRY_PASSWORD:-}
+      SANDBOX_REGISTRY_EMAIL: ${SANDBOX_REGISTRY_EMAIL:-}
       SANDBOX_DEFAULT_USER: ${SANDBOX_DEFAULT_USER:?Set SANDBOX_DEFAULT_USER in .env}
       SANDBOX_MAX_ARTIFACT_BYTES: ${SANDBOX_MAX_ARTIFACT_BYTES:?Set SANDBOX_MAX_ARTIFACT_BYTES in .env}
       SANDBOX_WORKER_TOTAL_VCPU: ${SANDBOX_WORKER_TOTAL_VCPU:?Set SANDBOX_WORKER_TOTAL_VCPU in .env}
       SANDBOX_WORKER_TOTAL_RAM_GB: ${SANDBOX_WORKER_TOTAL_RAM_GB:?Set SANDBOX_WORKER_TOTAL_RAM_GB in .env}
       SANDBOX_WORKER_TOTAL_DISK_GB: ${SANDBOX_WORKER_TOTAL_DISK_GB:?Set SANDBOX_WORKER_TOTAL_DISK_GB in .env}
       SANDBOX_WORKER_HEARTBEAT_SECONDS: ${SANDBOX_WORKER_HEARTBEAT_SECONDS:?Set SANDBOX_WORKER_HEARTBEAT_SECONDS in .env}
-      SANDBOX_DOCKER_BACKEND: ${SANDBOX_DOCKER_BACKEND:?Set SANDBOX_DOCKER_BACKEND in .env}
-      ALLOW_UNSAFE_DOCKER_SOCKET: ${ALLOW_UNSAFE_DOCKER_SOCKET:?Set ALLOW_UNSAFE_DOCKER_SOCKET in .env}
-      DOCKER_HOST: ${DOCKER_HOST:?Set DOCKER_HOST in .env}
-      DOCKER_TLS_VERIFY: ${DOCKER_TLS_VERIFY:?Set DOCKER_TLS_VERIFY in .env}
-      DOCKER_CERT_PATH: ${DOCKER_CERT_PATH:?Set DOCKER_CERT_PATH in .env}
+      SANDBOX_DOCKER_BACKEND: remote_tls
+      ALLOW_UNSAFE_DOCKER_SOCKET: "false"
+      DOCKER_HOST: tcp://docker-engine:2376
+      DOCKER_TLS_VERIFY: "1"
+      DOCKER_CERT_PATH: /certs/client
     volumes:
       - docker_engine_client_certs:/certs/client:ro
     networks:
       cache: {}
       messaging: {}
       storage: {}
-      worker_egress:
-        gw_priority: 1
       sandbox_runtime: {}
+      internet:
+        gw_priority: 100
     depends_on:
       docker-engine:
         condition: service_healthy
@@ -438,6 +442,17 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test -f /tmp/codesandbox-worker-ready &&
+          /worker/.venv/bin/python -c
+          'from runtime.docker_client import DockerClientFactory; c=DockerClientFactory.create(); assert c.ping(); c.close()'
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 180s
     restart: unless-stopped
     stop_grace_period: 30s
     logging: *default-logging
@@ -564,6 +579,10 @@ volumes:
 
 networks:
   web:
+    internal: true
+  internet:
+    external: true
+    name: bridge
   database:
     internal: true
   cache:
@@ -572,7 +591,5 @@ networks:
     internal: true
   storage:
     internal: true
-  worker_egress:
   sandbox_runtime:
     internal: true
-  runtime_egress:

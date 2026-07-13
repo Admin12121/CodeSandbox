@@ -101,8 +101,8 @@ def create_template(
     status: str = "maintenance",
     default_command: str | None = None,
     working_dir: str = "/workspace",
-    input_mount_path: str = "/input",
-    output_mount_path: str = "/output",
+    input_mount_path: str = "",
+    output_mount_path: str = "",
     artifact_paths: str | None = None,
     input_required: bool = False,
     max_upload_mb: int = 50,
@@ -830,29 +830,6 @@ def upsert_template_plan(template_id: str, plan_id: str, **kwargs) -> SandboxTem
             setattr(tp, key, value)
         tp.save()
         return tp
-
-
-def save_template_plan_overrides(template_id: str, rows: list[dict]) -> None:
-    with transaction.atomic():
-        for row in rows:
-            plan_id = row["plan_id"]
-            tp = _select_for_update(
-                SandboxTemplatePlan,
-                "sandbox_template_plans",
-                template_id=template_id,
-                plan_id=plan_id,
-            )
-            if tp is None:
-                tp = SandboxTemplatePlan(
-                    id=str(uuid.uuid4()),
-                    template_id=template_id,
-                    plan_id=plan_id,
-                )
-            for key, value in row.items():
-                if key == "plan_id":
-                    continue
-                setattr(tp, key, value)
-            tp.save()
 
 
 def delete_template_plan(template_id: str, plan_id: str) -> None:

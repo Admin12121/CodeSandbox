@@ -11,6 +11,7 @@ import platform
 import signal
 import threading
 import time
+from urllib.parse import urlsplit, urlunsplit
 
 import nats
 import redis
@@ -20,6 +21,7 @@ from runtime.callbacks import CallbackClient
 from runtime.docker_client import DockerClientFactory
 from runtime.docker_runner import DockerRunner
 from runtime.gui import DockerGuiProxy
+from runtime.image_policy import ensure_image, normalize_image_reference
 from runtime.process import RuntimeRegistry
 from runtime.registry_client import WorkerRegistryClient
 from runtime.terminal import DockerTerminalManager
@@ -57,6 +59,113 @@ _TOTAL_VCPU = int(os.environ.get("SANDBOX_WORKER_TOTAL_VCPU", "8"))
 _TOTAL_RAM_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_RAM_GB", "16"))
 _TOTAL_DISK_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_DISK_GB", "100"))
 _HEARTBEAT_INTERVAL_SECONDS = int(os.environ.get("SANDBOX_WORKER_HEARTBEAT_SECONDS", "10"))
+_READY_FILE = "/tmp/codesandbox-worker-ready"
+_EGRESS_CHECK_INTERVAL_SECONDS = max(
+    30, int(os.environ.get("SANDBOX_EGRESS_CHECK_INTERVAL_SECONDS", "300"))
+)
+
+
+def _redact_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+    except Exception:
+        return "<invalid-url>"
+    if not parsed.scheme or not parsed.hostname:
+        return "<configured>"
+    host = parsed.hostname
+    if ":" in host:
+        host = f"[{host}]"
+    if parsed.port is not None:
+        host = f"{host}:{parsed.port}"
+    return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+
+
+def _runtime_preflight() -> None:
+    """Verify only dependencies required for the Worker to function.
+
+    External Internet access is deliberately excluded. A missing Internet
+    connection must degrade image pulling/full-Internet sandboxes, not prevent
+    the Worker from starting.
+    """
+
+    client = DockerClientFactory.preflight()
+    try:
+        version = client.version()
+        log.info(
+            "docker runtime ready version=%s api=%s",
+            version.get("Version"),
+            version.get("ApiVersion"),
+        )
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+
+    redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+    try:
+        if redis_client.ping() is not True:
+            raise RuntimeError("Redis ping returned an unexpected response.")
+    finally:
+        try:
+            redis_client.close()
+        except Exception:
+            pass
+
+    # The Worker cannot stage or collect artifacts without its object store.
+    store = ObjectStore()
+    store.client.head_bucket(Bucket=store.bucket)
+    log.info(
+        "required runtime dependencies ready redis=%s object_store=%s",
+        _redact_url(REDIS_URL),
+        store.bucket,
+    )
+
+
+def _probe_runtime_egress() -> tuple[bool, str]:
+    """Probe nested DinD bridge egress without making Worker startup fatal."""
+
+    test_url = os.environ.get(
+        "SANDBOX_RUNTIME_EGRESS_TEST_URL", "https://example.com/"
+    ).strip()
+    parsed = urlsplit(test_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False, "SANDBOX_RUNTIME_EGRESS_TEST_URL is not a valid HTTP(S) URL."
+
+    client = None
+    try:
+        helper_image = normalize_image_reference(
+            os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36")
+        )
+        client = DockerClientFactory.create()
+        ensure_image(client, helper_image, pull_policy="if_not_present")
+        client.containers.run(
+            helper_image,
+            command=[
+                "sh",
+                "-ec",
+                'wget -T 10 -qO- "$TARGET_URL" >/dev/null',
+            ],
+            environment={"TARGET_URL": test_url},
+            network_mode="bridge",
+            remove=True,
+            read_only=True,
+            tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=8m,mode=1777"},
+            cap_drop=["ALL"],
+            security_opt=["no-new-privileges:true"],
+            pids_limit=32,
+            mem_limit=64 * 1024 * 1024,
+        )
+        return True, f"Nested Docker bridge reached {_redact_url(test_url)}."
+    except Exception as exc:
+        message = " ".join(str(exc).split())
+        return False, (message[:500] or exc.__class__.__name__)
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
 
 
 def _require_nats_auth_in_production() -> None:
@@ -101,6 +210,15 @@ class WorkerApp:
         self.nc = None
         self._store = None
         self._store_lock = threading.Lock()
+        self._capacity_lock = threading.RLock()
+        self._nats_ready = threading.Event()
+        self._egress_lock = threading.Lock()
+        self._egress_status: dict[str, object] = {
+            "status": "unknown",
+            "available": None,
+            "checked_at": None,
+            "detail": "External connectivity has not been checked yet.",
+        }
         self.terminal = DockerTerminalManager(self.registry, self.publish, WORKER_ID)
         self.gui = DockerGuiProxy(self.registry, self.publish, WORKER_ID)
         self.registry_client = WorkerRegistryClient(CONTROL_PLANE_URL, WORKER_ID)
@@ -236,7 +354,12 @@ class WorkerApp:
                     await self.nc.subscribe(
                         _GUI_INPUT_SUBJECT, cb=self._gui_input
                     )
-                    log.info("NATS connected url=%s worker_id=%s", NATS_URL, WORKER_ID)
+                    log.info(
+                        "NATS connected url=%s worker_id=%s",
+                        _redact_url(NATS_URL),
+                        WORKER_ID,
+                    )
+                    self._nats_ready.set()
                     return
                 except Exception as exc:
                     log.warning("NATS connection failed error=%s", exc)
@@ -402,7 +525,9 @@ class WorkerApp:
         runner = None
         try:
             runner = DockerRunner(job, self.publish, self.store)
-            self.registry.register(instance_id, runner)
+            with self._capacity_lock:
+                self._assert_capacity(runner.policy)
+                self.registry.register(instance_id, runner)
             self._publish_event(instance_id, "provisioning")
             with runner._operation_lock:
                 runner.prepare()
@@ -475,11 +600,28 @@ class WorkerApp:
         target = self._start_job if job["action"] == "start" else self._control_job
         threading.Thread(target=target, args=(job,), daemon=True).start()
 
-    def _current_load(self) -> tuple[int, int, int]:
+    def _assert_capacity(self, policy: dict) -> None:
         runners = [runner for _, runner in self.registry.all()]
         used_vcpu = sum(int(runner.policy.get("vcpu") or 0) for runner in runners)
         used_ram_gb = sum(int(runner.policy.get("ram_gb") or 0) for runner in runners)
-        return used_vcpu, used_ram_gb, len(runners)
+        used_disk_gb = sum(int(runner.policy.get("disk_gb") or 0) for runner in runners)
+        requested_vcpu = int(policy.get("vcpu") or 0)
+        requested_ram_gb = int(policy.get("ram_gb") or 0)
+        requested_disk_gb = int(policy.get("disk_gb") or 0)
+
+        if used_vcpu + requested_vcpu > _TOTAL_VCPU:
+            raise RuntimeError("Worker vCPU capacity would be exceeded.")
+        if used_ram_gb + requested_ram_gb > _TOTAL_RAM_GB:
+            raise RuntimeError("Worker RAM capacity would be exceeded.")
+        if used_disk_gb + requested_disk_gb > _TOTAL_DISK_GB:
+            raise RuntimeError("Worker disk capacity would be exceeded.")
+
+    def _current_load(self) -> tuple[int, int, int, int]:
+        runners = [runner for _, runner in self.registry.all()]
+        used_vcpu = sum(int(runner.policy.get("vcpu") or 0) for runner in runners)
+        used_ram_gb = sum(int(runner.policy.get("ram_gb") or 0) for runner in runners)
+        used_disk_gb = sum(int(runner.policy.get("disk_gb") or 0) for runner in runners)
+        return used_vcpu, used_ram_gb, used_disk_gb, len(runners)
 
     def _reattach_running(self) -> None:
         """Boot-time registry rebuild (Phase 5): discover containers this
@@ -541,27 +683,71 @@ class WorkerApp:
                 target=self._monitor_loop, args=(runner, callback, instance_id), daemon=True
             ).start()
 
-    def _register_loop(self) -> None:
-        capabilities = {"runtime_class": ["container", "tool_job"]}
+
+    def _capabilities(self) -> dict:
+        with self._egress_lock:
+            external_egress = dict(self._egress_status)
+        return {
+            "runtime_class": ["container", "tool_job"],
+            "network_modes": ["disabled", "restricted", "full_internet"],
+            "external_egress": external_egress,
+        }
+
+    def _register_current_capabilities(self) -> bool:
+        return self.registry_client.register(
+            hostname=platform.node(),
+            capabilities=self._capabilities(),
+            total_vcpu=_TOTAL_VCPU,
+            total_ram_gb=_TOTAL_RAM_GB,
+            total_disk_gb=_TOTAL_DISK_GB,
+        )
+
+    def _egress_monitor_loop(self) -> None:
         while self.running:
-            ok = self.registry_client.register(
-                hostname=platform.node(),
-                capabilities=capabilities,
-                total_vcpu=_TOTAL_VCPU,
-                total_ram_gb=_TOTAL_RAM_GB,
-                total_disk_gb=_TOTAL_DISK_GB,
-            )
-            if ok:
+            available, detail = _probe_runtime_egress()
+            status = "available" if available else "unavailable"
+            with self._egress_lock:
+                self._egress_status = {
+                    "status": status,
+                    "available": available,
+                    "checked_at": int(time.time()),
+                    "detail": detail,
+                }
+
+            if available:
+                log.info("external connectivity available detail=%s", detail)
+            else:
+                log.warning(
+                    "external connectivity unavailable; Worker remains online, "
+                    "but image pulls and full-Internet sandboxes may fail: %s",
+                    detail,
+                )
+
+            # Re-register to persist the latest degraded/available state in
+            # WorkerNode.capabilities_json for the Admin dashboard.
+            if not self._register_current_capabilities():
+                log.warning("could not publish external connectivity status")
+
+            # Keep the status fresh without delaying shutdown.
+            for _ in range(_EGRESS_CHECK_INTERVAL_SECONDS):
+                if not self.running:
+                    return
+                time.sleep(1)
+
+    def _register_loop(self) -> None:
+        while self.running:
+            if self._register_current_capabilities():
                 log.info("registered with control plane worker_id=%s", WORKER_ID)
                 return
             time.sleep(5)
 
     def _heartbeat_loop(self) -> None:
         while self.running:
-            used_vcpu, used_ram_gb, running_instances = self._current_load()
+            used_vcpu, used_ram_gb, used_disk_gb, running_instances = self._current_load()
             self.registry_client.heartbeat(
                 used_vcpu=used_vcpu,
                 used_ram_gb=used_ram_gb,
+                used_disk_gb=used_disk_gb,
                 running_instances=running_instances,
             )
             time.sleep(_HEARTBEAT_INTERVAL_SECONDS)
@@ -573,11 +759,30 @@ class WorkerApp:
         signal.signal(signal.SIGTERM, shutdown)
         signal.signal(signal.SIGINT, shutdown)
 
+        try:
+            os.unlink(_READY_FILE)
+        except FileNotFoundError:
+            pass
+
         threading.Thread(target=self._start_nats, daemon=True).start()
+        while self.running and not self._nats_ready.wait(timeout=1):
+            pass
+        if not self.running:
+            return
+
         self._register_loop()
         self._reattach_running()
+        with open(_READY_FILE, "w", encoding="utf-8") as ready_file:
+            ready_file.write(f"{WORKER_ID}\n")
+        threading.Thread(target=self._egress_monitor_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         client = redis.from_url(REDIS_URL, decode_responses=True)
+        log.info(
+            "worker starting redis=%s nats=%s worker_id=%s",
+            _redact_url(REDIS_URL),
+            _redact_url(NATS_URL),
+            WORKER_ID,
+        )
         while self.running:
             try:
                 result = client.brpop(QUEUE_KEY, timeout=2)
@@ -589,6 +794,10 @@ class WorkerApp:
             except Exception:
                 log.exception("worker loop failed")
                 time.sleep(1)
+        try:
+            client.close()
+        except Exception:
+            pass
         self.terminal.close_all()
         self.gui.close_all()
         for _, runner in self.registry.all():
@@ -597,15 +806,20 @@ class WorkerApp:
                 runner.cleanup()
             except Exception:
                 pass
+        try:
+            os.unlink(_READY_FILE)
+        except FileNotFoundError:
+            pass
         if self.loop is not None:
             self.loop.call_soon_threadsafe(self.loop.stop)
 
 
 def main() -> None:
-    DockerClientFactory.validate_production_safety()
     _require_nats_auth_in_production()
+    _runtime_preflight()
     WorkerApp().run()
 
 
 if __name__ == "__main__":
     main()
+

@@ -32,8 +32,8 @@ class SandboxTemplate(Model):
     docker_image = StringField(max_length=500)
     default_command = TextField(nullable=True)
     working_dir = StringField(max_length=255, default="/workspace")
-    input_mount_path = StringField(max_length=255, default="/input")
-    output_mount_path = StringField(max_length=255, default="/output")
+    input_mount_path = StringField(max_length=255, default="")
+    output_mount_path = StringField(max_length=255, default="")
     artifact_paths = TextField(nullable=True)
     input_required = BooleanField(default=False)
     max_upload_mb = IntegerField(default=50)
@@ -298,18 +298,23 @@ class SandboxInstanceNote(Model):
 
 
 class SandboxTemplatePlan(Model):
-    """Per-template, per-plan resource and pricing overrides."""
+    """Template-to-plan availability mapping.
+
+    Legacy nullable override columns are retained only for schema compatibility.
+    Runtime resolution ignores them; SandboxPlan is the sole resource/pricing
+    source of truth.
+    """
     id = StringField(primary_key=True, max_length=36)
     template_id = ForeignKey(to=SandboxTemplate, on_delete="CASCADE")
     plan_id = StringField(max_length=40)  # references SandboxPlan.id
 
-    # Individual tier overrides — None means "use SandboxPlan global default"
+    # Deprecated legacy override columns. New code always stores None.
     ind_vcpu = IntegerField(nullable=True)
     ind_ram_gb = IntegerField(nullable=True)
     ind_disk_gb = IntegerField(nullable=True)
     ind_cost_hr = DecimalField(max_digits=10, decimal_places=4, nullable=True)
 
-    # Org tier overrides
+    # Deprecated legacy override columns.
     org_vcpu = IntegerField(nullable=True)
     org_ram_gb = IntegerField(nullable=True)
     org_disk_gb = IntegerField(nullable=True)

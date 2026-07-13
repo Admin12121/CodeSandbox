@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import posixpath
+import re
 import shlex
 from dataclasses import asdict, dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
+
+from ..image_refs import normalize_image_reference
 
 
 POLICY_VERSION = 1
@@ -35,6 +38,9 @@ UI_MODE_ALIASES = {
     "gui": "desktop_gui",
 }
 SUPPORTED_UI_MODES = {"terminal_only", "lab_ui", "background_run", "desktop_gui", "android_ui"}
+SUPPORTED_IMAGE_PULL_POLICIES = {"always", "if_not_present", "never"}
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+_SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
 
 
 def parse_runtime_config(runtime_config: Any) -> dict:
@@ -145,6 +151,57 @@ def _absolute_container_path(value: Any, field: str) -> str:
     return normalized
 
 
+def _optional_container_path(value: Any, field: str) -> str | None:
+    raw = str(value or "").strip()
+    return _absolute_container_path(raw, field) if raw else None
+
+
+def _runtime_environment(value: Any) -> dict[str, str]:
+    if value in (None, ""):
+        return {}
+    if not isinstance(value, dict):
+        raise RuntimePolicyError("Runtime environment must be a JSON object.")
+    if len(value) > 128:
+        raise RuntimePolicyError("Runtime environment may contain at most 128 variables.")
+    result: dict[str, str] = {}
+    for raw_name, raw_value in value.items():
+        name = str(raw_name)
+        if not _ENV_NAME_RE.fullmatch(name):
+            raise RuntimePolicyError(f"Invalid runtime environment variable name: {name}.")
+        rendered = str(raw_value)
+        if "\x00" in rendered or len(rendered) > 16384:
+            raise RuntimePolicyError(f"Invalid value for runtime environment variable: {name}.")
+        result[name] = rendered
+    return result
+
+
+def _image_pull_policy(value: Any) -> str:
+    policy = str(value or "if_not_present").strip().lower()
+    if policy not in SUPPORTED_IMAGE_PULL_POLICIES:
+        raise RuntimePolicyError(
+            "Image pull policy must be one of: always, if_not_present, never."
+        )
+    return policy
+
+
+def _exposed_ports(value: Any) -> list[int]:
+    if value in (None, ""):
+        return []
+    if not isinstance(value, list):
+        raise RuntimePolicyError("Exposed ports must be a JSON list.")
+    result: list[int] = []
+    for raw in value:
+        try:
+            port = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise RuntimePolicyError("Exposed ports must contain integers.") from exc
+        if not 1 <= port <= 65535:
+            raise RuntimePolicyError("Exposed ports must be between 1 and 65535.")
+        if port not in result:
+            result.append(port)
+    return result
+
+
 def _command(value: Any) -> list[str] | None:
     if value is None or value == "":
         return None
@@ -207,9 +264,13 @@ class EffectivePlan:
 
 
 def resolve_effective_plan(template: Any, global_plan: Any, template_plan: Any = None) -> EffectivePlan:
-    def override(name: str, fallback):
-        value = _value(template_plan, name)
-        return fallback if value is None else value
+    """Resolve one template against one global plan.
+
+    Resource and price fields are deliberately read only from SandboxPlan.
+    SandboxTemplatePlan is now only an availability mapping (`is_enabled`).
+    Legacy override columns remain readable for migration compatibility but are
+    intentionally ignored here.
+    """
 
     allowed = tuple(
         dict.fromkeys(
@@ -222,57 +283,36 @@ def resolve_effective_plan(template: Any, global_plan: Any, template_plan: Any =
         )
     ) or ("disabled",)
 
-    network_mode = normalize_network_mode(
-        override("network_mode", _value(template, "network_mode", "disabled"))
-    )
+    network_mode = normalize_network_mode(_value(template, "network_mode", "disabled"))
     if network_mode not in SUPPORTED_NETWORK_MODES:
         raise RuntimePolicyError(f"Unsupported network mode: {network_mode}.")
-
-    template_allows_internet = bool(_value(template, "allow_full_internet", False))
-    full_internet_enabled = template_allows_internet and bool(
-        override("full_internet_enabled", template_allows_internet)
-    )
-    if str(_value(template, "sandbox_type", "interactive")) in {
-        "malware",
-        "reverse_engineering",
-    }:
-        full_internet_enabled = False
-    if network_mode == "full_internet" and not full_internet_enabled:
-        raise RuntimePolicyError("Full internet is not enabled for this template and plan.")
     if network_mode not in allowed:
         raise RuntimePolicyError(
             f"Network mode '{network_mode}' is not allowed by plan '{_value(global_plan, 'id', '')}'."
         )
 
+    full_internet_enabled = bool(_value(template, "allow_full_internet", False))
+    if network_mode == "full_internet" and not full_internet_enabled:
+        raise RuntimePolicyError("Full internet must be explicitly enabled on the template.")
+
     max_timeout_hr = max(
-        1,
-        min(72, int(override("max_timeout_hr", _value(template, "max_timeout_hr", 2)) or 2)),
+        1, min(72, int(_value(template, "max_timeout_hr", 2) or 2))
     )
     min_billable_minutes = max(
-        0,
-        min(
-            1440,
-            int(
-                override(
-                    "min_billable_minutes",
-                    _value(global_plan, "min_billable_minutes", 1),
-                )
-                or 0
-            ),
-        ),
+        0, min(1440, int(_value(global_plan, "min_billable_minutes", 1) or 0))
     )
 
     return EffectivePlan(
         id=str(_value(global_plan, "id", "")),
         name=str(_value(global_plan, "name", "")),
-        ind_vcpu=max(1, int(override("ind_vcpu", _value(global_plan, "ind_vcpu", 1)))),
-        ind_ram_gb=max(1, int(override("ind_ram_gb", _value(global_plan, "ind_ram_gb", 1)))),
-        ind_disk_gb=max(1, int(override("ind_disk_gb", _value(global_plan, "ind_disk_gb", 10)))),
-        ind_cost_hr=max(Decimal("0"), _decimal(override("ind_cost_hr", _value(global_plan, "ind_cost_hr", 0)))),
-        org_vcpu=max(1, int(override("org_vcpu", _value(global_plan, "org_vcpu", 2)))),
-        org_ram_gb=max(1, int(override("org_ram_gb", _value(global_plan, "org_ram_gb", 2)))),
-        org_disk_gb=max(1, int(override("org_disk_gb", _value(global_plan, "org_disk_gb", 20)))),
-        org_cost_hr=max(Decimal("0"), _decimal(override("org_cost_hr", _value(global_plan, "org_cost_hr", 0)))),
+        ind_vcpu=max(1, int(_value(global_plan, "ind_vcpu", 1))),
+        ind_ram_gb=max(1, int(_value(global_plan, "ind_ram_gb", 1))),
+        ind_disk_gb=max(1, int(_value(global_plan, "ind_disk_gb", 10))),
+        ind_cost_hr=max(Decimal("0"), _decimal(_value(global_plan, "ind_cost_hr", 0))),
+        org_vcpu=max(1, int(_value(global_plan, "org_vcpu", 2))),
+        org_ram_gb=max(1, int(_value(global_plan, "org_ram_gb", 2))),
+        org_disk_gb=max(1, int(_value(global_plan, "org_disk_gb", 20))),
+        org_cost_hr=max(Decimal("0"), _decimal(_value(global_plan, "org_cost_hr", 0))),
         max_timeout_hr=max_timeout_hr,
         network_mode=network_mode,
         min_billable_minutes=min_billable_minutes,
@@ -297,34 +337,29 @@ class PolicyBuilder:
         effective = plan if isinstance(plan, EffectivePlan) else self._from_resolved_dict(plan)
         tier = effective.tier(workspace_type)
         runtime_class = str(_value(template, "runtime_class", "container"))
-        image = str(_value(template, "docker_image", "")).strip()
-        if runtime_class in {"container", "tool_job"} and not image:
-            raise RuntimePolicyError("Docker image is required for a container runtime.")
+        raw_image = str(_value(template, "docker_image", "")).strip()
+        if not raw_image:
+            raise RuntimePolicyError("A runtime image or target is required.")
 
-        working_dir = _absolute_container_path(
-            _value(template, "working_dir", "/workspace"), "Working directory"
-        )
-        input_mount = _absolute_container_path(
-            _value(template, "input_mount_path", "/input"), "Input mount"
-        )
-        output_mount = _absolute_container_path(
-            _value(template, "output_mount_path", "/output"), "Output mount"
-        )
-        if len({working_dir, input_mount, output_mount}) != 3:
-            raise RuntimePolicyError("Workspace, input, and output mounts must be distinct.")
+        if runtime_class in {"container", "tool_job"}:
+            try:
+                runtime_image = normalize_image_reference(raw_image)
+            except ValueError as exc:
+                raise RuntimePolicyError(str(exc)) from exc
+            runtime_provider = "docker"
+        else:
+            if any(char.isspace() for char in raw_image):
+                raise RuntimePolicyError("Runtime image or target must not contain whitespace.")
+            runtime_image = raw_image
+            runtime_provider = {
+                "microvm": "firecracker",
+                "firecracker_microvm": "firecracker",
+                "fullvm": "qemu",
+                "qemu_vm": "qemu",
+                "android": "android",
+                "android_emulator": "android",
+            }.get(runtime_class, runtime_class)
 
-        artifact_paths = [
-            _absolute_container_path(path, "Artifact path")
-            for path in _json_list(_value(template, "artifact_paths"), [output_mount])
-        ]
-        if any(
-            path != working_dir
-            and not path.startswith(working_dir + "/")
-            and path != output_mount
-            and not path.startswith(output_mount + "/")
-            for path in artifact_paths
-        ):
-            raise RuntimePolicyError("Artifact paths must be inside workspace or output mounts.")
         interface_modes = _ui_modes(
             _value(template, "allowed_ui_modes")
             or _value(template, "interface_mode", "terminal_only"),
@@ -335,18 +370,89 @@ class PolicyBuilder:
             requested_ui_mode = user_config.get("ui_mode") or user_config.get("interface_mode")
         if requested_ui_mode and normalize_ui_mode(requested_ui_mode, default="") in interface_modes:
             interface_modes = [normalize_ui_mode(requested_ui_mode)]
-        default_ui_mode = normalize_ui_mode(_value(template, "default_ui_mode", interface_modes[0]), interface_modes[0])
+        default_ui_mode = normalize_ui_mode(
+            _value(template, "default_ui_mode", interface_modes[0]), interface_modes[0]
+        )
         if default_ui_mode not in interface_modes:
             default_ui_mode = interface_modes[0]
 
-        command = _command(_value(template, "default_command"))
-        slug = str(_value(template, "slug", ""))
         template_runtime_config = parse_runtime_config(_value(template, "runtime_config"))
+        command = _command(_value(template, "default_command"))
+        entrypoint = _command(template_runtime_config.get("entrypoint"))
+        environment = _runtime_environment(template_runtime_config.get("environment"))
+        image_pull_policy = _image_pull_policy(template_runtime_config.get("image_pull_policy"))
+        exposed_ports = _exposed_ports(template_runtime_config.get("exposed_ports"))
+        driver_config = template_runtime_config.get("driver")
+        driver_config = driver_config if isinstance(driver_config, dict) else {}
+
         required_args = [str(a) for a in template_runtime_config.get("required_args") or []]
         forbidden_args = [str(a) for a in template_runtime_config.get("forbidden_args") or []]
         command_error = validate_command_args(command, required_args, forbidden_args)
         if command_error:
             raise RuntimePolicyError(command_error)
+
+        working_dir = _absolute_container_path(
+            _value(template, "working_dir", "/workspace") or "/workspace",
+            "Working directory",
+        )
+        workspace_enabled = bool(template_runtime_config.get("workspace_enabled", True))
+        input_mount = _optional_container_path(
+            _value(template, "input_mount_path", ""), "Input mount"
+        )
+        output_mount = _optional_container_path(
+            _value(template, "output_mount_path", ""), "Output mount"
+        )
+        input_required = bool(_value(template, "input_required", False))
+        if input_required and not input_mount:
+            raise RuntimePolicyError("Input is required but no input mount path is configured.")
+
+        named_paths = []
+        if workspace_enabled:
+            named_paths.append(("Working directory", working_dir))
+        if input_mount:
+            named_paths.append(("Input mount", input_mount))
+        if output_mount:
+            named_paths.append(("Output mount", output_mount))
+        for index, (left_name, left_path) in enumerate(named_paths):
+            for right_name, right_path in named_paths[index + 1:]:
+                if (
+                    left_path == right_path
+                    or left_path.startswith(right_path + "/")
+                    or right_path.startswith(left_path + "/")
+                ):
+                    raise RuntimePolicyError(
+                        f"{left_name} and {right_name} must be separate, non-overlapping paths."
+                    )
+
+        artifact_paths = [
+            _absolute_container_path(path, "Artifact path")
+            for path in _json_list(_value(template, "artifact_paths"), [])
+        ]
+        artifact_roots = []
+        if workspace_enabled:
+            artifact_roots.append(working_dir)
+        if output_mount:
+            artifact_roots.append(output_mount)
+        if artifact_paths and not artifact_roots:
+            raise RuntimePolicyError(
+                "Artifact paths require a workspace or output mount."
+            )
+        if any(
+            not any(path == root or path.startswith(root + "/") for root in artifact_roots)
+            for path in artifact_paths
+        ):
+            raise RuntimePolicyError(
+                "Artifact paths must be inside the workspace or output mount."
+            )
+
+        primary_input_alias = str(
+            template_runtime_config.get("primary_input_alias") or ""
+        ).strip()
+        if primary_input_alias and not _SAFE_FILENAME_RE.fullmatch(primary_input_alias):
+            raise RuntimePolicyError(
+                "Primary input alias must be a safe filename without path separators."
+            )
+
         allowed_file_types = [
             str(t).lower() for t in template_runtime_config.get("allowed_file_types") or []
         ]
@@ -363,16 +469,24 @@ class PolicyBuilder:
         return {
             "version": POLICY_VERSION,
             "runtime_class": runtime_class,
-            "runtime_provider": "docker" if runtime_class in {"container", "tool_job"} else runtime_class,
+            "runtime_provider": runtime_provider,
             "template_id": str(_value(template, "id", "")),
-            "template_slug": slug,
+            "template_slug": str(_value(template, "slug", "")),
             "sandbox_type": str(_value(template, "sandbox_type", "interactive")),
-            "docker_image": image,
+            "runtime_image": runtime_image,
+            "docker_image": runtime_image if runtime_provider == "docker" else "",
+            "image_pull_policy": image_pull_policy,
+            "entrypoint": entrypoint,
             "default_command": command,
+            "environment": environment,
+            "exposed_ports": exposed_ports,
+            "driver_config": driver_config,
             "interface_modes": interface_modes,
             "default_ui_mode": default_ui_mode,
             "network_mode": effective.network_mode,
             "full_internet_enabled": effective.full_internet_enabled,
+            # These values come only from SandboxPlan. Template config and
+            # template-plan mappings cannot override them.
             "vcpu": tier["vcpu"],
             "ram_gb": tier["ram_gb"],
             "disk_gb": tier["disk_gb"],
@@ -381,10 +495,12 @@ class PolicyBuilder:
             "min_billable_sec": effective.min_billable_minutes * 60,
             "max_timeout_sec": effective.max_timeout_hr * 3600,
             "working_dir": working_dir,
+            "workspace_enabled": workspace_enabled,
             "input_mount_path": input_mount,
             "output_mount_path": output_mount,
             "artifact_paths": artifact_paths,
-            "input_required": bool(_value(template, "input_required", False)),
+            "input_required": input_required,
+            "primary_input_alias": primary_input_alias or None,
             "max_upload_bytes": max(
                 1, int(max_input_size_mb or _value(template, "max_upload_mb", 50) or 50)
             ) * 1024 * 1024,
