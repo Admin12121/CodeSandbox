@@ -319,6 +319,93 @@ def test_following_edge_switches_same_instance(ctx: TestContext) -> None:
     # node-lab is a dead end in this fixture graph — no further choices.
     assert ctx_dict["ui_workflow_choices"] == []
 
+    # A refresh without query parameters resumes the persisted stage.
+    resumed, error = get_instance_ui_context(str(inst.id), str(admin.id))
+    assert error is None, error
+    assert resumed["ui_mode"] == "lab_ui"
+    assert resumed["ui_workflow_node"]["id"] == "node-lab"
+
+
+def test_completion_evidence_gates_next_workflow_stage(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox import repository as sandbox_repository
+    from codesandbox.features.sandbox.service import get_instance_ui_context
+
+    graph = _bg_lab_terminal_graph()
+    graph["nodes"][0]["completion_requirements"] = ["log:ANALYSIS_COMPLETE"]
+    template, admin = _fixture_template(
+        ctx, interface_behavior="workflow", ui_workflow_json=json.dumps(graph)
+    )
+    inst = _fixture_instance(ctx, template, admin)
+
+    before, error = get_instance_ui_context(str(inst.id), str(admin.id))
+    assert error is None, error
+    assert before["ui_workflow_choices"] == []
+
+    detail = json.dumps({"requirement": "log:ANALYSIS_COMPLETE"})
+    sandbox_repository.log_instance_event(
+        str(inst.id), "runtime.evidence", actor="worker", detail=detail
+    )
+    after, error = get_instance_ui_context(str(inst.id), str(admin.id))
+    assert error is None, error
+    assert {choice["target_ui_mode"] for choice in after["ui_workflow_choices"]} == {
+        "lab_ui", "terminal_only"
+    }
+
+
+
+def test_normal_workflow_ui_evidence_unlocks_next_stage(ctx: TestContext) -> None:
+    """UI evidence is part of the real workflow, not a Test Launch special case."""
+    from codesandbox.features.sandbox.service import (
+        get_instance_ui_context,
+        record_instance_ui_evidence,
+    )
+
+    graph = {
+        "mode": "workflow",
+        "start_node_id": "report",
+        "nodes": [
+            {
+                "id": "report",
+                "label": "Report",
+                "ui_mode": "custom_page",
+                "position": {"x": 80, "y": 80},
+                "completion_requirements": ["custom_page_ready"],
+            },
+            {
+                "id": "lab",
+                "label": "Lab",
+                "ui_mode": "lab_ui",
+                "position": {"x": 420, "y": 80},
+            },
+        ],
+        "edges": [
+            {
+                "id": "report-lab",
+                "source": "report",
+                "target": "lab",
+                "condition": "manual",
+                "label": "Open Lab",
+            }
+        ],
+    }
+    template, admin = _fixture_template(
+        ctx, interface_behavior="workflow", ui_workflow_json=json.dumps(graph)
+    )
+    inst = _fixture_instance(ctx, template, admin)
+
+    before, error = get_instance_ui_context(str(inst.id), str(admin.id))
+    assert error is None, error
+    assert before["ui_workflow_choices"] == []
+
+    progress, error = record_instance_ui_evidence(
+        str(inst.id), str(admin.id), "custom_page_ready"
+    )
+    assert error is None, error
+    assert progress and progress["recorded"] is True
+
+    after, error = get_instance_ui_context(str(inst.id), str(admin.id))
+    assert error is None, error
+    assert [choice["target_node_id"] for choice in after["ui_workflow_choices"]] == ["lab"]
 
 def test_success_failure_conditions_gated_by_exit_code(ctx: TestContext) -> None:
     from codesandbox.features.sandbox.service import get_instance_ui_context
@@ -439,6 +526,8 @@ TESTS: list[TestCase] = [
     TestCase("workflow mode allowed for multi-ui-mode runtime with empty graph", "sandbox", test_workflow_mode_allowed_for_multi_ui_mode_runtime_with_empty_graph),
     TestCase("start node offers branching choices", "sandbox", test_start_node_offers_branching_choices),
     TestCase("following edge switches same instance", "sandbox", test_following_edge_switches_same_instance),
+    TestCase("completion evidence gates next workflow stage", "sandbox", test_completion_evidence_gates_next_workflow_stage),
+    TestCase("normal workflow UI evidence unlocks next stage", "sandbox", test_normal_workflow_ui_evidence_unlocks_next_stage),
     TestCase("success/failure conditions gated by exit_code", "sandbox", test_success_failure_conditions_gated_by_exit_code),
     TestCase("single mode instance has no workflow choices", "sandbox", test_single_mode_instance_has_no_workflow_choices),
     TestCase("custom_page graph passes validation without runtime capability checks", "sandbox", test_custom_page_graph_passes_validation_without_runtime_capability_checks),

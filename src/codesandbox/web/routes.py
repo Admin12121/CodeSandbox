@@ -244,7 +244,10 @@ def my_instances():
 
 @router.page("/instances/<instance_id>")
 def instance_detail(instance_id: str):
-    session, redir = require_sandbox_user()
+    # Real Test Launches are opened by platform admins/staff, while ordinary
+    # instances are opened by sandbox users. Authorization is enforced by
+    # get_instance_ui_context/can_view_instance, so do not reject staff here.
+    session, redir = require_session()
     if redir:
         return redir
     user = session.user
@@ -263,10 +266,17 @@ def instance_detail(instance_id: str):
 
     workflow_run = get_workflow_run_context_for_instance(instance_id)
 
+    nav_path = (
+        "/platform/sandboxes"
+        if instance.get("workspace_type") == "test"
+        and user.platform_role in {"system_admin", "system_staff"}
+        else "/my-instances"
+    )
+
     return {
         "_meta": {"title": f"{instance['template_name']} - CodeSandbox"},
         "user": _user_ctx(user),
-        "nav": build_nav("/my-instances", user, ws_ctx.get("active_workspace")),
+        "nav": build_nav(nav_path, user, ws_ctx.get("active_workspace")),
         "page_title": instance["template_name"],
         "error": request.args.get("error"),
         "workflow_run": workflow_run,
@@ -277,7 +287,7 @@ def instance_detail(instance_id: str):
 
 @web_bp.post("/instances/<instance_id>/notes")
 def instance_notes_save(instance_id: str):
-    session, redir = require_sandbox_user()
+    session, redir = require_session()
     if redir:
         abort(401)
     body = request.get_json(silent=True) or {}

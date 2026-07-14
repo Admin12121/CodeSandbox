@@ -56,6 +56,13 @@ def validate_ui_workflow_graph(graph: dict) -> str | None:
         ui_mode = str(node.get("ui_mode") or "")
         if ui_mode not in UI_WORKFLOW_MODES:
             return f"Node '{node.get('label') or node.get('id')}' has an invalid ui_mode."
+        requirements = node.get("completion_requirements") or []
+        if not isinstance(requirements, list):
+            return f"Node '{node.get('label') or node.get('id')}' completion_requirements must be a list."
+        for requirement in requirements:
+            value = str(requirement or "").strip()
+            if not value or len(value) > 240 or any(ch in value for ch in ("\x00", "\r", "\n")):
+                return f"Node '{node.get('label') or node.get('id')}' has an invalid completion requirement."
 
     start_node_id = str(graph.get("start_node_id") or "")
     if not start_node_id or start_node_id not in id_set:

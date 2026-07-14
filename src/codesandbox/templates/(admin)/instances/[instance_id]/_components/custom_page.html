@@ -28,3 +28,9 @@
   });
 })();
 {% end_app_script %}
+
+{% app_script "sandbox-custom-page-test-evidence" %}
+(function () {
+  if (window.csReportUiEvidence) window.csReportUiEvidence("custom_page_ready").catch(function () {});
+})();
+{% end_app_script %}

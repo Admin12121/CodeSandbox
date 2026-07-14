@@ -390,15 +390,50 @@ class WorkerApp:
             callback.try_send("artifact_ready", artifact)
             self._publish_event(callback.instance_id, "artifact_ready", artifact)
 
-    # Test Launch only: buffered so a `log_contains` success_condition can be
-    # checked once the run finishes — a bounded ring buffer, not the full
-    # stream, so an interactive/background_run instance without that
-    # condition configured pays zero extra memory cost (see the `if` guard).
+    # A bounded ring buffer supports both live `log:*` evidence and legacy
+    # end-of-run log_contains checks without retaining the complete stream.
     _TEST_LOG_BUFFER_MAX_BYTES = 256 * 1024
 
-    def _stream_logs(self, runner: DockerRunner) -> None:
+    def _emit_log_evidence(
+        self, runner: DockerRunner, callback: CallbackClient
+    ) -> None:
+        buffer = getattr(runner, "test_log_buffer", "")
+        reported = getattr(runner, "reported_log_evidence", set())
+        for pattern in runner.policy.get("runtime_evidence_logs") or []:
+            pattern = str(pattern or "")
+            if not pattern or pattern in reported or pattern not in buffer:
+                continue
+            reported.add(pattern)
+            evidence = {
+                "kind": "log_contains",
+                "value": pattern,
+                "requirement": f"log:{pattern}",
+            }
+            callback.try_send("runtime_evidence", evidence)
+            self._publish_event(runner.instance_id, "runtime_evidence", evidence)
+        runner.reported_log_evidence = reported
+
+    def _capture_final_logs(
+        self, runner: DockerRunner, callback: CallbackClient
+    ) -> None:
+        """Capture tail output before container removal to avoid an exit/log race."""
+        try:
+            raw = runner.container.logs(stdout=True, stderr=True, tail=10000)
+            text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+            runner.test_log_buffer = (
+                getattr(runner, "test_log_buffer", "") + text
+            )[-self._TEST_LOG_BUFFER_MAX_BYTES:]
+            self._emit_log_evidence(runner, callback)
+        except Exception:
+            pass
+
+    def _stream_logs(self, runner: DockerRunner, callback: CallbackClient) -> None:
         test_config = runner.policy.get("test_config") or {}
-        buffer_logs = str(test_config.get("success_condition") or "") == "log_contains"
+        patterns = [
+            str(value) for value in (runner.policy.get("runtime_evidence_logs") or [])
+            if str(value)
+        ]
+        buffer_logs = bool(patterns) or str(test_config.get("success_condition") or "") == "log_contains"
         try:
             for chunk in runner.container.logs(stream=True, follow=True, stdout=True, stderr=True):
                 if runner.external_control.is_set():
@@ -414,6 +449,7 @@ class WorkerApp:
                         "data": text,
                     },
                 )
+                self._emit_log_evidence(runner, callback)
         except Exception:
             pass
 
@@ -423,9 +459,8 @@ class WorkerApp:
         """Mode-specific Test Launch pass/fail, evaluated where the real
         signal (exit code, produced artifacts, buffered logs) actually lives
         — not "did the container start" (see docs/plan.md Phase 10.4).
-        Returns (None, None) for a normal (non-test) run, where the control
-        plane's own "started implies passed" fallback for terminal_only/lab_ui
-        still applies."""
+        Returns (None, None) when no legacy end-of-run condition is configured;
+        the control plane separately evaluates persistent live evidence."""
         test_config = runner.policy.get("test_config") or {}
         success_condition = str(test_config.get("success_condition") or "").strip()
         if not success_condition:
@@ -464,6 +499,7 @@ class WorkerApp:
     ) -> None:
         callback.try_send("cleanup_started", {"reason": reason})
         self.terminal.close(runner.instance_id)
+        self._capture_final_logs(runner, callback)
         artifacts: list[dict] = []
         try:
             artifacts = runner.collect_artifacts()
@@ -536,7 +572,7 @@ class WorkerApp:
                 runtime_data = runner.start()
             callback.send("started", runtime_data)
             self._publish_event(instance_id, "started", runtime_data)
-            threading.Thread(target=self._stream_logs, args=(runner,), daemon=True).start()
+            threading.Thread(target=self._stream_logs, args=(runner, callback), daemon=True).start()
             self._monitor_loop(runner, callback, instance_id)
         except Exception as exc:
             log.exception("start failed instance=%s", instance_id[:8])
@@ -563,8 +599,11 @@ class WorkerApp:
             callback.try_send("cleanup_started", {"reason": job.get("reason")})
             self.terminal.close(instance_id)
             result = runner.kill() if action in {"kill", "reconcile"} else runner.stop()
+            self._capture_final_logs(runner, callback)
+            artifacts: list[dict] = []
             try:
-                self._publish_artifacts(callback, runner.collect_artifacts())
+                artifacts = runner.collect_artifacts()
+                self._publish_artifacts(callback, artifacts)
             except Exception as exc:
                 log.warning("artifact collection failed instance=%s error=%s", instance_id[:8], exc)
             runner.cleanup()
@@ -576,11 +615,18 @@ class WorkerApp:
                     event = "failed"
             else:
                 event = "stopped"
-            callback.try_send(event, {
+            payload = {
                 "reason": str(job.get("reason") or action),
                 "exit_code": result.get("exit_code"),
-            })
-            self._publish_event(instance_id, event, {"reason": job.get("reason")})
+            }
+            test_success, test_reason = self._evaluate_test_success(
+                runner, result.get("exit_code"), artifacts
+            )
+            if test_success is not None:
+                payload["test_success"] = test_success
+                payload["test_reason"] = test_reason
+            callback.try_send(event, payload)
+            self._publish_event(instance_id, event, payload)
         except Exception as exc:
             log.exception("control action failed instance=%s action=%s", instance_id[:8], action)
             callback.try_send("failed", {"error": str(exc), "reason": f"{action}_failed"})
@@ -678,7 +724,7 @@ class WorkerApp:
             self.registry.register(instance_id, runner)
             self._publish_event(instance_id, "started", {"reason": "worker_restart_reattach"})
             log.info("reattached instance=%s runtime_id=%s", instance_id[:8], job["runtime_id"][:12])
-            threading.Thread(target=self._stream_logs, args=(runner,), daemon=True).start()
+            threading.Thread(target=self._stream_logs, args=(runner, callback), daemon=True).start()
             threading.Thread(
                 target=self._monitor_loop, args=(runner, callback, instance_id), daemon=True
             ).start()

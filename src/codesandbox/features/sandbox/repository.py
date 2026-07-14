@@ -319,6 +319,38 @@ def list_instances_assigned_to_user_in_org(user_id: str, org_id: str) -> list[Sa
 _LIVE_INSTANCE_STATUSES = ("idle", "provisioning", "running", "stopping", "cleanup")
 
 
+def find_active_test_instance(
+    template_id: str,
+    *,
+    actor_user_id: str | None = None,
+) -> SandboxInstance | None:
+    """Return the newest non-terminal Test Launch for this template.
+
+    Test state is intentionally represented by the real SandboxInstance row,
+    rather than browser memory. This lets the Config page and the dedicated
+    test tab recover the same run after navigation or refresh.
+    """
+    rows = SandboxInstance.objects.filter(
+        template_id=template_id, workspace_type="test"
+    ).all()
+    candidates = [row for row in rows if row.status in _LIVE_INSTANCE_STATUSES]
+    if actor_user_id is not None:
+        candidates = [
+            row for row in candidates
+            if str(row.created_by_user_id or "") == str(actor_user_id)
+        ]
+    return max(candidates, key=lambda row: row.created_at or _now(), default=None)
+
+
+def update_instance_user_config(instance_id: str, user_config: str | None) -> SandboxInstance | None:
+    inst = get_instance(instance_id)
+    if inst is None:
+        return None
+    inst.user_config = user_config
+    inst.save()
+    return inst
+
+
 def find_hub_instance(
     template_id: str,
     plan_id: str,

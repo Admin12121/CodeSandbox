@@ -6,9 +6,14 @@
   <div class="flex h-8 items-center justify-between border-b text-xs">
     <div data-terminal-tabs class="flex h-full items-center"></div>
 
-    <button data-new-terminal class="border-l px-2 text-muted-foreground hover:text-accent-foreground">
-      {{ icons.icon("plus") }}
-    </button>
+    <div class="flex h-full items-center">
+      <button data-reconnect-terminal class="h-full border-l px-2 text-muted-foreground hover:text-accent-foreground" title="Reconnect active terminal">
+        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"/></svg>
+      </button>
+      <button data-new-terminal class="h-full border-l px-2 text-muted-foreground hover:text-accent-foreground" title="New terminal">
+        {{ icons.icon("plus") }}
+      </button>
+    </div>
   </div>
 
   <div data-terminal-panes class="h-[calc(100%-2rem)] overflow-auto p-3 font-mono text-xs"></div>

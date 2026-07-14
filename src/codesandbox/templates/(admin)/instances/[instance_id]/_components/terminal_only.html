@@ -17,7 +17,12 @@
 <div id="terminal-only-ui" data-instance-id="{{ instance.id }}" class="flex h-[calc(100vh-2.85rem)] flex-col overflow-hidden bg-background">
   <div class="flex h-9 shrink-0 items-center justify-between border-b text-xs">
     <div data-terminal-tabs class="flex h-full min-w-0 flex-1 items-center overflow-x-auto"></div>
-    <button data-new-terminal class="h-full border-l px-3 text-muted-foreground hover:text-accent-foreground" title="New terminal (max 3)">+</button>
+    <div class="flex h-full items-center">
+      <button data-reconnect-terminal class="h-full border-l px-3 text-muted-foreground hover:text-accent-foreground" title="Reconnect active terminal">
+        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"/></svg>
+      </button>
+      <button data-new-terminal class="h-full border-l px-3 text-muted-foreground hover:text-accent-foreground" title="New terminal (max 3)">+</button>
+    </div>
   </div>
   <div data-terminal-panes class="min-h-0 flex-1 bg-[#09090b]"></div>
 </div>
@@ -32,6 +37,7 @@
   var maxTerminals = 3;
   var terminalCount = 0;
   var states = {};
+  var clientSessionId = ('term-' + Math.random().toString(36).slice(2, 12)).slice(0, 20);
 
   function $(selector, base) { return (base || root).querySelector(selector); }
   function $$(selector, base) { return Array.from((base || root).querySelectorAll(selector)); }
@@ -73,13 +79,14 @@
     var proto = location.protocol === "https:" ? "wss" : "ws";
     var url = proto + "://" + location.host + "/ws/sandbox/" + encodeURIComponent(instanceId) +
       "/terminal?token=" + encodeURIComponent(token) +
-      "&terminal_id=" + encodeURIComponent(state.name);
+      "&terminal_id=" + encodeURIComponent(state.terminalId);
     var ws = new WebSocket(url);
     state.ws = ws;
     ws.onmessage = function (event) {
       var msg;
       try { msg = JSON.parse(event.data); } catch (_) { return; }
       if (msg.type === "ready") {
+        if (window.csReportUiEvidence) window.csReportUiEvidence("terminal_ready").catch(function () {});
         try { state.fit.fit(); } catch (_) {}
         if (ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "resize", cols: state.term.cols, rows: state.term.rows }));
@@ -93,7 +100,19 @@
       }
     };
     ws.onerror = function () { state.term.writeln("\x1b[31mNo terminal backend available.\x1b[0m"); };
-    ws.onclose = function () { state.term.writeln("\r\n\x1b[90m[disconnected]\x1b[0m"); };
+    ws.onclose = function () {
+      if (state.ws === ws) state.ws = null;
+      state.term.writeln("\r\n\x1b[90m[disconnected — use Reconnect]\x1b[0m");
+    };
+  }
+
+  function reconnectState(state) {
+    if (!state || !state.term) return;
+    if (state.ws) { try { state.ws.close(); } catch (_) {} }
+    state.ws = null;
+    state.term.writeln("\r\n\x1b[90mConnecting to sandbox terminal…\x1b[0m");
+    fetchToken().then(function (token) { openWs(state, token); })
+      .catch(function (err) { state.term.writeln("\x1b[31m" + esc(err.message) + "\x1b[0m"); });
   }
 
   function connect(name, pane) {
@@ -109,7 +128,14 @@
       var fit = new FitAddon.FitAddon();
       term.loadAddon(fit);
       term.open(pane);
-      var state = { name: name, term: term, fit: fit, ws: null, ro: null };
+      var state = {
+        name: name,
+        terminalId: (clientSessionId + '-' + name).slice(0, 40),
+        term: term,
+        fit: fit,
+        ws: null,
+        ro: null
+      };
       states[name] = state;
       state.ro = new ResizeObserver(function () {
         try { fit.fit(); } catch (_) {}
@@ -123,9 +149,7 @@
           state.ws.send(JSON.stringify({ type: "data", data: data }));
         }
       });
-      term.writeln("\x1b[90mConnecting to sandbox terminal…\x1b[0m");
-      fetchToken().then(function (token) { openWs(state, token); })
-        .catch(function (err) { term.writeln("\x1b[31m" + esc(err.message) + "\x1b[0m"); });
+      reconnectState(state);
       window.setTimeout(function () { try { fit.fit(); } catch (_) {} }, 60);
     });
   }
@@ -178,8 +202,14 @@
   }
 
   root.addEventListener("click", function (event) {
-    var action = event.target.closest("[data-new-terminal], [data-terminal-tab], .terminal-close");
+    var action = event.target.closest("[data-reconnect-terminal], [data-new-terminal], [data-terminal-tab], .terminal-close");
     if (!action || !root.contains(action)) return;
+    if (action.dataset.reconnectTerminal !== undefined) {
+      var active = $("[data-terminal-tab].active-terminal");
+      var name = active && active.dataset.terminalTab;
+      if (name && states[name]) reconnectState(states[name]);
+      return;
+    }
     if (action.dataset.newTerminal !== undefined) return createTerminal();
     if (action.classList.contains("terminal-close")) {
       var tab = action.closest("[data-terminal-tab]");

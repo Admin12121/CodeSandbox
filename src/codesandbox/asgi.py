@@ -296,18 +296,25 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
             return
         sessions[terminal_id] = int(sessions.get(terminal_id) or 0) + 1
 
-    async def _release_terminal_session() -> None:
+    async def _release_terminal_session() -> bool:
+        """Release this browser attachment and return True only for the last one.
+
+        Multiple pages can intentionally attach to the same PTY. Previously every
+        disconnect sent a worker-side close command, so refreshing one page could
+        terminate the still-active terminal in another page.
+        """
         async with _terminal_sessions_lock:
             sessions = _terminal_sessions.get(instance_id)
             if sessions is None:
-                return
+                return False
             remaining = int(sessions.get(terminal_id) or 0) - 1
             if remaining > 0:
                 sessions[terminal_id] = remaining
-            else:
-                sessions.pop(terminal_id, None)
+                return False
+            sessions.pop(terminal_id, None)
             if not sessions:
                 _terminal_sessions.pop(instance_id, None)
+            return True
 
     await websocket.accept()
 
@@ -378,14 +385,15 @@ async def ws_sandbox_terminal(websocket: WebSocket) -> None:
             await sub.unsubscribe()
         except Exception:
             pass
-        try:
-            await nc.publish(ctl_subject, json.dumps({
-                "action": "close",
-                "terminal_id": terminal_id,
-            }).encode())
-        except Exception:
-            pass
-        await _release_terminal_session()
+        is_last_attachment = await _release_terminal_session()
+        if is_last_attachment:
+            try:
+                await nc.publish(ctl_subject, json.dumps({
+                    "action": "close",
+                    "terminal_id": terminal_id,
+                }).encode())
+            except Exception:
+                pass
 
 
 async def ws_sandbox_gui(websocket: WebSocket) -> None:

@@ -13,7 +13,6 @@
 {% import "components/ui/switch.html" as sw %}
 {% import "components/ui/alert.html" as alert %}
 {% import "components/ui/delete-dialog.html" as del_dialog %}
-{% import "components/media/avatar.html" as media_avatar %}
 
 {# ═══ LIST VIEW ═══ #}
 {% macro templates_table(templates, total, page, total_pages, search, status_filter, page_size=25, can_manage=false) %}
@@ -86,17 +85,9 @@
             {% for tmpl in templates %}
               {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/platform/sandboxes?template=" ~ tmpl.id}) %}
                 {% call table.table_cell() %}
-                  <div class="flex min-w-0 items-center gap-3">
-                    {{ media_avatar.image_avatar(
-                      tmpl.name,
-                      tmpl.icon_path,
-                      size="size-9 rounded-lg text-xs",
-                      class="border-border bg-muted text-muted-foreground"
-                    ) }}
-                    <div class="min-w-0">
-                      <div class="truncate font-medium">{{ tmpl.name }}</div>
-                      <div class="truncate text-xs text-muted-foreground font-mono">{{ tmpl.slug }}</div>
-                    </div>
+                  <div class="min-w-0">
+                    <div class="truncate font-medium">{{ tmpl.name }}</div>
+                    <div class="truncate text-xs text-muted-foreground font-mono">{{ tmpl.slug }}</div>
                   </div>
                 {% endcall %}
                 {{ table.table_cell(tmpl.sandbox_type | replace("_", " ") | title, class="text-sm text-muted-foreground") }}
@@ -843,7 +834,7 @@
     {% else %}
 
       {# ── Config IDE ── #}
-      <div class="flex flex-col flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden" id="config-ide" data-ide-theme="dark">
+      <div class="flex flex-col flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden" id="config-ide" data-ide-theme="dark" data-template-id="{{ tid }}">
 
       <div class="flex flex-1 min-h-0 min-w-0 w-full max-w-full overflow-hidden">
 
@@ -986,8 +977,12 @@
           <div class="ide-tab ide-tab-active flex min-w-0 items-center gap-1.5 px-3 h-full border-r text-xs shrink-0">
             <svg class="size-3.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
             <span class="truncate select-none">Terminal</span>
+            <button id="term-reconnect-btn" title="Reconnect terminal"
+              class="ml-1 size-4 inline-flex items-center justify-center rounded-full hover:bg-muted/80 transition-colors shrink-0">
+              <svg class="size-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"/></svg>
+            </button>
             <button id="term-close-btn" title="Close terminal"
-              class="ml-1 size-3.5 inline-flex items-center justify-center rounded-full hover:bg-muted/80 transition-colors shrink-0">
+              class="size-3.5 inline-flex items-center justify-center rounded-full hover:bg-muted/80 transition-colors shrink-0">
               <svg class="size-2.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
           </div>
@@ -1007,8 +1002,11 @@
             <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>
           </button>
         </div>
-        <div class="flex h-full items-center gap-1.5 px-1">
-          <button id="ide-monitor-toggle" title="Sandbox Monitor" hidden
+        <div class="flex h-full min-w-0 items-center gap-1.5 px-1">
+          {% if can_manage %}
+            <span id="config-test-status-hint" class="max-w-72 truncate text-[10px] opacity-70" title=""></span>
+          {% endif %}
+          <button id="ide-monitor-toggle" title="Open Sandbox Monitor" hidden
             class="flex items-center gap-1 rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
             <span id="ide-monitor-dot" class="size-1.5 rounded-full bg-muted-foreground"></span>
             <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v4"/><path d="m14.305 7.53.923-.382"/><path d="m15.228 4.852-.923-.383"/><path d="m16.852 3.228-.383-.924"/><path d="m16.852 8.772-.383.923"/><path d="m19.148 3.228.383-.924"/><path d="m19.53 9.696-.382-.924"/><path d="m20.772 4.852.924-.383"/><path d="m20.772 7.148.924.383"/><path d="M22 13v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7"/><path d="M8 21h8"/><circle cx="18" cy="6" r="3"/></svg>
@@ -1018,16 +1016,20 @@
           {% if can_manage %}
             <div class="w-px h-3.5 bg-border mx-0.5"></div>
             <input type="file" id="test-input-file" hidden>
-            <button type="button" id="test-input-btn" title="Attach test input file (optional)"
+            <button type="button" id="test-input-btn" title="{{ 'Attach required test input file' if selected_template.test_input_required else 'Attach test input file (optional)' }}"
               class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
               <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
             <span id="test-input-name" class="max-w-20 truncate font-mono opacity-60"></span>
+            <button type="button" id="test-open-btn" title="Open active Test Launch" hidden
+              class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
+              <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            </button>
             <button type="button" id="test-launch-btn" title="Test Launch"
               class="flex items-center justify-center rounded px-1 hover:bg-accent hover:text-accent-foreground transition-colors">
               <svg id="launch-icon-play" class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
               <svg id="launch-icon-spinner" hidden class="size-3 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-              <svg id="launch-icon-pause" hidden class="size-3 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>
+              <svg id="launch-icon-pause" hidden class="size-3 text-destructive" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="1.5"/></svg>
               <svg id="launch-icon-stopping" hidden class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
             </button>
           {% endif %}
@@ -1516,7 +1518,7 @@
 {% end_app_script %}
 
 {% if active_tab == "config" %}
-{% app_script "sandbox-ide-editor" %}
+{% app_script "sandbox-ide-editor-" ~ tid %}
 (function(){
 var TEMPLATE_ID = {{ tid | tojson }};
 var SEED_EL = document.getElementById('ide-seed');
@@ -2593,12 +2595,14 @@ document.head.appendChild(loaderScript);
 var termPanel     = document.getElementById('term-panel');
 var termResizeH   = document.getElementById('term-resize-handle');
 var termCloseBtn  = document.getElementById('term-close-btn');
+var termReconnectBtn = document.getElementById('term-reconnect-btn');
 var termToggleBtn = document.getElementById('ide-term-toggle');
 var xtermInstance = null;
 var xtermReady    = false;
 var xtermFit      = null;
 var termWs        = null;
 var termInstanceId = null;
+var configTerminalId = ('config-' + Math.random().toString(36).slice(2, 12)).slice(0, 40);
 
 function fitTerminalSoon() {
   if (!xtermFit) return;
@@ -2703,7 +2707,7 @@ function initXterm() {
   connectTerminal();
 }
 
-function connectTerminal() {
+function connectTerminal(force) {
   if (!xtermInstance) return;
   var instanceId = window.__csTestInstanceId;
   if (!instanceId) {
@@ -2712,7 +2716,7 @@ function connectTerminal() {
     xtermInstance.writeln('\x1b[90mClick the play button (Test Launch) above, then reopen the terminal.\x1b[0m');
     return;
   }
-  if (termInstanceId === instanceId && termWs && termWs.readyState === WebSocket.OPEN) return; // already connected to this instance
+  if (!force && termInstanceId === instanceId && termWs && termWs.readyState === WebSocket.OPEN) return; // already connected to this instance
 
   if (termWs) { try { termWs.close(); } catch(e){} termWs = null; }
   termInstanceId = instanceId;
@@ -2730,7 +2734,7 @@ function connectTerminal() {
 
 function openTerminalWs(instanceId, token) {
   var wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-  var wsUrl = wsProto + '://' + location.host + '/ws/sandbox/' + instanceId + '/terminal?token=' + encodeURIComponent(token);
+  var wsUrl = wsProto + '://' + location.host + '/ws/sandbox/' + instanceId + '/terminal?token=' + encodeURIComponent(token) + '&terminal_id=' + encodeURIComponent(configTerminalId);
 
   try {
     termWs = new WebSocket(wsUrl);
@@ -2756,7 +2760,10 @@ function openTerminalWs(instanceId, token) {
     }
   };
   termWs.onerror = function() { xtermInstance.writeln('\x1b[31mNo terminal backend available.\x1b[0m'); };
-  termWs.onclose = function() { xtermInstance.writeln('\r\n\x1b[90m[disconnected]\x1b[0m'); };
+  termWs.onclose = function() {
+    termWs = null;
+    xtermInstance.writeln('\r\n\x1b[90m[disconnected — use Reconnect]\x1b[0m');
+  };
 }
 
 // Follow the active Test Launch instance so the terminal auto-(re)connects.
@@ -2770,28 +2777,64 @@ if (termToggleBtn) {
     else closeTermPanel();
   });
 }
+if (termReconnectBtn) termReconnectBtn.addEventListener('click', function() { connectTerminal(true); });
 if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
 
-// ── Test Launch + Real-time Monitor (lives in the "Monitor" editor tab) ────
+// ── Test Launch + Real-time Monitor (template-scoped) ─────────────────────
 (function(){
+  var templateId = {{ tid | tojson }};
+  var configRoot = document.getElementById('config-ide');
+  if (!configRoot || configRoot.dataset.templateId !== templateId) return;
+
+  // app-router executes each app_script key once per document. This script is
+  // keyed by template ID, and the controller below tears down the previous
+  // template's poller/WebSocket when the admin changes the selected template.
+  if (window.__csTemplateTestController && window.__csTemplateTestController.destroy) {
+    window.__csTemplateTestController.destroy();
+  }
+
+  var destroyed = false;
+  var pollTimer = null;
   var monDot     = document.getElementById('mon-dot');
   var monStatus  = document.getElementById('mon-status');
   var monIid     = document.getElementById('mon-iid');
   var monUptime  = document.getElementById('mon-uptime');
   var stopBtn    = document.getElementById('mon-stop-btn');
   var launchBtn  = document.getElementById('test-launch-btn');
+  var openBtn    = document.getElementById('test-open-btn');
   var toolbarDot = document.getElementById('ide-monitor-dot');
 
   var monitorWs = null;
+  var monitorInstanceId = null;
   var uptimeTimer = null;
   var uptimeStart = null;
   var currentInstanceId = null;
+  var currentInstanceUrl = null;
+  var currentState = 'idle';
+  var passToastShownFor = null;
+  var testInputRequired = {{ 'true' if selected_template.test_input_required else 'false' }};
 
-  // CSRF is injected automatically by csrf-fetch.js (X-CSRF-Token header on all fetch POSTs)
+  // CSRF is injected automatically by csrf-fetch.js. Keep the form token for
+  // compatibility with deployments that do not inject the header.
   var csrfInput = document.querySelector('input[name="_csrf_token"]');
   var csrfToken = csrfInput ? csrfInput.value : '';
 
-  var currentState = 'idle';
+  function isCurrentTemplate() {
+    if (destroyed) return false;
+    var currentRoot = document.getElementById('config-ide');
+    return !!currentRoot && currentRoot.dataset.templateId === templateId;
+  }
+
+  function schedulePoll(delay) {
+    clearTimeout(pollTimer);
+    if (!destroyed) pollTimer = window.setTimeout(recoverActiveTest, delay);
+  }
+
+  function setOpenButtonVisible(visible) {
+    if (!openBtn) return;
+    if (visible) openBtn.removeAttribute('hidden');
+    else openBtn.setAttribute('hidden', '');
+  }
 
   function updateLaunchIcon(state) {
     if (!launchBtn) return;
@@ -2801,172 +2844,220 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
       pause:    document.getElementById('launch-icon-pause'),
       stopping: document.getElementById('launch-icon-stopping'),
     };
-    Object.keys(icons).forEach(function(k) { icons[k] && icons[k].setAttribute('hidden', ''); });
+    Object.keys(icons).forEach(function(k) {
+      if (icons[k]) icons[k].setAttribute('hidden', '');
+    });
 
     if (state === 'connecting' || state === 'provisioning') {
-      icons.spinner && icons.spinner.removeAttribute('hidden');
+      if (icons.spinner) icons.spinner.removeAttribute('hidden');
       launchBtn.disabled = true;
-      launchBtn.title = 'Provisioning…';
-    } else if (state === 'running') {
-      icons.pause && icons.pause.removeAttribute('hidden');
+      launchBtn.title = 'Provisioning Test Launch…';
+    } else if (state === 'running' || state === 'passed') {
+      if (icons.pause) icons.pause.removeAttribute('hidden');
       launchBtn.disabled = false;
-      launchBtn.title = 'Running — click to stop';
+      launchBtn.title = 'Stop this template Test Launch';
     } else if (state === 'stopping') {
-      icons.stopping && icons.stopping.removeAttribute('hidden');
+      if (icons.stopping) icons.stopping.removeAttribute('hidden');
       launchBtn.disabled = true;
-      launchBtn.title = 'Stopping…';
+      launchBtn.title = 'Stopping Test Launch…';
     } else {
-      icons.play && icons.play.removeAttribute('hidden');
+      if (icons.play) icons.play.removeAttribute('hidden');
       launchBtn.disabled = false;
-      launchBtn.title = 'Test Launch';
+      launchBtn.title = 'Start a Test Launch for this template';
     }
   }
 
   function setStatus(state) {
     currentState = state;
     var map = {
-      provisioning: { label: 'Provisioning…', dot: 'bg-yellow-400 animate-pulse', btn: false },
-      running:      { label: 'Running',        dot: 'bg-green-500',                btn: true  },
-      stopping:     { label: 'Stopping…',      dot: 'bg-yellow-400 animate-pulse', btn: false },
-      stopped:      { label: 'Stopped',        dot: 'bg-muted-foreground',         btn: false },
-      failed:       { label: 'Failed',         dot: 'bg-destructive',              btn: false },
-      killed:       { label: 'Killed',         dot: 'bg-destructive',              btn: false },
-      connecting:   { label: 'Connecting…',    dot: 'bg-muted-foreground animate-pulse', btn: false },
+      idle:         { label: 'Idle',          dot: 'bg-muted-foreground',              stop: false },
+      provisioning: { label: 'Provisioning…', dot: 'bg-yellow-400 animate-pulse',      stop: false },
+      connecting:   { label: 'Connecting…',   dot: 'bg-yellow-400 animate-pulse',      stop: false },
+      running:      { label: 'Running',       dot: 'bg-green-500',                     stop: true  },
+      passed:       { label: 'Test passed',   dot: 'bg-green-500',                     stop: true  },
+      stopping:     { label: 'Stopping…',     dot: 'bg-yellow-400 animate-pulse',      stop: false },
+      stopped:      { label: 'Stopped',       dot: 'bg-muted-foreground',              stop: false },
+      failed:       { label: 'Failed',        dot: 'bg-destructive',                   stop: false },
+      killed:       { label: 'Killed',        dot: 'bg-destructive',                   stop: false },
     };
-    var s = map[state] || map.connecting;
-    if (monStatus) monStatus.textContent = s.label;
-    if (monDot) monDot.className = 'size-2 rounded-full ' + s.dot;
-    if (toolbarDot) toolbarDot.className = 'size-1.5 rounded-full ' + s.dot;
-    if (stopBtn) stopBtn.disabled = !s.btn;
+    var selected = map[state] || map.connecting;
+    if (monStatus) monStatus.textContent = selected.label;
+    if (monDot) monDot.className = 'size-2 rounded-full ' + selected.dot;
+    if (toolbarDot) toolbarDot.className = 'size-1.5 rounded-full ' + selected.dot;
+    if (stopBtn) stopBtn.disabled = !selected.stop;
     updateLaunchIcon(state);
-    if (state === 'running' && !uptimeTimer) {
+
+    if ((state === 'running' || state === 'passed') && !uptimeTimer) {
       uptimeStart = Date.now();
       uptimeTimer = setInterval(function() {
         if (!monUptime) return;
         var sec = Math.floor((Date.now() - uptimeStart) / 1000);
-        var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
-        monUptime.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + s + 's';
+        var h = Math.floor(sec / 3600);
+        var m = Math.floor((sec % 3600) / 60);
+        var rest = sec % 60;
+        monUptime.textContent = (h ? h + 'h ' : '') + (m ? m + 'm ' : '') + rest + 's';
       }, 1000);
-      // No "Test passed" toast here anymore — a container starting isn't a
-      // pass for background_run/desktop_gui/android_ui (see docs/plan.md
-      // Phase 10.4). The real result is fetched once the run finishes below.
     }
-    if (state !== 'running') {
-      clearInterval(uptimeTimer); uptimeTimer = null;
-    }
-    if (state === 'stopped' || state === 'failed' || state === 'killed') {
-      window.__csTestInstanceId = null;
-      document.dispatchEvent(new CustomEvent('cs:test-instance-changed', { detail: { instanceId: null } }));
-      window.csSetMonitorAvailable && window.csSetMonitorAvailable(false);
-      reportTestResult();
+    if (state !== 'running' && state !== 'passed') {
+      clearInterval(uptimeTimer);
+      uptimeTimer = null;
     }
   }
 
-  function reportTestResult() {
-    fetch('/platform/sandboxes/{{ tid }}/test-status')
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (!data.ok) return;
-        if (data.last_test_status === 'passed') {
-          window.Toast && window.Toast.create({
-            title: 'Test passed',
-            description: 'This template can now be published from the Identity tab.',
-            type: 'success',
-          });
-        } else if (data.last_test_status === 'failed') {
-          window.Toast && window.Toast.create({
-            title: 'Test failed',
-            description: data.last_test_error || 'The test run did not meet its success condition.',
-            type: 'error',
-          });
-        }
-        var hint = document.getElementById('test-status-hint');
-        if (hint) hint.textContent = data.last_test_error
-          ? ('Last test failed: ' + data.last_test_error)
-          : (data.last_test_status === 'passed' ? 'Test passed — ready to publish' : '');
-      })
-      .catch(function() {});
+  function updateTestHint(data) {
+    if (!data) return;
+    var hints = [
+      document.getElementById('test-status-hint'),
+      document.getElementById('config-test-status-hint'),
+    ].filter(Boolean);
+    if (!hints.length) return;
+
+    var text = '';
+    var title = '';
+    if (data.active_test && data.active_test.passed) {
+      text = 'Test passed — stop after verification, then publish from Identity';
+    } else if (data.active_test && data.active_test.missing && data.active_test.missing.length) {
+      text = 'Test running — waiting for: ' + data.active_test.missing.join(', ');
+    } else if (data.last_test_status === 'passed') {
+      text = 'Test passed — ready to publish from Identity';
+    } else if (data.last_test_status === 'failed') {
+      title = data.last_test_error || 'requirements were not met';
+      text = 'Last test failed: ' + title;
+    } else if (data.active_test) {
+      text = 'Test starting…';
+    } else {
+      text = 'No active test';
+    }
+    hints.forEach(function(hint) {
+      hint.textContent = text;
+      hint.title = title || text;
+    });
   }
 
-  function openMonitor(instanceId) {
+  function announcePass(active) {
+    if (!active || !active.passed || passToastShownFor === active.instance_id) return;
+    passToastShownFor = active.instance_id;
+    window.Toast && window.Toast.create({
+      title: 'Test passed',
+      description: 'Minimum requirements passed. You may inspect it, stop it, and publish the template.',
+      type: 'success',
+    });
+  }
+
+  function resetMonitor() {
+    if (monitorWs) {
+      try { monitorWs.close(); } catch (e) {}
+    }
+    monitorWs = null;
+    monitorInstanceId = null;
+    window.csSetMonitorAvailable && window.csSetMonitorAvailable(false);
+  }
+
+  function connectMonitor(instanceId, focusView) {
+    if (!isCurrentTemplate() || !instanceId) return;
     currentInstanceId = instanceId;
     window.__csTestInstanceId = instanceId;
-    document.dispatchEvent(new CustomEvent('cs:test-instance-changed', { detail: { instanceId: instanceId } }));
+    document.dispatchEvent(new CustomEvent('cs:test-instance-changed', {
+      detail: { instanceId: instanceId, templateId: templateId }
+    }));
+    setOpenButtonVisible(true);
     if (monIid) monIid.textContent = instanceId.substring(0, 8) + '…';
-    if (monUptime) monUptime.textContent = '0s';
-
-    // Reveal the Monitor tab + toolbar indicator and switch to it.
     window.csSetMonitorAvailable && window.csSetMonitorAvailable(true);
-    window.csSwitchToMonitorView && window.csSwitchToMonitorView();
+    if (focusView) window.csSwitchToMonitorView && window.csSwitchToMonitorView();
 
-    setStatus('connecting');
+    if (monitorInstanceId === instanceId && monitorWs &&
+        (monitorWs.readyState === WebSocket.OPEN || monitorWs.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
 
-    // Reset charts
+    resetMonitor();
+    monitorInstanceId = instanceId;
+    window.csSetMonitorAvailable && window.csSetMonitorAvailable(true);
+    if (focusView) window.csSwitchToMonitorView && window.csSwitchToMonitorView();
+
     ['mon-cpu','mon-ram','mon-net','mon-disk'].forEach(function(id) {
       if (window.csCharts && window.csCharts[id]) window.csCharts[id].reset();
     });
     ['mon-cpu-val','mon-ram-val','mon-rx-val','mon-tx-val','mon-disk-val'].forEach(function(id) {
-      var el = document.getElementById(id); if (el) el.textContent = '—';
+      var el = document.getElementById(id);
+      if (el) el.textContent = '—';
     });
 
-    // Fetch a short-lived signed token, then open the WebSocket with it.
-    // The WS route lives outside the Flask session/cookie stack, so it can't
-    // authorize the connection itself — this token carries that decision over.
-    fetch('/instances/' + instanceId + '/monitor-token')
-      .then(function(r) {
-        if (!r.ok) throw new Error('token request failed (' + r.status + ')');
-        return r.json();
+    fetch('/instances/' + encodeURIComponent(instanceId) + '/monitor-token')
+      .then(function(response) {
+        if (!response.ok) throw new Error('monitor token request failed (' + response.status + ')');
+        return response.json();
       })
-      .then(function(data) { connectMonitorWs(instanceId, data.token); })
-      .catch(function() { setStatus('failed'); });
+      .then(function(data) {
+        if (!isCurrentTemplate() || currentInstanceId !== instanceId) return;
+        connectMonitorWs(instanceId, data.token);
+      })
+      .catch(function() {
+        if (isCurrentTemplate() && currentInstanceId === instanceId) setStatus('failed');
+      });
   }
 
   function connectMonitorWs(instanceId, token) {
     var proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    var wsUrl = proto + '://' + location.host + '/ws/sandbox/' + instanceId + '/monitor?token=' + encodeURIComponent(token);
+    var wsUrl = proto + '://' + location.host + '/ws/sandbox/' + encodeURIComponent(instanceId) +
+      '/monitor?token=' + encodeURIComponent(token);
     try {
       monitorWs = new WebSocket(wsUrl);
-    } catch(e) {
+    } catch (e) {
       setStatus('failed');
       return;
     }
 
     monitorWs.onopen = function() {
-      setStatus('provisioning');
+      if (isCurrentTemplate() && currentInstanceId === instanceId && currentState === 'connecting') {
+        setStatus('provisioning');
+      }
     };
 
-    monitorWs.onmessage = function(e) {
+    monitorWs.onmessage = function(event) {
+      if (!isCurrentTemplate() || currentInstanceId !== instanceId) return;
       var msg;
-      try { msg = JSON.parse(e.data); } catch(ex) { return; }
-
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === 'heartbeat') return;
 
       if (msg.type === 'metrics') {
-        var ts = new Date(msg.ts * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        var ts = new Date(msg.ts * 1000).toLocaleTimeString([], {
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
         if (window.csCharts) {
-          if (window.csCharts['mon-cpu'])  window.csCharts['mon-cpu'].addPoint('cpu', msg.cpu_pct, ts);
-          if (window.csCharts['mon-ram'])  window.csCharts['mon-ram'].addPoint('ram', msg.mem_mb, ts);
-          if (window.csCharts['mon-net'])  window.csCharts['mon-net'].addMulti({ net_rx: msg.net_rx_kb, net_tx: msg.net_tx_kb }, ts);
+          if (window.csCharts['mon-cpu']) window.csCharts['mon-cpu'].addPoint('cpu', msg.cpu_pct, ts);
+          if (window.csCharts['mon-ram']) window.csCharts['mon-ram'].addPoint('ram', msg.mem_mb, ts);
+          if (window.csCharts['mon-net']) window.csCharts['mon-net'].addMulti({
+            net_rx: msg.net_rx_kb, net_tx: msg.net_tx_kb
+          }, ts);
           if (window.csCharts['mon-disk']) window.csCharts['mon-disk'].addPoint('disk', msg.disk_pct, ts);
         }
-        var cpuEl  = document.getElementById('mon-cpu-val');  if (cpuEl)  cpuEl.textContent  = msg.cpu_pct.toFixed(1) + '%';
-        var ramEl  = document.getElementById('mon-ram-val');  if (ramEl)  ramEl.textContent  = msg.mem_mb + ' MB';
-        var rxEl   = document.getElementById('mon-rx-val');   if (rxEl)   rxEl.textContent   = '↓' + msg.net_rx_kb.toFixed(1) + ' KB/s';
-        var txEl   = document.getElementById('mon-tx-val');   if (txEl)   txEl.textContent   = '↑' + msg.net_tx_kb.toFixed(1) + ' KB/s';
-        var diskEl = document.getElementById('mon-disk-val'); if (diskEl) diskEl.textContent = msg.disk_pct.toFixed(1) + '%';
+        var cpuEl = document.getElementById('mon-cpu-val');
+        var ramEl = document.getElementById('mon-ram-val');
+        var rxEl = document.getElementById('mon-rx-val');
+        var txEl = document.getElementById('mon-tx-val');
+        var diskEl = document.getElementById('mon-disk-val');
+        if (cpuEl) cpuEl.textContent = Number(msg.cpu_pct || 0).toFixed(1) + '%';
+        if (ramEl) ramEl.textContent = Number(msg.mem_mb || 0) + ' MB';
+        if (rxEl) rxEl.textContent = '↓' + Number(msg.net_rx_kb || 0).toFixed(1) + ' KB/s';
+        if (txEl) txEl.textContent = '↑' + Number(msg.net_tx_kb || 0).toFixed(1) + ' KB/s';
+        if (diskEl) diskEl.textContent = Number(msg.disk_pct || 0).toFixed(1) + '%';
       }
 
       if (msg.type === 'event') {
-        if (msg.event === 'started')  setStatus('running');
-        if (msg.event === 'stopped' || msg.event === 'killed' || msg.event === 'failed') setStatus(msg.event);
+        if (msg.event === 'started') setStatus('running');
+        if (msg.event === 'stopped' || msg.event === 'killed' || msg.event === 'failed') {
+          setStatus(msg.event);
+        }
       }
-
       if (msg.type === 'error') setStatus('failed');
     };
 
-    monitorWs.onerror = function() { setStatus('failed'); };
+    monitorWs.onerror = function() {
+      // The status poll remains authoritative and may reconnect on the next pass.
+    };
     monitorWs.onclose = function() {
-      if (monStatus && monStatus.textContent === 'Running') setStatus('stopped');
+      monitorWs = null;
     };
   }
 
@@ -2975,7 +3066,7 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
   var testInputName = document.getElementById('test-input-name');
   if (testInputBtn) {
     testInputBtn.addEventListener('click', function() {
-      testInputFileEl && testInputFileEl.click();
+      if (testInputFileEl) testInputFileEl.click();
     });
   }
   if (testInputFileEl) {
@@ -2985,60 +3076,135 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
     });
   }
 
+  function openActiveTest() {
+    if (currentInstanceUrl) window.open(currentInstanceUrl, '_blank', 'noopener');
+  }
+
   function launchTestInstance() {
-    launchBtn.disabled = true;
-    var formData = new FormData();
     var file = testInputFileEl && testInputFileEl.files[0];
+    if (testInputRequired && !file) {
+      window.Toast && window.Toast.create({
+        title: 'Input file required',
+        description: 'Select the required test file before starting this template.',
+        type: 'error',
+      });
+      if (testInputFileEl) testInputFileEl.click();
+      return;
+    }
+
+    var testTab = window.open('', '_blank');
+    if (testTab) {
+      testTab.document.title = 'Preparing Test Launch…';
+      testTab.document.body.innerHTML =
+        '<div style="font-family:system-ui;padding:32px">Preparing the configured sandbox…</div>';
+    }
+    setStatus('provisioning');
+    var formData = new FormData();
     if (file) formData.append('test_input_file', file);
-    fetch('/platform/sandboxes/{{ tid }}/test-run', {
+
+    fetch('/platform/sandboxes/' + encodeURIComponent(templateId) + '/test-run', {
       method: 'POST',
       body: formData,
     })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (data.ok) {
-        openMonitor(data.instance_id);
-      } else {
-        launchBtn.disabled = false;
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        if (!data.ok) throw new Error(data.error || 'Unknown error');
+        if (!isCurrentTemplate()) {
+          if (testTab) testTab.close();
+          return;
+        }
+        currentInstanceId = data.instance_id;
+        currentInstanceUrl = data.instance_url || ('/instances/' + data.instance_id);
+        connectMonitor(currentInstanceId, true);
+        setStatus('provisioning');
+        if (testTab) testTab.location.replace(currentInstanceUrl);
+        else window.open(currentInstanceUrl, '_blank', 'noopener');
+      })
+      .catch(function(error) {
+        if (testTab) testTab.close();
+        if (!isCurrentTemplate()) return;
+        currentInstanceId = null;
+        currentInstanceUrl = null;
+        setOpenButtonVisible(false);
+        setStatus('failed');
         window.Toast && window.Toast.create({
           title: 'Launch failed',
-          description: data.error || 'Unknown error',
+          description: error.message,
           type: 'error',
         });
-      }
-    })
-    .catch(function(err) {
-      launchBtn.disabled = false;
+      });
+  }
+
+  function stopTestInstance() {
+    if (!currentInstanceId || currentState === 'stopping') return;
+    setStatus('stopping');
+    fetch('/instances/' + encodeURIComponent(currentInstanceId) + '/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: '_csrf_token=' + encodeURIComponent(csrfToken),
+    }).catch(function(error) {
+      if (!isCurrentTemplate()) return;
+      setStatus('failed');
       window.Toast && window.Toast.create({
-        title: 'Network error',
-        description: err.message,
+        title: 'Could not stop test',
+        description: error.message || 'The stop request failed.',
         type: 'error',
       });
     });
   }
 
-  function stopTestInstance() {
-    if (!currentInstanceId) return;
-    setStatus('stopping'); // optimistic — disables both buttons immediately
-    fetch('/instances/' + currentInstanceId + '/stop', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: '_csrf_token=' + encodeURIComponent(csrfToken),
-    }).catch(function() {});
-  }
-
   if (launchBtn) {
     launchBtn.addEventListener('click', function() {
-      if (currentState === 'running') stopTestInstance();
+      if (currentInstanceId) stopTestInstance();
       else launchTestInstance();
     });
   }
+  if (openBtn) openBtn.addEventListener('click', openActiveTest);
+  if (stopBtn) stopBtn.addEventListener('click', stopTestInstance);
 
-  if (stopBtn) {
-    stopBtn.addEventListener('click', stopTestInstance);
+  function recoverActiveTest() {
+    if (!isCurrentTemplate()) return;
+    fetch('/platform/sandboxes/' + encodeURIComponent(templateId) + '/test-status', {
+      cache: 'no-store'
+    })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        if (!isCurrentTemplate()) return;
+        updateTestHint(data);
+        var active = data.ok ? data.active_test : null;
+        if (!active) {
+          currentInstanceId = null;
+          currentInstanceUrl = null;
+          window.__csTestInstanceId = null;
+          document.dispatchEvent(new CustomEvent('cs:test-instance-changed', {
+            detail: { instanceId: null, templateId: templateId }
+          }));
+          setOpenButtonVisible(false);
+          resetMonitor();
+          setStatus(data.last_test_status === 'failed' ? 'failed' : 'idle');
+          schedulePoll(1800);
+          return;
+        }
+
+        var instanceChanged = currentInstanceId !== active.instance_id;
+        currentInstanceId = active.instance_id;
+        currentInstanceUrl = active.url || ('/instances/' + active.instance_id);
+        setOpenButtonVisible(true);
+        if (instanceChanged || !monitorWs) connectMonitor(currentInstanceId, false);
+
+        if (active.status === 'stopping' || active.status === 'cleanup') {
+          setStatus('stopping');
+        } else if (active.status === 'running') {
+          setStatus(active.passed ? 'passed' : 'running');
+          announcePass(active);
+        } else {
+          setStatus('provisioning');
+        }
+        schedulePoll(1200);
+      })
+      .catch(function() { schedulePoll(2500); });
   }
 
-  // ── Chart time-window toggle (1m / 5m) ─────────────────────────────────
   var monWindowBtns = Array.prototype.slice.call(document.querySelectorAll('.mon-window-btn'));
   function setChartWindow(seconds) {
     monWindowBtns.forEach(function(btn) {
@@ -3056,9 +3222,37 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
   });
   setChartWindow(60);
 
-  window.addEventListener('beforeunload', function() {
-    if (monitorWs) { try { monitorWs.close(); } catch(e){} }
-  });
+  function destroyController() {
+    if (destroyed) return;
+    destroyed = true;
+    clearTimeout(pollTimer);
+    clearInterval(uptimeTimer);
+    if (monitorWs) {
+      try { monitorWs.close(); } catch (e) {}
+    }
+    monitorWs = null;
+    if (window.__csTemplateTestController &&
+        window.__csTemplateTestController.templateId === templateId) {
+      window.__csTemplateTestController = null;
+    }
+  }
+
+  window.__csTemplateTestController = {
+    templateId: templateId,
+    destroy: destroyController,
+  };
+  // Never inherit another template's active Test Launch while the template-
+  // scoped status request is still in flight. Recovery below restores only the
+  // active test belonging to this exact template and actor.
+  window.__csTestInstanceId = null;
+  document.dispatchEvent(new CustomEvent('cs:test-instance-changed', {
+    detail: { instanceId: null, templateId: templateId }
+  }));
+  setOpenButtonVisible(false);
+  window.csSetMonitorAvailable && window.csSetMonitorAvailable(false);
+  setStatus('idle');
+  window.addEventListener('beforeunload', destroyController, { once: true });
+  recoverActiveTest();
 })();
 
 // Vertical resize handle for terminal panel

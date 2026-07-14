@@ -8,7 +8,8 @@
     var terminalCount = 0;
     var maxEditors = 3;
     var maxTerminals = 3;
-    var terminalStates = {}; // name -> { name, term, fitAddon, ws, ro }
+    var terminalStates = {}; // name -> { name, terminalId, term, fitAddon, ws, ro }
+    var terminalClientId = ('lab-' + Math.random().toString(36).slice(2, 12)).slice(0, 20);
     var openFileState = {};   // path -> { original: string }
 
     var $ = function (selector, base) {
@@ -160,7 +161,7 @@
       var wsProto = location.protocol === "https:" ? "wss" : "ws";
       var wsUrl = wsProto + "://" + location.host + "/ws/sandbox/" + instanceId +
         "/terminal?token=" + encodeURIComponent(token) +
-        "&terminal_id=" + encodeURIComponent(state.name);
+        "&terminal_id=" + encodeURIComponent(state.terminalId);
 
       var ws;
       try {
@@ -175,6 +176,7 @@
         var msg;
         try { msg = JSON.parse(e.data); } catch (ex) { return; }
         if (msg.type === "ready") {
+          if (window.csReportUiEvidence) window.csReportUiEvidence("terminal_ready").catch(function () {});
           try { state.fitAddon.fit(); } catch (err) {}
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "resize", cols: state.term.cols, rows: state.term.rows }));
@@ -188,7 +190,26 @@
         }
       };
       ws.onerror = function () { state.term.writeln("\x1b[31mNo terminal backend available.\x1b[0m"); };
-      ws.onclose = function () { state.term.writeln("\r\n\x1b[90m[disconnected]\x1b[0m"); };
+      ws.onclose = function () {
+        if (state.ws === ws) state.ws = null;
+        state.term.writeln("\r\n\x1b[90m[disconnected — use Reconnect]\x1b[0m");
+      };
+    }
+
+    function reconnectTerminalState(state, instanceId) {
+      if (!state || !state.term || !instanceId) return;
+      if (state.ws) { try { state.ws.close(); } catch (e) {} }
+      state.ws = null;
+      state.term.writeln("\r\n\x1b[90mConnecting to sandbox terminal…\x1b[0m");
+      fetch("/instances/" + instanceId + "/monitor-token?purpose=terminal")
+        .then(function (r) {
+          if (!r.ok) throw new Error("token request failed (" + r.status + ")");
+          return r.json();
+        })
+        .then(function (data) { openTerminalWs(state, instanceId, data.token); })
+        .catch(function (err) {
+          state.term.writeln("\x1b[31mCould not authenticate terminal: " + err.message + "\x1b[0m");
+        });
     }
 
     function connectRealTerminal(name, pane) {
@@ -216,7 +237,14 @@
         term.loadAddon(fitAddon);
         term.open(pane);
 
-        var state = { name: name, term: term, fitAddon: fitAddon, ws: null, ro: null };
+        var state = {
+          name: name,
+          terminalId: (terminalClientId + '-' + name).slice(0, 40),
+          term: term,
+          fitAddon: fitAddon,
+          ws: null,
+          ro: null
+        };
         terminalStates[name] = state;
 
         var ro = new ResizeObserver(function () {
@@ -234,17 +262,7 @@
           }
         });
 
-        term.writeln("\x1b[90mConnecting to sandbox terminal…\x1b[0m");
-
-        fetch("/instances/" + instanceId + "/monitor-token?purpose=terminal")
-          .then(function (r) {
-            if (!r.ok) throw new Error("token request failed (" + r.status + ")");
-            return r.json();
-          })
-          .then(function (data) { openTerminalWs(state, instanceId, data.token); })
-          .catch(function (err) {
-            term.writeln("\x1b[31mCould not authenticate terminal: " + err.message + "\x1b[0m");
-          });
+        reconnectTerminalState(state, instanceId);
 
         setTimeout(function () { try { fitAddon.fit(); } catch (e) {} }, 50);
       });
@@ -369,6 +387,9 @@
         if (!res.ok) {
           container.innerHTML = '<div class="px-2 py-1 text-red-400">' + escHtml(res.error || "failed to load") + "</div>";
           return;
+        }
+        if (path === "/" && window.csReportUiEvidence) {
+          window.csReportUiEvidence("filesystem_ready").catch(function () {});
         }
         if (!res.entries.length) {
           container.innerHTML = '<div class="px-2 py-1 text-muted-foreground/60">Empty</div>';
@@ -748,6 +769,7 @@
       var action =
         target.closest("[data-toggle-panel]") ||
         target.closest("[data-toggle-right]") ||
+        target.closest("[data-reconnect-terminal]") ||
         target.closest("[data-new-terminal]") ||
         target.closest(".tab-close") ||
         target.closest(".terminal-tab-close") ||
@@ -759,6 +781,17 @@
 
       if (action.dataset.togglePanel) return togglePanel(action.dataset.togglePanel);
       if (action.dataset.toggleRight) return toggleRight(action.dataset.toggleRight);
+
+      if (action.dataset.reconnectTerminal !== undefined) {
+        var activeTerminal = visibleTerminalTabs().find(function (tab) {
+          return tab.classList.contains("active-terminal");
+        });
+        var activeName = activeTerminal && activeTerminal.dataset.terminalTab;
+        if (activeName && terminalStates[activeName]) {
+          reconnectTerminalState(terminalStates[activeName], root.dataset.instanceId);
+        }
+        return;
+      }
 
       if (action.dataset.newTerminal !== undefined) {
         var terminalName = createCleanTerminal();

@@ -2,6 +2,112 @@
   <div class="border-y border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
 {% endif %}
 
+{% if instance.status == "running" %}
+  {% app_script "sandbox-ui-evidence-" ~ instance.id ~ "-" ~ (((ui_workflow_node or {}).get("id")) or ui_mode) %}
+  (function () {
+    var instanceId = {{ instance.id | tojson }};
+    var completionRequirements = {{ ((ui_workflow_node or {}).get('completion_requirements') or []) | tojson }};
+    window.csReportUiEvidence = function (requirement) {
+      return fetch('/instances/' + encodeURIComponent(instanceId) + '/ui-evidence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requirement: requirement })
+      }).then(function (response) { return response.json(); })
+        .then(function (data) {
+          if (!data.ok) throw new Error(data.error || 'Could not record UI evidence.');
+          if (data.recorded && completionRequirements.indexOf(requirement) !== -1) {
+            window.setTimeout(function () { window.location.reload(); }, 150);
+          }
+          return data;
+        });
+    };
+    window.csReportTestEvidence = window.csReportUiEvidence;
+  })();
+  {% end_app_script %}
+{% endif %}
+
+{% if test_context %}
+  <div id="test-launch-banner"
+       class="fixed left-1/2 top-[3.5rem] z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg"
+       data-template-id="{{ template.id }}"
+       data-instance-id="{{ instance.id }}"
+       data-instance-status="{{ instance.status }}">
+    <div class="min-w-0">
+      <div class="font-medium">Template Test Launch</div>
+      <div id="test-launch-state" class="max-w-xl truncate text-muted-foreground">
+        {% if test_context.passed %}Minimum requirements passed. Verify the sandbox, then stop the test.
+        {% elif test_context.missing %}Waiting for: {{ test_context.missing | join(', ') }}
+        {% else %}Preparing the configured sandbox…{% endif %}
+      </div>
+    </div>
+    <span id="test-launch-badge" class="rounded-md border px-2 py-1 font-medium">
+      {{ 'Passed' if test_context.passed else instance.status | replace('_', ' ') | title }}
+    </span>
+    {% if instance.status in ['idle', 'provisioning', 'running', 'stopping', 'cleanup'] %}
+      <form method="post" action="/instances/{{ instance.id }}/stop" class="shrink-0">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="rounded-md border px-2 py-1 font-medium hover:bg-accent">Stop test</button>
+      </form>
+    {% endif %}
+  </div>
+  {% app_script "sandbox-test-launch-state-" ~ instance.id %}
+  (function () {
+    var banner = document.getElementById('test-launch-banner');
+    if (!banner) return;
+    var templateId = banner.dataset.templateId;
+    var instanceId = banner.dataset.instanceId;
+    var initialStatus = banner.dataset.instanceStatus;
+    var stateEl = document.getElementById('test-launch-state');
+    var badgeEl = document.getElementById('test-launch-badge');
+    var lastEvidenceKey = '';
+
+    function updateProgress(progress) {
+      if (!progress) return;
+      if (badgeEl) badgeEl.textContent = progress.stale ? 'Stale' : (progress.passed ? 'Passed' : 'Running');
+      if (stateEl) {
+        stateEl.textContent = progress.stale
+          ? 'Template configuration changed. Stop this test and start a new one.'
+          : progress.passed
+          ? 'Minimum requirements passed. Verify the sandbox, then stop the test.'
+          : ((progress.missing && progress.missing.length)
+              ? 'Waiting for: ' + progress.missing.join(', ')
+              : 'Running configured checks…');
+      }
+    }
+
+    function poll() {
+      fetch('/platform/sandboxes/' + encodeURIComponent(templateId) + '/test-status', { cache: 'no-store' })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+          if (!data.ok) return;
+          var active = data.active_test;
+          if (!active || active.instance_id !== instanceId) {
+            if (badgeEl) badgeEl.textContent = data.last_test_status === 'passed' ? 'Passed' : 'Finished';
+            if (stateEl) stateEl.textContent = data.last_test_status === 'passed'
+              ? 'Test passed.'
+              : (data.last_test_error || 'Test finished.');
+            return;
+          }
+          updateProgress(active);
+          var evidenceKey = JSON.stringify(active.evidence || []);
+          if (lastEvidenceKey && evidenceKey !== lastEvidenceKey && {{ 'true' if ui_workflow_node else 'false' }}) {
+            window.location.reload();
+            return;
+          }
+          lastEvidenceKey = evidenceKey;
+          if (initialStatus !== 'running' && active.status === 'running') {
+            window.location.reload();
+            return;
+          }
+          window.setTimeout(poll, 1200);
+        })
+        .catch(function () { window.setTimeout(poll, 2000); });
+    }
+    window.setTimeout(poll, 500);
+  })();
+  {% end_app_script %}
+{% endif %}
+
 {% if workflow_run %}
   {% import "components/ui/button.html" as wf_button %}
   <div class="fixed right-4 top-[3.5rem] z-40 flex max-w-xs items-center gap-3 rounded-lg border bg-card px-3 py-2 text-xs shadow-lg">
@@ -52,7 +158,15 @@
   {% end_app_script %}
 {% endif %}
 
-{% if ui_mode == "terminal_only" %}
+{% if test_context and instance.status != "running" %}
+  <div class="grid h-[calc(100vh-2.85rem)] place-items-center p-6">
+    <div class="max-w-lg rounded-xl border bg-card p-6 text-center">
+      <div class="mx-auto mb-3 size-6 animate-spin rounded-full border-2 border-muted border-t-foreground"></div>
+      <h1 class="text-lg font-semibold">{{ 'Preparing Test Launch' if instance.status in ['idle', 'provisioning'] else 'Test Run Finished' }}</h1>
+      <p class="mt-2 text-sm text-muted-foreground">Status: {{ instance.status | replace('_', ' ') }}</p>
+    </div>
+  </div>
+{% elif ui_mode == "terminal_only" %}
   {% include "(admin)/instances/[instance_id]/_components/terminal_only.html" %}
 {% elif ui_mode == "lab_ui" %}
   {% include "(admin)/instances/[instance_id]/_components/lab_ui.html" %}

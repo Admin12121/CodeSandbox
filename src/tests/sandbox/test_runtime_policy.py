@@ -232,6 +232,29 @@ def test_forbidden_args_enforced_generically(ctx: TestContext) -> None:
         raise AssertionError("forbidden_args from runtime_config must be enforced.")
 
 
+def test_platform_environment_names_cannot_be_overridden(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.runtime.policy import (
+        PolicyBuilder,
+        RuntimePolicyError,
+        resolve_effective_plan,
+    )
+
+    effective = resolve_effective_plan(_template(), _plan())
+    try:
+        PolicyBuilder().build(
+            _template(
+                runtime_config=_runtime_config(
+                    environment={"CODESANDBOX_USERNAME": "fake-user"}
+                )
+            ),
+            effective,
+        )
+    except RuntimePolicyError as exc:
+        assert "managed by the platform" in str(exc)
+    else:
+        raise AssertionError("Templates must not override platform-owned identity variables.")
+
+
 def test_no_hardcoded_template_slug_in_policy_builder(ctx: TestContext) -> None:
     """Regression guard: PolicyBuilder must never branch on a literal
     template slug/name again."""
@@ -305,6 +328,7 @@ TESTS: list[TestCase] = [
     TestCase("reverse engineering no internet", "sandbox", test_full_internet_blocked_for_reverse_engineering),
     TestCase("required_args enforced generically", "sandbox", test_required_args_enforced_generically),
     TestCase("forbidden_args enforced generically", "sandbox", test_forbidden_args_enforced_generically),
+    TestCase("platform environment names are reserved", "sandbox", test_platform_environment_names_cannot_be_overridden),
     TestCase("no hardcoded slug in policy builder", "sandbox", test_no_hardcoded_template_slug_in_policy_builder),
     TestCase("worker filesystem path confinement", "sandbox", test_worker_filesystem_paths_stay_in_workspace),
 ]

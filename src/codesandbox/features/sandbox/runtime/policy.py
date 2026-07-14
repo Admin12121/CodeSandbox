@@ -41,6 +41,12 @@ SUPPORTED_UI_MODES = {"terminal_only", "lab_ui", "background_run", "desktop_gui"
 SUPPORTED_IMAGE_PULL_POLICIES = {"always", "if_not_present", "never"}
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
+_PLATFORM_ENVIRONMENT_NAMES = {
+    "CODESANDBOX_USERNAME",
+    "CODESANDBOX_INPUT_NAME",
+    "USER",
+    "LOGNAME",
+}
 
 
 def parse_runtime_config(runtime_config: Any) -> dict:
@@ -168,6 +174,10 @@ def _runtime_environment(value: Any) -> dict[str, str]:
         name = str(raw_name)
         if not _ENV_NAME_RE.fullmatch(name):
             raise RuntimePolicyError(f"Invalid runtime environment variable name: {name}.")
+        if name in _PLATFORM_ENVIRONMENT_NAMES:
+            raise RuntimePolicyError(
+                f"Runtime environment variable {name} is managed by the platform."
+            )
         rendered = str(raw_value)
         if "\x00" in rendered or len(rendered) > 16384:
             raise RuntimePolicyError(f"Invalid value for runtime environment variable: {name}.")
@@ -382,6 +392,9 @@ class PolicyBuilder:
         environment = _runtime_environment(template_runtime_config.get("environment"))
         image_pull_policy = _image_pull_policy(template_runtime_config.get("image_pull_policy"))
         exposed_ports = _exposed_ports(template_runtime_config.get("exposed_ports"))
+        container_start_user = str(template_runtime_config.get("container_start_user") or "").strip()
+        terminal_user = str(template_runtime_config.get("terminal_user") or "").strip()
+        allow_sudo = bool(template_runtime_config.get("allow_sudo", False))
         driver_config = template_runtime_config.get("driver")
         driver_config = driver_config if isinstance(driver_config, dict) else {}
 
@@ -466,6 +479,34 @@ class PolicyBuilder:
         android_ui_raw = ui_feature_config.get("android_ui")
         android_ui_config = android_ui_raw if isinstance(android_ui_raw, dict) else {}
 
+        runtime_evidence_logs: list[str] = []
+        for value in test_config.get("log_contains") or []:
+            pattern = str(value or "").strip()
+            if pattern and pattern not in runtime_evidence_logs:
+                runtime_evidence_logs.append(pattern)
+        for mode_config in ui_feature_config.values():
+            if not isinstance(mode_config, dict):
+                continue
+            completion = mode_config.get("completion_log")
+            values = completion if isinstance(completion, list) else [completion]
+            for value in values:
+                pattern = str(value or "").strip()
+                if pattern and pattern not in runtime_evidence_logs:
+                    runtime_evidence_logs.append(pattern)
+        try:
+            workflow_graph = json.loads(str(_value(template, "ui_workflow_json", "") or "{}"))
+        except (TypeError, ValueError):
+            workflow_graph = {}
+        for node in workflow_graph.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            for requirement in node.get("completion_requirements") or []:
+                value = str(requirement or "").strip()
+                if value.startswith("log:"):
+                    pattern = value.removeprefix("log:").strip()
+                    if pattern and pattern not in runtime_evidence_logs:
+                        runtime_evidence_logs.append(pattern)
+
         return {
             "version": POLICY_VERSION,
             "runtime_class": runtime_class,
@@ -508,14 +549,18 @@ class PolicyBuilder:
             "required_args": required_args,
             "forbidden_args": forbidden_args,
             "test_config": test_config,
+            "runtime_evidence_logs": runtime_evidence_logs,
             "desktop_gui": desktop_gui_config,
             "android_ui": android_ui_config,
             "allow_root": bool(_value(template, "allow_root", False)),
             "read_only_root": bool(_value(template, "read_only_root", True)),
             "run_as_user": str(_value(template, "run_as_user", "") or ""),
+            "container_start_user": container_start_user,
+            "terminal_user": terminal_user,
+            "allow_sudo": allow_sudo,
             "pids_limit": max(32, min(4096, int(_value(template, "pids_limit", 256) or 256))),
             "security": {
-                "no_new_privileges": True,
+                "no_new_privileges": not allow_sudo,
                 "cap_drop": ["ALL"],
                 "privileged": False,
                 "host_mounts": False,

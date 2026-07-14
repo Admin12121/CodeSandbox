@@ -14,6 +14,7 @@ from codesandbox.shared.storage import get_private_object, upload_image_from_fil
 from codesandbox.web.blueprint import web_bp
 from codesandbox.web.csrf import csrf_exempt
 
+from . import repository
 from .service import (
     can_open_instance_channel,
     delete_plan,
@@ -25,6 +26,7 @@ from .service import (
     list_reconcile_candidates,
     log_channel_token_issued,
     make_worker_callback_token,
+    record_instance_ui_evidence,
     save_plan,
     save_template,
     save_template_config,
@@ -43,10 +45,10 @@ from .service import (
 _WS_TOKEN_SALT = "sandbox.monitor-ws"
 _WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 _WORKER_ACTION_EVENTS = {
-    "start": {"started", "heartbeat", "cleanup_started", "stopped", "expired", "failed", "escape_attempt", "artifact_ready"},
-    "stop": {"heartbeat", "cleanup_started", "artifact_ready", "stopped", "expired", "failed"},
-    "kill": {"cleanup_started", "artifact_ready", "killed", "failed"},
-    "reconcile": {"started", "heartbeat", "cleanup_started", "artifact_ready", "stopped", "expired", "killed", "failed"},
+    "start": {"started", "heartbeat", "cleanup_started", "stopped", "expired", "failed", "escape_attempt", "artifact_ready", "runtime_evidence"},
+    "stop": {"heartbeat", "cleanup_started", "artifact_ready", "runtime_evidence", "stopped", "expired", "failed"},
+    "kill": {"cleanup_started", "artifact_ready", "runtime_evidence", "killed", "failed"},
+    "reconcile": {"started", "heartbeat", "cleanup_started", "artifact_ready", "runtime_evidence", "stopped", "expired", "killed", "failed"},
 }
 
 def _save_thumbnail(file_storage) -> str | None:
@@ -284,7 +286,10 @@ def delete_plan_action(plan_id: str):
 @web_bp.get("/platform/sandboxes/<template_id>/test-status")
 @platform_perm("platform.sandboxes.manage")
 def test_status_action(template_id: str):
-    result = get_template_test_status(template_id)
+    cs = get_current_session()
+    result = get_template_test_status(
+        template_id, actor_user_id=str(cs.user.id) if cs else None
+    )
     if result is None:
         return {"ok": False, "error": "Template not found."}, 404
     return {"ok": True, **result}
@@ -302,7 +307,26 @@ def test_run_action(template_id: str):
     )
     if err:
         return {"ok": False, "error": err}, 400
-    return {"ok": True, "instance_id": result["id"]}
+    return {
+        "ok": True,
+        "instance_id": result["id"],
+        "instance_url": result.get("instance_url") or f"/instances/{result['id']}",
+        "resumed": bool(result.get("resumed")),
+    }
+
+
+@web_bp.post("/instances/<instance_id>/ui-evidence")
+def ui_evidence_action(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        return {"ok": False, "error": "Authentication required."}, 401
+    body = request.get_json(silent=True) or {}
+    result, error = record_instance_ui_evidence(
+        instance_id, str(cs.user.id), str(body.get("requirement") or "")
+    )
+    if error:
+        return {"ok": False, "error": error}, 400
+    return {"ok": True, **(result or {})}
 
 
 # ── Instance stop (user-facing) ───────────────────────────────────────────────
@@ -323,9 +347,15 @@ def stop_instance_action(instance_id: str):
     cs = get_current_session()
     if not cs:
         return redirect("/login", 303)
-    _, err = stop_instance(instance_id, actor_user_id=str(cs.user.id))
+    existing = repository.get_instance(instance_id)
+    was_test = bool(existing and existing.workspace_type == "test")
+    result, err = stop_instance(instance_id, actor_user_id=str(cs.user.id))
     if err:
-        return redirect(f"/my-instances?error={quote(err)}", 303)
+        target = f"/instances/{instance_id}" if was_test else "/my-instances"
+        separator = "&" if "?" in target else "?"
+        return redirect(f"{target}{separator}error={quote(err)}", 303)
+    if was_test or (result and result.get("workspace_type") == "test"):
+        return redirect(f"/instances/{instance_id}", 303)
     return redirect("/my-instances", 303)
 
 

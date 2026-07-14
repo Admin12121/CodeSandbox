@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import posixpath
 import os
@@ -43,6 +44,10 @@ from .ui_workflow import (
 
 _WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 
+_TEST_EVIDENCE_EVENT = "test.evidence"
+_RUNTIME_EVIDENCE_EVENT = "runtime.evidence"
+_SAFE_TEST_REQUIREMENT_RE = re.compile(r"^[^\x00\r\n]{1,240}$")
+
 
 def _slugify(name: str) -> str:
     slug = name.lower().strip()
@@ -57,11 +62,26 @@ def _parse_decimal(value: str) -> Decimal | None:
         return None
 
 
+def _sandbox_username_for_user_id(user_id: str | None) -> str:
+    """Return a safe display/login name without exposing the user's email."""
+    from codesandbox.features.identity.models import User
+
+    user = User.objects.filter(id=user_id).first() if user_id else None
+    raw = (user.name if user else "") or ((user.email.split("@", 1)[0]) if user else "") or "student"
+    value = re.sub(r"[^a-z0-9_-]+", "_", raw.strip().lower()).strip("_-")
+    if not value or not value[0].isalpha():
+        value = "user_" + value
+    return value[:31] or "student"
+
+
 _RUNTIME_EXECUTION_CONFIG_KEYS = (
     "image_pull_policy",
     "workspace_enabled",
     "entrypoint",
     "environment",
+    "container_start_user",
+    "terminal_user",
+    "allow_sudo",
     "exposed_ports",
     "driver",
     "required_args",
@@ -274,10 +294,15 @@ def validate_ui_mode_config(
     if "background_run" in allowed_ui_modes:
         bg = _ui_feature_config(runtime_config, "background_run")
         success_condition = str(bg.get("success_condition") or runtime_config.get("success_condition") or "").strip()
+        test_config = runtime_config.get("test_config") if isinstance(runtime_config.get("test_config"), dict) else {}
+        explicit_requirements = test_config.get("requirements") or []
+        has_explicit_requirements = isinstance(explicit_requirements, list) and any(
+            str(value or "").strip() for value in explicit_requirements
+        )
         if require_publish_ready and not default_command.strip():
             return "Background Run requires a command before publishing."
-        if require_publish_ready and not success_condition:
-            return "Background Run requires a success_condition in runtime.json before publishing."
+        if require_publish_ready and not success_condition and not has_explicit_requirements:
+            return "Background Run requires test_config.requirements or a success_condition in runtime.json before publishing."
 
     if "desktop_gui" in allowed_ui_modes:
         desktop = _ui_feature_config(runtime_config, "desktop_gui")
@@ -358,6 +383,7 @@ def _instance_dict(inst, template_cache: dict | None = None) -> dict:
         "default_ui_mode": default_ui_mode,
         "plan_id": inst.plan_id,
         "workspace_type": inst.workspace_type,
+        "user_config": inst.user_config or "",
         "workspace_user_id": str(inst.workspace_user_id) if inst.workspace_user_id else None,
         "workspace_org_id": str(inst.workspace_org_id) if inst.workspace_org_id else None,
         "assigned_to_user_id": str(inst.assigned_to_user_id) if inst.assigned_to_user_id else None,
@@ -625,6 +651,7 @@ def _template_dict(t) -> dict:
         "output_mount_path": t.output_mount_path or "",
         "artifact_paths": t.artifact_paths or "",
         "input_required": bool(t.input_required),
+        "test_input_required": bool(t.input_required or _test_config_for_template(t).get("requires_input")),
         "max_upload_mb": int(t.max_upload_mb or 50),
         "sandbox_type": t.sandbox_type,
         "runtime_class": t.runtime_class,
@@ -929,13 +956,38 @@ def set_template_status(template_id: str, status: str, actor_user_id: str | None
     return None
 
 
-def get_template_test_status(template_id: str) -> dict | None:
+def get_template_test_status(
+    template_id: str,
+    actor_user_id: str | None = None,
+) -> dict | None:
     t = repository.get_template(template_id)
     if t is None:
         return None
+    active = repository.find_active_test_instance(
+        template_id, actor_user_id=actor_user_id
+    )
+    active_payload = None
+    if active is not None:
+        progress = _evaluate_test_progress(active)
+        current_node_id = None
+        try:
+            user_config = json.loads(active.user_config or "{}")
+            current_node_id = (user_config.get("_ui_state") or {}).get("current_node_id")
+        except (TypeError, ValueError):
+            pass
+        query = f"?node={current_node_id}" if current_node_id else ""
+        active_payload = {
+            "instance_id": str(active.id),
+            "status": active.status,
+            "url": f"/instances/{active.id}{query}",
+            "current_node_id": current_node_id,
+            **progress,
+        }
     return {
         "last_test_status": t.last_test_status or "untested",
         "last_test_error": t.last_test_error or "",
+        "active_test": active_payload,
+        "requirements": _test_requirements_for_template(t),
     }
 
 
@@ -1386,10 +1438,13 @@ def upload_instance_input(
     allowed_file_types = [
         str(t).lower().lstrip(".") for t in template_runtime_config.get("allowed_file_types") or []
     ]
-    if allowed_file_types:
+    allow_extensionless = bool(template_runtime_config.get("allow_extensionless_input"))
+    if allowed_file_types and "*" not in allowed_file_types:
         filename = str(getattr(file_storage, "filename", "") or "")
         extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-        if extension not in allowed_file_types:
+        if not extension and not allow_extensionless:
+            return None, "This template requires a supported file extension."
+        if extension and extension not in allowed_file_types:
             return None, f"This sandbox only accepts: {', '.join(allowed_file_types)}."
     configured_mb = int(template_runtime_config.get("max_input_size_mb") or template.max_upload_mb or 50)
     max_upload_bytes = min(
@@ -1537,11 +1592,23 @@ def select_instance_ui_mode(
     return (requested if requested in allowed else default), allowed
 
 
-def _ui_workflow_choices(graph: dict, node: dict | None, instance: dict) -> list[dict]:
-    """Outgoing-edge choices from the current node, filtered by condition —
-    success/failure only appear once the instance's real exit_code makes the
-    outcome known; manual/always are always offered."""
+def _ui_workflow_choices(
+    graph: dict,
+    node: dict | None,
+    instance: dict,
+    evidence: set[str] | None = None,
+) -> list[dict]:
+    """Outgoing choices from the current node, gated by real completion evidence."""
     if not node:
+        return []
+    required = [
+        value for value in (
+            _normalize_test_requirement(item)
+            for item in (node.get("completion_requirements") or [])
+        ) if value
+    ]
+    available = evidence or set()
+    if required and any(item not in available for item in required):
         return []
     exit_code = instance.get("exit_code")
     choices = []
@@ -1592,16 +1659,41 @@ def get_instance_ui_context(
     ui_workflow_node = None
     ui_workflow_choices: list[dict] = []
     ui_workflow_restart_url = None
+    evidence = _instance_evidence(instance_id)
     if template is not None and template_interface_behavior(template) == "workflow":
         graph = template_ui_workflow_graph(template)
-        ui_workflow_node = ui_workflow_node_by_id(graph, requested_node_id) or ui_workflow_start_node(graph)
+        persisted_node_id = None
+        try:
+            persisted_config = json.loads(instance.get("user_config") or "{}")
+            persisted_node_id = (persisted_config.get("_ui_state") or {}).get("current_node_id")
+        except (TypeError, ValueError):
+            persisted_config = {}
+        start_node = ui_workflow_start_node(graph)
+        current_node = ui_workflow_node_by_id(graph, persisted_node_id) or start_node
+        ui_workflow_node = current_node
+        if requested_node_id and str(requested_node_id) != str((current_node or {}).get("id") or ""):
+            permitted_targets = {
+                str(choice.get("target_node_id") or "")
+                for choice in _ui_workflow_choices(graph, current_node, instance, evidence)
+            }
+            requested = ui_workflow_node_by_id(graph, requested_node_id)
+            if requested is not None and str(requested.get("id")) in permitted_targets:
+                ui_workflow_node = requested
+        if ui_workflow_node and str(ui_workflow_node.get("id")) != str(persisted_node_id or ""):
+            state = dict(persisted_config.get("_ui_state") or {})
+            state["current_node_id"] = str(ui_workflow_node.get("id"))
+            persisted_config["_ui_state"] = state
+            repository.update_instance_user_config(
+                instance_id, json.dumps(persisted_config, separators=(",", ":"))
+            )
+            instance["user_config"] = json.dumps(persisted_config, separators=(",", ":"))
         # Workflow-mode nodes aren't restricted to Single Mode's UI_MODES
-        # (custom_page is workflow-only) — the graph was already validated
-        # against UI_WORKFLOW_MODES at save time, so this is trusted as-is.
+        # (custom_page is workflow-only) — the graph was already validated.
         ui_mode = (ui_workflow_node or {}).get("ui_mode") or "terminal_only"
         allowed_ui_modes = ui_workflow_node_ui_modes(graph) or [ui_mode]
-        ui_workflow_choices = _ui_workflow_choices(graph, ui_workflow_node, instance)
-        start_node = ui_workflow_start_node(graph)
+        ui_workflow_choices = _ui_workflow_choices(
+            graph, ui_workflow_node, instance, evidence
+        )
         if start_node and start_node.get("id") != (ui_workflow_node or {}).get("id"):
             ui_workflow_restart_url = f"/instances/{instance.get('id')}?ui_mode={start_node.get('ui_mode')}&node={start_node.get('id')}"
     else:
@@ -1626,6 +1718,13 @@ def get_instance_ui_context(
         "ui_workflow_node": ui_workflow_node,
         "ui_workflow_choices": ui_workflow_choices,
         "ui_workflow_restart_url": ui_workflow_restart_url,
+        "test_context": (
+            {
+                "is_test": True,
+                **_evaluate_test_progress(repository.get_instance(instance_id)),
+            }
+            if instance.get("workspace_type") == "test" else None
+        ),
         "artifacts": artifacts or [],
         "events": events or [],
         "notes": notes or {},
@@ -1655,7 +1754,10 @@ def _test_effective_plan(template) -> EffectivePlan:
         template_plan = repository.get_template_plan(str(template.id), str(plan.id))
         if template_plan is not None and not template_plan.is_enabled:
             continue
-        resolved = resolve_effective_plan(template, plan, template_plan)
+        try:
+            resolved = resolve_effective_plan(template, plan, template_plan)
+        except RuntimePolicyError:
+            continue
         return replace(
             resolved,
             ind_cost_hr=Decimal("0"),
@@ -1715,6 +1817,15 @@ def start_instance(
         runtime_policy = get_runtime_driver(runtime_policy["runtime_class"]).prepare(
             _instance_dict(inst), runtime_policy
         )
+        identity_user_id = str(inst.workspace_user_id or inst.assigned_to_user_id or actor_user_id or "") or None
+        sandbox_username = _sandbox_username_for_user_id(identity_user_id)
+        runtime_policy["sandbox_username"] = sandbox_username
+        runtime_policy["template_test_revision"] = _template_test_revision(t)
+        environment = dict(runtime_policy.get("environment") or {})
+        environment.setdefault("CODESANDBOX_USERNAME", sandbox_username)
+        environment.setdefault("USER", sandbox_username)
+        environment.setdefault("LOGNAME", sandbox_username)
+        runtime_policy["environment"] = environment
     except (RuntimePolicyError, UnsupportedRuntimeError, ValueError, TypeError) as exc:
         return None, str(exc)
 
@@ -1730,6 +1841,10 @@ def start_instance(
         }
         for item in inputs
     ]
+    if inputs:
+        environment = dict(runtime_policy.get("environment") or {})
+        environment.setdefault("CODESANDBOX_INPUT_NAME", str(inputs[0].name or "input")[:255])
+        runtime_policy["environment"] = environment
     artifact_prefix = f"sandboxes/{instance_id}/artifacts"
     runtime_policy["artifact_prefix"] = artifact_prefix
 
@@ -1918,9 +2033,180 @@ def list_reconcile_candidates(worker_id: str) -> list[dict]:
     return result
 
 
+def _template_test_revision(template) -> str:
+    """Hash execution-affecting template state for stale-test protection."""
+    payload = {
+        "docker_image": str(template.docker_image or ""),
+        "default_command": str(template.default_command or ""),
+        "working_dir": str(template.working_dir or ""),
+        "input_mount_path": str(template.input_mount_path or ""),
+        "output_mount_path": str(template.output_mount_path or ""),
+        "artifact_paths": str(template.artifact_paths or ""),
+        "input_required": bool(template.input_required),
+        "sandbox_type": str(template.sandbox_type or ""),
+        "runtime_class": str(template.runtime_class or ""),
+        "allowed_ui_modes": str(template.allowed_ui_modes or ""),
+        "default_ui_mode": str(template.default_ui_mode or ""),
+        "interface_behavior": str(template.interface_behavior or ""),
+        "ui_workflow_json": str(template.ui_workflow_json or ""),
+        "network_mode": str(template.network_mode or ""),
+        "allow_root": bool(template.allow_root),
+        "read_only_root": bool(template.read_only_root),
+        "run_as_user": str(template.run_as_user or ""),
+        "pids_limit": int(template.pids_limit or 0),
+        "allow_full_internet": bool(template.allow_full_internet),
+        "max_timeout_hr": int(template.max_timeout_hr or 0),
+        "runtime_config": _runtime_execution_config(parse_runtime_config(template.runtime_config)),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _test_config_for_template(template) -> dict:
+    runtime_config = parse_runtime_config(template.runtime_config)
+    raw = runtime_config.get("test_config")
+    return raw if isinstance(raw, dict) else {}
+
+
+def _normalize_test_requirement(value: object) -> str | None:
+    requirement = str(value or "").strip()
+    if not requirement or not _SAFE_TEST_REQUIREMENT_RE.fullmatch(requirement):
+        return None
+    return requirement
+
+
+def _test_requirements_for_template(template) -> list[str]:
+    """Resolve the minimum evidence required for this template's Test Launch.
+
+    Explicit `test_config.requirements` wins. Legacy success_condition fields
+    remain supported so existing templates do not silently change behavior.
+    """
+    test_config = _test_config_for_template(template)
+    explicit = test_config.get("requirements")
+    requirements: list[str] = []
+    if isinstance(explicit, list):
+        for item in explicit:
+            normalized = _normalize_test_requirement(item)
+            if normalized and normalized not in requirements:
+                requirements.append(normalized)
+    if requirements:
+        return requirements
+
+    requirements.append("runtime_started")
+    success_condition = str(test_config.get("success_condition") or "").strip()
+    if success_condition == "exit_zero":
+        requirements.append("exit_zero")
+    elif success_condition == "log_contains":
+        for pattern in test_config.get("log_contains") or []:
+            pattern = str(pattern or "").strip()
+            normalized = _normalize_test_requirement(f"log:{pattern}")
+            if normalized:
+                requirements.append(normalized)
+    elif success_condition == "artifact_exists":
+        for path in test_config.get("required_artifacts") or []:
+            path = str(path or "").strip().lstrip("/")
+            normalized = _normalize_test_requirement(f"artifact:{path}")
+            if normalized:
+                requirements.append(normalized)
+    elif success_condition == "healthcheck":
+        requirements.append("healthcheck")
+
+    if template_interface_behavior(template) == "workflow":
+        modes = set(ui_workflow_node_ui_modes(template_ui_workflow_graph(template)))
+    else:
+        modes = {template_default_ui_mode(template)}
+    if "terminal_only" in modes:
+        requirements.append("terminal_ready")
+    if "lab_ui" in modes:
+        requirements.extend(["terminal_ready", "filesystem_ready"])
+    if "custom_page" in modes:
+        requirements.append("custom_page_ready")
+
+    deduped: list[str] = []
+    for requirement in requirements:
+        if requirement not in deduped:
+            deduped.append(requirement)
+    return deduped
+
+
+def _instance_evidence(instance_id: str) -> set[str]:
+    evidence: set[str] = set()
+    for row in repository.list_instance_audit_log(instance_id, limit=500):
+        if row.event not in {_TEST_EVIDENCE_EVENT, _RUNTIME_EVIDENCE_EVENT}:
+            continue
+        try:
+            detail = json.loads(row.detail or "{}")
+        except ValueError:
+            continue
+        requirement = _normalize_test_requirement(detail.get("requirement"))
+        if requirement:
+            evidence.add(requirement)
+    return evidence
+
+
+def _has_instance_event(instance_id: str, event_name: str) -> bool:
+    return any(
+        row.event == event_name
+        for row in repository.list_instance_audit_log(instance_id, limit=500)
+    )
+
+
+def _record_runtime_evidence(
+    inst,
+    requirement: str,
+    *,
+    actor: str,
+    detail: dict | None = None,
+) -> bool:
+    normalized = _normalize_test_requirement(requirement)
+    if not normalized or normalized in _instance_evidence(str(inst.id)):
+        return False
+    payload = {"requirement": normalized, **(detail or {})}
+    repository.log_instance_event(
+        str(inst.id),
+        _RUNTIME_EVIDENCE_EVENT,
+        actor=actor,
+        detail=json.dumps(payload, separators=(",", ":")),
+    )
+    if inst.workspace_type == "test":
+        repository.log_instance_event(
+            str(inst.id),
+            _TEST_EVIDENCE_EVENT,
+            actor=actor,
+            detail=json.dumps(payload, separators=(",", ":")),
+        )
+    return True
+
+
 def _mark_template_test_result(inst, status: str, reason: str | None = None) -> None:
-    """If this instance was a Test Launch, record the pass/fail outcome on its template."""
+    """Record a Test Launch result without allowing stale runs to publish.
+
+    A run started against an older template revision is retained for audit, but
+    cannot overwrite the current template's test gate after an administrator
+    edits the template while the run is open.
+    """
     if inst.workspace_type != "test":
+        return
+    template = repository.get_template(str(inst.template_id))
+    if template is None:
+        return
+    try:
+        policy = json.loads(inst.runtime_policy or "{}")
+    except ValueError:
+        policy = {}
+    started_revision = str(policy.get("template_test_revision") or "")
+    current_revision = _template_test_revision(template)
+    if started_revision and started_revision != current_revision:
+        repository.log_instance_event(
+            str(inst.id),
+            "test.stale",
+            actor="system",
+            detail=json.dumps({
+                "reason": "Template configuration changed after this Test Launch started.",
+                "started_revision": started_revision,
+                "current_revision": current_revision,
+            }, separators=(",", ":")),
+        )
         return
     repository.update_template(
         str(inst.template_id),
@@ -1928,6 +2214,91 @@ def _mark_template_test_result(inst, status: str, reason: str | None = None) -> 
         last_tested_at=datetime.now(timezone.utc),
         last_test_error=reason if status == "failed" else None,
     )
+    event = "test.passed" if status == "passed" else "test.failed"
+    if not _has_instance_event(str(inst.id), event):
+        repository.log_instance_event(
+            str(inst.id),
+            event,
+            actor="system",
+            detail=json.dumps({"reason": reason or ""}, separators=(",", ":")),
+        )
+
+
+def _evaluate_test_progress(inst) -> dict:
+    template = repository.get_template(str(inst.template_id))
+    if template is None:
+        return {"requirements": [], "evidence": [], "missing": [], "passed": False}
+    requirements = _test_requirements_for_template(template)
+    evidence = _instance_evidence(str(inst.id))
+    try:
+        policy = json.loads(inst.runtime_policy or "{}")
+    except (TypeError, ValueError):
+        policy = {}
+    started_revision = str(policy.get("template_test_revision") or "")
+    current_revision = _template_test_revision(template)
+    stale = bool(started_revision and started_revision != current_revision)
+    if stale:
+        return {
+            "requirements": requirements,
+            "evidence": sorted(evidence),
+            "missing": ["template_configuration_changed"],
+            "passed": False,
+            "stale": True,
+        }
+    missing = [requirement for requirement in requirements if requirement not in evidence]
+    passed = not missing and bool(requirements)
+    if passed and not _has_instance_event(str(inst.id), "test.passed"):
+        _mark_template_test_result(inst, "passed")
+    return {
+        "requirements": requirements,
+        "evidence": sorted(evidence),
+        "missing": missing,
+        "passed": passed,
+        "stale": False,
+    }
+
+
+def record_instance_ui_evidence(
+    instance_id: str,
+    actor_user_id: str,
+    requirement: str,
+) -> tuple[dict | None, str | None]:
+    """Record evidence emitted by the real instance UI for tests and workflows."""
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to update this instance."
+    allowed = {"terminal_ready", "filesystem_ready", "custom_page_ready", "healthcheck"}
+    if requirement not in allowed:
+        return None, "Unsupported UI evidence."
+    if inst.status != "running":
+        return None, "The sandbox is not running."
+    recorded = _record_runtime_evidence(
+        inst,
+        requirement,
+        actor=f"user:{actor_user_id}",
+        detail={"source": "instance_ui"},
+    )
+    result = {
+        "recorded": recorded,
+        "evidence": sorted(_instance_evidence(instance_id)),
+    }
+    if inst.workspace_type == "test":
+        result.update(_evaluate_test_progress(inst))
+    return result, None
+
+
+def record_test_ui_evidence(
+    instance_id: str,
+    actor_user_id: str,
+    requirement: str,
+) -> tuple[dict | None, str | None]:
+    """Backward-compatible wrapper used by existing test code."""
+    inst = repository.get_instance(instance_id)
+    if inst is None or inst.workspace_type != "test":
+        return None, "Test instance not found."
+    return record_instance_ui_evidence(instance_id, actor_user_id, requirement)
 
 
 def _safe_int(value) -> int | None:
@@ -2033,20 +2404,28 @@ def handle_worker_callback(
         if updated is None:
             return {}, f"Cannot accept started event in '{inst.status}' state."
         repository.log_instance_event(instance_id, "started", actor="worker", detail=detail)
-        if inst.workspace_type == "test":
-            # terminal_only/lab_ui: a real container starting, reachable
-            # through the same terminal/filesystem code path production
-            # instances use, is the honest pass signal for those modes.
-            # background_run/desktop_gui/android_ui need more than "it
-            # started" (see docs/plan.md Phase 10.4) — those wait for the
-            # worker's own success_condition evaluation at finish time
-            # (_evaluate_test_success on the worker, "test_success" in the
-            # stopped/failed callback below).
-            test_template = repository.get_template(str(inst.template_id))
-            ui_mode = template_default_ui_mode(test_template) if test_template else "terminal_only"
-            if ui_mode in ("terminal_only", "lab_ui"):
-                _mark_template_test_result(inst, "passed")
+        _record_runtime_evidence(
+            updated, "runtime_started", actor="worker", detail={"runtime_id": runtime_id}
+        )
+        if updated.workspace_type == "test":
+            _evaluate_test_progress(updated)
         _upsert_worker_runtime(updated, status="running")
+
+    elif event == "runtime_evidence":
+        requirement = str(data.get("requirement") or "").strip()
+        if not requirement:
+            return {}, "Runtime evidence did not include a requirement."
+        _record_runtime_evidence(
+            inst, requirement, actor="worker", detail={
+                "kind": data.get("kind"),
+                "value": data.get("value"),
+            },
+        )
+        repository.log_instance_event(
+            instance_id, "runtime_evidence_received", actor="worker", detail=detail
+        )
+        if inst.workspace_type == "test":
+            response["test_progress"] = _evaluate_test_progress(inst)
 
     elif event == "heartbeat":
         updated = repository.transition_instance_status(
@@ -2125,18 +2504,17 @@ def handle_worker_callback(
         _release_worker_capacity_for(updated)
         _upsert_worker_runtime(updated, status=final_status)
         repository.log_instance_event(instance_id, final_status, actor="worker", detail=detail)
+        exit_code = _safe_int(data.get("exit_code"))
+        if exit_code == 0:
+            _record_runtime_evidence(updated, "exit_zero", actor="worker")
         if inst.workspace_type == "test":
-            if "test_success" in data:
-                # Worker evaluated a configured success_condition against the
-                # real exit code/artifacts/logs — trust it over the generic
-                # "did it stop cleanly" heuristic below.
-                _mark_template_test_result(
-                    inst,
-                    "passed" if data.get("test_success") else "failed",
-                    reason=data.get("test_reason"),
-                )
-            elif final_status != "stopped":
-                _mark_template_test_result(inst, "failed", reason=str(data.get("reason") or final_status))
+            progress = _evaluate_test_progress(updated)
+            if not progress["passed"]:
+                reason = str(data.get("test_reason") or data.get("reason") or final_status)
+                missing = ", ".join(progress["missing"])
+                if missing:
+                    reason = f"{reason}; missing test requirements: {missing}"
+                _mark_template_test_result(updated, "failed", reason=reason)
 
     elif event == "failed":
         elapsed = runtime_seconds(inst.started_at, now)
@@ -2164,9 +2542,16 @@ def handle_worker_callback(
         _release_worker_capacity_for(updated)
         _upsert_worker_runtime(updated, status="failed")
         repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)
-        _mark_template_test_result(
-            inst, "failed", reason=str(data.get("reason") or data.get("error") or "runtime_failed")
-        )
+        if inst.workspace_type == "test":
+            failure_reason = str(data.get("reason") or "runtime_failed").strip()
+            failure_error = str(data.get("error") or "").strip()
+            if failure_error and failure_error != failure_reason:
+                failure_reason = f"{failure_reason}: {failure_error}"
+            _mark_template_test_result(
+                updated,
+                "failed",
+                reason=failure_reason[:500],
+            )
 
     elif event == "escape_attempt":
         repository.log_instance_event(instance_id, "escape_attempt", actor="worker", detail=detail)
@@ -2211,6 +2596,11 @@ def handle_worker_callback(
             checksum=str(data.get("checksum") or "")[:64],
         )
         repository.log_instance_event(instance_id, "artifact_ready", actor="worker", detail=detail)
+        _record_runtime_evidence(
+            inst, f"artifact:{name.lstrip('/')}", actor="worker", detail={"name": name}
+        )
+        if inst.workspace_type == "test":
+            _evaluate_test_progress(inst)
 
     else:
         return {}, f"Unknown event: {event}"
@@ -2225,38 +2615,135 @@ def start_test_instance(
     actor_user_id: str,
     test_input_file=None,
 ) -> tuple[dict | None, str | None]:
-    """Admin: create + immediately start a single-use test instance of a template.
+    """Create and start a persistent, real Test Launch instance.
 
-    No-billing preview run using the first active plan enabled for the template.
+    Required input is validated and uploaded before the instance row exists, so
+    a missing/invalid file never creates or starts a test. If the same admin
+    already has a live test for this template, return it for resumption.
     """
     t = repository.get_template(template_id)
     if t is None:
         return None, "Template not found."
 
+    active = repository.find_active_test_instance(
+        template_id, actor_user_id=actor_user_id
+    )
+    if active is not None:
+        return {
+            **_instance_dict(active),
+            "instance_url": f"/instances/{active.id}",
+            "resumed": True,
+        }, None
+
     runtime_config = parse_runtime_config(t.runtime_config)
     test_config = runtime_config.get("test_config")
     test_config = test_config if isinstance(test_config, dict) else {}
-    if test_config.get("requires_input") and test_input_file is None:
-        return None, "This template's test config requires an input file — upload one to run the test."
+    requires_input = bool(t.input_required or test_config.get("requires_input"))
+    if requires_input and test_input_file is None:
+        return None, "This template requires an input file before Test Launch can start."
 
     try:
         test_plan = _test_effective_plan(t)
     except RuntimePolicyError as exc:
         return None, str(exc)
 
-    inst = repository.create_instance(
-        template_id=template_id,
-        plan_id=test_plan.id,
-        workspace_type="test",
-        workspace_user_id=actor_user_id,
-        created_by_user_id=actor_user_id,
-        billing_entity="test",
-    )
+    staged_upload = None
+    instance_id = str(_uuid.uuid4())
     if test_input_file is not None:
-        _, upload_error = upload_instance_input(str(inst.id), actor_user_id, test_input_file)
-        if upload_error:
-            return None, upload_error
-    return start_instance(str(inst.id), actor_user_id=actor_user_id)
+        filename = str(getattr(test_input_file, "filename", "") or "")
+        allowed_file_types = [
+            str(value).lower().lstrip(".")
+            for value in runtime_config.get("allowed_file_types") or []
+        ]
+        allow_extensionless = bool(runtime_config.get("allow_extensionless_input"))
+        if allowed_file_types and "*" not in allowed_file_types:
+            extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if not extension and not allow_extensionless:
+                return None, "This template requires a supported file extension."
+            if extension and extension not in allowed_file_types:
+                return None, f"This sandbox only accepts: {', '.join(allowed_file_types)}."
+        configured_mb = int(runtime_config.get("max_input_size_mb") or t.max_upload_mb or 50)
+        max_upload_bytes = min(
+            configured_mb * 1024 * 1024,
+            get_settings().sandbox_max_upload_bytes,
+        )
+        staged_upload = upload_private_filestorage(
+            test_input_file,
+            prefix=f"sandboxes/{instance_id}/inputs",
+            max_bytes=max_upload_bytes,
+        )
+        if staged_upload is None:
+            return None, (
+                f"Select a non-empty file no larger than "
+                f"{max_upload_bytes // (1024 * 1024)} MB."
+            )
+
+    inst = None
+    try:
+        inst = repository.create_instance(
+            instance_id=instance_id,
+            template_id=template_id,
+            plan_id=test_plan.id,
+            workspace_type="test",
+            workspace_user_id=actor_user_id,
+            created_by_user_id=actor_user_id,
+            billing_entity="test",
+        )
+        if staged_upload is not None:
+            repository.create_instance_input(
+                instance_id=str(inst.id),
+                name=staged_upload["name"],
+                storage_key=staged_upload["storage_key"],
+                size_bytes=staged_upload["size_bytes"],
+                checksum=staged_upload["checksum"],
+            )
+            repository.log_instance_event(
+                str(inst.id),
+                "input.uploaded",
+                actor=f"user:{actor_user_id}",
+                detail=json.dumps({
+                    "name": staged_upload["name"],
+                    "size_bytes": staged_upload["size_bytes"],
+                    "checksum": staged_upload["checksum"],
+                }, separators=(",", ":")),
+            )
+        repository.update_template(
+            template_id,
+            last_test_status="untested",
+            last_tested_at=None,
+            last_test_error=None,
+        )
+        repository.log_instance_event(
+            str(inst.id),
+            "test.started",
+            actor=f"user:{actor_user_id}",
+            detail=json.dumps({
+                "requirements": _test_requirements_for_template(t),
+                "template_revision": _template_test_revision(t),
+            }, separators=(",", ":")),
+        )
+        result, error = start_instance(str(inst.id), actor_user_id=actor_user_id)
+        if error:
+            raise RuntimeError(error)
+        return {
+            **(result or _instance_dict(inst)),
+            "instance_url": f"/instances/{inst.id}",
+            "resumed": False,
+        }, None
+    except Exception as exc:
+        current = repository.get_instance(str(inst.id)) if inst is not None else None
+        safe_to_remove = current is None or current.status == "idle"
+        if staged_upload is not None and safe_to_remove:
+            try:
+                delete_private_object(staged_upload["storage_key"])
+            except Exception:
+                pass
+        if current is not None and current.status == "idle":
+            try:
+                current.delete()
+            except Exception:
+                pass
+        return None, str(exc)
 
 
 # ── Balance / Billing ─────────────────────────────────────────────────────────

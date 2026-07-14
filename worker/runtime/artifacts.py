@@ -93,22 +93,39 @@ class ObjectStore:
         }
 
 
-def tar_bytes(name: str, data: bytes, mode: int = 0o600) -> bytes:
+def tar_bytes(
+    name: str,
+    data: bytes,
+    mode: int = 0o600,
+    *,
+    uid: int = 0,
+    gid: int = 0,
+) -> bytes:
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w") as archive:
         info = tarfile.TarInfo(name=safe_relative_name(name))
         info.size = len(data)
         info.mode = mode
+        info.uid = uid
+        info.gid = gid
         archive.addfile(info, io.BytesIO(data))
     return output.getvalue()
 
 
-def directory_tar_bytes(name: str, mode: int = 0o700) -> bytes:
+def directory_tar_bytes(
+    name: str,
+    mode: int = 0o700,
+    *,
+    uid: int = 0,
+    gid: int = 0,
+) -> bytes:
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w") as archive:
         info = tarfile.TarInfo(name=safe_relative_name(name).rstrip("/") + "/")
         info.type = tarfile.DIRTYPE
         info.mode = mode
+        info.uid = uid
+        info.gid = gid
         archive.addfile(info)
     return output.getvalue()
 

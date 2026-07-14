@@ -100,17 +100,27 @@ class DockerRunner(RuntimeRunner):
             if not minimum <= value <= maximum:
                 raise ValueError(f"Runtime policy {name} is outside worker limits.")
         security = self.policy.get("security") or {}
+        allow_sudo = bool(self.policy.get("allow_sudo"))
         if (
-            security.get("no_new_privileges") is not True
-            or security.get("cap_drop") != ["ALL"]
+            security.get("cap_drop") != ["ALL"]
             or security.get("privileged") is not False
             or security.get("host_mounts") is not False
             or security.get("docker_socket") is not False
+            or (security.get("no_new_privileges") is not True and not allow_sudo)
         ):
             raise ValueError("Runtime security policy is not sufficiently restricted.")
-        run_as_user = str(self.policy.get("run_as_user") or "")
-        if run_as_user and not _USER_RE.fullmatch(run_as_user):
-            raise ValueError("Invalid container user.")
+        for field in ("run_as_user", "container_start_user", "terminal_user"):
+            value = str(self.policy.get(field) or "")
+            if value and not _USER_RE.fullmatch(value):
+                raise ValueError(f"Invalid {field}.")
+        if allow_sudo:
+            if security.get("no_new_privileges") is not False:
+                raise ValueError("Sudo-enabled templates must explicitly disable no-new-privileges.")
+            if str(self.policy.get("container_start_user") or "") not in {"0", "0:0", "root", "root:root"}:
+                raise ValueError("Sudo-enabled templates require a root-only bootstrap process.")
+            terminal_user = str(self.policy.get("terminal_user") or "")
+            if not terminal_user or terminal_user in {"0", "0:0", "root", "root:root"}:
+                raise ValueError("Sudo-enabled templates require a non-root terminal user.")
         mount_paths: dict[str, str] = {}
         for path_name in ("working_dir", "input_mount_path", "output_mount_path"):
             value = str(self.policy.get(path_name) or "").strip()
@@ -265,7 +275,7 @@ class DockerRunner(RuntimeRunner):
                 if index == 0 and alias and alias != safe_name:
                     helper.put_archive("/input", tar_bytes(alias, data, 0o444))
 
-            run_as_user = self._container_user()
+            run_as_user = self._terminal_user()
             numeric = re.fullmatch(r"([0-9]+)(?::([0-9]+))?", run_as_user or "")
             if numeric:
                 uid = numeric.group(1)
@@ -282,13 +292,23 @@ class DockerRunner(RuntimeRunner):
         finally:
             helper.remove(force=True)
 
-    def _container_user(self) -> str | None:
-        configured = str(self.policy.get("run_as_user") or "")
+    def _terminal_user(self) -> str | None:
+        configured = str(
+            self.policy.get("terminal_user")
+            or self.policy.get("run_as_user")
+            or ""
+        )
         if configured:
             return configured
         if self.policy.get("allow_root"):
             return None
         return os.environ.get("SANDBOX_DEFAULT_USER", "65532:65532")
+
+    def _container_user(self) -> str | None:
+        configured = str(self.policy.get("container_start_user") or "")
+        if configured:
+            return configured
+        return self._terminal_user()
 
     def prepare(self) -> None:
         self._validate()
@@ -388,7 +408,7 @@ class DockerRunner(RuntimeRunner):
             "memswap_limit": int(self.policy["ram_gb"]) * 1024**3,
             "pids_limit": int(self.policy["pids_limit"]),
             "cap_drop": ["ALL"],
-            "security_opt": ["no-new-privileges:true"],
+            "security_opt": (["no-new-privileges:true"] if (self.policy.get("security") or {}).get("no_new_privileges", True) else []),
             "privileged": False,
             "init": True,
             "labels": self._container_labels(),
@@ -435,7 +455,7 @@ class DockerRunner(RuntimeRunner):
             [shell, "-i"],
             stdin=True,
             tty=True,
-            user=self._container_user(),
+            user=self._terminal_user(),
             workdir=self.policy["working_dir"],
             environment={"TERM": "xterm-256color"},
         )
