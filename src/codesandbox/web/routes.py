@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
 from flask import abort, redirect, request, send_from_directory, session as flask_session
@@ -8,12 +9,14 @@ from flask import abort, redirect, request, send_from_directory, session as flas
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.organizations import repository as org_repo
 from codesandbox.features.sandbox.service import (
+    archive_instance_for_user,
     create_org_instance,
     create_personal_instance,
     get_active_hub_instance,
     get_hub_template_by_slug,
     get_hub_templates,
     get_instance_ui_context,
+    get_live_balance_for_actor,
     get_org_billing,
     get_org_instances,
     get_org_requests,
@@ -167,12 +170,35 @@ def hub_template(instance: str):
         can_start = active_workspace.get("status") == "active" and (is_owner or "sandbox.instances.create" in user_perms)
 
     user_balance = None
+    available_balance = None
     if user.platform_role == "user":
         if active_workspace:
             billing = get_org_billing(str(active_workspace["id"]))
         else:
             billing = get_user_billing(str(user.id))
-        user_balance = billing["balance"]["available_amount"]
+        user_balance = billing["balance"]["available_amount_display"]
+        try:
+            available_balance = Decimal(str(billing["balance"]["available_amount"]))
+        except (InvalidOperation, TypeError, ValueError):
+            available_balance = Decimal("0")
+
+    for plan in plans:
+        required_key = (
+            "org_minimum_start_amount"
+            if is_org
+            else "ind_minimum_start_amount"
+        )
+        required_display_key = (
+            "org_minimum_start_amount_display"
+            if is_org
+            else "ind_minimum_start_amount_display"
+        )
+        required = Decimal(str(plan.get(required_key) or "0"))
+        plan["minimum_start_amount"] = str(required)
+        plan["minimum_start_amount_display"] = str(
+            plan.get(required_display_key) or f"{required:.4f}"
+        )
+        plan["can_afford"] = available_balance is None or available_balance >= required
 
     nav = build_nav("/hub", user, active_workspace)
     return {
@@ -238,6 +264,7 @@ def my_instances():
         "nav": nav,
         "page_title": "My Instances",
         "instances": instances,
+        "error": request.args.get("error"),
         **ws_ctx,
     }
 
@@ -332,6 +359,20 @@ def private_instances():
 
 
 # ── Billing ───────────────────────────────────────────────────────────────────
+
+@web_bp.get("/billing/live")
+def billing_live():
+    session, redir = require_session()
+    if redir:
+        return {"ok": False, "error": "Authentication required."}, 401
+    ws_ctx = _workspaces_ctx(session.user)
+    active_workspace = ws_ctx.get("active_workspace")
+    org_id = str(active_workspace["id"]) if active_workspace else None
+    return {
+        "ok": True,
+        "balance": get_live_balance_for_actor(str(session.user.id), org_id),
+    }
+
 
 @router.page("/billing")
 def billing():
@@ -432,9 +473,11 @@ def hub_start(instance: str):
     if input_file and input_file.filename:
         _, err = upload_instance_input(result["id"], str(user.id), input_file)
         if err:
+            archive_instance_for_user(result["id"], str(user.id))
             return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
     _, err = start_instance(result["id"], actor_user_id=str(user.id))
     if err:
+        archive_instance_for_user(result["id"], str(user.id))
         return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
     return redirect(f"/instances/{result['id']}", 303)
 

@@ -47,6 +47,13 @@ _WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 _TEST_EVIDENCE_EVENT = "test.evidence"
 _RUNTIME_EVIDENCE_EVENT = "runtime.evidence"
 _SAFE_TEST_REQUIREMENT_RE = re.compile(r"^[^\x00\r\n]{1,240}$")
+_BILLING_RESERVE_SECONDS = max(
+    30, int(os.environ.get("SANDBOX_BILLING_RESERVE_SECONDS", "60"))
+)
+_LOW_BALANCE_WARNING_SECONDS = max(
+    _BILLING_RESERVE_SECONDS,
+    int(os.environ.get("SANDBOX_LOW_BALANCE_WARNING_SECONDS", "300")),
+)
 
 
 def _slugify(name: str) -> str:
@@ -60,6 +67,82 @@ def _parse_decimal(value: str) -> Decimal | None:
         return Decimal(str(value).strip())
     except InvalidOperation:
         return None
+
+
+def _money(value) -> Decimal:
+    try:
+        return max(Decimal("0"), Decimal(str(value or "0"))).quantize(
+            Decimal("0.0001"), rounding=ROUND_UP
+        )
+    except (InvalidOperation, ValueError, TypeError):
+        return Decimal("0.0000")
+
+
+def _minimum_start_amount(effective_plan: EffectivePlan, workspace_type: str) -> Decimal:
+    tier = effective_plan.tier(workspace_type)
+    rate = _money(tier.get("cost_hr"))
+    if rate <= 0:
+        return Decimal("0.0000")
+    seconds = max(
+        _BILLING_RESERVE_SECONDS,
+        int(effective_plan.min_billable_minutes or 0) * 60,
+    )
+    return _money(rate * Decimal(seconds) / Decimal(3600))
+
+
+def _billing_account_for_workspace(
+    workspace_type: str,
+    *,
+    user_id: str | None = None,
+    org_id: str | None = None,
+) -> tuple[str, str] | None:
+    if workspace_type == "org" and org_id:
+        return "org", str(org_id)
+    if workspace_type in {"personal", "user"} and user_id:
+        return "user", str(user_id)
+    return None
+
+
+def _ensure_start_balance(
+    effective_plan: EffectivePlan,
+    workspace_type: str,
+    *,
+    user_id: str | None = None,
+    org_id: str | None = None,
+) -> str | None:
+    required = _minimum_start_amount(effective_plan, workspace_type)
+    if required <= 0:
+        return None
+    account = _billing_account_for_workspace(
+        workspace_type, user_id=user_id, org_id=org_id
+    )
+    if account is None:
+        return "Billing account is missing."
+    balance = repository.get_or_create_balance(*account)
+    available = max(Decimal("0"), repository.available_balance(balance))
+    if available < required:
+        return (
+            "Insufficient balance. At least "
+            f"£{required:.4f} is required to start this sandbox."
+        )
+    return None
+
+
+def _scheduler_disk_gb(runtime_class: str, disk_limit_gb: int) -> int:
+    """Capacity reservation used by the worker scheduler.
+
+    Container workspace quotas are sparse limits, not preallocated disks. A
+    30 GB plan should not consume 30 GB of scheduler capacity before the user
+    writes any data. VM-style runtimes still reserve their full disk image.
+    """
+    disk_limit = max(1, int(disk_limit_gb or 1))
+    if runtime_class in {"container", "tool_job"}:
+        configured = max(
+            1,
+            int(os.environ.get("SANDBOX_CONTAINER_DISK_RESERVATION_GB", "1")),
+        )
+        return min(disk_limit, configured)
+    return disk_limit
 
 
 def _sandbox_username_for_user_id(user_id: str | None) -> str:
@@ -367,11 +450,84 @@ def get_hub_plans() -> list[dict]:
 
 # ── SandboxInstance ───────────────────────────────────────────────────────────
 
+def _instance_billing_snapshot(inst) -> dict:
+    rate = _money(inst.cost_hr_snapshot)
+    now = datetime.now(timezone.utc)
+    if inst.started_at and inst.status in {"provisioning", "running", "stopping", "cleanup"}:
+        elapsed = runtime_seconds(inst.started_at, now)
+    else:
+        elapsed = int(inst.total_runtime_sec or 0)
+    billable_seconds = max(elapsed, int(inst.min_billable_sec or 0)) if inst.started_at else 0
+    estimated = _money(rate * Decimal(billable_seconds) / Decimal(3600))
+    if inst.status in {"stopped", "failed", "expired", "killed"}:
+        estimated = _money(inst.charged_amount)
+
+    available = None
+    remaining_seconds = None
+    low_balance = False
+    if inst.billing_entity in {"user", "org"}:
+        entity_id = (
+            str(inst.billed_org_id)
+            if inst.billing_entity == "org" and inst.billed_org_id
+            else str(inst.billed_user_id or "")
+        )
+        if entity_id:
+            balance = repository.get_or_create_balance(inst.billing_entity, entity_id)
+            available = max(Decimal("0"), repository.available_balance(balance))
+            if rate > 0:
+                remaining_seconds = max(0, int((available / rate * Decimal(3600))))
+                low_balance = (
+                    inst.status in {"provisioning", "running"}
+                    and remaining_seconds <= _LOW_BALANCE_WARNING_SECONDS
+                )
+
+    return {
+        "rate_per_hour": str(rate),
+        "rate_per_hour_display": f"{rate:.4f}",
+        "estimated_cost": str(estimated),
+        "estimated_cost_display": f"{estimated:.4f}",
+        "reserved_amount": str(_money(inst.billing_reserved_amount)),
+        "reserved_amount_display": f"{_money(inst.billing_reserved_amount):.4f}",
+        "available_balance": str(available) if available is not None else None,
+        "available_balance_display": f"{available:.4f}" if available is not None else None,
+        "remaining_seconds": remaining_seconds,
+        "low_balance": low_balance,
+        "runtime_seconds": elapsed,
+        "billable_seconds": billable_seconds,
+    }
+
+
+def _idle_instance_start_state(inst, template) -> tuple[bool, str | None]:
+    if inst.status != "idle":
+        return False, None
+    if inst.workspace_type == "test":
+        return True, None
+    if template is None or template.status != "active":
+        return False, "Template is not active."
+    plan = repository.get_plan(str(inst.plan_id or ""))
+    template_plan = repository.get_template_plan(str(template.id), str(inst.plan_id or ""))
+    if plan is None or not plan.is_active:
+        return False, "Plan is not active."
+    if template_plan is not None and not template_plan.is_enabled:
+        return False, "This plan is disabled for the template."
+    try:
+        effective = resolve_effective_plan(template, plan, template_plan)
+    except RuntimePolicyError as exc:
+        return False, str(exc)
+    error = _ensure_start_balance(
+        effective,
+        inst.workspace_type or "personal",
+        user_id=str(inst.billed_user_id or inst.workspace_user_id or "") or None,
+        org_id=str(inst.billed_org_id or inst.workspace_org_id or "") or None,
+    )
+    return error is None, error
+
 def _instance_dict(inst, template_cache: dict | None = None) -> dict:
     tid = str(inst.template_id)
     t = (template_cache or {}).get(tid) or repository.get_template(tid)
     allowed_ui_modes = template_allowed_ui_modes(t) if t else ["terminal_only"]
     default_ui_mode = template_default_ui_mode(t) if t else "terminal_only"
+    can_start, start_error = _idle_instance_start_state(inst, t)
     return {
         "id": str(inst.id),
         "template_id": tid,
@@ -408,6 +564,13 @@ def _instance_dict(inst, template_cache: dict | None = None) -> dict:
         "created_at": inst.created_at,
         "started_at": inst.started_at,
         "stopped_at": inst.stopped_at,
+        "deleted_at": getattr(inst, "deleted_at", None),
+        "can_start": can_start,
+        "start_error": start_error or "",
+        "can_open": inst.status in {"provisioning", "running", "stopping", "cleanup"},
+        "can_stop": inst.status in {"provisioning", "running"},
+        "can_delete": inst.status in {"idle", "stopped", "failed", "expired", "killed"},
+        "billing": _instance_billing_snapshot(inst),
     }
 
 
@@ -432,9 +595,16 @@ def create_personal_instance(
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
-    _, plan_error = get_effective_plan(str(t.id), plan_id)
-    if plan_error:
+    effective_plan, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error or effective_plan is None:
         return None, plan_error
+    balance_error = _ensure_start_balance(
+        effective_plan,
+        "personal",
+        user_id=user_id,
+    )
+    if balance_error:
+        return None, balance_error
     inst = repository.create_instance(
         template_id=str(t.id),
         plan_id=plan_id,
@@ -473,9 +643,16 @@ def create_org_instance(
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
-    _, plan_error = get_effective_plan(str(t.id), plan_id)
-    if plan_error:
+    effective_plan, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error or effective_plan is None:
         return None, plan_error
+    balance_error = _ensure_start_balance(
+        effective_plan,
+        "org",
+        org_id=org_id,
+    )
+    if balance_error:
+        return None, balance_error
     inst = repository.create_instance(
         template_id=str(t.id),
         plan_id=plan_id,
@@ -517,6 +694,83 @@ def get_active_hub_instance(
     """The instance the /hub/<template>/<plan> IDE page should attach to, if any."""
     inst = repository.find_hub_instance(template_id, plan_id, user_id=user_id, org_id=org_id)
     return _instance_dict(inst) if inst else None
+
+
+def get_instance_live_status(
+    instance_id: str, actor_user_id: str | None
+) -> tuple[dict | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to view this instance."
+    inst = repository.get_instance(instance_id)
+    if inst is None or getattr(inst, "deleted_at", None) is not None:
+        return None, "Instance not found."
+    data = _instance_dict(inst)
+    return {
+        "id": data["id"],
+        "status": data["status"],
+        "exit_reason": data["exit_reason"],
+        "started_at": data["started_at"],
+        "stopped_at": data["stopped_at"],
+        "allocated_vcpu": data["allocated_vcpu"],
+        "allocated_ram_gb": data["allocated_ram_gb"],
+        "allocated_disk_gb": data["allocated_disk_gb"],
+        "billing": data["billing"],
+        "can_start": data["can_start"],
+        "start_error": data["start_error"],
+        "can_open": data["can_open"],
+        "can_stop": data["can_stop"],
+        "can_delete": data["can_delete"],
+    }, None
+
+
+def archive_instance_for_user(
+    instance_id: str, actor_user_id: str | None
+) -> tuple[dict | None, str | None]:
+    inst = repository.get_instance(instance_id)
+    if inst is None or getattr(inst, "deleted_at", None) is not None:
+        return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to delete this instance."
+    if inst.status not in {"idle", "stopped", "failed", "expired", "killed"}:
+        return None, "Stop the instance before deleting it."
+
+    # Delete private object payloads, but keep the relational usage/audit rows.
+    for item in repository.list_instance_inputs(instance_id):
+        try:
+            delete_private_object(item.storage_key)
+        except Exception:
+            pass
+    for item in repository.list_instance_artifacts(instance_id):
+        try:
+            delete_private_object(item.storage_key)
+        except Exception:
+            pass
+    archived = repository.archive_instance(instance_id)
+    if archived is None:
+        return None, "Instance not found."
+    repository.log_instance_event(
+        instance_id, "instance.archived", actor=f"user:{actor_user_id}"
+    )
+    return _instance_dict(archived), None
+
+
+def get_live_balance_for_actor(
+    user_id: str, org_id: str | None = None
+) -> dict:
+    entity_type, entity_id = ("org", org_id) if org_id else ("user", user_id)
+    balance = repository.get_or_create_balance(entity_type, str(entity_id))
+    amount = _money(balance.amount)
+    reserved = _money(balance.reserved_amount)
+    available = max(Decimal("0"), amount - reserved)
+    return {
+        "currency": "GBP",
+        "amount": str(amount),
+        "amount_display": f"{amount:.4f}",
+        "reserved_amount": str(reserved),
+        "reserved_amount_display": f"{reserved:.4f}",
+        "available_amount": str(available),
+        "available_amount_display": f"{available:.4f}",
+    }
 
 
 # ── InstanceRequest ───────────────────────────────────────────────────────────
@@ -978,6 +1232,7 @@ def get_template_test_status(
         query = f"?node={current_node_id}" if current_node_id else ""
         active_payload = {
             "instance_id": str(active.id),
+            "template_id": str(active.template_id),
             "status": active.status,
             "url": f"/instances/{active.id}{query}",
             "current_node_id": current_node_id,
@@ -1101,8 +1356,10 @@ def _plan_dict(p) -> dict:
         "sort_order": int(p.sort_order),
         "ind_vcpu": int(p.ind_vcpu), "ind_ram_gb": int(p.ind_ram_gb), "ind_disk_gb": int(p.ind_disk_gb),
         "ind_cost_hr": str(p.ind_cost_hr),
+        "ind_cost_hr_display": f"{_money(p.ind_cost_hr):.4f}",
         "org_vcpu": int(p.org_vcpu), "org_ram_gb": int(p.org_ram_gb), "org_disk_gb": int(p.org_disk_gb),
         "org_cost_hr": str(p.org_cost_hr),
+        "org_cost_hr_display": f"{_money(p.org_cost_hr):.4f}",
         "min_billable_minutes": int(p.min_billable_minutes or 0),
         "allowed_network_modes": p.allowed_network_modes or '["disabled","restricted"]',
         "allowed_network_mode_values": allowed_network_modes,
@@ -1206,7 +1463,19 @@ def _int_or_none(v) -> int | None:
 
 
 def _resolve_plan_specs(template, global_plan, template_plan) -> dict:
-    return resolve_effective_plan(template, global_plan, template_plan).to_dict()
+    data = resolve_effective_plan(template, global_plan, template_plan).to_dict()
+    data["ind_cost_hr_display"] = f"{_money(data.get('ind_cost_hr')):.4f}"
+    data["org_cost_hr_display"] = f"{_money(data.get('org_cost_hr')):.4f}"
+    reserve_seconds = max(
+        _BILLING_RESERVE_SECONDS,
+        int(data.get("min_billable_minutes") or 0) * 60,
+    )
+    for prefix in ("ind", "org"):
+        rate = _money(data.get(f"{prefix}_cost_hr"))
+        required = _money(rate * Decimal(reserve_seconds) / Decimal(3600))
+        data[f"{prefix}_minimum_start_amount"] = str(required)
+        data[f"{prefix}_minimum_start_amount_display"] = f"{required:.4f}"
+    return data
 
 
 def get_effective_plan(
@@ -1313,8 +1582,8 @@ _policy_builder = PolicyBuilder()
 
 
 def can_manage_instance(inst, actor_user_id: str | None) -> bool:
-    """Owner, assignee, org managers (sandbox.instances.create), and platform staff may act on an instance."""
-    if not actor_user_id:
+    """Owner, assignee, org managers, and platform staff may act on an instance."""
+    if not actor_user_id or getattr(inst, "deleted_at", None) is not None:
         return False
 
     from codesandbox.features.identity.models import User
@@ -1337,7 +1606,11 @@ def can_manage_instance(inst, actor_user_id: str | None) -> bool:
 
 def can_view_instance(instance_id: str, actor_user_id: str | None) -> bool:
     inst = repository.get_instance(instance_id)
-    if inst is None or not actor_user_id:
+    if (
+        inst is None
+        or not actor_user_id
+        or getattr(inst, "deleted_at", None) is not None
+    ):
         return False
 
     from codesandbox.features.identity.models import User
@@ -1743,29 +2016,56 @@ def get_artifact_for_download(
     return artifact, None
 
 
-# Admin Test Launch uses the first active plan enabled for the template.
-# It preserves that plan's CPU/RAM/disk limits but zeroes billing.
 def _test_effective_plan(template) -> EffectivePlan:
-    from dataclasses import replace
+    """Build an admin-only, zero-cost test profile independent of Hub plans.
 
-    for plan in repository.list_plans():
-        if not plan.is_active:
-            continue
-        template_plan = repository.get_template_plan(str(template.id), str(plan.id))
-        if template_plan is not None and not template_plan.is_enabled:
-            continue
+    Test Launch is a platform validation tool, not a customer purchase. It must
+    therefore keep working when a template has no published plan mapping, when
+    a plan is disabled, or when the customer's selected plan is too large for
+    a small local worker. Templates may opt into larger test resources through
+    runtime_config.test_resources.
+    """
+    runtime = parse_runtime_config(template.runtime_config)
+    resources = runtime.get("test_resources")
+    resources = resources if isinstance(resources, dict) else {}
+
+    def _bounded(name: str, default: int, maximum: int) -> int:
         try:
-            resolved = resolve_effective_plan(template, plan, template_plan)
-        except RuntimePolicyError:
-            continue
-        return replace(
-            resolved,
-            ind_cost_hr=Decimal("0"),
-            org_cost_hr=Decimal("0"),
-            min_billable_minutes=0,
+            value = int(resources.get(name, default))
+        except (TypeError, ValueError):
+            value = default
+        return max(1, min(maximum, value))
+
+    vcpu = _bounded("vcpu", 1, 8)
+    ram_gb = _bounded("ram_gb", 2, 32)
+    disk_gb = _bounded("disk_gb", 5, 100)
+    timeout_hr = _bounded("max_timeout_hr", 1, 4)
+    network_mode = normalize_network_mode(template.network_mode or "disabled")
+    full_internet = bool(template.allow_full_internet)
+    if network_mode == "full_internet" and not full_internet:
+        raise RuntimePolicyError(
+            "Full internet must be explicitly enabled on the template."
         )
-    raise RuntimePolicyError(
-        "Test Launch requires at least one active plan enabled for this template."
+
+    return EffectivePlan(
+        id="__test__",
+        name="Admin Test Launch",
+        ind_vcpu=vcpu,
+        ind_ram_gb=ram_gb,
+        ind_disk_gb=disk_gb,
+        ind_cost_hr=Decimal("0"),
+        org_vcpu=vcpu,
+        org_ram_gb=ram_gb,
+        org_disk_gb=disk_gb,
+        org_cost_hr=Decimal("0"),
+        max_timeout_hr=min(timeout_hr, max(1, int(template.max_timeout_hr or 1))),
+        network_mode=network_mode,
+        min_billable_minutes=0,
+        allowed_network_modes=(network_mode,),
+        full_internet_enabled=full_internet,
+        is_active=True,
+        is_enabled=True,
+        sort_order=-1,
     )
 
 
@@ -1804,6 +2104,16 @@ def start_instance(
         if plan_error or effective_plan is None:
             return None, plan_error or "Plan is unavailable."
 
+    if inst.workspace_type != "test":
+        balance_error = _ensure_start_balance(
+            effective_plan,
+            inst.workspace_type or "personal",
+            user_id=str(inst.billed_user_id or inst.workspace_user_id or "") or None,
+            org_id=str(inst.billed_org_id or inst.workspace_org_id or "") or None,
+        )
+        if balance_error:
+            return None, balance_error
+
     workspace_type = inst.workspace_type or "personal"
     template_dict = _template_dict(t)
     try:
@@ -1825,7 +2135,13 @@ def start_instance(
         environment.setdefault("CODESANDBOX_USERNAME", sandbox_username)
         environment.setdefault("USER", sandbox_username)
         environment.setdefault("LOGNAME", sandbox_username)
+        environment.setdefault("CODESANDBOX_VCPU_LIMIT", str(runtime_policy["vcpu"]))
+        environment.setdefault("CODESANDBOX_RAM_LIMIT_GB", str(runtime_policy["ram_gb"]))
+        environment.setdefault("CODESANDBOX_DISK_LIMIT_GB", str(runtime_policy["disk_gb"]))
         runtime_policy["environment"] = environment
+        runtime_policy["scheduler_disk_gb"] = _scheduler_disk_gb(
+            str(runtime_policy["runtime_class"]), int(runtime_policy["disk_gb"])
+        )
     except (RuntimePolicyError, UnsupportedRuntimeError, ValueError, TypeError) as exc:
         return None, str(exc)
 
@@ -1854,7 +2170,10 @@ def start_instance(
     job_id = str(_uuid.uuid4())
     callback_token = make_worker_callback_token(job_id, instance_id, "start")
 
-    tier = effective_plan.tier(workspace_type)
+    requested_vcpu = int(runtime_policy["vcpu"])
+    requested_ram_gb = int(runtime_policy["ram_gb"])
+    requested_disk_gb = int(runtime_policy["disk_gb"])
+    scheduler_disk_gb = int(runtime_policy["scheduler_disk_gb"])
 
     from codesandbox.features.worker.service import (
         release_worker_capacity,
@@ -1863,13 +2182,18 @@ def start_instance(
     )
 
     worker_node = select_worker_for_instance(
-        int(tier["vcpu"]),
-        int(tier["ram_gb"]),
-        required_disk_gb=int(tier["disk_gb"]),
+        requested_vcpu,
+        requested_ram_gb,
+        required_disk_gb=scheduler_disk_gb,
         runtime_class=str(runtime_policy["runtime_class"]),
     )
     if worker_node is None:
-        return None, f"No online worker supports runtime class '{runtime_policy["runtime_class"]}' with the selected plan capacity."
+        return None, (
+            "No online worker currently has enough free capacity for "
+            f"{requested_vcpu} vCPU, {requested_ram_gb} GB RAM and "
+            f"{scheduler_disk_gb} GB scheduled disk. Stop another instance "
+            "or select a smaller plan."
+        )
     worker_id = worker_node.worker_id
 
     job_payload = {
@@ -1890,17 +2214,24 @@ def start_instance(
         },
     }
 
+    billing_reserve_sec = max(
+        int(runtime_policy["min_billable_sec"]),
+        _BILLING_RESERVE_SECONDS
+        if inst.workspace_type != "test"
+        and Decimal(str(runtime_policy["cost_hr"])) > 0
+        else 0,
+    )
     minimum_required = (
-        Decimal(str(tier["cost_hr"]))
-        * Decimal(int(runtime_policy["min_billable_sec"]))
+        Decimal(str(runtime_policy["cost_hr"]))
+        * Decimal(billing_reserve_sec)
         / Decimal(3600)
     ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
     now = datetime.now(timezone.utc)
     reserve_worker_capacity(
         worker_id,
-        vcpu=int(tier["vcpu"]),
-        ram_gb=int(tier["ram_gb"]),
-        disk_gb=int(tier["disk_gb"]),
+        vcpu=requested_vcpu,
+        ram_gb=requested_ram_gb,
+        disk_gb=scheduler_disk_gb,
     )
     inst, begin_error = repository.begin_instance_start(
         instance_id,
@@ -1910,11 +2241,11 @@ def start_instance(
         runtime_policy=json.dumps(runtime_policy, separators=(",", ":")),
         runtime_provider=str(runtime_policy["runtime_provider"]),
         artifact_prefix=artifact_prefix,
-        allocated_vcpu=int(tier["vcpu"]),
-        allocated_ram_gb=int(tier["ram_gb"]),
-        allocated_disk_gb=int(tier["disk_gb"]),
+        allocated_vcpu=requested_vcpu,
+        allocated_ram_gb=requested_ram_gb,
+        allocated_disk_gb=requested_disk_gb,
         effective_network_mode=str(runtime_policy["network_mode"]),
-        cost_hr_snapshot=Decimal(str(tier["cost_hr"])),
+        cost_hr_snapshot=Decimal(str(runtime_policy["cost_hr"])),
         billing_currency=str(runtime_policy["currency"]),
         min_billable_sec=int(runtime_policy["min_billable_sec"]),
         expires_at=now + timedelta(seconds=int(runtime_policy["max_timeout_sec"])),
@@ -1923,9 +2254,9 @@ def start_instance(
     if begin_error or inst is None:
         release_worker_capacity(
             worker_id,
-            vcpu=int(tier["vcpu"]),
-            ram_gb=int(tier["ram_gb"]),
-            disk_gb=int(tier["disk_gb"]),
+            vcpu=requested_vcpu,
+            ram_gb=requested_ram_gb,
+            disk_gb=scheduler_disk_gb,
         )
         return None, begin_error or "Could not start instance."
     try:
@@ -1933,9 +2264,9 @@ def start_instance(
     except Exception:
         release_worker_capacity(
             worker_id,
-            vcpu=int(tier["vcpu"]),
-            ram_gb=int(tier["ram_gb"]),
-            disk_gb=int(tier["disk_gb"]),
+            vcpu=requested_vcpu,
+            ram_gb=requested_ram_gb,
+            disk_gb=scheduler_disk_gb,
         )
         repository.release_instance_reservation(instance_id)
         repository.transition_instance_status(
@@ -2330,11 +2661,19 @@ def _release_worker_capacity_for(inst) -> None:
         return
     from codesandbox.features.worker.service import release_worker_capacity
 
+    scheduler_disk_gb = int(inst.allocated_disk_gb or 0)
+    try:
+        policy = json.loads(inst.runtime_policy or "{}")
+        scheduler_disk_gb = int(
+            policy.get("scheduler_disk_gb") or scheduler_disk_gb
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
     release_worker_capacity(
         inst.worker_id,
         vcpu=int(inst.allocated_vcpu or 0),
         ram_gb=int(inst.allocated_ram_gb or 0),
-        disk_gb=int(inst.allocated_disk_gb or 0),
+        disk_gb=scheduler_disk_gb,
     )
 
 
@@ -2442,7 +2781,10 @@ def handle_worker_callback(
             return {}, f"Cannot accept heartbeat in '{inst.status}' state."
         if inst.status == "running" and inst.billing_entity != "test":
             elapsed = runtime_seconds(inst.started_at, now)
-            reserve_seconds = max(int(inst.min_billable_sec or 0), elapsed + 60)
+            reserve_seconds = max(
+                int(inst.min_billable_sec or 0),
+                elapsed + _BILLING_RESERVE_SECONDS,
+            )
             desired = (
                 Decimal(str(inst.cost_hr_snapshot or "0"))
                 * Decimal(reserve_seconds)
@@ -2751,12 +3093,16 @@ def start_test_instance(
 def _balance_dict(b) -> dict:
     amount = Decimal(str(b.amount or "0"))
     reserved = Decimal(str(b.reserved_amount or "0"))
+    available = max(Decimal("0"), amount - reserved)
     return {
         "entity_type": b.entity_type,
         "entity_id": str(b.entity_id),
         "amount": str(amount),
+        "amount_display": f"{_money(amount):.4f}",
         "reserved_amount": str(reserved),
-        "available_amount": str(max(Decimal("0"), amount - reserved)),
+        "reserved_amount_display": f"{_money(reserved):.4f}",
+        "available_amount": str(available),
+        "available_amount_display": f"{_money(available):.4f}",
         "updated_at": b.updated_at,
     }
 

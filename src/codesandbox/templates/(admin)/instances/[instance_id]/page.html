@@ -2,6 +2,52 @@
   <div class="border-y border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
 {% endif %}
 
+<div id="instance-billing-warning" class="fixed bottom-12 left-1/2 z-[70] hidden -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-500/40 bg-card px-3 py-2 text-xs shadow-xl">
+  <span class="size-2 rounded-full bg-amber-500"></span>
+  <span>Low balance: <strong id="instance-billing-time">less than 5 minutes</strong> remaining. This sandbox will stop automatically if the next reservation cannot be covered.</span>
+  <span class="font-mono">£<span id="instance-billing-available">0.0000</span> available</span>
+</div>
+
+{% app_script "instance-live-billing-" ~ instance.id %}
+(function () {
+  var instanceId = {{ instance.id | tojson }};
+  var warning = document.getElementById("instance-billing-warning");
+  var time = document.getElementById("instance-billing-time");
+  var available = document.getElementById("instance-billing-available");
+  function timeLabel(seconds) {
+    seconds = Math.max(0, Number(seconds) || 0);
+    if (seconds < 60) return Math.ceil(seconds) + " seconds";
+    return Math.ceil(seconds / 60) + " minutes";
+  }
+  function refresh() {
+    fetch("/instances/" + encodeURIComponent(instanceId) + "/status", {credentials: "same-origin", cache: "no-store"})
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (data) {
+        if (!data || !data.ok) return;
+        var item = data.instance || {};
+        var billing = item.billing || {};
+        if (warning) {
+          warning.classList.toggle("hidden", !billing.low_balance);
+          warning.classList.toggle("flex", !!billing.low_balance);
+        }
+        if (time && billing.remaining_seconds !== null) time.textContent = timeLabel(billing.remaining_seconds);
+        if (available && billing.available_balance_display) available.textContent = billing.available_balance_display;
+        document.querySelectorAll("#sandbox-estimated-cost,[data-live-instance-cost]").forEach(function (node) {
+          node.textContent = "£" + (billing.estimated_cost_display || "0.0000");
+        });
+        if (["stopped", "failed", "expired", "killed"].indexOf(item.status) !== -1 && {{ 'false' if test_context else 'true' }}) {
+          if (item.exit_reason === "insufficient_balance") {
+            window.location.href = "/my-instances?error=" + encodeURIComponent("Sandbox stopped because the available balance was exhausted.");
+          }
+        }
+      })
+      .catch(function () {});
+  }
+  refresh();
+  window.setInterval(refresh, 10000);
+})();
+{% end_app_script %}
+
 {% if instance.status == "running" %}
   {% app_script "sandbox-ui-evidence-" ~ instance.id ~ "-" ~ (((ui_workflow_node or {}).get("id")) or ui_mode) %}
   (function () {

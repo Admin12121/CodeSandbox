@@ -25,8 +25,48 @@ log = logging.getLogger("codesandbox-worker.docker")
 
 _SUPPORTED_RUNTIME_CLASSES = {"container", "tool_job"}
 _SUPPORTED_NETWORK_MODES = {"disabled", "restricted", "full_internet"}
+_SUDO_USER_CAPABILITIES = {
+    "AUDIT_WRITE", "CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID",
+    "SETFCAP", "SETGID", "SETPCAP", "SETUID",
+}
+_ROOT_STUDY_CAPABILITIES = _SUDO_USER_CAPABILITIES | {
+    "KILL", "MKNOD", "NET_BIND_SERVICE", "NET_RAW", "SYS_CHROOT", "SYS_PTRACE",
+}
 _USER_RE = re.compile(r"^(?:[0-9]+|[A-Za-z_][A-Za-z0-9_-]*)(?::(?:[0-9]+|[A-Za-z_][A-Za-z0-9_-]*))?$")
 _WORKER_ID = os.environ.get("WORKER_ID", platform.node())
+
+
+def _parse_cpu_list(value: str) -> list[int]:
+    cpus: list[int] = []
+    for part in str(value or "").strip().split(","):
+        if not part:
+            continue
+        if "-" in part:
+            left, right = part.split("-", 1)
+            try:
+                cpus.extend(range(int(left), int(right) + 1))
+            except ValueError:
+                continue
+        else:
+            try:
+                cpus.append(int(part))
+            except ValueError:
+                continue
+    return sorted(set(cpu for cpu in cpus if cpu >= 0))
+
+
+def _worker_allowed_cpus() -> list[int]:
+    for path in (
+        "/sys/fs/cgroup/cpuset.cpus.effective",
+        "/sys/fs/cgroup/cpuset/cpuset.cpus",
+    ):
+        try:
+            values = _parse_cpu_list(open(path, encoding="utf-8").read())
+        except OSError:
+            values = []
+        if values:
+            return values
+    return list(range(max(1, os.cpu_count() or 1)))
 
 
 class DockerRunner(RuntimeRunner):
@@ -66,6 +106,17 @@ class DockerRunner(RuntimeRunner):
         except Exception:
             return False
 
+    def _cpuset_cpus(self) -> str:
+        allowed = _worker_allowed_cpus()
+        requested = max(1, min(int(self.policy.get("vcpu") or 1), len(allowed)))
+        if requested >= len(allowed):
+            selected = allowed
+        else:
+            seed = int(hashlib.sha256(self.instance_id.encode()).hexdigest()[:8], 16)
+            start = seed % len(allowed)
+            selected = [allowed[(start + offset) % len(allowed)] for offset in range(requested)]
+        return ",".join(str(cpu) for cpu in sorted(selected))
+
     def _validate(self) -> None:
         uuid.UUID(self.instance_id)
         if int(self.policy.get("version") or 0) != 1:
@@ -101,8 +152,24 @@ class DockerRunner(RuntimeRunner):
                 raise ValueError(f"Runtime policy {name} is outside worker limits.")
         security = self.policy.get("security") or {}
         allow_sudo = bool(self.policy.get("allow_sudo"))
+        security_profile = str(security.get("profile") or "restricted")
+        cap_add_values = [str(value).upper() for value in security.get("cap_add") or []]
+        cap_add = set(cap_add_values)
+        if len(cap_add_values) != len(cap_add):
+            raise ValueError("Runtime capability list contains duplicates.")
+        if security_profile == "root_study":
+            expected_cap_add = _ROOT_STUDY_CAPABILITIES
+            if not self.policy.get("allow_root"):
+                raise ValueError("root_study requires explicit root access.")
+        elif allow_sudo:
+            expected_cap_add = _SUDO_USER_CAPABILITIES
+        elif security_profile == "restricted":
+            expected_cap_add = set()
+        else:
+            raise ValueError("Unsupported runtime security profile.")
         if (
             security.get("cap_drop") != ["ALL"]
+            or cap_add != expected_cap_add
             or security.get("privileged") is not False
             or security.get("host_mounts") is not False
             or security.get("docker_socket") is not False
@@ -403,11 +470,15 @@ class DockerRunner(RuntimeRunner):
             "mounts": mounts,
             "read_only": bool(self.policy.get("read_only_root", True)),
             "tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m,mode=1777"},
+            # Quota enforces CPU time; cpuset also hides unrelated host CPUs
+            # from tools such as htop/nproc so the visible topology matches the plan.
             "nano_cpus": int(self.policy["vcpu"]) * 1_000_000_000,
+            "cpuset_cpus": self._cpuset_cpus(),
             "mem_limit": int(self.policy["ram_gb"]) * 1024**3,
             "memswap_limit": int(self.policy["ram_gb"]) * 1024**3,
             "pids_limit": int(self.policy["pids_limit"]),
             "cap_drop": ["ALL"],
+            "cap_add": list((self.policy.get("security") or {}).get("cap_add") or []),
             "security_opt": (["no-new-privileges:true"] if (self.policy.get("security") or {}).get("no_new_privileges", True) else []),
             "privileged": False,
             "init": True,

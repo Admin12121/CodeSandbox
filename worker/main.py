@@ -650,10 +650,13 @@ class WorkerApp:
         runners = [runner for _, runner in self.registry.all()]
         used_vcpu = sum(int(runner.policy.get("vcpu") or 0) for runner in runners)
         used_ram_gb = sum(int(runner.policy.get("ram_gb") or 0) for runner in runners)
-        used_disk_gb = sum(int(runner.policy.get("disk_gb") or 0) for runner in runners)
+        used_disk_gb = sum(
+            int(runner.policy.get("scheduler_disk_gb") or runner.policy.get("disk_gb") or 0)
+            for runner in runners
+        )
         requested_vcpu = int(policy.get("vcpu") or 0)
         requested_ram_gb = int(policy.get("ram_gb") or 0)
-        requested_disk_gb = int(policy.get("disk_gb") or 0)
+        requested_disk_gb = int(policy.get("scheduler_disk_gb") or policy.get("disk_gb") or 0)
 
         if used_vcpu + requested_vcpu > _TOTAL_VCPU:
             raise RuntimeError("Worker vCPU capacity would be exceeded.")
@@ -666,7 +669,10 @@ class WorkerApp:
         runners = [runner for _, runner in self.registry.all()]
         used_vcpu = sum(int(runner.policy.get("vcpu") or 0) for runner in runners)
         used_ram_gb = sum(int(runner.policy.get("ram_gb") or 0) for runner in runners)
-        used_disk_gb = sum(int(runner.policy.get("disk_gb") or 0) for runner in runners)
+        used_disk_gb = sum(
+            int(runner.policy.get("scheduler_disk_gb") or runner.policy.get("disk_gb") or 0)
+            for runner in runners
+        )
         return used_vcpu, used_ram_gb, used_disk_gb, len(runners)
 
     def _reattach_running(self) -> None:

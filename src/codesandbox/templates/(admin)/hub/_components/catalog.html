@@ -3,7 +3,7 @@
 {% if templates %}
   <div class="grid gap-6 pt-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
     {% for tmpl in templates %}
-      {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700", attrs={"data-cs-href": "/hub/" ~ tmpl.slug}) %}
+      {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700 justify-between", attrs={"data-cs-href": "/hub/" ~ tmpl.slug}) %}
         {% call frame.frame_header(class="p-2! gap-1") %}
           {% call frame.frame_title() %}{{ tmpl.name }}{% endcall %}
           {% call frame.frame_description() %}{{ tmpl.description }}{% endcall %}

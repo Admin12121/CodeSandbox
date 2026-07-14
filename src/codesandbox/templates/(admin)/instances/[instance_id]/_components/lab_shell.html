@@ -11,6 +11,11 @@
     var terminalStates = {}; // name -> { name, terminalId, term, fitAddon, ws, ro }
     var terminalClientId = ('lab-' + Math.random().toString(36).slice(2, 12)).slice(0, 20);
     var openFileState = {};   // path -> { original: string }
+    var editorSaveTimers = {};
+    var selectedFsPath = "/";
+    var selectedFsType = "directory";
+    var contextFsPath = "/";
+    var contextFsType = "directory";
 
     var $ = function (selector, base) {
       return (base || root).querySelector(selector);
@@ -201,11 +206,18 @@
       if (state.ws) { try { state.ws.close(); } catch (e) {} }
       state.ws = null;
       state.term.writeln("\r\n\x1b[90mConnecting to sandbox terminal…\x1b[0m");
-      fetch("/instances/" + instanceId + "/monitor-token?purpose=terminal")
-        .then(function (r) {
-          if (!r.ok) throw new Error("token request failed (" + r.status + ")");
-          return r.json();
-        })
+      function requestToken(attempt) {
+        return fetch("/instances/" + instanceId + "/monitor-token?purpose=terminal", {cache: "no-store"})
+          .then(function (r) {
+            if (r.ok) return r.json();
+            if ((r.status === 403 || r.status === 409) && attempt < 30) {
+              return new Promise(function (resolve) { setTimeout(resolve, 1000); })
+                .then(function () { return requestToken(attempt + 1); });
+            }
+            throw new Error("token request failed (" + r.status + ")");
+          });
+      }
+      requestToken(0)
         .then(function (data) { openTerminalWs(state, instanceId, data.token); })
         .catch(function (err) {
           state.term.writeln("\x1b[31mCould not authenticate terminal: " + err.message + "\x1b[0m");
@@ -336,16 +348,22 @@
       if (fsToken && Date.now() - fsTokenAt < FS_TOKEN_REFRESH_MS) {
         return Promise.resolve(fsToken);
       }
-      return fetch("/instances/" + instanceId + "/monitor-token?purpose=fs")
-        .then(function (r) {
-          if (!r.ok) throw new Error("token request failed (" + r.status + ")");
-          return r.json();
-        })
-        .then(function (data) {
-          fsToken = data.token;
-          fsTokenAt = Date.now();
-          return fsToken;
-        });
+      function request(attempt) {
+        return fetch("/instances/" + instanceId + "/monitor-token?purpose=fs", {cache: "no-store"})
+          .then(function (r) {
+            if (r.ok) return r.json();
+            if ((r.status === 403 || r.status === 409) && attempt < 30) {
+              return new Promise(function (resolve) { setTimeout(resolve, 1000); })
+                .then(function () { return request(attempt + 1); });
+            }
+            throw new Error("token request failed (" + r.status + ")");
+          });
+      }
+      return request(0).then(function (data) {
+        fsToken = data.token;
+        fsTokenAt = Date.now();
+        return fsToken;
+      });
     }
 
     function fsApi(method, urlPath, params, body) {
@@ -371,6 +389,18 @@
     function fsList(path) { return fsApi("GET", "/fs", { path: path }); }
     function fsRead(path) { return fsApi("GET", "/file", { path: path }); }
     function fsWrite(path, content) { return fsApi("PUT", "/file", {}, { path: path, content: content }); }
+    function fsDelete(path) { return fsApi("DELETE", "/file", { path: path }); }
+    function fsMkdir(path) { return fsApi("POST", "/file/mkdir", {}, { path: path }); }
+    function fsRename(oldPath, newPath) { return fsApi("POST", "/file/rename", {}, { old: oldPath, new: newPath }); }
+    function fsUpload(path, file) {
+      var instanceId = fsInstanceId();
+      return fetchFsToken().then(function (token) {
+        return fetch(
+          "/api/sandbox/" + instanceId + "/file/upload?token=" + encodeURIComponent(token) + "&path=" + encodeURIComponent(path),
+          { method: "POST", body: file }
+        ).then(function (r) { return r.json(); });
+      });
+    }
 
     var FOLDER_ICON = '<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
     var FILE_ICON = '<svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>';
@@ -401,12 +431,14 @@
           var row = document.createElement("div");
           row.className = "fs-row";
           row.dataset.fsPath = full;
-          row.dataset.fsType = entry.type;
-          row.innerHTML = (entry.type === "dir" ? FOLDER_ICON : FILE_ICON) +
+          var isDirectory = entry.type === "directory" || entry.type === "dir";
+          row.dataset.fsType = isDirectory ? "directory" : "file";
+          row.title = full;
+          row.innerHTML = (isDirectory ? FOLDER_ICON : FILE_ICON) +
             '<span class="truncate">' + escHtml(entry.name) + "</span>";
           container.appendChild(row);
 
-          if (entry.type === "dir") {
+          if (isDirectory) {
             var children = document.createElement("div");
             children.className = "hidden pl-4";
             children.dataset.fsChildrenOf = full;
@@ -432,7 +464,254 @@
     function fsInitRoot() {
       var mount = document.getElementById("sandbox-fs-root");
       if (!mount) return;
+      mount.dataset.loaded = "1";
       loadFsLevel("/", mount);
+    }
+
+    function refreshFsTree() {
+      fsInitRoot();
+    }
+
+    function fsParent(path) {
+      var clean = String(path || "/").replace(/\/+$/, "");
+      if (!clean || clean === "/") return "/";
+      var index = clean.lastIndexOf("/");
+      return index <= 0 ? "/" : clean.slice(0, index);
+    }
+
+    function fsBase(path) {
+      var clean = String(path || "").replace(/\/+$/, "");
+      return clean.split("/").pop() || "";
+    }
+
+    function fsTargetDirectory(path, type) {
+      return type === "directory" ? (path || "/") : fsParent(path);
+    }
+
+    function selectFsRow(row) {
+      $$(".fs-row").forEach(function (item) { item.classList.remove("fs-row-active"); });
+      if (!row) {
+        selectedFsPath = "/";
+        selectedFsType = "directory";
+        return;
+      }
+      row.classList.add("fs-row-active");
+      selectedFsPath = row.dataset.fsPath || "/";
+      selectedFsType = row.dataset.fsType || "file";
+    }
+
+    function closeEditorsUnder(path) {
+      Object.keys(openFileState).forEach(function (openPath) {
+        if (openPath === path || openPath.indexOf(path.replace(/\/$/, "") + "/") === 0) {
+          closeEditor(openPath);
+        }
+      });
+    }
+
+    function fsDialog(options) {
+      options = options || {};
+      return new Promise(function (resolve) {
+        var dialog = document.createElement("dialog");
+        dialog.className = "w-[min(28rem,calc(100vw-2rem))] rounded-xl border bg-popover p-0 text-popover-foreground shadow-2xl backdrop:bg-black/65";
+        var form = document.createElement("form");
+        form.method = "dialog";
+        form.className = "p-4";
+        form.innerHTML =
+          '<div class="text-sm font-semibold">' + escHtml(options.title || "Workspace") + '</div>' +
+          '<p class="mt-1 text-xs text-muted-foreground">' + escHtml(options.description || "") + '</p>' +
+          (options.input === false ? '' : '<input data-dialog-input class="mt-4 h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" autocomplete="off">') +
+          '<div class="mt-5 flex justify-end gap-2">' +
+          '<button value="cancel" class="rounded-md border px-3 py-1.5 text-sm hover:bg-accent">Cancel</button>' +
+          '<button value="confirm" class="rounded-md px-3 py-1.5 text-sm font-medium ' + (options.danger ? 'bg-destructive text-destructive-foreground' : 'bg-primary text-primary-foreground') + '">' + escHtml(options.confirmText || "Continue") + '</button>' +
+          '</div>';
+        dialog.appendChild(form);
+        document.body.appendChild(dialog);
+        var input = form.querySelector("[data-dialog-input]");
+        if (input) { input.value = options.value || ""; input.placeholder = options.placeholder || ""; }
+        function finish(value) {
+          try { dialog.close(); } catch (_) {}
+          dialog.remove();
+          resolve(value);
+        }
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          var submitter = event.submitter && event.submitter.value;
+          finish(submitter === "confirm" ? (input ? input.value : true) : null);
+        });
+        dialog.addEventListener("cancel", function (event) { event.preventDefault(); finish(null); });
+        dialog.addEventListener("click", function (event) {
+          if (event.target === dialog) finish(null);
+        });
+        dialog.showModal();
+        if (input) { input.focus(); input.select(); }
+      });
+    }
+
+    function validNewName(value) {
+      var name = String(value || "").trim();
+      if (!name || name === "." || name === ".." || name.indexOf("/") !== -1 || name.indexOf("\\") !== -1) {
+        window.Toast && window.Toast.create({ title: "Invalid name", description: "Use a single file or folder name.", type: "error" });
+        return null;
+      }
+      return name;
+    }
+
+    function createFsItem(kind, basePath) {
+      startInlineFsCreate(kind, basePath || "/");
+    }
+
+    function fsChildrenContainer(path) {
+      if (path === "/" || !path) return document.getElementById("sandbox-fs-root");
+      return $$("[data-fs-children-of]").find(function (el) { return el.dataset.fsChildrenOf === path; });
+    }
+
+    function removeInlineFsCreate() {
+      $$("[data-fs-inline-create]").forEach(function (row) { row.remove(); });
+    }
+
+    function commitInlineFsCreate(row) {
+      if (!row || row.dataset.committing === "1") return;
+      var input = row.querySelector("[data-fs-inline-input]");
+      var kind = row.dataset.fsCreateKind;
+      var basePath = row.dataset.fsCreateBase || "/";
+      var name = validNewName(input && input.value);
+      if (!name) {
+        if (input) input.focus();
+        return;
+      }
+      row.dataset.committing = "1";
+      var path = joinFsPath(basePath, name);
+      var request = kind === "directory" ? fsMkdir(path) : fsWrite(path, "");
+      request.then(function (res) {
+        if (!res.ok) throw new Error(res.error || "Could not create item.");
+        removeInlineFsCreate();
+        refreshFsTree();
+        if (kind === "file") openFileInEditor(path);
+      }).catch(function (err) {
+        row.dataset.committing = "";
+        window.Toast && window.Toast.create({ title: "Create failed", description: err.message, type: "error" });
+        if (input) input.focus();
+      });
+    }
+
+    function startInlineFsCreate(kind, basePath) {
+      removeInlineFsCreate();
+      basePath = basePath || "/";
+      var container = fsChildrenContainer(basePath) || fsChildrenContainer("/");
+      if (!container) return;
+      if (container.classList.contains("hidden")) container.classList.remove("hidden");
+      var row = document.createElement("div");
+      row.dataset.fsInlineCreate = "";
+      row.dataset.fsCreateKind = kind;
+      row.dataset.fsCreateBase = basePath;
+      row.className = "fs-row bg-accent/50";
+      row.innerHTML = (kind === "directory" ? FOLDER_ICON : FILE_ICON) +
+        '<input data-fs-inline-input class="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground" autocomplete="off" spellcheck="false">';
+      var firstRealRow = Array.from(container.children).find(function (child) { return child.classList && child.classList.contains("fs-row"); });
+      if (firstRealRow) container.insertBefore(row, firstRealRow);
+      else {
+        container.innerHTML = "";
+        container.appendChild(row);
+      }
+      var input = row.querySelector("[data-fs-inline-input]");
+      if (!input) return;
+      input.value = kind === "directory" ? "new-folder" : "untitled.txt";
+      input.placeholder = kind === "directory" ? "folder name" : "file name";
+      input.focus();
+      input.select();
+      input.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commitInlineFsCreate(row);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          removeInlineFsCreate();
+        }
+      });
+      input.addEventListener("blur", function () {
+        window.setTimeout(function () {
+          if (row.isConnected && row.dataset.committing !== "1") removeInlineFsCreate();
+        }, 150);
+      });
+    }
+
+    function renameFsItem(path) {
+      if (!path || path === "/") return;
+      var current = fsBase(path);
+      fsDialog({ title: "Rename", description: path, value: current, confirmText: "Rename" })
+        .then(function (value) {
+          var name = validNewName(value);
+          if (!name || name === current) return;
+          var nextPath = joinFsPath(fsParent(path), name);
+          return fsRename(path, nextPath).then(function (res) {
+            if (!res.ok) throw new Error(res.error || "Could not rename item.");
+            closeEditorsUnder(path);
+            refreshFsTree();
+          });
+        }).catch(function (err) {
+          window.Toast && window.Toast.create({ title: "Rename failed", description: err.message, type: "error" });
+        });
+    }
+
+    function deleteFsItem(path) {
+      if (!path || path === "/") return;
+      fsDialog({
+        title: "Delete " + fsBase(path) + "?",
+        description: "This removes the item from the sandbox workspace and cannot be undone.",
+        input: false, danger: true, confirmText: "Delete"
+      }).then(function (confirmed) {
+        if (!confirmed) return;
+        return fsDelete(path).then(function (res) {
+          if (!res.ok) throw new Error(res.error || "Could not delete item.");
+          closeEditorsUnder(path);
+          refreshFsTree();
+        });
+      }).catch(function (err) {
+        window.Toast && window.Toast.create({ title: "Delete failed", description: err.message, type: "error" });
+      });
+    }
+
+    function downloadFsItem(path, type) {
+      if (!path || path === "/" || type === "directory") return;
+      fetchFsToken().then(function (token) {
+        window.location.href = "/api/sandbox/" + fsInstanceId() + "/file/download?token=" + encodeURIComponent(token) + "&path=" + encodeURIComponent(path);
+      });
+    }
+
+    function uploadFsFiles(files, basePath) {
+      var list = Array.from(files || []);
+      if (!list.length) return;
+      Promise.all(list.map(function (file) {
+        return fsUpload(joinFsPath(basePath || "/", file.name), file).then(function (res) {
+          if (!res.ok) throw new Error(res.error || "Upload failed for " + file.name);
+        });
+      })).then(function () {
+        refreshFsTree();
+      }).catch(function (err) {
+        window.Toast && window.Toast.create({ title: "Upload failed", description: err.message, type: "error" });
+      });
+    }
+
+    function hideFsContextMenu() {
+      hide(document.getElementById("sandbox-fs-context-menu"));
+    }
+
+    function showFsContextMenu(event, path, type) {
+      var menu = document.getElementById("sandbox-fs-context-menu");
+      if (!menu) return;
+      contextFsPath = path || "/";
+      contextFsType = type || "directory";
+      var open = menu.querySelector('[data-fs-menu-action="open"]');
+      var rename = menu.querySelector('[data-fs-menu-action="rename"]');
+      var remove = menu.querySelector('[data-fs-menu-action="delete"]');
+      var download = menu.querySelector('[data-fs-menu-action="download"]');
+      if (open) open.classList.toggle("hidden", contextFsPath === "/");
+      if (rename) rename.classList.toggle("hidden", contextFsPath === "/");
+      if (remove) remove.classList.toggle("hidden", contextFsPath === "/");
+      if (download) download.classList.toggle("hidden", contextFsType === "directory" || contextFsPath === "/");
+      menu.style.left = Math.min(event.clientX, window.innerWidth - 190) + "px";
+      menu.style.top = Math.min(event.clientY, window.innerHeight - 230) + "px";
+      show(menu);
     }
 
     function setDirty(path, dirty) {
@@ -468,6 +747,18 @@
       html: "https://esm.sh/@codemirror/lang-html@6",
       css: "https://esm.sh/@codemirror/lang-css@6",
       md: "https://esm.sh/@codemirror/lang-markdown@6",
+      c: "https://esm.sh/@codemirror/lang-cpp@6",
+      h: "https://esm.sh/@codemirror/lang-cpp@6",
+      cc: "https://esm.sh/@codemirror/lang-cpp@6",
+      cpp: "https://esm.sh/@codemirror/lang-cpp@6",
+      hpp: "https://esm.sh/@codemirror/lang-cpp@6",
+      java: "https://esm.sh/@codemirror/lang-java@6",
+      rs: "https://esm.sh/@codemirror/lang-rust@6",
+      php: "https://esm.sh/@codemirror/lang-php@6",
+      xml: "https://esm.sh/@codemirror/lang-xml@6",
+      sql: "https://esm.sh/@codemirror/lang-sql@6",
+      yaml: "https://esm.sh/@codemirror/lang-yaml@6",
+      yml: "https://esm.sh/@codemirror/lang-yaml@6",
     };
 
     function cmCore() {
@@ -485,6 +776,13 @@
         if (mod.html) return mod.html();
         if (mod.css) return mod.css();
         if (mod.markdown) return mod.markdown();
+        if (mod.cpp) return mod.cpp();
+        if (mod.java) return mod.java();
+        if (mod.rust) return mod.rust();
+        if (mod.php) return mod.php();
+        if (mod.xml) return mod.xml();
+        if (mod.sql) return mod.sql();
+        if (mod.yaml) return mod.yaml();
         return null;
       }).catch(function (err) { console.warn("CodeMirror language extension failed to load:", err); return null; });
     }
@@ -510,7 +808,9 @@
           if (!update.docChanged) return;
           var state = openFileState[path];
           if (!state) return;
-          setDirty(path, update.state.doc.toString() !== state.original);
+          var dirty = update.state.doc.toString() !== state.original;
+          setDirty(path, dirty);
+          if (dirty) scheduleFileAutosave(path);
         }));
 
         return new core.EditorView({ doc: content, extensions: extensions, parent: mount });
@@ -550,7 +850,7 @@
           pane.innerHTML = '<div class="p-3 text-xs text-red-400">' + escHtml(res.error || "Could not open file.") + "</div>";
           return;
         }
-        if (res.binary) {
+        if (res.binary || res.encoding === "base64") {
           pane.innerHTML = '<div class="p-3 text-xs text-muted-foreground">Binary file — cannot edit here.</div>';
           return;
         }
@@ -567,25 +867,47 @@
       });
     }
 
-    function saveActiveFile() {
-      var activeTab = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
-      if (!activeTab) return;
-      var path = activeTab.dataset.tab;
+    function saveFile(path, options) {
+      options = options || {};
       var state = openFileState[path];
-      if (!state || !state.view) return;
+      if (!state || !state.view) return Promise.resolve();
 
       var content = state.view.state.doc.toString();
-      fsWrite(path, content).then(function (res) {
+      if (content === state.original) {
+        setDirty(path, false);
+        return Promise.resolve();
+      }
+      var editorStatus = $("[data-editor-status]");
+      if (editorStatus) editorStatus.textContent = "Saving…";
+      return fsWrite(path, content).then(function (res) {
         if (res.ok) {
           state.original = content;
           setDirty(path, false);
-          window.Toast && window.Toast.create({ title: "Saved", type: "success", duration: 1500 });
+          if (editorStatus) editorStatus.textContent = "Saved";
+          window.setTimeout(function () { if (editorStatus) editorStatus.textContent = ""; }, 1200);
+          if (!options.quiet) window.Toast && window.Toast.create({ title: "Saved", type: "success", duration: 1500 });
         } else {
+          if (editorStatus) editorStatus.textContent = "Save failed";
           window.Toast && window.Toast.create({ title: "Save failed", description: res.error || "", type: "error" });
         }
       }).catch(function (err) {
+        if (editorStatus) editorStatus.textContent = "Save failed";
         window.Toast && window.Toast.create({ title: "Save failed", description: err.message, type: "error" });
       });
+    }
+
+    function scheduleFileAutosave(path) {
+      window.clearTimeout(editorSaveTimers[path]);
+      editorSaveTimers[path] = window.setTimeout(function () {
+        saveFile(path, { quiet: true });
+      }, 700);
+    }
+
+    function saveActiveFile() {
+      var activeTab = $$("[data-tab]").find(function (el) { return el.classList.contains("active-tab"); });
+      if (!activeTab) return;
+      window.clearTimeout(editorSaveTimers[activeTab.dataset.tab]);
+      saveFile(activeTab.dataset.tab);
     }
 
     function togglePanel(name) {
@@ -688,6 +1010,8 @@
 
       var state = openFileState[file];
       if (state && state.view) { try { state.view.destroy(); } catch (e) {} }
+      window.clearTimeout(editorSaveTimers[file]);
+      delete editorSaveTimers[file];
       delete openFileState[file];
 
       tab.remove();
@@ -771,6 +1095,13 @@
         target.closest("[data-toggle-right]") ||
         target.closest("[data-reconnect-terminal]") ||
         target.closest("[data-new-terminal]") ||
+        target.closest("[data-editor-back]") ||
+        target.closest("[data-editor-forward]") ||
+        target.closest("[data-fs-new-file]") ||
+        target.closest("[data-fs-new-folder]") ||
+        target.closest("[data-fs-upload-button]") ||
+        target.closest("[data-fs-refresh]") ||
+        target.closest("[data-fs-menu-action]") ||
         target.closest(".tab-close") ||
         target.closest(".terminal-tab-close") ||
         target.closest("[data-tab]") ||
@@ -781,6 +1112,38 @@
 
       if (action.dataset.togglePanel) return togglePanel(action.dataset.togglePanel);
       if (action.dataset.toggleRight) return toggleRight(action.dataset.toggleRight);
+      if (action.dataset.editorBack !== undefined || action.dataset.editorForward !== undefined) {
+        var tabsForNav = visibleEditorTabs();
+        var currentIndex = tabsForNav.findIndex(function (tab) { return tab.classList.contains("active-tab"); });
+        if (tabsForNav.length) {
+          var delta = action.dataset.editorBack !== undefined ? -1 : 1;
+          var nextIndex = (currentIndex + delta + tabsForNav.length) % tabsForNav.length;
+          openEditor(tabsForNav[nextIndex].dataset.tab);
+        }
+        return;
+      }
+      if (action.dataset.fsNewFile !== undefined) return createFsItem("file", fsTargetDirectory(selectedFsPath, selectedFsType));
+      if (action.dataset.fsNewFolder !== undefined) return createFsItem("directory", fsTargetDirectory(selectedFsPath, selectedFsType));
+      if (action.dataset.fsUploadButton !== undefined) {
+        var uploadInput = $("[data-fs-upload-input]");
+        if (uploadInput) uploadInput.click();
+        return;
+      }
+      if (action.dataset.fsRefresh !== undefined) return refreshFsTree();
+      if (action.dataset.fsMenuAction) {
+        var fsAction = action.dataset.fsMenuAction;
+        hideFsContextMenu();
+        if (fsAction === "open") {
+          var row = $$('.fs-row').find(function (item) { return item.dataset.fsPath === contextFsPath; });
+          if (contextFsType === "directory") return row && toggleFsDir(row);
+          return openFileInEditor(contextFsPath);
+        }
+        if (fsAction === "new-file") return createFsItem("file", fsTargetDirectory(contextFsPath, contextFsType));
+        if (fsAction === "new-folder") return createFsItem("directory", fsTargetDirectory(contextFsPath, contextFsType));
+        if (fsAction === "rename") return renameFsItem(contextFsPath);
+        if (fsAction === "delete") return deleteFsItem(contextFsPath);
+        if (fsAction === "download") return downloadFsItem(contextFsPath, contextFsType);
+      }
 
       if (action.dataset.reconnectTerminal !== undefined) {
         var activeTerminal = visibleTerminalTabs().find(function (tab) {
@@ -812,7 +1175,9 @@
       }
 
       if (action.classList.contains("fs-row")) {
-        if (action.dataset.fsType === "dir") return toggleFsDir(action);
+        if (action.dataset.fsInlineCreate !== undefined) return;
+        selectFsRow(action);
+        if (action.dataset.fsType === "directory") return toggleFsDir(action);
         return openFileInEditor(action.dataset.fsPath);
       }
 
@@ -850,7 +1215,9 @@
       // always reach the shortcuts below) and xterm.js's own hidden input
       // lives inside .xterm (excluded so terminal typing isn't touched).
       var el = document.activeElement;
-      if (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA")) return false;
+      if (!el) return false;
+      if (el.closest && el.closest("[data-notes-blocks]")) return true;
+      if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") return false;
       return !el.closest(".xterm");
     }
 
@@ -934,12 +1301,33 @@
       }
     }, true);
 
-    // Right-click is disabled everywhere on this page except inside the
-    // terminal, where it's xterm.js's paste gesture.
+    // A real filesystem context menu is provided only for the workspace tree.
+    // Other areas keep the browser/terminal's normal context-menu behavior.
     document.addEventListener("contextmenu", function (event) {
-      if (event.target.closest && event.target.closest(".xterm")) return;
+      var row = event.target.closest && event.target.closest(".fs-row");
+      var surface = event.target.closest && event.target.closest("[data-fs-root-surface]");
+      if (!row && !surface) return;
       event.preventDefault();
+      if (row) {
+        selectFsRow(row);
+        showFsContextMenu(event, row.dataset.fsPath, row.dataset.fsType);
+      } else {
+        selectFsRow(null);
+        showFsContextMenu(event, "/", "directory");
+      }
     }, true);
+
+    document.addEventListener("click", function (event) {
+      if (!event.target.closest || !event.target.closest("#sandbox-fs-context-menu")) hideFsContextMenu();
+    });
+
+    var fsUploadInput = $("[data-fs-upload-input]");
+    if (fsUploadInput) {
+      fsUploadInput.addEventListener("change", function () {
+        uploadFsFiles(fsUploadInput.files, fsTargetDirectory(selectedFsPath, selectedFsType));
+        fsUploadInput.value = "";
+      });
+    }
 
     // DevTools-open heuristic: docked DevTools shrinks the viewport relative
     // to the outer window by roughly its own width/height. Not a security

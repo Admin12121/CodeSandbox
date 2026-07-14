@@ -797,3 +797,8 @@ html[data-magicui-theme-vt="active"]::view-transition-group(root) {
 .__PrivateStripeElement{
     width: 100%;
 }
+
+.terminal{
+    height: 100%;
+    padding: 4px;
+}

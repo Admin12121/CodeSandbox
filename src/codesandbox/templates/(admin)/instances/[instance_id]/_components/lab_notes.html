@@ -2,20 +2,35 @@
 {% import "(admin)/instances/[instance_id]/_components/lab_icons.html" as icons %}
 
 {% macro lab_right_panel(notes, artifacts) -%}
-{% call resizable.resizable_panel(default_size=35, min_size=25, max_size=40, attrs={"data-panel": "right"}) %}
+{% call resizable.resizable_panel(default_size=35, min_size=25, max_size=50, attrs={"data-panel": "right"}) %}
   <div class="h-full overflow-auto text-sm">
 
-    <div data-right-pane="notes" class="right-pane p-3">
-      <div class="mx-auto max-w-[620px] space-y-4 px-2 py-3 text-sm">
-        <input data-notes-title class="w-full bg-transparent text-2xl font-semibold outline-none placeholder:text-muted-foreground" value="{{ notes.title if notes else 'Untitled Investigation' }}" placeholder="Untitled">
+    <div data-right-pane="notes" class="right-pane h-full bg-background">
+      <div class="mx-auto flex h-full max-w-[780px] flex-col overflow-hidden px-8 py-8 text-sm">
+        <input data-notes-title class="w-full shrink-0 bg-transparent text-3xl font-bold tracking-tight outline-none placeholder:text-muted-foreground/50" value="{{ notes.title if notes else 'Untitled Investigation' }}" placeholder="Untitled investigation">
 
-        <textarea
-          data-notes-content
-          class="min-h-[22rem] w-full resize-none rounded-md border bg-muted/20 p-3 leading-6 outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          placeholder="Write case notes, observations, commands, indicators, and manual analysis here."
-        >{{ notes.content if notes else '' }}</textarea>
+        <div data-notes-blocks class="notion-blocks relative mt-6 min-h-0 flex-1 overflow-auto pb-40"></div>
 
-        <div data-notes-status class="text-xs text-muted-foreground">Notes save per instance.</div>
+        <div data-notes-slash-menu class="fixed z-[150] hidden w-72 overflow-hidden rounded-xl border bg-popover text-xs text-popover-foreground shadow-2xl">
+          <div class="border-b p-2"><input data-note-command-filter class="h-8 w-full rounded-md bg-muted/40 px-2 outline-none" placeholder="Type to filter…"></div>
+          <div class="max-h-80 overflow-auto p-1" data-note-command-list>
+            <p class="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Basic blocks</p>
+            <button type="button" data-note-command="paragraph" class="note-command"><b>T</b><span><strong>Text</strong><small>Plain paragraph</small></span></button>
+            <button type="button" data-note-command="h1" class="note-command"><b>H1</b><span><strong>Heading 1</strong><small>Large section heading</small></span></button>
+            <button type="button" data-note-command="h2" class="note-command"><b>H2</b><span><strong>Heading 2</strong><small>Medium section heading</small></span></button>
+            <button type="button" data-note-command="h3" class="note-command"><b>H3</b><span><strong>Heading 3</strong><small>Small section heading</small></span></button>
+            <button type="button" data-note-command="h4" class="note-command"><b>H4</b><span><strong>Heading 4</strong><small>Compact heading</small></span></button>
+            <button type="button" data-note-command="bullet" class="note-command"><b>•</b><span><strong>Bulleted list</strong><small>Simple unordered list</small></span></button>
+            <button type="button" data-note-command="numbered" class="note-command"><b>1.</b><span><strong>Numbered list</strong><small>Ordered steps</small></span></button>
+            <button type="button" data-note-command="todo" class="note-command"><b>☐</b><span><strong>To-do</strong><small>Track an investigation task</small></span></button>
+            <button type="button" data-note-command="quote" class="note-command"><b>❝</b><span><strong>Quote</strong><small>Highlight an observation</small></span></button>
+            <button type="button" data-note-command="code" class="note-command"><b>&lt;/&gt;</b><span><strong>Code</strong><small>Commands, snippets, or indicators</small></span></button>
+            <button type="button" data-note-command="divider" class="note-command"><b>—</b><span><strong>Divider</strong><small>Separate sections</small></span></button>
+          </div>
+        </div>
+
+        <script type="application/json" data-notes-initial>{{ (notes.content if notes else '') | tojson }}</script>
+        <div data-notes-status class="mt-2 shrink-0 text-[11px] text-muted-foreground"></div>
       </div>
     </div>
 
@@ -23,34 +38,12 @@
       <div class="flex h-full flex-col bg-background">
         <div class="flex h-8 shrink-0 items-center justify-between border-b px-2">
           <span class="text-sm font-medium">New Claude Agent Thread</span>
-
           <div class="flex items-center gap-3 text-muted-foreground">
             <button class="hover:text-accent-foreground">{{ icons.icon("plus") }}</button>
             <button class="text-xs hover:text-accent-foreground">•••</button>
           </div>
         </div>
-
-        <textarea
-          class="min-h-0 flex-1 resize-none bg-transparent px-3 py-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground"
-          placeholder="Message Claude Agent — @ to include context, / for commands"
-        ></textarea>
-
-        <div class="shrink-0 border-t bg-background">
-          <textarea class="h-24 w-full resize-none bg-transparent px-3 py-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground"></textarea>
-
-          <div class="flex h-12 items-center justify-between px-3 text-xs text-muted-foreground">
-            <div class="flex items-center gap-3">
-              <button class="hover:text-accent-foreground">{{ icons.icon("plus") }}</button>
-              <button class="hover:text-accent-foreground">◉</button>
-            </div>
-
-            <div class="flex items-center gap-4">
-              <button class="hover:text-accent-foreground">Accept Edits⌄</button>
-              <button class="hover:text-accent-foreground">Default⌄</button>
-              <button class="rounded-md bg-muted px-2 py-1 hover:text-accent-foreground">➤</button>
-            </div>
-          </div>
-        </div>
+        <textarea class="min-h-0 flex-1 resize-none bg-transparent px-3 py-4 font-mono text-sm leading-6 outline-none placeholder:text-muted-foreground" placeholder="Message Claude Agent — @ to include context, / for commands"></textarea>
       </div>
     </div>
 

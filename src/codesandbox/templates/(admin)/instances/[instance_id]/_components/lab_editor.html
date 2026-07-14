@@ -3,16 +3,17 @@
 {% macro lab_editor() -%}
 {% call resizable.resizable_panel(default_size=70, min_size=20, class="hidden", attrs={"data-panel": "editor"}) %}
   <div class="flex h-8 shrink-0 items-center justify-between border-b bg-background">
-    <div class="flex h-full items-center">
-      <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">←</button>
-      <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">→</button>
-
-      <div data-editor-tabs class="flex h-full items-center"></div>
+    <div class="flex h-full min-w-0 items-center">
+      <button type="button" data-editor-back class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground" title="Previous file">←</button>
+      <button type="button" data-editor-forward class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground" title="Next file">→</button>
+      <div data-editor-tabs class="flex h-full min-w-0 items-center overflow-x-auto"></div>
     </div>
+    <span class="mr-3 text-[11px] text-muted-foreground" data-editor-autosave-label>Autosave</span>
   </div>
 
   <div class="flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs text-muted-foreground">
-    <span id="current-file-title"></span>
+    <span id="current-file-title" class="truncate font-mono"></span>
+    <span data-editor-status class="shrink-0"></span>
   </div>
 
   <div data-editor-panes class="min-h-0 flex-1 overflow-auto bg-background font-mono text-xs"></div>

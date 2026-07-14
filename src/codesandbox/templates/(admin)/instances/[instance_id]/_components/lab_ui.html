@@ -64,6 +64,37 @@
   background: var(--accent);
   color: var(--accent-foreground);
 }
+
+.notion-blocks { scrollbar-width: thin; }
+.note-block {
+  position: relative; display: grid; grid-template-columns: 2.8rem minmax(0,1fr);
+  align-items: start; min-height: 2rem; margin: 0.08rem 0; border-radius: 0.35rem; padding: 0.1rem 0.25rem 0.1rem 0;
+}
+.note-block:hover, .note-block:focus-within { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.note-block-controls { display:flex; gap:.05rem; opacity:0; padding-top:.15rem; transition:opacity 100ms ease; }
+.note-block:hover .note-block-controls, .note-block:focus-within .note-block-controls { opacity:.72; }
+.note-block-add, .note-block-drag { display:grid; place-items:center; width:1.3rem; height:1.3rem; border-radius:.25rem; color:var(--muted-foreground); }
+.note-block-add:hover, .note-block-drag:hover { background:var(--accent); color:var(--accent-foreground); }
+.note-block-drag { cursor:grab; user-select:none; }
+.note-block-text { min-height:1.75rem; white-space:pre-wrap; word-break:break-word; outline:none; line-height:1.72; padding:.05rem 0; }
+.note-block-text:empty::before { content:""; pointer-events:none; }
+.note-block[data-note-type="h1"] .note-block-text { font-size:1.8rem; line-height:1.25; font-weight:750; margin:.45rem 0 .15rem; }
+.note-block[data-note-type="h2"] .note-block-text { font-size:1.45rem; line-height:1.3; font-weight:700; margin:.35rem 0 .1rem; }
+.note-block[data-note-type="h3"] .note-block-text { font-size:1.18rem; line-height:1.35; font-weight:680; margin:.25rem 0 .05rem; }
+.note-block[data-note-type="h4"] .note-block-text { font-size:1rem; line-height:1.4; font-weight:650; }
+.note-block[data-note-type="bullet"] .note-block-text::before { content:"•"; display:inline-block; width:1.2rem; color:var(--foreground); }
+.note-block[data-note-type="numbered"] { counter-increment:notion-number; }
+.notion-blocks { counter-reset:notion-number; }
+.note-block[data-note-type="numbered"] .note-block-text::before { content:counter(notion-number) "."; display:inline-block; width:1.5rem; color:var(--foreground); }
+.note-block[data-note-type="quote"] .note-block-text { border-left:3px solid var(--foreground); padding-left:.8rem; font-size:1rem; }
+.note-block[data-note-type="code"] .note-block-text { border-radius:.45rem; background:var(--muted); padding:.7rem .8rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.78rem; line-height:1.55; }
+.note-block[data-note-type="divider"] [data-note-body] { padding:.8rem 0; }
+.note-block[data-note-type="divider"] .note-block-text { min-height:1px; height:1px; overflow:hidden; border-top:1px solid var(--border); padding:0; }
+.note-block.note-dragging { opacity:.38; }
+.note-command { display:grid; grid-template-columns:2.2rem minmax(0,1fr); gap:.6rem; width:100%; align-items:center; border-radius:.4rem; padding:.45rem .55rem; text-align:left; }
+.note-command:hover, .note-command[aria-selected="true"] { background:var(--accent); color:var(--accent-foreground); }
+.note-command b { display:grid; place-items:center; height:2rem; border:1px solid var(--border); border-radius:.35rem; font-size:.72rem; }
+.note-command span { display:grid; } .note-command strong { font-weight:550; } .note-command small { color:var(--muted-foreground); font-size:.68rem; }
 </style>
 
 <div style="position:relative;height:calc(100vh - 4.85rem)">
@@ -210,15 +241,71 @@
   var root = document.getElementById("sandbox-ui");
   if (!root || root.dataset.notesBound) return;
   root.dataset.notesBound = "1";
+
   var instanceId = root.dataset.instanceId;
   var title = root.querySelector("[data-notes-title]");
-  var content = root.querySelector("[data-notes-content]");
+  var editor = root.querySelector("[data-notes-blocks]");
+  var initial = root.querySelector("[data-notes-initial]");
   var status = root.querySelector("[data-notes-status]");
+  var typeSelect = root.querySelector("[data-note-block-type]");
+  var commandFilter = root.querySelector("[data-note-command-filter]");
+  var slashMenu = root.querySelector("[data-notes-slash-menu]");
   var timer = null;
-  if (!instanceId || !title || !content) return;
+  var activeBlock = null;
+  var pendingInsertAfter = null;
+  var draggedBlock = null;
+
+  if (!instanceId || !title || !editor) return;
+
+  function uid() {
+    return "note-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function cleanType(value) {
+    return ["paragraph", "h1", "h2", "h3", "h4", "bullet", "numbered", "todo", "quote", "code", "divider"].indexOf(value) !== -1 ? value : "paragraph";
+  }
+
+  function parseInitial(raw) {
+    if (!raw) return [{ id: uid(), type: "paragraph", text: "", checked: false }];
+    try {
+      var parsed = JSON.parse(raw);
+      if (parsed && [1, 2].indexOf(parsed.version) !== -1 && Array.isArray(parsed.blocks)) {
+        return parsed.blocks.map(function (block) {
+          return {
+            id: String(block.id || uid()),
+            type: cleanType(block.type),
+            text: String(block.text || ""),
+            checked: !!block.checked
+          };
+        });
+      }
+    } catch (_) {}
+    var lines = String(raw).split(/\n{2,}/).filter(function (line) { return line.trim(); });
+    return (lines.length ? lines : [""]).map(function (line) {
+      return { id: uid(), type: "paragraph", text: line, checked: false };
+    });
+  }
 
   function setStatus(value) {
     if (status) status.textContent = value;
+  }
+
+  function blockData(block) {
+    var text = block.querySelector("[data-note-text]");
+    var check = block.querySelector("[data-note-check]");
+    return {
+      id: block.dataset.noteId,
+      type: cleanType(block.dataset.noteType),
+      text: text ? text.textContent : "",
+      checked: !!(check && check.checked)
+    };
+  }
+
+  function serialize() {
+    return JSON.stringify({
+      version: 2,
+      blocks: Array.from(editor.querySelectorAll("[data-note-block]")).map(blockData)
+    });
   }
 
   function save() {
@@ -226,7 +313,7 @@
     fetch("/instances/" + encodeURIComponent(instanceId) + "/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.value, content: content.value })
+      body: JSON.stringify({ title: title.value, content: serialize() })
     }).then(function (response) {
       if (!response.ok) throw new Error("save failed");
       return response.json();
@@ -240,11 +327,268 @@
   function queueSave() {
     setStatus("Unsaved changes");
     window.clearTimeout(timer);
-    timer = window.setTimeout(save, 700);
+    timer = window.setTimeout(save, 650);
   }
 
+  function focusEnd(element) {
+    element.focus();
+    var range = document.createRange();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    var selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function setBlockType(block, type) {
+    if (!block) return;
+    block.dataset.noteType = cleanType(type);
+    var check = block.querySelector("[data-note-check]");
+    if (block.dataset.noteType === "todo") {
+      if (!check) {
+        check = document.createElement("input");
+        check.type = "checkbox";
+        check.dataset.noteCheck = "";
+        check.className = "mt-1 size-3.5";
+        block.querySelector("[data-note-body]").prepend(check);
+      }
+    } else if (check) {
+      check.remove();
+    }
+    var text = block.querySelector("[data-note-text]");
+    if (text) text.contentEditable = block.dataset.noteType === "divider" ? "false" : "true";
+    if (typeSelect) typeSelect.value = block.dataset.noteType;
+    queueSave();
+  }
+
+  function makeBlock(data) {
+    var block = document.createElement("div");
+    block.className = "note-block";
+    block.draggable = true;
+    block.dataset.noteBlock = "";
+    block.dataset.noteId = data.id || uid();
+    block.dataset.noteType = cleanType(data.type);
+
+    var controls = document.createElement("div");
+    controls.className = "note-block-controls";
+    var addButton = document.createElement("button");
+    addButton.type = "button"; addButton.className = "note-block-add";
+    addButton.textContent = "+"; addButton.title = "Add block below";
+    addButton.dataset.noteAddAfter = "";
+    var drag = document.createElement("button");
+    drag.type = "button"; drag.className = "note-block-drag";
+    drag.textContent = "⋮⋮"; drag.title = "Drag to reorder";
+    controls.appendChild(addButton); controls.appendChild(drag);
+
+    var body = document.createElement("div");
+    body.dataset.noteBody = "";
+    body.className = "flex min-w-0 items-start gap-2";
+
+    if (block.dataset.noteType === "todo") {
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = !!data.checked;
+      checkbox.dataset.noteCheck = "";
+      checkbox.className = "mt-1 size-3.5";
+      body.appendChild(checkbox);
+    }
+
+    var text = document.createElement("div");
+    text.contentEditable = block.dataset.noteType === "divider" ? "false" : "true";
+    text.spellcheck = true;
+    text.dataset.noteText = "";
+    text.className = "note-block-text min-w-0 flex-1";
+    text.textContent = data.text || "";
+    body.appendChild(text);
+
+    block.appendChild(controls);
+    block.appendChild(body);
+    return block;
+  }
+
+  function appendBlock(data, after) {
+    var block = makeBlock(data || { id: uid(), type: "paragraph", text: "", checked: false });
+    if (after && after.parentNode === editor) after.insertAdjacentElement("afterend", block);
+    else editor.appendChild(block);
+    return block;
+  }
+
+  function showSlashMenu(block, force, anchor) {
+    if (!slashMenu || !block) return;
+    var text = block.querySelector("[data-note-text]");
+    if (!force && (!text || text.textContent.indexOf("/") !== 0)) return hideSlashMenu();
+    var rect = (anchor || text || block).getBoundingClientRect();
+    slashMenu.style.left = Math.min(rect.left, window.innerWidth - 220) + "px";
+    slashMenu.style.top = Math.min(rect.bottom + 4, window.innerHeight - 260) + "px";
+    slashMenu.classList.remove("hidden");
+    if (commandFilter) { commandFilter.value = ""; }
+  }
+
+  function hideSlashMenu() {
+    pendingInsertAfter = null;
+    if (slashMenu) slashMenu.classList.add("hidden");
+  }
+
+  function applyMarkdownShortcut(block) {
+    var text = block.querySelector("[data-note-text]");
+    if (!text) return;
+    var value = text.textContent;
+    var match = null;
+    if (value.indexOf("#### ") === 0) match = ["h4", value.slice(5)];
+    else if (value.indexOf("### ") === 0) match = ["h3", value.slice(4)];
+    else if (value.indexOf("## ") === 0) match = ["h2", value.slice(3)];
+    else if (value.indexOf("# ") === 0) match = ["h1", value.slice(2)];
+    else if (value.indexOf("1. ") === 0) match = ["numbered", value.slice(3)];
+    else if (value.indexOf("- ") === 0 || value.indexOf("* ") === 0) match = ["bullet", value.slice(2)];
+    else if (value.indexOf("> ") === 0) match = ["quote", value.slice(2)];
+    else if (value.indexOf("[] ") === 0 || value.indexOf("[ ] ") === 0) match = ["todo", value.replace(/^\[ ?\]\s*/, "")];
+    else if (value.indexOf("``` ") === 0 || value === "```") match = ["code", value.replace(/^```\s*/, "")];
+    if (!match) return;
+    text.textContent = match[1];
+    setBlockType(block, match[0]);
+    focusEnd(text);
+  }
+
+  parseInitial(initial ? JSON.parse(initial.textContent || '""') : "").forEach(function (data) {
+    appendBlock(data);
+  });
+
   title.addEventListener("input", queueSave);
-  content.addEventListener("input", queueSave);
+
+  editor.addEventListener("focusin", function (event) {
+    var block = event.target.closest("[data-note-block]");
+    if (!block) return;
+    activeBlock = block;
+    if (typeSelect) typeSelect.value = cleanType(block.dataset.noteType);
+  });
+
+  editor.addEventListener("click", function (event) {
+    var addButton = event.target.closest("[data-note-add-after]");
+    if (!addButton) return;
+    event.preventDefault();
+    event.stopPropagation();
+    var current = addButton.closest("[data-note-block]");
+    pendingInsertAfter = current;
+    activeBlock = current;
+    showSlashMenu(current, true, addButton);
+  });
+
+  editor.addEventListener("input", function (event) {
+    var block = event.target.closest("[data-note-block]");
+    if (!block) return;
+    applyMarkdownShortcut(block);
+    showSlashMenu(block);
+    queueSave();
+  });
+
+  editor.addEventListener("change", queueSave);
+
+  editor.addEventListener("keydown", function (event) {
+    var text = event.target.closest("[data-note-text]");
+    var block = text && text.closest("[data-note-block]");
+    if (!text || !block) return;
+
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      hideSlashMenu();
+      var nextType = ["bullet", "todo"].indexOf(block.dataset.noteType) !== -1 ? block.dataset.noteType : "paragraph";
+      var next = appendBlock({ id: uid(), type: nextType, text: "", checked: false }, block);
+      focusEnd(next.querySelector("[data-note-text]"));
+      queueSave();
+      return;
+    }
+
+    if (event.key === "Backspace" && !text.textContent && editor.querySelectorAll("[data-note-block]").length > 1) {
+      event.preventDefault();
+      var previous = block.previousElementSibling || block.nextElementSibling;
+      block.remove();
+      if (previous) focusEnd(previous.querySelector("[data-note-text]"));
+      queueSave();
+      return;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.altKey && /^[12]$/.test(event.key)) {
+      event.preventDefault();
+      setBlockType(block, event.key === "1" ? "h1" : "h2");
+    }
+  });
+
+  editor.addEventListener("dragstart", function (event) {
+    var block = event.target.closest("[data-note-block]");
+    if (!block) return;
+    draggedBlock = block;
+    block.classList.add("note-dragging");
+    event.dataTransfer.effectAllowed = "move";
+  });
+
+  editor.addEventListener("dragover", function (event) {
+    if (!draggedBlock) return;
+    event.preventDefault();
+    var target = event.target.closest("[data-note-block]");
+    if (!target || target === draggedBlock) return;
+    var rect = target.getBoundingClientRect();
+    var after = event.clientY > rect.top + rect.height / 2;
+    target.insertAdjacentElement(after ? "afterend" : "beforebegin", draggedBlock);
+  });
+
+  editor.addEventListener("dragend", function () {
+    if (draggedBlock) draggedBlock.classList.remove("note-dragging");
+    draggedBlock = null;
+    queueSave();
+  });
+
+  if (typeSelect) {
+    typeSelect.addEventListener("change", function () {
+      setBlockType(activeBlock || editor.querySelector("[data-note-block]"), typeSelect.value);
+    });
+  }
+
+  var add = root.querySelector("[data-note-add-block]");
+  if (add) add.addEventListener("click", function () {
+    var block = appendBlock({ id: uid(), type: "paragraph", text: "", checked: false }, activeBlock);
+    focusEnd(block.querySelector("[data-note-text]"));
+    queueSave();
+  });
+
+  if (slashMenu) {
+    slashMenu.addEventListener("click", function (event) {
+      var command = event.target.closest("[data-note-command]");
+      if (!command) return;
+      var targetBlock = activeBlock;
+      if (pendingInsertAfter) {
+        targetBlock = appendBlock({ id: uid(), type: command.dataset.noteCommand, text: "", checked: false }, pendingInsertAfter);
+        activeBlock = targetBlock;
+      } else if (targetBlock) {
+        var text = targetBlock.querySelector("[data-note-text]");
+        if (text && text.textContent.indexOf("/") === 0) text.textContent = text.textContent.slice(1).trimStart();
+        setBlockType(targetBlock, command.dataset.noteCommand);
+      }
+      hideSlashMenu();
+      var text = targetBlock && targetBlock.querySelector("[data-note-text]");
+      if (text) focusEnd(text);
+      queueSave();
+    });
+  }
+
+  if (commandFilter) {
+    commandFilter.addEventListener("input", function () {
+      var needle = commandFilter.value.trim().toLowerCase();
+      slashMenu.querySelectorAll("[data-note-command]").forEach(function (button) {
+        button.classList.toggle("hidden", needle && button.textContent.toLowerCase().indexOf(needle) === -1);
+      });
+    });
+    commandFilter.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") hideSlashMenu();
+      if (event.key === "Enter") {
+        var first = slashMenu.querySelector("[data-note-command]:not(.hidden)");
+        if (first) { event.preventDefault(); first.click(); }
+      }
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest || !event.target.closest("[data-notes-slash-menu]")) hideSlashMenu();
+  });
 })();
 {% end_app_script %}
 

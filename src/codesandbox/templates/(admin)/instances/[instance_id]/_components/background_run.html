@@ -91,8 +91,8 @@
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
         {{ badge.badge(instance.status | replace("_", " ") | title, variant=("outline" if instance.status == "running" else "secondary")) }}
         <div class="flex items-center gap-1.5"><span>Runtime</span><span id="background-runtime" class="font-medium text-foreground">{{ instance.total_runtime_sec or 0 }}s</span></div>
-        <div class="flex items-center gap-1.5"><span>Cost</span><span id="background-cost" class="font-medium text-foreground">£{{ instance.charged_amount or "0" }}</span></div>
-        <div class="flex items-center gap-1.5"><span>Rate</span><span class="font-medium text-foreground">£{{ instance.cost_hr_snapshot }}/hr</span></div>
+        <div class="flex items-center gap-1.5"><span>Cost</span><span id="background-cost" class="font-medium text-foreground">£{{ instance.billing.estimated_cost_display }}</span></div>
+        <div class="flex items-center gap-1.5"><span>Rate</span><span class="font-medium text-foreground">£{{ instance.billing.rate_per_hour_display }}/hr</span></div>
       </div>
     </header>
 

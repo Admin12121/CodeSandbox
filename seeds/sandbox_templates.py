@@ -8,7 +8,8 @@ GOD_TEAR_SLUG = "god-tear-static-reverse"
 GOD_TEAR_LEGACY_SLUG = "reverse-decompile"
 GOD_TEAR_IMAGE = "docker.io/admin12121/decompile:stable"
 GOD_TEAR_REPOSITORY = "https://github.com/Admin12121/decompile"
-GOD_TEAR_SEED_VERSION = 2
+GOD_TEAR_SEED_VERSION = 5
+MANAGED_TEMPLATE_SEED_VERSION = 5
 
 
 def _files(runtime: dict, workflow: dict | None = None, readme: str = "") -> str:
@@ -95,14 +96,17 @@ def _single_template(
 
 def _ubuntu_study(admin_user_id: str) -> dict:
     runtime = {
+        "managed_seed": "ubuntu-study-terminal",
+        "seed_version": MANAGED_TEMPLATE_SEED_VERSION,
         "image_pull_policy": "if_not_present",
         "workspace_enabled": True,
+        "security_profile": "root_study",
         "test_config": {"requirements": ["runtime_started", "terminal_ready"]},
     }
     return _single_template(
         name="Ubuntu Study Terminal",
         slug="ubuntu-study-terminal",
-        description="Ubuntu terminal study environment with full Internet and a root shell.",
+        description="Ubuntu terminal study environment with full Internet and a functional root shell.",
         image="docker.io/library/ubuntu:24.04",
         ui_mode="terminal_only",
         network_mode="full_internet",
@@ -117,14 +121,17 @@ def _ubuntu_study(admin_user_id: str) -> dict:
 
 def _kali_study(admin_user_id: str) -> dict:
     runtime = {
+        "managed_seed": "kali-study-terminal",
+        "seed_version": MANAGED_TEMPLATE_SEED_VERSION,
         "image_pull_policy": "if_not_present",
         "workspace_enabled": True,
+        "security_profile": "root_study",
         "test_config": {"requirements": ["runtime_started", "terminal_ready"]},
     }
     return _single_template(
         name="Kali Linux Study Terminal",
         slug="kali-study-terminal",
-        description="Kali Linux terminal study environment with full Internet and a root shell.",
+        description="Kali Linux terminal study environment with full Internet and a functional root shell.",
         image="docker.io/kalilinux/kali-rolling:latest",
         ui_mode="terminal_only",
         network_mode="full_internet",
@@ -138,11 +145,9 @@ def _kali_study(admin_user_id: str) -> dict:
 
 
 def _ide_bootstrap_script() -> str:
-    # The image contains a non-root `vscode` account and sudo. The container's
-    # bootstrap process renames the UID-1000 identity to the authenticated
-    # platform username, then all interactive terminals run as numeric UID/GID
-    # 1000. Password hashes are deliberately never copied into a sandbox;
-    # sudo is passwordless and therefore equivalent to root privilege.
+    # The image contains a non-root `vscode` account and sudo. The bootstrap
+    # renames UID/GID 1000 to the authenticated platform username, prepares a
+    # real writable workspace and then leaves interactive terminals on UID 1000.
     return """set -eu
 name="${CODESANDBOX_USERNAME:-student}"
 case "$name" in
@@ -156,15 +161,31 @@ fi
 if [ -n "$old_group" ] && [ "$old_group" != "$name" ]; then
   sed -i "s/^${old_group}:/${name}:/" /etc/group
 fi
-printf '%s ALL=(ALL) NOPASSWD:ALL\\n' "$name" > /etc/sudoers.d/90-codesandbox-user
+printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$name" > /etc/sudoers.d/90-codesandbox-user
 chmod 0440 /etc/sudoers.d/90-codesandbox-user
-printf '[ubuntu-ide] ready as %s (uid 1000)\\n' "$name"
+mkdir -p /workspace
+if [ ! -e /workspace/README.md ]; then
+  cat > /workspace/README.md <<EOF
+# Welcome to your Ubuntu Coding IDE
+
+Hello ${name}.
+
+Your writable project directory is /workspace.
+The integrated terminal starts as ${name} (UID 1000).
+Use sudo when a task needs administrator privileges.
+EOF
+fi
+chown -R 1000:1000 /workspace
+chmod 0770 /workspace
+printf '[ubuntu-ide] ready as %s (uid 1000)\n' "$name"
 exec /bin/sh -c 'trap "exit 0" TERM INT; while :; do sleep 3600 & wait $!; done'
 """
 
 
 def _ubuntu_ide(admin_user_id: str) -> dict:
     runtime = {
+        "managed_seed": "ubuntu-coding-ide",
+        "seed_version": MANAGED_TEMPLATE_SEED_VERSION,
         "entrypoint": ["/bin/sh", "-lc"],
         "image_pull_policy": "if_not_present",
         "workspace_enabled": True,
@@ -197,22 +218,93 @@ def _ubuntu_ide(admin_user_id: str) -> dict:
 
 
 def _reverse_script() -> str:
-    return """set -eu
-export HOME=/tmp/decompile-home
+    # Keep the wrapper deliberately POSIX-shell compatible. The analysis image
+    # guarantees /bin/sh, while relying on bash-only PIPESTATUS caused the whole
+    # workflow to disappear when the wrapper could not be invoked. Tool output
+    # is captured first and replayed, so we retain the real exit code without a
+    # bash pipeline. Even a partial/failed analysis remains alive long enough to
+    # inspect its log and status file in the Full UI.
+    return r"""set +e
+export HOME=/workspace/.decompile-home
+export TMPDIR=/workspace/.tmp
+export XDG_CACHE_HOME=/workspace/.cache
+export JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=/workspace/.tmp"
 export DECOMPILE_IN_DOCKER=1
 export DECOMPILE_NO_AI=1
 export DECOMPILE_NO_OPEN=1
+export DECOMPILE_VERBOSE=1
+export DECOMPILE_ASCII=1
 umask 007
-mkdir -p "$HOME/.config" "$HOME/.cache"
-original="${CODESANDBOX_INPUT_NAME:-binary}"
+
+mkdir -p "$HOME/.config" "$HOME/.cache" "$TMPDIR" /workspace
+input_file=""
+for candidate in /input/* /input/.[!.]* /input/..?*; do
+  if [ -f "$candidate" ]; then
+    input_file="$candidate"
+    break
+  fi
+done
+
+if [ -z "$input_file" ]; then
+  printf '[god-tear] ANALYSIS_FAILED: no uploaded input file found\n' >&2
+  printf '[god-tear] CODESANDBOX_ANALYSIS_FINISHED result=failed exit=2\n'
+  exec /bin/sh -c 'trap "exit 0" TERM INT; while :; do sleep 3600 & wait $!; done'
+fi
+
+original="${CODESANDBOX_INPUT_NAME:-${input_file##*/}}"
 base="${original##*/}"
 safe="$(printf '%s' "$base" | tr -c 'A-Za-z0-9._-' '_')"
+safe="${safe#.}"
 [ -n "$safe" ] || safe=binary
-out="/output/$safe"
+out="/workspace/$safe"
+log_file="$out/analysis.log"
+status_file="$out/ANALYSIS_STATUS.json"
 mkdir -p "$out"
-printf '[god-tear] analysing %s into %s\\n' "$original" "$out"
-decompile --no-ai --no-open /input/sample "$out"
-printf '[god-tear] CODESANDBOX_ANALYSIS_COMPLETE\\n'
+
+printf '[god-tear] analysing %s from %s into %s\n' "$original" "$input_file" "$out"
+if command -v decompile >/dev/null 2>&1; then
+  decompile --no-ai --no-open "$input_file" "$out" >"$log_file" 2>&1
+  rc=$?
+else
+  rc=127
+  printf 'The decompile command is missing from the configured image.\n' >"$log_file"
+fi
+cat "$log_file" 2>/dev/null || true
+
+result=success
+if [ "$rc" -ne 0 ]; then
+  result=failed
+  cat > "$out/ANALYSIS_FAILED.txt" <<EOF
+Static analysis returned exit code $rc.
+
+The sandbox remains open so you can inspect analysis.log, the uploaded sample,
+and any partial files produced by the tool.
+EOF
+  printf '[god-tear] ANALYSIS_FAILED exit=%s\n' "$rc" >&2
+else
+  printf '[god-tear] ANALYSIS_OK\n'
+fi
+
+python3 - "$status_file" "$original" "$safe" "$rc" "$result" <<'PY_STATUS'
+import json, sys
+path, original, output_name, code, result = sys.argv[1:]
+try:
+    with open(path, 'w', encoding='utf-8') as handle:
+        json.dump({
+            'input_name': original,
+            'output_directory': '/workspace/' + output_name,
+            'exit_code': int(code),
+            'result': result,
+        }, handle, indent=2)
+        handle.write('\n')
+except Exception as exc:
+    print(f'[god-tear] could not write status file: {exc}', file=sys.stderr)
+PY_STATUS
+
+printf '[god-tear] CODESANDBOX_ANALYSIS_FINISHED result=%s exit=%s\n' "$result" "$rc"
+if [ "$rc" -eq 0 ]; then
+  printf '[god-tear] CODESANDBOX_ANALYSIS_COMPLETE\n'
+fi
 exec /bin/sh -c 'trap "exit 0" TERM INT; while :; do sleep 3600 & wait $!; done'
 """
 
@@ -230,7 +322,7 @@ def _reverse_values(admin_user_id: str) -> dict:
                 "position": {"x": 120, "y": 180},
                 "auto_start": True,
                 "carry_artifacts": True,
-                "completion_requirements": ["log:CODESANDBOX_ANALYSIS_COMPLETE"],
+                "completion_requirements": ["log:CODESANDBOX_ANALYSIS_FINISHED"],
                 "continue_label": "Open Full UI",
             },
             {
@@ -253,15 +345,15 @@ def _reverse_values(admin_user_id: str) -> dict:
         ],
     }
     runtime = {
+        "managed_seed": GOD_TEAR_SLUG,
         "seed_version": GOD_TEAR_SEED_VERSION,
         "entrypoint": ["/bin/sh", "-lc"],
         "image_pull_policy": "if_not_present",
         "workspace_enabled": True,
-        "primary_input_alias": "sample",
         "allowed_file_types": ["*"],
         "allow_extensionless_input": True,
         "max_input_size_mb": 500,
-        "required_args": ["--no-ai", "--no-open", "/input/sample"],
+        "required_args": ["--no-ai", "--no-open", "decompile"],
         "forbidden_args": ["--ai", "--update", "--image", "--docker-image", "--local"],
         "test_config": {
             "requirements": [
@@ -272,7 +364,7 @@ def _reverse_values(admin_user_id: str) -> dict:
             ]
         },
         "ui": {
-            "background_run": {"completion_log": "CODESANDBOX_ANALYSIS_COMPLETE"},
+            "background_run": {"completion_log": "CODESANDBOX_ANALYSIS_FINISHED"},
             "lab_ui": {"filesystem_root": "/workspace", "start_path": "/"},
         },
         "environment": {
@@ -300,8 +392,8 @@ def _reverse_values(admin_user_id: str) -> dict:
         "default_command": _argv_script(_reverse_script()),
         "working_dir": "/workspace",
         "input_mount_path": "/input",
-        "output_mount_path": "/output",
-        "artifact_paths": '["/output"]',
+        "output_mount_path": "",
+        "artifact_paths": '["/workspace"]',
         "input_required": True,
         "max_upload_mb": 500,
         "sandbox_type": "reverse_engineering",
@@ -398,8 +490,8 @@ def _malware_blueprint(admin_user_id: str) -> dict:
         "default_command": None,
         "working_dir": "/workspace",
         "input_mount_path": "/input",
-        "output_mount_path": "/output",
-        "artifact_paths": '["/output"]',
+        "output_mount_path": "",
+        "artifact_paths": '["/workspace"]',
         "input_required": True,
         "max_upload_mb": 500,
         "sandbox_type": "malware",
@@ -464,6 +556,50 @@ def _ensure_plans(admin_user_id: str):
     return general, internet
 
 
+def _create_or_upgrade_managed(
+    values: dict,
+    plan_states: dict[str, bool],
+    *,
+    seed_key: str,
+    seed_version: int,
+):
+    """Create or upgrade only a platform-managed seeded template row."""
+    from codesandbox.features.sandbox import repository as repo
+
+    template = repo.get_template_by_slug(values["slug"])
+    if template is None:
+        template = repo.create_template(**values)
+    else:
+        current_runtime = _runtime_from_files(template.runtime_config)
+        current_key = str(current_runtime.get("managed_seed") or "")
+        try:
+            current_version = int(current_runtime.get("seed_version") or 0)
+        except (TypeError, ValueError):
+            current_version = 0
+        expected_image = str(values.get("docker_image") or "")
+        managed_row = str(template.docker_image or "") == expected_image and (
+            not current_key or current_key == seed_key
+        )
+        if managed_row and current_version != seed_version:
+            update = dict(values)
+            update.pop("created_by_id", None)
+            update.pop("icon_path", None)
+            update.update(
+                status="maintenance",
+                last_test_status="untested",
+                last_tested_at=None,
+                last_test_error=None,
+            )
+            template = repo.update_template(str(template.id), **update)
+
+    for order, (plan_id, enabled) in enumerate(plan_states.items()):
+        if repo.get_template_plan(str(template.id), plan_id) is None:
+            repo.upsert_template_plan(
+                str(template.id), plan_id, is_enabled=enabled, sort_order=order
+            )
+    return template
+
+
 def _create_if_missing(values: dict, plan_states: dict[str, bool]):
     from codesandbox.features.sandbox import repository as repo
 
@@ -485,9 +621,18 @@ def seed_sandbox_templates(admin_user_id: str) -> None:
     print("Seeding sandbox templates…")
     internet_only = {str(general.id): False, str(internet.id): True}
     isolated_only = {str(general.id): True, str(internet.id): False}
-    _create_if_missing(_ubuntu_study(admin_user_id), internet_only)
-    _create_if_missing(_kali_study(admin_user_id), internet_only)
-    _create_if_missing(_ubuntu_ide(admin_user_id), internet_only)
+    _create_or_upgrade_managed(
+        _ubuntu_study(admin_user_id), internet_only,
+        seed_key="ubuntu-study-terminal", seed_version=MANAGED_TEMPLATE_SEED_VERSION,
+    )
+    _create_or_upgrade_managed(
+        _kali_study(admin_user_id), internet_only,
+        seed_key="kali-study-terminal", seed_version=MANAGED_TEMPLATE_SEED_VERSION,
+    )
+    _create_or_upgrade_managed(
+        _ubuntu_ide(admin_user_id), internet_only,
+        seed_key="ubuntu-coding-ide", seed_version=MANAGED_TEMPLATE_SEED_VERSION,
+    )
 
     reverse_values = _reverse_values(admin_user_id)
     reverse = repo.get_template_by_slug(GOD_TEAR_SLUG)
@@ -505,6 +650,7 @@ def seed_sandbox_templates(admin_user_id: str) -> None:
     if reverse_needs_upgrade:
         update = dict(reverse_values)
         update.pop("created_by_id", None)
+        update.pop("icon_path", None)
         update.update(last_test_status="untested", last_tested_at=None, last_test_error=None, status="maintenance")
         reverse = repo.update_template(str(reverse.id), **update)
     elif reverse is None:

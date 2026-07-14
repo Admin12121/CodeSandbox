@@ -10,7 +10,7 @@
       <span class="px-1 capitalize">{{ instance.status }}</span>
       <span class="px-1">{{ instance.allocated_vcpu or plan.ind_vcpu }} vCPU</span>
       <span class="px-1">{{ instance.allocated_ram_gb or plan.ind_ram_gb }} GB</span>
-      <span class="px-1">£{{ instance.cost_hr_snapshot }}/hr</span>
+      <span class="px-1">£{{ instance.billing.rate_per_hour_display }}/hr</span>
       <span id="sandbox-estimated-cost" class="px-1">£0.0000</span>
       {% if instance.status in ("running", "provisioning") %}
         <form method="post" action="/instances/{{ instance.id }}/stop" class="inline-flex">

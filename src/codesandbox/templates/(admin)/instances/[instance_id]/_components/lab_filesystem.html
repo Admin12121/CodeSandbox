@@ -1,17 +1,42 @@
 {% import "components/ui/resizable.html" as resizable %}
 
 {% macro lab_filesystem() -%}
-{% call resizable.resizable_panel(default_size=20, min_size=15, max_size=25, class="h-full", attrs={"data-panel": "left"}) %}
-  <div id="sandbox-fs" class="flex h-full flex-col overflow-hidden bg-background text-xs">
+{% call resizable.resizable_panel(default_size=20, min_size=15, max_size=30, class="h-full", attrs={"data-panel": "left"}) %}
+  <div id="sandbox-fs" class="relative flex h-full flex-col overflow-hidden bg-background text-xs">
 
-    <div class="flex h-8 shrink-0 items-center gap-2 border-b px-2">
+    <div class="flex h-8 shrink-0 items-center justify-between gap-2 border-b px-2">
       <span class="truncate font-mono text-muted-foreground select-none">/workspace</span>
+      <div class="flex items-center gap-0.5 text-muted-foreground">
+        <button type="button" data-fs-new-file title="New file" class="rounded p-1 hover:bg-accent hover:text-accent-foreground">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-icon lucide-file"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/></svg>
+        </button>
+        <button type="button" data-fs-new-folder title="New folder" class="rounded p-1 hover:bg-accent hover:text-accent-foreground">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-icon lucide-folder"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+        </button>
+        <button type="button" data-fs-upload-button title="Upload file" class="rounded p-1 hover:bg-accent hover:text-accent-foreground">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-up-icon lucide-file-up"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></svg>
+        </button>
+        <button type="button" data-fs-refresh title="Refresh" class="rounded p-1 hover:bg-accent hover:text-accent-foreground">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-cw-icon lucide-rotate-cw"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        </button>
+      </div>
+      <input data-fs-upload-input type="file" class="hidden" multiple>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-auto p-2">
+    <div class="min-h-0 flex-1 overflow-auto p-2" data-fs-root-surface>
       <div id="sandbox-fs-root" data-fs-children-of="/">
         <div class="px-2 py-1 text-muted-foreground/60">Loading…</div>
       </div>
+    </div>
+
+    <div id="sandbox-fs-context-menu" class="fixed z-[120] hidden min-w-44 rounded-md border bg-popover p-1 text-popover-foreground shadow-xl">
+      <button type="button" data-fs-menu-action="open" class="block w-full rounded px-2 py-1.5 text-left hover:bg-accent">Open</button>
+      <button type="button" data-fs-menu-action="new-file" class="block w-full rounded px-2 py-1.5 text-left hover:bg-accent">New file here</button>
+      <button type="button" data-fs-menu-action="new-folder" class="block w-full rounded px-2 py-1.5 text-left hover:bg-accent">New folder here</button>
+      <button type="button" data-fs-menu-action="rename" class="block w-full rounded px-2 py-1.5 text-left hover:bg-accent">Rename</button>
+      <button type="button" data-fs-menu-action="download" class="block w-full rounded px-2 py-1.5 text-left hover:bg-accent">Download</button>
+      <div class="my-1 border-t"></div>
+      <button type="button" data-fs-menu-action="delete" class="block w-full rounded px-2 py-1.5 text-left text-red-400 hover:bg-red-500/10">Delete</button>
     </div>
   </div>
 {% endcall %}

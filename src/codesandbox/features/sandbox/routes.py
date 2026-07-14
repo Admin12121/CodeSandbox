@@ -16,11 +16,13 @@ from codesandbox.web.csrf import csrf_exempt
 
 from . import repository
 from .service import (
+    archive_instance_for_user,
     can_open_instance_channel,
     delete_plan,
     delete_template,
     get_artifact_for_download,
     get_instance_artifacts_for_view,
+    get_instance_live_status,
     get_template_test_status,
     handle_worker_callback,
     list_reconcile_candidates,
@@ -71,6 +73,19 @@ def _sandboxes_redirect(template_id: str | None = None, error: str | None = None
 
 
 
+def _form_bool(name: str) -> bool:
+    """Accept normal HTML checkbox values and explicit API-style booleans.
+
+    The shared switch component submits the browser default value ``on`` when
+    checked. Treating only the literal string ``1`` as true silently changed
+    full-internet/root/read-only/input-required settings to false whenever an
+    administrator saved an unrelated field such as the thumbnail.
+    """
+    return str(request.form.get(name, "")).strip().lower() in {
+        "1", "true", "on", "yes",
+    }
+
+
 def _form_int(name: str, default: int, label: str) -> int:
     raw = request.form.get(name)
     if raw is None or not str(raw).strip():
@@ -110,6 +125,18 @@ def save_template_action():
     except ValueError as exc:
         return _sandboxes_redirect(template_id or "new", str(exc))
 
+    # The Identity form intentionally does not contain the Config-tab file
+    # bundle. Preserve the existing runtime_config when an administrator edits
+    # metadata such as the name, description, or thumbnail. Replacing it with
+    # an empty string silently erased runtime.json, invalidated the successful
+    # test revision, and made previously published templates unlaunchable.
+    existing_template = repository.get_template(template_id) if template_id else None
+    runtime_config = (
+        request.form.get("runtime_config", "")
+        if "runtime_config" in request.form
+        else (existing_template.runtime_config if existing_template else "")
+    )
+
     result, error = save_template(
         template_id=template_id,
         name=request.form.get("name", ""),
@@ -117,7 +144,7 @@ def save_template_action():
         icon_path=icon_path,
         docker_image=request.form.get("docker_image", ""),
         sandbox_type=request.form.get("sandbox_type", "interactive"),
-        runtime_config=request.form.get("runtime_config", ""),
+        runtime_config=runtime_config,
         created_by_id=str(cs.user.id),
         runtime_class=request.form.get("runtime_class", "container"),
         interface_mode=",".join(request.form.getlist("interface_mode")) or "terminal_only",
@@ -125,23 +152,56 @@ def save_template_action():
         default_ui_mode=request.form.get("default_ui_mode", "terminal_only"),
         interface_behavior=request.form.get("interface_behavior", "single"),
         network_mode=request.form.get("network_mode", "disabled"),
-        allow_root=request.form.get("allow_root") == "1",
+        allow_root=_form_bool("allow_root"),
         max_timeout_hr=max_timeout_hr,
         default_command=request.form.get("default_command", ""),
         working_dir=request.form.get("working_dir", "/workspace"),
         input_mount_path=request.form.get("input_mount_path", ""),
         output_mount_path=request.form.get("output_mount_path", ""),
         artifact_paths=request.form.get("artifact_paths", ""),
-        input_required=request.form.get("input_required") == "1",
+        input_required=_form_bool("input_required"),
         max_upload_mb=max_upload_mb,
-        read_only_root=request.form.get("read_only_root") == "1",
+        read_only_root=_form_bool("read_only_root"),
         run_as_user=request.form.get("run_as_user", ""),
         pids_limit=pids_limit,
-        allow_full_internet=request.form.get("allow_full_internet") == "1",
+        allow_full_internet=_form_bool("allow_full_internet"),
     )
     if error:
         return _sandboxes_redirect(template_id or "new", error)
     return _sandboxes_redirect(result["id"])
+
+
+@web_bp.post("/platform/sandboxes/<template_id>/thumbnail")
+@platform_perm("platform.sandboxes.manage")
+def save_template_thumbnail_action(template_id: str):
+    """Update only presentation metadata; never touch the tested runtime revision.
+
+    Thumbnail selection used to submit the complete runtime form. A browser
+    omission or normalization difference could therefore invalidate a passing
+    template even though the administrator changed only artwork. This endpoint
+    intentionally updates a single column.
+    """
+    template = repository.get_template(template_id)
+    if template is None:
+        return {"ok": False, "error": "Template not found."}, 404
+    icon_file = request.files.get("icon_file")
+    if icon_file is None or not getattr(icon_file, "filename", ""):
+        return {"ok": False, "error": "Choose a PNG, JPEG, or WebP image."}, 400
+    try:
+        icon_path = _save_thumbnail(icon_file)
+    except (TypeError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}, 400
+    if not icon_path:
+        return {"ok": False, "error": "Thumbnail upload failed."}, 400
+    updated = repository.update_template(template_id, icon_path=icon_path)
+    if updated is None:
+        return {"ok": False, "error": "Template not found."}, 404
+    return {
+        "ok": True,
+        "icon_path": icon_path,
+        "last_test_status": updated.last_test_status,
+        "status": updated.status,
+    }
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/config")
@@ -309,6 +369,7 @@ def test_run_action(template_id: str):
         return {"ok": False, "error": err}, 400
     return {
         "ok": True,
+        "template_id": str(result.get("template_id") or template_id),
         "instance_id": result["id"],
         "instance_url": result.get("instance_url") or f"/instances/{result['id']}",
         "resumed": bool(result.get("resumed")),
@@ -336,9 +397,12 @@ def start_instance_action(instance_id: str):
     cs = get_current_session()
     if not cs:
         return redirect("/login", 303)
+    existing = repository.get_instance(instance_id)
     _, err = start_instance(instance_id, actor_user_id=str(cs.user.id))
     if err:
-        return redirect(f"/instances/{instance_id}?error={quote(err)}", 303)
+        if existing and existing.workspace_type == "test":
+            return redirect(f"/instances/{instance_id}?error={quote(err)}", 303)
+        return redirect(f"/my-instances?error={quote(err)}", 303)
     return redirect(f"/instances/{instance_id}", 303)
 
 
@@ -357,6 +421,28 @@ def stop_instance_action(instance_id: str):
     if was_test or (result and result.get("workspace_type") == "test"):
         return redirect(f"/instances/{instance_id}", 303)
     return redirect("/my-instances", 303)
+
+
+@web_bp.get("/instances/<instance_id>/status")
+def instance_live_status_action(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        return {"ok": False, "error": "Authentication required."}, 401
+    result, error = get_instance_live_status(instance_id, str(cs.user.id))
+    if error:
+        return {"ok": False, "error": error}, 403
+    return {"ok": True, "instance": result}
+
+
+@web_bp.post("/instances/<instance_id>/delete")
+def delete_instance_action(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        return redirect("/login", 303)
+    _, error = archive_instance_for_user(instance_id, str(cs.user.id))
+    if error:
+        return redirect(f"/my-instances?error={quote(error)}", 303)
+    return redirect("/my-instances?deleted=1", 303)
 
 
 # ── Instance monitor / terminal / fs token ─────────────────────────────────────

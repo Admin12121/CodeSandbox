@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import posixpath
+import re
 
 from .artifacts import directory_tar_bytes, extract_single_file, tar_bytes
 
@@ -32,27 +33,60 @@ class DockerFilesystem:
             raise FilesystemError("Path escapes the workspace.")
         return target
 
+    def _interactive_user(self) -> str | None:
+        return self.runner._terminal_user()
+
+    def _interactive_owner(self) -> tuple[int, int]:
+        user = str(self._interactive_user() or "")
+        numeric = re.fullmatch(r"([0-9]+)(?::([0-9]+))?", user)
+        if numeric:
+            uid = int(numeric.group(1))
+            return uid, int(numeric.group(2) or uid)
+        if not user:
+            return 0, 0
+        uid_result = self.container.exec_run(["id", "-u"], user=user)
+        gid_result = self.container.exec_run(["id", "-g"], user=user)
+        if uid_result.exit_code != 0 or gid_result.exit_code != 0:
+            raise FilesystemError("Sandbox user identity could not be resolved.")
+        return int(uid_result.output.strip()), int(gid_result.output.strip())
+
     def list(self, path: str) -> dict:
         target = self.resolve(path)
+        # Do not depend on `find`/`stat`: intentionally small runtime images may
+        # provide only /bin/sh. NUL-delimited shell globs also preserve spaces,
+        # tabs and newlines in filenames.
+        script = r"""
+root=$1
+[ -d "$root" ] || exit 2
+for entry in "$root"/* "$root"/.[!.]* "$root"/..?*; do
+  [ -e "$entry" ] || [ -L "$entry" ] || continue
+  if [ -d "$entry" ]; then kind=directory; else kind=file; fi
+  name=${entry##*/}
+  printf '%s\0%s\0' "$kind" "$name"
+done
+"""
         result = self.container.exec_run(
-            ["find", target, "-mindepth", "1", "-maxdepth", "1", "-print0"]
+            ["/bin/sh", "-c", script, "codesandbox-fs-list", target],
+            user=self._interactive_user(),
         )
-        if result.exit_code != 0:
+        if result.exit_code == 2:
             raise FilesystemError("Directory does not exist.")
+        if result.exit_code != 0:
+            raise FilesystemError("Directory could not be listed.")
+
+        fields = result.output.split(b"\0")
         entries = []
-        for raw in result.output.split(b"\0"):
-            if not raw:
+        for index in range(0, len(fields) - 1, 2):
+            if not fields[index + 1]:
                 continue
-            absolute = raw.decode("utf-8", errors="replace")
-            stat = self.container.exec_run(["stat", "-c", "%F\t%s", absolute])
-            if stat.exit_code != 0:
-                continue
-            kind, _, raw_size = stat.output.decode(errors="replace").strip().partition("\t")
+            kind = fields[index].decode("utf-8", errors="replace")
+            name = fields[index + 1].decode("utf-8", errors="replace")
+            absolute = posixpath.join(target, name)
             entries.append({
-                "name": posixpath.basename(absolute),
+                "name": name,
                 "path": "/" + posixpath.relpath(absolute, self.runner.policy["working_dir"]),
-                "type": "directory" if "directory" in kind else "file",
-                "size": int(raw_size or 0),
+                "type": "directory" if kind == "directory" else "file",
+                "size": 0,
             })
         entries.sort(key=lambda item: (item["type"] != "directory", item["name"].lower()))
         return {"ok": True, "entries": entries}
@@ -87,10 +121,16 @@ class DockerFilesystem:
         if len(data) > self.max_file_bytes:
             raise FilesystemError("File exceeds the write limit.")
         parent = posixpath.dirname(target)
-        mkdir = self.container.exec_run(["mkdir", "-p", parent])
+        mkdir = self.container.exec_run(
+            ["mkdir", "-p", parent], user=self._interactive_user()
+        )
         if mkdir.exit_code != 0:
             raise FilesystemError("Parent directory could not be created.")
-        if not self.container.put_archive(parent, tar_bytes(posixpath.basename(target), data)):
+        uid, gid = self._interactive_owner()
+        if not self.container.put_archive(
+            parent,
+            tar_bytes(posixpath.basename(target), data, uid=uid, gid=gid),
+        ):
             raise FilesystemError("File could not be written.")
         return {"ok": True, "size": len(data)}
 
@@ -99,8 +139,15 @@ class DockerFilesystem:
         if target == self.runner.policy["working_dir"]:
             return {"ok": True}
         parent = posixpath.dirname(target)
+        ensure_parent = self.container.exec_run(
+            ["mkdir", "-p", parent], user=self._interactive_user()
+        )
+        if ensure_parent.exit_code != 0:
+            raise FilesystemError("Parent directory could not be created.")
+        uid, gid = self._interactive_owner()
         if not self.container.put_archive(
-            parent, directory_tar_bytes(posixpath.basename(target))
+            parent,
+            directory_tar_bytes(posixpath.basename(target), uid=uid, gid=gid),
         ):
             raise FilesystemError("Directory could not be created.")
         return {"ok": True}
@@ -110,8 +157,13 @@ class DockerFilesystem:
         target = self.resolve(new)
         if source == self.runner.policy["working_dir"]:
             raise FilesystemError("Workspace root cannot be renamed.")
-        self.container.exec_run(["mkdir", "-p", posixpath.dirname(target)])
-        result = self.container.exec_run(["mv", source, target])
+        self.container.exec_run(
+            ["mkdir", "-p", posixpath.dirname(target)],
+            user=self._interactive_user(),
+        )
+        result = self.container.exec_run(
+            ["mv", source, target], user=self._interactive_user()
+        )
         if result.exit_code != 0:
             raise FilesystemError("Path could not be renamed.")
         return {"ok": True}
@@ -120,7 +172,9 @@ class DockerFilesystem:
         target = self.resolve(path)
         if target == self.runner.policy["working_dir"]:
             raise FilesystemError("Workspace root cannot be deleted.")
-        result = self.container.exec_run(["rm", "-rf", target])
+        result = self.container.exec_run(
+            ["rm", "-rf", target], user=self._interactive_user()
+        )
         if result.exit_code != 0:
             raise FilesystemError("Path could not be deleted.")
         return {"ok": True}

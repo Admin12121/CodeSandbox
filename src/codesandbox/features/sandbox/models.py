@@ -174,6 +174,7 @@ class SandboxInstance(Model):
     exit_reason = StringField(max_length=500, nullable=True)
 
     created_at = DateTimeField(default=_now)
+    deleted_at = DateTimeField(nullable=True)
 
     class Meta:
         table_name = "sandbox_instances"

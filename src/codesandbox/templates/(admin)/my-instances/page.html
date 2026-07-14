@@ -1,48 +1,132 @@
 {% import "components/ui/frame.html" as frame %}
+{% import "components/ui/button.html" as button %}
 
-<div class="flex h-[calc(100vh-4.85rem)] flex-col gap-4 p-6 overflow-y-auto">
-  <div class="flex items-center justify-between">
+<div class="flex h-[calc(100vh-4.85rem)] flex-col gap-4 overflow-y-auto p-6">
+  <div class="flex items-center justify-between gap-4">
     <div>
       <h1 class="text-xl font-semibold">My Instances</h1>
-      <p class="text-sm text-muted-foreground mt-0.5">Sandbox instances running under your account</p>
+      <p class="mt-0.5 text-sm text-muted-foreground">Open, monitor, stop, or remove your sandboxes.</p>
     </div>
-    <a href="/hub"
-       class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+    <a href="/hub" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
+      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
       New Sandbox
     </a>
   </div>
 
+  {% if error %}
+    <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+  {% endif %}
+
   {% if instances %}
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {% for inst in instances %}
-        <div class="flex items-center gap-3 rounded-lg border bg-card p-3 text-sm hover:bg-accent/30 transition-colors cursor-pointer"
-             onclick="window.location.href='{{ '/hub/' ~ inst.template_slug ~ '/' ~ inst.plan_id if inst.status in ('provisioning','running','stopping','cleanup') else '/instances/' ~ inst.id }}'">
-          <div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            {% if inst.template_icon %}
-              <img src="{{ inst.template_icon }}" alt="" class="size-full rounded-md object-cover">
-            {% else %}
-              <svg viewBox="0 0 256 256" class="size-5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
-            {% endif %}
+  <div class="grid gap-6 pt-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
+    {% for inst in instances %}
+      {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700", attrs={"data-instance-card": "", "data-instance-id": inst.id}) %}
+        {% call frame.frame_header(class="p-0! mb-1 gap-1 flex flex-row justify-between items-center") %}
+            <div class="flex flex-row gap-2">
+                <div class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-muted-foreground">
+                {% if inst.template_icon %}
+                    <img src="{{ inst.template_icon }}" alt="" class="size-full object-cover">
+                {% else %}
+                    <svg viewBox="0 0 256 256" class="size-5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+                {% endif %}
+                </div>
+                {% if inst.can_open %}
+                <a href="/instances/{{ inst.id }}" class="min-w-0 flex-1 rounded-md outline-none transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+                    <h2 class="truncate font-medium underline-offset-4 hover:underline">{{ inst.template_name }}</h2>
+                    <p class="text-xs text-muted-foreground">{{ inst.plan_id }} · {{ inst.allocated_vcpu or '—' }} vCPU · {{ inst.allocated_ram_gb or '—' }} GB</p>
+                </a>
+                {% else %}
+                <div class="min-w-0 flex-1">
+                    <h2 class="truncate font-medium">{{ inst.template_name }}</h2>
+                    <p class="text-xs text-muted-foreground">{{ inst.plan_id }} · {{ inst.allocated_vcpu or '—' }} vCPU · {{ inst.allocated_ram_gb or '—' }} GB</p>
+                </div>
+                {% endif %}
+            </div>
+            <div class="relative flex shrink-0 flex-col items-end gap-2">
+              {% call button.button(variant="ghost", size="icon-xs", class="size-7 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": "instance-actions-" ~ inst.id, "aria-label": "Instance actions"}) %}
+                <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+              {% endcall %}
+              <div id="instance-actions-{{ inst.id }}" class="hidden fixed z-100 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
+                {% if inst.status == 'idle' %}
+                  {% if inst.can_start %}
+                    <form method="post" action="/instances/{{ inst.id }}/start">
+                      {{ csrf_input() }}
+                      <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">Start</button>
+                    </form>
+                  {% else %}
+                    <button type="button" disabled title="{{ inst.start_error }}" class="flex w-full cursor-not-allowed items-center rounded-md px-2.5 py-1.5 text-left opacity-50">Start</button>
+                  {% endif %}
+                {% endif %}
+                {% if inst.can_stop %}
+                  <form method="post" action="/instances/{{ inst.id }}/stop">
+                    {{ csrf_input() }}
+                    <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">Stop</button>
+                  </form>
+                {% endif %}
+                {% if inst.can_delete %}
+                  <form method="post" action="/instances/{{ inst.id }}/delete">
+                    {{ csrf_input() }}
+                    <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">Delete</button>
+                  </form>
+                {% endif %}
+              </div>
+              <span data-instance-status class="rounded-full px-2 py-0.5 text-[11px] font-medium {{ 'bg-emerald-500/15 text-emerald-500' if inst.status == 'running' else 'bg-amber-500/15 text-amber-500' if inst.status in ('provisioning','stopping','cleanup') else 'bg-muted text-muted-foreground' }}">{{ inst.status }}</span>
+            </div>
+        {% endcall %}
+        {% call frame.frame_panel(class="shadow-sm p-0! overflow-hidden") %}
+          <div class="grid grid-cols-2 gap-2 p-3 text-xs">
+            <div><span class="text-muted-foreground">Rate</span><p class="mt-0.5 font-mono">£<span data-instance-rate>{{ inst.billing.rate_per_hour_display }}</span>/hr</p></div>
+            <div><span class="text-muted-foreground">Current cost</span><p class="mt-0.5 font-mono">£<span data-instance-cost>{{ inst.billing.estimated_cost_display }}</span></p></div>
+            <div><span class="text-muted-foreground">Disk limit</span><p class="mt-0.5">{{ inst.allocated_disk_gb or '—' }} GB</p></div>
+            <div><span class="text-muted-foreground">Time left</span><p class="mt-0.5" data-instance-time-left>{% if inst.billing.remaining_seconds is not none %}{{ (inst.billing.remaining_seconds // 60) }} min{% else %}—{% endif %}</p></div>
           </div>
-          <div class="min-w-0 flex-1">
-            <p class="truncate font-medium">{{ inst.template_name }}</p>
-            <p class="text-xs text-muted-foreground capitalize">{{ inst.plan_id }}</p>
+          <div data-low-balance class="mt-3 hidden rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-500">
+            Low balance. This instance will stop automatically when the next billing reservation cannot be covered.
           </div>
-          <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
-            {{ 'bg-green-500/15 text-green-600 dark:text-green-400' if inst.status == 'running' else
-               'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' if inst.status in ('provisioning','stopping') else
-               'bg-muted text-muted-foreground' }}">
-            {{ inst.status }}
-          </span>
-        </div>
+        {% endcall %}
+      {% endcall %}
       {% endfor %}
     </div>
   {% else %}
     <div class="flex flex-1 flex-col items-center justify-center text-muted-foreground">
-      <svg class="size-12 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><circle cx="12" cy="10" r="3"/></svg>
+      <svg class="mb-3 size-12 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       <p class="text-sm">No instances yet.</p>
-      <p class="text-xs mt-1 opacity-60">Start a sandbox from the <a href="/hub" class="underline underline-offset-2">Hub</a>.</p>
+      <a href="/hub" class="mt-1 text-xs underline underline-offset-2">Start one from the Hub</a>
     </div>
   {% endif %}
 </div>
+
+{% app_script "my-instances-live" %}
+(function () {
+  function formatTime(seconds) {
+    if (seconds === null || seconds === undefined) return "—";
+    seconds = Math.max(0, Number(seconds) || 0);
+    if (seconds < 60) return Math.ceil(seconds) + " sec";
+    if (seconds < 3600) return Math.ceil(seconds / 60) + " min";
+    return (seconds / 3600).toFixed(1) + " hr";
+  }
+  function updateCard(card, item) {
+    var status = card.querySelector("[data-instance-status]");
+    if (status) status.textContent = item.status;
+    var billing = item.billing || {};
+    var rate = card.querySelector("[data-instance-rate]");
+    var cost = card.querySelector("[data-instance-cost]");
+    var left = card.querySelector("[data-instance-time-left]");
+    var warning = card.querySelector("[data-low-balance]");
+    if (rate) rate.textContent = billing.rate_per_hour_display || "0.0000";
+    if (cost) cost.textContent = billing.estimated_cost_display || "0.0000";
+    if (left) left.textContent = formatTime(billing.remaining_seconds);
+    if (warning) warning.classList.toggle("hidden", !billing.low_balance);
+  }
+  function poll(card) {
+    var id = card.dataset.instanceId;
+    fetch("/instances/" + encodeURIComponent(id) + "/status", {credentials: "same-origin"})
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (data) { if (data && data.ok) updateCard(card, data.instance); })
+      .catch(function () {});
+  }
+  var cards = Array.from(document.querySelectorAll("[data-instance-card]"));
+  cards.forEach(poll);
+  window.setInterval(function () { cards.forEach(poll); }, 10000);
+})();
+{% end_app_script %}

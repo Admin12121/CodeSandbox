@@ -24,7 +24,7 @@
       {% include "style.css" %}
     </style>
   </head>
-  <body class="min-h-screen bg-background text-foreground antialiased">
+  <body class="min-h-screen bg-background text-foreground antialiased overflow-x-hidden">
     {% include "components/csrf-fetch.html" %}
     {{ children|safe }}
   </body>

@@ -39,6 +39,33 @@ UI_MODE_ALIASES = {
 }
 SUPPORTED_UI_MODES = {"terminal_only", "lab_ui", "background_run", "desktop_gui", "android_ui"}
 SUPPORTED_IMAGE_PULL_POLICIES = {"always", "if_not_present", "never"}
+
+# Fixed capability profiles are selected by the platform. Templates cannot
+# provide arbitrary capability names. ``sudo_user`` is enough for the seeded
+# non-root IDE bootstrap and package management; ``root_study`` additionally
+# enables common debugging/network-study operations without granting
+# privileged mode, host mounts, Docker access, SYS_ADMIN, or device access.
+SUDO_USER_CAPABILITIES = [
+    "AUDIT_WRITE",
+    "CHOWN",
+    "DAC_OVERRIDE",
+    "FOWNER",
+    "FSETID",
+    "SETFCAP",
+    "SETGID",
+    "SETPCAP",
+    "SETUID",
+]
+ROOT_STUDY_CAPABILITIES = [
+    *SUDO_USER_CAPABILITIES,
+    "KILL",
+    "MKNOD",
+    "NET_BIND_SERVICE",
+    "NET_RAW",
+    "SYS_CHROOT",
+    "SYS_PTRACE",
+]
+SUPPORTED_SECURITY_PROFILES = {"restricted", "root_study"}
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$")
 _PLATFORM_ENVIRONMENT_NAMES = {
@@ -395,6 +422,22 @@ class PolicyBuilder:
         container_start_user = str(template_runtime_config.get("container_start_user") or "").strip()
         terminal_user = str(template_runtime_config.get("terminal_user") or "").strip()
         allow_sudo = bool(template_runtime_config.get("allow_sudo", False))
+        security_profile = str(
+            template_runtime_config.get("security_profile") or "restricted"
+        ).strip().lower()
+        if security_profile not in SUPPORTED_SECURITY_PROFILES:
+            raise RuntimePolicyError("Unsupported sandbox security profile.")
+        template_allows_root = bool(_value(template, "allow_root", False))
+        if security_profile == "root_study" and not template_allows_root:
+            raise RuntimePolicyError(
+                "The root_study security profile requires explicit root access."
+            )
+        if security_profile == "root_study":
+            capability_add = list(ROOT_STUDY_CAPABILITIES)
+        elif allow_sudo:
+            capability_add = list(SUDO_USER_CAPABILITIES)
+        else:
+            capability_add = []
         driver_config = template_runtime_config.get("driver")
         driver_config = driver_config if isinstance(driver_config, dict) else {}
 
@@ -552,7 +595,7 @@ class PolicyBuilder:
             "runtime_evidence_logs": runtime_evidence_logs,
             "desktop_gui": desktop_gui_config,
             "android_ui": android_ui_config,
-            "allow_root": bool(_value(template, "allow_root", False)),
+            "allow_root": template_allows_root,
             "read_only_root": bool(_value(template, "read_only_root", True)),
             "run_as_user": str(_value(template, "run_as_user", "") or ""),
             "container_start_user": container_start_user,
@@ -560,8 +603,10 @@ class PolicyBuilder:
             "allow_sudo": allow_sudo,
             "pids_limit": max(32, min(4096, int(_value(template, "pids_limit", 256) or 256))),
             "security": {
+                "profile": security_profile,
                 "no_new_privileges": not allow_sudo,
                 "cap_drop": ["ALL"],
+                "cap_add": capability_add,
                 "privileged": False,
                 "host_mounts": False,
                 "docker_socket": False,

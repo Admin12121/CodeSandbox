@@ -180,7 +180,7 @@ def delete_template(template_id: str) -> str | None:
 
 
 def count_active_instances_for_template(template_id: str) -> int:
-    instances = SandboxInstance.objects.filter(template_id=template_id).all()
+    instances = _visible_instances(SandboxInstance.objects.filter(template_id=template_id).all())
     return sum(
         1 for i in instances
         if i.status in _LIVE_INSTANCE_STATUSES and i.workspace_type != "test"
@@ -245,7 +245,7 @@ def delete_plan(plan_id: str) -> str | None:
     if linked_templates:
         return f"Cannot delete: {len(linked_templates)} template plan mapping(s) still use this plan."
 
-    instances = SandboxInstance.objects.filter(plan_id=plan_id).all()
+    instances = _visible_instances(SandboxInstance.objects.filter(plan_id=plan_id).all())
     if instances:
         return f"Cannot delete: {len(instances)} sandbox instance(s) reference this plan."
 
@@ -303,16 +303,37 @@ def get_instance_for_update(instance_id: str) -> SandboxInstance | None:
     return _select_for_update(SandboxInstance, "sandbox_instances", id=instance_id)
 
 
+def archive_instance(instance_id: str) -> SandboxInstance | None:
+    """Soft-delete a terminal instance while preserving billing/audit rows."""
+    with transaction.atomic():
+        inst = get_instance_for_update(instance_id)
+        if inst is None:
+            return None
+        inst.deleted_at = _now()
+        inst.save()
+        return inst
+
+
+def _visible_instances(rows) -> list[SandboxInstance]:
+    return [row for row in rows if getattr(row, "deleted_at", None) is None]
+
+
 def list_instances_for_user(user_id: str) -> list[SandboxInstance]:
-    return SandboxInstance.objects.filter(workspace_user_id=user_id, workspace_type="personal").all()
+    rows = SandboxInstance.objects.filter(
+        workspace_user_id=user_id, workspace_type="personal"
+    ).all()
+    return sorted(_visible_instances(rows), key=lambda row: row.created_at or _now(), reverse=True)
 
 
 def list_instances_for_org(org_id: str) -> list[SandboxInstance]:
-    return SandboxInstance.objects.filter(workspace_org_id=org_id, workspace_type="org").all()
+    rows = SandboxInstance.objects.filter(
+        workspace_org_id=org_id, workspace_type="org"
+    ).all()
+    return sorted(_visible_instances(rows), key=lambda row: row.created_at or _now(), reverse=True)
 
 
 def list_instances_assigned_to_user_in_org(user_id: str, org_id: str) -> list[SandboxInstance]:
-    all_org = SandboxInstance.objects.filter(workspace_org_id=org_id, workspace_type="org").all()
+    all_org = list_instances_for_org(org_id)
     return [i for i in all_org if str(i.assigned_to_user_id) == str(user_id)]
 
 
@@ -333,7 +354,11 @@ def find_active_test_instance(
     rows = SandboxInstance.objects.filter(
         template_id=template_id, workspace_type="test"
     ).all()
-    candidates = [row for row in rows if row.status in _LIVE_INSTANCE_STATUSES]
+    candidates = [
+        row for row in rows
+        if row.status in _LIVE_INSTANCE_STATUSES
+        and getattr(row, "deleted_at", None) is None
+    ]
     if actor_user_id is not None:
         candidates = [
             row for row in candidates
@@ -976,7 +1001,11 @@ def list_instance_artifacts(instance_id: str) -> list[SandboxArtifact]:
 
 def list_live_instances() -> list[SandboxInstance]:
     rows = SandboxInstance.objects.all()
-    return [row for row in rows if row.status in _LIVE_INSTANCE_STATUSES]
+    return [
+        row for row in rows
+        if row.status in _LIVE_INSTANCE_STATUSES
+        and getattr(row, "deleted_at", None) is None
+    ]
 
 
 _RUNTIME_BACKED_STATUSES = ("provisioning", "running", "stopping", "cleanup")
@@ -986,4 +1015,8 @@ def list_runtime_backed_instances_for_worker(worker_id: str) -> list[SandboxInst
     """Instances this worker_id might still have a live container for —
     used at worker boot to rebuild the in-memory registry after a restart."""
     rows = SandboxInstance.objects.filter(worker_id=worker_id).all()
-    return [row for row in rows if row.status in _RUNTIME_BACKED_STATUSES]
+    return [
+        row for row in rows
+        if row.status in _RUNTIME_BACKED_STATUSES
+        and getattr(row, "deleted_at", None) is None
+    ]

@@ -67,12 +67,17 @@
     document.head.appendChild(s1);
   }
 
-  function fetchToken() {
-    return fetch("/instances/" + encodeURIComponent(instanceId) + "/monitor-token?purpose=terminal")
+  function fetchToken(attempt) {
+    attempt = Number(attempt || 0);
+    return fetch("/instances/" + encodeURIComponent(instanceId) + "/monitor-token?purpose=terminal", {cache: "no-store"})
       .then(function (r) {
-        if (!r.ok) throw new Error("terminal is not available for this instance");
-        return r.json();
-      }).then(function (data) { return data.token; });
+        if (r.ok) return r.json();
+        if ((r.status === 403 || r.status === 409) && attempt < 30) {
+          return new Promise(function (resolve) { window.setTimeout(resolve, 1000); })
+            .then(function () { return fetchToken(attempt + 1); });
+        }
+        throw new Error("terminal is not available for this instance (" + r.status + ")");
+      }).then(function (data) { return data.token || data; });
   }
 
   function openWs(state, token) {

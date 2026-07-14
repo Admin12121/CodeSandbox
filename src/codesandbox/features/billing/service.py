@@ -43,6 +43,6 @@ def get_header_balance(user: User, active_workspace: dict | None) -> dict | None
         log.warning("NPR conversion unavailable for header widget", exc_info=True)
 
     return {
-        "gbp": f"{amount_gbp:.2f}",
+        "gbp": f"{amount_gbp:.4f}",
         "npr": f"{npr_display:.2f}" if npr_display is not None else None,
     }

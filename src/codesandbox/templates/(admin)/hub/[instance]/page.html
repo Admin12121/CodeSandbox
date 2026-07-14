@@ -50,7 +50,7 @@
               {% set specs_vcpu = plan.org_vcpu if is_org else plan.ind_vcpu %}
               {% set specs_ram  = (plan.org_ram_gb if is_org else plan.ind_ram_gb) | string ~ " GB" %}
               {% set specs_disk = (plan.org_disk_gb if is_org else plan.ind_disk_gb) | string ~ " GB SSD" %}
-              {% set specs_cost = "£" ~ (plan.org_cost_hr if is_org else plan.ind_cost_hr) ~ "/hr" %}
+              {% set specs_cost = "£" ~ (plan.org_cost_hr_display if is_org else plan.ind_cost_hr_display) ~ "/hr" %}
               {% call table.table_row(
                 selected=loop.first,
                 class="cursor-pointer select-none",
@@ -60,6 +60,8 @@
                   "data-ram":  specs_ram,
                   "data-disk": specs_disk,
                   "data-cost": specs_cost,
+                  "data-minimum-start": plan.minimum_start_amount_display,
+                  "data-can-afford": "1" if plan.can_afford else "0",
                 }
               ) %}
                 {{ table.table_cell(plan.name, class="font-medium") }}
@@ -127,6 +129,12 @@
         {% endcall %}
       {% endcall %}
 
+      {% if can_start and user_balance is not none %}
+        <div id="insufficient-balance-warning" class="mt-3 hidden rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400">
+          This plan needs at least £<span data-minimum-start-amount>0.0000</span> available to start. Add funds or choose a cheaper plan.
+        </div>
+      {% endif %}
+
       {% if can_start and (tmpl.input_required or tmpl.sandbox_type == "reverse_engineering") %}
         <div class="mt-3 border-t pt-3">
           <label for="sandbox-input" class="mb-1.5 block text-xs font-medium text-muted-foreground">Input file</label>
@@ -183,12 +191,25 @@
       var instance = scope.dataset.instance || '';
       var startBtn = scope.querySelector('[data-start-btn]');
 
-      function setStartTarget(planId){
+      var actionBtn = scope.querySelector('#action-btn');
+      var balanceWarning = document.getElementById('insufficient-balance-warning');
+      var minimumAmount = balanceWarning && balanceWarning.querySelector('[data-minimum-start-amount]');
+
+      function setStartTarget(planId, row){
         if (startBtn) startBtn.onclick = function(){
           window.location.href = '/hub/' + instance + '/' + planId;
         };
         var planInput = document.getElementById('start-plan-id');
         if (planInput) planInput.value = planId;
+        var affordable = !row || row.dataset.canAfford !== '0';
+        if (actionBtn && actionBtn.closest('#start-form')) {
+          actionBtn.disabled = !affordable;
+          actionBtn.classList.toggle('opacity-50', !affordable);
+          actionBtn.classList.toggle('cursor-not-allowed', !affordable);
+          actionBtn.title = affordable ? '' : 'Insufficient available balance';
+        }
+        if (balanceWarning) balanceWarning.classList.toggle('hidden', affordable);
+        if (minimumAmount && row) minimumAmount.textContent = row.dataset.minimumStart || '0.0000';
       }
 
       rows.forEach(function(row){
@@ -198,7 +219,7 @@
         if (row.dataset.state === 'selected'){
           applyViolet(row);
           updateSummary(scope, row);
-          setStartTarget(row.dataset.planRow);
+          setStartTarget(row.dataset.planRow, row);
         }
 
         row.addEventListener('click', function(){
@@ -209,7 +230,7 @@
           row.dataset.state = 'selected';
           applyViolet(row);
           updateSummary(scope, row);
-          setStartTarget(row.dataset.planRow);
+          setStartTarget(row.dataset.planRow, row);
         });
       });
 

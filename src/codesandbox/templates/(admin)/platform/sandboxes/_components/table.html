@@ -349,6 +349,7 @@
                   {% call table.table_row() %}
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Thumbnail{% endcall %}
                     {% call table.table_cell() %}
+                      <div class="flex items-center gap-3">
                       <button type="button" id="thumb-btn"
                         class="group relative size-16 shrink-0 rounded-lg border border-input bg-muted overflow-hidden flex items-center justify-center cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         {% if selected_template.icon_path %}
@@ -362,6 +363,11 @@
                           <svg class="size-5 text-white" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
                         </div>
                       </button>
+                      <div class="min-w-0 text-xs text-muted-foreground">
+                        <div>PNG, JPEG or WebP</div>
+                        <div id="thumb-upload-status">{% if tid %}Selecting an image uploads only the thumbnail.{% else %}The image is saved when the template is created.{% endif %}</div>
+                      </div>
+                      </div>
                     {% endcall %}
                   {% endcall %}
                   {% call table.table_row() %}
@@ -1452,7 +1458,9 @@
   function initThumb() {
     var btn = document.getElementById('thumb-btn');
     var inp = document.getElementById('thumb-input');
-    if (!btn || !inp) return;
+    var form = document.getElementById('identity-form');
+    var status = document.getElementById('thumb-upload-status');
+    if (!btn || !inp || !form) return;
 
     btn.addEventListener('click', function() { inp.click(); });
 
@@ -1468,6 +1476,37 @@
         if (ph) ph.setAttribute('hidden', '');
       };
       reader.readAsDataURL(file);
+
+      var templateInput = form.querySelector('input[name="template_id"]');
+      if (!templateInput || !templateInput.value) {
+        if (status) status.textContent = 'Ready — create the template to save it.';
+        return;
+      }
+
+      var body = new FormData();
+      body.append('icon_file', file);
+      var csrf = form.querySelector('input[name="_csrf_token"]');
+      if (csrf) body.append('_csrf_token', csrf.value);
+      if (status) status.textContent = 'Uploading thumbnail…';
+      btn.disabled = true;
+
+      fetch('/platform/sandboxes/' + encodeURIComponent(templateInput.value) + '/thumbnail', {
+        method: 'POST',
+        body: body
+      }).then(function(response) {
+        return response.json().then(function(data) {
+          if (!response.ok || !data.ok) throw new Error(data.error || 'Thumbnail upload failed.');
+          return data;
+        });
+      }).then(function(data) {
+        var existing = form.querySelector('input[name="existing_icon_path"]');
+        if (existing) existing.value = data.icon_path || '';
+        if (status) status.textContent = 'Thumbnail saved. Runtime and test status were not changed.';
+      }).catch(function(error) {
+        if (status) status.textContent = error.message || 'Thumbnail upload failed.';
+      }).finally(function() {
+        btn.disabled = false;
+      });
     });
   }
   if (document.readyState === 'loading') {
@@ -2707,9 +2746,28 @@ function initXterm() {
   connectTerminal();
 }
 
+window.__csTestInstancesByTemplate = window.__csTestInstancesByTemplate || Object.create(null);
+
+function currentConfigTemplateId() {
+  var root = document.getElementById('config-ide');
+  return root ? String(root.dataset.templateId || '') : '';
+}
+
+function scopedTestInstanceId(templateId) {
+  return (window.__csTestInstancesByTemplate || Object.create(null))[String(templateId || '')] || null;
+}
+
+function setScopedTestInstanceId(templateId, instanceId) {
+  templateId = String(templateId || '');
+  if (!templateId) return;
+  window.__csTestInstancesByTemplate = window.__csTestInstancesByTemplate || Object.create(null);
+  if (instanceId) window.__csTestInstancesByTemplate[templateId] = String(instanceId);
+  else delete window.__csTestInstancesByTemplate[templateId];
+}
+
 function connectTerminal(force) {
   if (!xtermInstance) return;
-  var instanceId = window.__csTestInstanceId;
+  var instanceId = scopedTestInstanceId(currentConfigTemplateId());
   if (!instanceId) {
     xtermInstance.reset();
     xtermInstance.writeln('\x1b[33mNo test instance running.\x1b[0m');
@@ -2766,10 +2824,18 @@ function openTerminalWs(instanceId, token) {
   };
 }
 
-// Follow the active Test Launch instance so the terminal auto-(re)connects.
-document.addEventListener('cs:test-instance-changed', function() {
-  if (termPanel && termPanel.style.display !== 'none' && xtermInstance) connectTerminal();
-});
+// Follow only the active Test Launch belonging to the currently selected
+// template. Old app-router scripts may remain in the document, so keep one
+// replaceable listener rather than accumulating cross-template listeners.
+if (window.__csConfigTestInstanceListener) {
+  document.removeEventListener('cs:test-instance-changed', window.__csConfigTestInstanceListener);
+}
+window.__csConfigTestInstanceListener = function(event) {
+  var detail = event.detail || {};
+  if (String(detail.templateId || '') !== currentConfigTemplateId()) return;
+  if (termPanel && termPanel.style.display !== 'none' && xtermInstance) connectTerminal(true);
+};
+document.addEventListener('cs:test-instance-changed', window.__csConfigTestInstanceListener);
 
 if (termToggleBtn) {
   termToggleBtn.addEventListener('click', function() {
@@ -2956,7 +3022,7 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
   function connectMonitor(instanceId, focusView) {
     if (!isCurrentTemplate() || !instanceId) return;
     currentInstanceId = instanceId;
-    window.__csTestInstanceId = instanceId;
+    setScopedTestInstanceId(templateId, instanceId);
     document.dispatchEvent(new CustomEvent('cs:test-instance-changed', {
       detail: { instanceId: instanceId, templateId: templateId }
     }));
@@ -3109,6 +3175,9 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
       .then(function(response) { return response.json(); })
       .then(function(data) {
         if (!data.ok) throw new Error(data.error || 'Unknown error');
+        if (String(data.template_id || '') !== templateId) {
+          throw new Error('Test Launch returned an instance for a different template.');
+        }
         if (!isCurrentTemplate()) {
           if (testTab) testTab.close();
           return;
@@ -3125,6 +3194,7 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
         if (!isCurrentTemplate()) return;
         currentInstanceId = null;
         currentInstanceUrl = null;
+        setScopedTestInstanceId(templateId, null);
         setOpenButtonVisible(false);
         setStatus('failed');
         window.Toast && window.Toast.create({
@@ -3172,10 +3242,14 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
         if (!isCurrentTemplate()) return;
         updateTestHint(data);
         var active = data.ok ? data.active_test : null;
+        if (active && String(active.template_id || '') !== templateId) {
+          active = null;
+          console.error('Ignored Test Launch state from a different template.');
+        }
         if (!active) {
           currentInstanceId = null;
           currentInstanceUrl = null;
-          window.__csTestInstanceId = null;
+          setScopedTestInstanceId(templateId, null);
           document.dispatchEvent(new CustomEvent('cs:test-instance-changed', {
             detail: { instanceId: null, templateId: templateId }
           }));
@@ -3231,6 +3305,11 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
       try { monitorWs.close(); } catch (e) {}
     }
     monitorWs = null;
+    if (termWs) {
+      try { termWs.close(); } catch (e) {}
+      termWs = null;
+    }
+    termInstanceId = null;
     if (window.__csTemplateTestController &&
         window.__csTemplateTestController.templateId === templateId) {
       window.__csTemplateTestController = null;
@@ -3244,7 +3323,7 @@ if (termCloseBtn) termCloseBtn.addEventListener('click', closeTermPanel);
   // Never inherit another template's active Test Launch while the template-
   // scoped status request is still in flight. Recovery below restores only the
   // active test belonging to this exact template and actor.
-  window.__csTestInstanceId = null;
+  setScopedTestInstanceId(templateId, null);
   document.dispatchEvent(new CustomEvent('cs:test-instance-changed', {
     detail: { instanceId: null, templateId: templateId }
   }));

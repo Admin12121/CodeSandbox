@@ -78,11 +78,11 @@ def _template_plan(**overrides):
     return SimpleNamespace(**data)
 
 
-def test_effective_plan_merges_template_overrides(ctx: TestContext) -> None:
+def test_effective_plan_uses_global_plan_resources_only(ctx: TestContext) -> None:
     from codesandbox.features.sandbox.runtime.policy import resolve_effective_plan
 
     effective = resolve_effective_plan(
-        _template(network_mode="disabled"),
+        _template(network_mode="restricted"),
         _plan(),
         _template_plan(
             ind_vcpu=3,
@@ -99,17 +99,28 @@ def test_effective_plan_merges_template_overrides(ctx: TestContext) -> None:
         ),
     )
 
-    assert effective.ind_vcpu == 3
-    assert effective.ind_ram_gb == 4
-    assert effective.ind_disk_gb == 30
-    assert effective.ind_cost_hr == Decimal("0.2500")
-    assert effective.org_vcpu == 6
-    assert effective.org_ram_gb == 8
-    assert effective.org_disk_gb == 60
-    assert effective.org_cost_hr == Decimal("0.4000")
-    assert effective.max_timeout_hr == 6
+    # SandboxTemplatePlan is availability-only. Resource limits and prices are
+    # sourced from SandboxPlan so the client summary, scheduler, Docker limits,
+    # and billing snapshot all use one authoritative set of values.
+    assert effective.ind_vcpu == 1
+    assert effective.ind_ram_gb == 1
+    assert effective.ind_disk_gb == 10
+    assert effective.ind_cost_hr == Decimal("0.1000")
+    assert effective.org_vcpu == 2
+    assert effective.org_ram_gb == 2
+    assert effective.org_disk_gb == 20
+    assert effective.org_cost_hr == Decimal("0.1500")
+    assert effective.max_timeout_hr == 2
     assert effective.network_mode == "restricted"
-    assert effective.min_billable_minutes == 5
+    assert effective.min_billable_minutes == 1
+
+
+def test_container_disk_limit_is_sparse_for_scheduler(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.service import _scheduler_disk_gb
+
+    assert _scheduler_disk_gb("container", 30) == 1
+    assert _scheduler_disk_gb("tool_job", 50) == 1
+    assert _scheduler_disk_gb("qemu_vm", 30) == 30
 
 
 def test_disabled_template_plan_rejected_by_service(ctx: TestContext) -> None:
@@ -322,8 +333,66 @@ def test_worker_filesystem_paths_stay_in_workspace(ctx: TestContext) -> None:
         raise AssertionError("NUL bytes must be rejected in filesystem paths.")
 
 
+def test_root_study_profile_uses_fixed_capabilities(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.runtime.policy import (
+        PolicyBuilder,
+        ROOT_STUDY_CAPABILITIES,
+        RuntimePolicyError,
+        resolve_effective_plan,
+    )
+
+    template = _template(
+        allow_root=True,
+        read_only_root=False,
+        run_as_user=None,
+        runtime_config=_runtime_config(security_profile="root_study"),
+    )
+    policy = PolicyBuilder().build(template, resolve_effective_plan(template, _plan()))
+    assert policy["security"]["cap_drop"] == ["ALL"]
+    assert policy["security"]["cap_add"] == ROOT_STUDY_CAPABILITIES
+    assert "SYS_ADMIN" not in policy["security"]["cap_add"]
+    assert policy["security"]["privileged"] is False
+
+    invalid = _template(
+        allow_root=False,
+        runtime_config=_runtime_config(security_profile="root_study"),
+    )
+    try:
+        PolicyBuilder().build(invalid, resolve_effective_plan(invalid, _plan()))
+    except RuntimePolicyError as exc:
+        assert "requires explicit root access" in str(exc)
+    else:
+        raise AssertionError("root_study must require allow_root on the template.")
+
+
+def test_sudo_ide_profile_is_non_root_but_bootstraps_as_root(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.runtime.policy import (
+        PolicyBuilder,
+        SUDO_USER_CAPABILITIES,
+        resolve_effective_plan,
+    )
+
+    template = _template(
+        allow_root=False,
+        read_only_root=False,
+        run_as_user="1000:1000",
+        runtime_config=_runtime_config(
+            allow_sudo=True,
+            container_start_user="0:0",
+            terminal_user="1000:1000",
+        ),
+    )
+    policy = PolicyBuilder().build(template, resolve_effective_plan(template, _plan()))
+    assert policy["allow_root"] is False
+    assert policy["container_start_user"] == "0:0"
+    assert policy["terminal_user"] == "1000:1000"
+    assert policy["security"]["cap_add"] == SUDO_USER_CAPABILITIES
+    assert policy["security"]["no_new_privileges"] is False
+
+
 TESTS: list[TestCase] = [
-    TestCase("effective plan merges overrides", "sandbox", test_effective_plan_merges_template_overrides),
+    TestCase("effective plan uses global plan resources only", "sandbox", test_effective_plan_uses_global_plan_resources_only),
+    TestCase("container disk is sparse for scheduler", "sandbox", test_container_disk_limit_is_sparse_for_scheduler),
     TestCase("disabled template plan rejected", "sandbox", test_disabled_template_plan_rejected_by_service),
     TestCase("reverse engineering no internet", "sandbox", test_full_internet_blocked_for_reverse_engineering),
     TestCase("required_args enforced generically", "sandbox", test_required_args_enforced_generically),
@@ -331,4 +400,6 @@ TESTS: list[TestCase] = [
     TestCase("platform environment names are reserved", "sandbox", test_platform_environment_names_cannot_be_overridden),
     TestCase("no hardcoded slug in policy builder", "sandbox", test_no_hardcoded_template_slug_in_policy_builder),
     TestCase("worker filesystem path confinement", "sandbox", test_worker_filesystem_paths_stay_in_workspace),
+    TestCase("root study capability profile", "sandbox", test_root_study_profile_uses_fixed_capabilities),
+    TestCase("sudo IDE capability profile", "sandbox", test_sudo_ide_profile_is_non_root_but_bootstraps_as_root),
 ]

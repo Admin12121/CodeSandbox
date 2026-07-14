@@ -209,7 +209,7 @@
       {% if _hb %}
         <a href="/billing" title="Balance"
            class="ml-auto flex shrink-0 items-center gap-2 rounded-lg border px-2.5 py-1 text-xs font-mono tabular-nums text-foreground hover:bg-accent transition-colors">
-          <span>£&nbsp;{{ _hb.gbp }}</span>
+          <span>£&nbsp;<span data-live-balance-gbp>{{ _hb.gbp }}</span></span>
           {% if _hb.npr %}
             <span class="text-muted-foreground/50">·</span>
             <span class="text-muted-foreground">रु&nbsp;{{ _hb.npr }}</span>
@@ -510,34 +510,6 @@
     }).catch(function(){});
   }
 
-  function markPending(key){
-    try {
-      sessionStorage.setItem('cs:success-effect', key || 'success');
-    } catch (_) {}
-  }
-
-  function consumePending(){
-    var key = null;
-    try {
-      key = sessionStorage.getItem('cs:success-effect');
-      if (key) sessionStorage.removeItem('cs:success-effect');
-      if (key) sessionStorage.setItem('cs:consumed-success-effect', key);
-    } catch (_) {}
-    if (key === 'payment_success') {
-      toast({
-        title: 'Payment confirmed',
-        description: 'Funds have been added to your balance.',
-        type: 'success'
-      }, true);
-    } else if (key === 'coupon_applied') {
-      toast({
-        title: 'Coupon applied',
-        description: 'The discount was applied successfully.',
-        type: 'success'
-      }, true);
-    }
-  }
-
   function toast(payload, withConfetti){
     function run(){
       if (!window.Toast) {
@@ -550,9 +522,8 @@
     run();
   }
 
-  window.CSConfetti = { sideCannons: sideCannons, markPending: markPending };
+  window.CSConfetti = { sideCannons: sideCannons };
   window.CSToast = { create: toast };
-  consumePending();
 
   function handleQueryToast(){
     var params = new URLSearchParams(window.location.search);
@@ -1173,3 +1144,22 @@
 })();
 {% end_app_script %}
 {% endif %}
+
+{% app_script "live-header-balance" %}
+(function () {
+  var amount = document.querySelector("[data-live-balance-gbp]");
+  if (!amount) return;
+  function refreshBalance() {
+    fetch("/billing/live", {credentials: "same-origin"})
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (data) {
+        if (data && data.ok && data.balance) {
+          amount.textContent = data.balance.available_amount_display || "0.0000";
+        }
+      })
+      .catch(function () {});
+  }
+  refreshBalance();
+  window.setInterval(refreshBalance, 10000);
+})();
+{% end_app_script %}

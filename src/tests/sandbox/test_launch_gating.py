@@ -181,6 +181,61 @@ def test_background_run_publish_requires_success_condition(ctx: TestContext) -> 
     assert error is not None and "success_condition" in error
 
 
+def test_admin_test_plan_is_zero_cost_and_independent_of_customer_plans(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.service import _test_effective_plan
+
+    template, _ = _fixture_template(
+        ctx,
+        runtime_class="container",
+        network_mode="disabled",
+        max_timeout_hr=2,
+        runtime_config=json.dumps({
+            "runtime.json": json.dumps({
+                "test_resources": {"vcpu": 1, "ram_gb": 2, "disk_gb": 5}
+            })
+        }),
+    )
+    plan = _test_effective_plan(template)
+    assert plan.id == "__test__"
+    assert plan.ind_cost_hr == 0
+    assert plan.org_cost_hr == 0
+    assert plan.ind_vcpu == 1
+    assert plan.ind_ram_gb == 2
+    assert plan.ind_disk_gb == 5
+
+
+def test_active_test_instances_are_template_scoped(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox import repository as sandbox_repository
+
+    first, admin = _fixture_template(ctx)
+    second, _ = _fixture_template(ctx)
+    first_instance = sandbox_repository.create_instance(
+        template_id=str(first.id),
+        plan_id="basic",
+        workspace_type="test",
+        workspace_user_id=str(admin.id),
+        created_by_user_id=str(admin.id),
+        billing_entity="test",
+    )
+    second_instance = sandbox_repository.create_instance(
+        template_id=str(second.id),
+        plan_id="basic",
+        workspace_type="test",
+        workspace_user_id=str(admin.id),
+        created_by_user_id=str(admin.id),
+        billing_entity="test",
+    )
+    ctx.defer(first_instance.delete)
+    ctx.defer(second_instance.delete)
+
+    assert str(sandbox_repository.find_active_test_instance(
+        str(first.id), actor_user_id=str(admin.id)
+    ).id) == str(first_instance.id)
+    assert str(sandbox_repository.find_active_test_instance(
+        str(second.id), actor_user_id=str(admin.id)
+    ).id) == str(second_instance.id)
+
+
 TESTS: list[TestCase] = [
     TestCase("start_test_instance blocked when requires_input and no file", "sandbox", test_start_test_instance_blocked_when_requires_input_and_no_file),
     TestCase("start_test_instance blocked by template input_required", "sandbox", test_start_test_instance_blocked_when_template_input_required),
@@ -188,4 +243,6 @@ TESTS: list[TestCase] = [
     TestCase("desktop_gui publish requires gui config", "sandbox", test_desktop_gui_publish_requires_gui_config),
     TestCase("android_ui publish requires android_emulator runtime class", "sandbox", test_android_ui_publish_requires_android_emulator_runtime_class),
     TestCase("background_run publish requires success_condition", "sandbox", test_background_run_publish_requires_success_condition),
+    TestCase("admin test plan is independent of customer plans", "sandbox", test_admin_test_plan_is_zero_cost_and_independent_of_customer_plans),
+    TestCase("active test instances are template scoped", "sandbox", test_active_test_instances_are_template_scoped),
 ]
