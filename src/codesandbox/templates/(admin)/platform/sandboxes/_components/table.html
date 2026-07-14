@@ -13,6 +13,7 @@
 {% import "components/ui/switch.html" as sw %}
 {% import "components/ui/alert.html" as alert %}
 {% import "components/ui/delete-dialog.html" as del_dialog %}
+{% import "components/media/avatar.html" as media_avatar %}
 
 {# ═══ LIST VIEW ═══ #}
 {% macro templates_table(templates, total, page, total_pages, search, status_filter, page_size=25, can_manage=false) %}
@@ -85,9 +86,17 @@
             {% for tmpl in templates %}
               {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/platform/sandboxes?template=" ~ tmpl.id}) %}
                 {% call table.table_cell() %}
-                  <div class="min-w-0">
-                    <div class="truncate font-medium">{{ tmpl.name }}</div>
-                    <div class="truncate text-xs text-muted-foreground font-mono">{{ tmpl.slug }}</div>
+                  <div class="flex min-w-0 items-center gap-3">
+                    {{ media_avatar.image_avatar(
+                      tmpl.name,
+                      tmpl.icon_path,
+                      size="size-9 rounded-lg text-xs",
+                      class="border-border bg-muted text-muted-foreground"
+                    ) }}
+                    <div class="min-w-0">
+                      <div class="truncate font-medium">{{ tmpl.name }}</div>
+                      <div class="truncate text-xs text-muted-foreground font-mono">{{ tmpl.slug }}</div>
+                    </div>
                   </div>
                 {% endcall %}
                 {{ table.table_cell(tmpl.sandbox_type | replace("_", " ") | title, class="text-sm text-muted-foreground") }}

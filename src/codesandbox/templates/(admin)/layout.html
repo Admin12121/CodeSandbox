@@ -510,6 +510,34 @@
     }).catch(function(){});
   }
 
+  function markPending(key){
+    try {
+      sessionStorage.setItem('cs:success-effect', key || 'success');
+    } catch (_) {}
+  }
+
+  function consumePending(){
+    var key = null;
+    try {
+      key = sessionStorage.getItem('cs:success-effect');
+      if (key) sessionStorage.removeItem('cs:success-effect');
+      if (key) sessionStorage.setItem('cs:consumed-success-effect', key);
+    } catch (_) {}
+    if (key === 'payment_success') {
+      toast({
+        title: 'Payment confirmed',
+        description: 'Funds have been added to your balance.',
+        type: 'success'
+      }, true);
+    } else if (key === 'coupon_applied') {
+      toast({
+        title: 'Coupon applied',
+        description: 'The discount was applied successfully.',
+        type: 'success'
+      }, true);
+    }
+  }
+
   function toast(payload, withConfetti){
     function run(){
       if (!window.Toast) {
@@ -522,8 +550,9 @@
     run();
   }
 
-  window.CSConfetti = { sideCannons: sideCannons };
+  window.CSConfetti = { sideCannons: sideCannons, markPending: markPending };
   window.CSToast = { create: toast };
+  consumePending();
 
   function handleQueryToast(){
     var params = new URLSearchParams(window.location.search);

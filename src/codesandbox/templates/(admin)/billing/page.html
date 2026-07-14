@@ -28,6 +28,11 @@
   (function(){
     var error = {{ (error if error is defined else "")|tojson }};
     var topup = {{ request.args.get("topup", "")|tojson }};
+    var consumedSuccessEffect = "";
+    try {
+      consumedSuccessEffect = sessionStorage.getItem("cs:consumed-success-effect") || "";
+      if(consumedSuccessEffect) sessionStorage.removeItem("cs:consumed-success-effect");
+    } catch (_) {}
     function triggerConfetti(attempt){
       attempt = attempt || 0;
       if(window.CSConfetti && typeof window.CSConfetti.sideCannons === "function"){
@@ -41,8 +46,10 @@
       if(error){
         window.Toast.create({title: "Billing action failed", description: error, type: "error"});
       } else if(topup === "success"){
-        window.Toast.create({title: "Payment confirmed", description: "Funds have been added to your balance.", type: "success"});
-        triggerConfetti();
+        if(consumedSuccessEffect !== "payment_success"){
+          window.Toast.create({title: "Payment confirmed", description: "Funds have been added to your balance.", type: "success"});
+          triggerConfetti();
+        }
       } else if(topup === "cancelled"){
         window.Toast.create({title: "Payment cancelled", description: "No funds were added.", type: "warning"});
       }
@@ -488,12 +495,15 @@
       body: JSON.stringify({ payment_intent_id: paymentIntentId }),
     }, 20000).then(function (data) {
       if (data.status === "completed") {
-        window.Toast && window.Toast.create({
-          title: "Payment confirmed",
-          description: "Funds added to your balance.",
-          type: "success",
-        });
-        window.location.href = "/billing?topup=success";
+        if (window.CSConfetti && typeof window.CSConfetti.markPending === "function") {
+          window.CSConfetti.markPending("payment_success");
+        }
+        if (window.CSConfetti && typeof window.CSConfetti.sideCannons === "function") {
+          window.CSConfetti.sideCannons();
+        }
+        setTimeout(function(){
+          window.location.href = "/billing?topup=success";
+        }, 900);
         return;
       }
       if (data.status === "failed" || data.status === "canceled") {
