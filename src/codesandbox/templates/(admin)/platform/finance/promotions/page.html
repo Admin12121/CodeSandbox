@@ -23,10 +23,14 @@
   (function(){
     var error = {{ (error or "")|tojson }};
     var info = {{ (info or "")|tojson }};
+    var action = {{ (action or "")|tojson }};
     function show(){
       if(!window.Toast){ setTimeout(show, 50); return; }
       if(error) window.Toast.create({title: "Finance action failed", description: error, type: "error"});
-      if(info) window.Toast.create({title: "Finance updated", description: info, type: "success"});
+      if(info){
+        window.Toast.create({title: "Finance updated", description: info, type: "success"});
+        if(action === "coupon" && window.CSConfetti) window.CSConfetti.sideCannons();
+      }
       var url = new URL(window.location.href);
       ["error", "info", "action"].forEach(function(key){ url.searchParams.delete(key); });
       history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));

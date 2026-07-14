@@ -8,23 +8,25 @@
 
   {# Org tab bar #}
   <div class="flex h-10 shrink-0 items-end border-b px-4 gap-0">
-    <button id="hub-tab-private"
-      class="hub-tab flex items-center gap-1.5 border-b-2 border-primary px-4 pb-2 text-sm font-medium transition-colors"
-      onclick="hubShowTab('private')">
+    <a id="hub-tab-private"
+      href="/hub?tab=private"
+      data-hub-tab="private"
+      class="hub-tab flex items-center gap-1.5 border-b-2 px-4 pb-2 text-sm font-medium transition-colors {{ 'border-primary text-foreground' if hub_tab == 'private' else 'border-transparent text-muted-foreground hover:text-foreground' }}">
       <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       Private
-    </button>
-    <button id="hub-tab-public"
-      class="hub-tab flex items-center gap-1.5 border-b-2 border-transparent px-4 pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      onclick="hubShowTab('public')">
+    </a>
+    <a id="hub-tab-public"
+      href="/hub?tab=public"
+      data-hub-tab="public"
+      class="hub-tab flex items-center gap-1.5 border-b-2 px-4 pb-2 text-sm font-medium transition-colors {{ 'border-primary text-foreground' if hub_tab == 'public' else 'border-transparent text-muted-foreground hover:text-foreground' }}">
       <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
       Public
       {% if pending_requests %}
         <span class="ml-1 rounded-full bg-primary px-1.5 py-px text-[10px] font-semibold text-primary-foreground">{{ pending_requests | length }}</span>
       {% endif %}
-    </button>
+    </a>
     <div class="flex-1"></div>
-    <a href="/hub#catalog" onclick="hubShowTab('catalog')" class="mb-2 inline-flex items-center gap-1 rounded-md bg-muted px-3 py-1 text-xs font-medium hover:bg-accent transition-colors">
+    <a href="/hub?tab={{ 'public' if hub_public_tab_is_catalog else 'catalog' }}" data-hub-tab="{{ 'public' if hub_public_tab_is_catalog else 'catalog' }}" class="mb-2 inline-flex items-center gap-1 rounded-md bg-muted px-3 py-1 text-xs font-medium hover:bg-accent transition-colors">
       <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>
       Sandbox Catalog
     </a>
@@ -33,15 +35,14 @@
   <div class="flex-1 min-h-0 overflow-y-auto">
 
     {# ── Private tab ── #}
-    <div id="hub-pane-private" class="hub-pane p-4 space-y-4">
+    <div id="hub-pane-private" class="hub-pane p-4 space-y-4 {{ 'hidden' if hub_tab != 'private' else '' }}">
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-base font-semibold">Org Pool Instances</h2>
           <p class="text-xs text-muted-foreground mt-0.5">Instances shared across the organization</p>
         </div>
         {% if can_manage_instances %}
-          <a href="/hub" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-             onclick="event.preventDefault(); hubShowTab('catalog')">
+          <a href="/hub?tab={{ 'public' if hub_public_tab_is_catalog else 'catalog' }}" data-hub-tab="{{ 'public' if hub_public_tab_is_catalog else 'catalog' }}" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
             <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
             New Instance
           </a>
@@ -86,14 +87,17 @@
     </div>
 
     {# ── Public tab ── #}
-    <div id="hub-pane-public" class="hub-pane hidden p-4 space-y-4">
+    <div id="hub-pane-public" class="hub-pane p-4 space-y-4 {{ 'hidden' if hub_tab != 'public' else '' }}">
+      {% if hub_public_tab_is_catalog %}
+      <h2 class="text-base font-semibold mb-4">Sandbox Catalog</h2>
+      {% include "(admin)/hub/_components/catalog.html" %}
+      {% else %}
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-base font-semibold">Sandbox Requests</h2>
           <p class="text-xs text-muted-foreground mt-0.5">Request a sandbox from the catalog</p>
         </div>
-        <a href="/hub" class="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors"
-           onclick="event.preventDefault(); hubShowTab('catalog')">
+        <a href="/hub?tab=catalog" data-hub-tab="catalog" class="inline-flex items-center gap-1.5 rounded-md bg-muted px-3 py-1.5 text-sm font-medium hover:bg-accent transition-colors">
           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
           New Request
         </a>
@@ -143,10 +147,11 @@
           <p class="text-xs mt-1 opacity-60">Browse the catalog and request a sandbox.</p>
         </div>
       {% endif %}
+      {% endif %}
     </div>
 
     {# ── Catalog pane (shared between personal+org) ── #}
-    <div id="hub-pane-catalog" class="hub-pane hidden p-4">
+    <div id="hub-pane-catalog" class="hub-pane p-4 {{ 'hidden' if hub_tab != 'catalog' else '' }}">
       <h2 class="text-base font-semibold mb-4">Sandbox Catalog</h2>
       {% include "(admin)/hub/_components/catalog.html" %}
     </div>
@@ -156,8 +161,15 @@
 
 {% app_script "hub-org-tabs" %}
 (function(){
-  function hubShowTab(tab){
-    window.hubShowTab = hubShowTab;
+  var initialTab = {{ hub_tab|tojson }};
+  var publicTabIsCatalog = {{ hub_public_tab_is_catalog|tojson }};
+  function normalizeTab(tab){
+    if(publicTabIsCatalog && tab === 'catalog') return 'public';
+    return tab;
+  }
+  function hubShowTab(tab, replace){
+    tab = normalizeTab(tab);
+    if(['private','public','catalog'].indexOf(tab) === -1) tab = 'private';
     ['private','public','catalog'].forEach(function(t){
       var pane = document.getElementById('hub-pane-' + t);
       var btn  = document.getElementById('hub-tab-' + t);
@@ -165,16 +177,35 @@
       if (btn) {
         btn.classList.toggle('border-primary', t === tab);
         btn.classList.toggle('border-transparent', t !== tab);
+        btn.classList.toggle('text-foreground', t === tab);
         btn.classList.toggle('text-muted-foreground', t !== tab);
       }
     });
-    try { sessionStorage.setItem('hub-tab', tab); } catch(e){}
+    if(!replace){
+      var url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      history.pushState({}, '', url.pathname + '?' + url.searchParams.toString());
+    }
   }
   window.hubShowTab = hubShowTab;
-  try {
-    var saved = sessionStorage.getItem('hub-tab') || 'private';
-    hubShowTab(saved);
-  } catch(e) { hubShowTab('private'); }
+  document.addEventListener('click', function(event){
+    var link = event.target.closest('[data-hub-tab]');
+    if(!link) return;
+    event.preventDefault();
+    hubShowTab(normalizeTab(link.dataset.hubTab || 'private'), false);
+  });
+  window.addEventListener('popstate', function(){
+    var tab = new URL(window.location.href).searchParams.get('tab') || initialTab || 'private';
+    hubShowTab(normalizeTab(tab), true);
+  });
+  var bootUrl = new URL(window.location.href);
+  var bootTab = bootUrl.searchParams.get('tab') || initialTab || 'private';
+  var normalizedBootTab = normalizeTab(bootTab);
+  if(bootTab !== normalizedBootTab){
+    bootUrl.searchParams.set('tab', normalizedBootTab);
+    history.replaceState({}, '', bootUrl.pathname + '?' + bootUrl.searchParams.toString());
+  }
+  hubShowTab(normalizedBootTab, true);
 })();
 {% end_app_script %}
 

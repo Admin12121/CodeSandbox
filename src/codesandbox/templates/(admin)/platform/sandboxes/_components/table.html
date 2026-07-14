@@ -104,10 +104,32 @@
                 {{ table.table_cell(tmpl.active_instances | string, class="text-right text-sm tabular-nums") }}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
-                    <a href="/platform/sandboxes?template={{ tmpl.id }}" aria-label="Edit {{ tmpl.name }}"
-                       class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all sm:size-6">
-                      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                    </a>
+                    {% call button.button(variant="ghost", size="icon-xs", class="shrink-0 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": "tmpl-menu-" ~ tmpl.id, "aria-label": "Template actions"}) %}
+                      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    {% endcall %}
+                    <div id="tmpl-menu-{{ tmpl.id }}" class="hidden fixed z-100 w-44 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
+                      <a href="/platform/sandboxes?template={{ tmpl.id }}"
+                         class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
+                        Edit
+                      </a>
+                      <form method="post" action="/platform/sandboxes/{{ tmpl.id }}/status">
+                        {{ csrf_input() }}
+                        <input type="hidden" name="status" value="{{ 'active' if tmpl.status == 'disabled' else 'disabled' }}">
+                        <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
+                          {{ "Activate" if tmpl.status == "disabled" else "Deactivate" }}
+                        </button>
+                      </form>
+                      {% call del_dialog.delete_dialog_trigger("delete-template-" ~ tmpl.id) %}
+                        <button type="button"
+                          data-dialog-trigger
+                          data-target="#delete-template-{{ tmpl.id }}"
+                          aria-controls="delete-template-{{ tmpl.id }}"
+                          aria-expanded="false"
+                          class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
+                          Delete
+                        </button>
+                      {% endcall %}
+                    </div>
                   </div>
                 {% endcall %}
               {% endcall %}
@@ -124,6 +146,18 @@
       page_size=page_size,
       base_url="/platform/sandboxes?search=" ~ search ~ "&status=" ~ status_filter
     ) }}
+
+    {% if can_manage %}
+      {% for tmpl in templates %}
+        {{ del_dialog.delete_dialog(
+          id="delete-template-" ~ tmpl.id,
+          name=tmpl.name,
+          description="This permanently deletes the sandbox template when no live instances or pending requests reference it.",
+          action="/platform/sandboxes/" ~ tmpl.id ~ "/delete",
+          submit_label="Delete template"
+        ) }}
+      {% endfor %}
+    {% endif %}
 
   </div>
 {% endmacro %}
@@ -201,12 +235,17 @@
       </div>
       <div class="flex items-center gap-2 shrink-0">
         {% if not is_create and can_manage and selected_template.active_instances == 0 %}
-          {{ del_dialog.delete_dialog_trigger("del-tmpl-dlg") }}
+          {% call del_dialog.delete_dialog_trigger("del-tmpl-dlg") %}
+            {% call button.button(type="button", variant="destructive", size="sm", attrs={"data-dialog-trigger": "", "data-target": "#del-tmpl-dlg", "aria-controls": "del-tmpl-dlg", "aria-expanded": "false"}) %}
+              Delete
+            {% endcall %}
+          {% endcall %}
           {{ del_dialog.delete_dialog(
             id="del-tmpl-dlg",
             name=selected_template.name,
             description="Permanently deletes this sandbox template. Cannot be undone.",
             action="/platform/sandboxes/" ~ tid ~ "/delete",
+            submit_label="Delete template"
           ) }}
         {% endif %}
         {% if can_manage and (is_create or active_tab == "identity") %}

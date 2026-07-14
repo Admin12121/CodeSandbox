@@ -28,12 +28,21 @@
   (function(){
     var error = {{ (error if error is defined else "")|tojson }};
     var topup = {{ request.args.get("topup", "")|tojson }};
+    function triggerConfetti(attempt){
+      attempt = attempt || 0;
+      if(window.CSConfetti && typeof window.CSConfetti.sideCannons === "function"){
+        window.CSConfetti.sideCannons();
+        return;
+      }
+      if(attempt < 40) setTimeout(function(){ triggerConfetti(attempt + 1); }, 50);
+    }
     function show(){
       if(!window.Toast){ setTimeout(show, 50); return; }
       if(error){
         window.Toast.create({title: "Billing action failed", description: error, type: "error"});
       } else if(topup === "success"){
         window.Toast.create({title: "Payment confirmed", description: "Funds have been added to your balance.", type: "success"});
+        triggerConfetti();
       } else if(topup === "cancelled"){
         window.Toast.create({title: "Payment cancelled", description: "No funds were added.", type: "warning"});
       }

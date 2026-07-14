@@ -1137,6 +1137,10 @@ def toggle_plan_active(plan_id: str, is_active: bool) -> None:
     repository.update_plan(plan_id, is_active=is_active)
 
 
+def delete_plan(plan_id: str) -> str | None:
+    return repository.delete_plan(plan_id)
+
+
 # ── SandboxTemplatePlan ───────────────────────────────────────────────────────
 
 def _int_or_none(v) -> int | None:

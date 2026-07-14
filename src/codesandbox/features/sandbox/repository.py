@@ -235,6 +235,28 @@ def update_plan(plan_id: str, **kwargs) -> SandboxPlan | None:
     return p
 
 
+def delete_plan(plan_id: str) -> str | None:
+    """Delete an unused sandbox plan. Returns an error string when blocked."""
+    p = get_plan(plan_id)
+    if p is None:
+        return "Plan not found."
+
+    linked_templates = SandboxTemplatePlan.objects.filter(plan_id=plan_id).all()
+    if linked_templates:
+        return f"Cannot delete: {len(linked_templates)} template plan mapping(s) still use this plan."
+
+    instances = SandboxInstance.objects.filter(plan_id=plan_id).all()
+    if instances:
+        return f"Cannot delete: {len(instances)} sandbox instance(s) reference this plan."
+
+    requests = InstanceRequest.objects.filter(plan_id=plan_id).all()
+    if requests:
+        return f"Cannot delete: {len(requests)} sandbox request(s) reference this plan."
+
+    p.delete()
+    return None
+
+
 # ── SandboxInstance ───────────────────────────────────────────────────────────
 
 def create_instance(

@@ -16,6 +16,7 @@ from codesandbox.web.csrf import csrf_exempt
 
 from .service import (
     can_open_instance_channel,
+    delete_plan,
     delete_template,
     get_artifact_for_download,
     get_instance_artifacts_for_view,
@@ -169,11 +170,18 @@ def save_template_ui_workflow_action(template_id: str):
 @platform_perm("platform.sandboxes.manage")
 def set_template_status_action(template_id: str):
     cs = get_current_session()
-    body = request.get_json(silent=True) or {}
-    status = body.get("status", "")
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        status = body.get("status", "")
+    else:
+        status = request.form.get("status", "")
     error = set_template_status(template_id, status, actor_user_id=str(cs.user.id))
     if error:
+        if not request.is_json:
+            return _sandboxes_redirect(template_id, error)
         return {"ok": False, "error": error}, 400
+    if not request.is_json:
+        return _sandboxes_redirect()
     return {"ok": True}
 
 
@@ -260,6 +268,15 @@ def toggle_plan_action(plan_id: str):
     is_active = request.form.get("is_active") == "1"
     toggle_plan_active(plan_id, is_active)
     return _plans_redirect(plan_id)
+
+
+@web_bp.post("/platform/sandbox-plans/<plan_id>/delete")
+@platform_perm("platform.sandbox_plans.manage")
+def delete_plan_action(plan_id: str):
+    error = delete_plan(plan_id)
+    if error:
+        return _plans_redirect(plan_id, error)
+    return _plans_redirect()
 
 
 # ── Admin: test-run a template ────────────────────────────────────────────────

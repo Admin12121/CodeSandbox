@@ -41,7 +41,7 @@ def finance_create_coupon_action():
     )
     if error:
         return _redir("/platform/finance/promotions", error=error, action="coupon")
-    return _redir("/platform/finance/promotions", info=f"Coupon {result['code']} created.")
+    return _redir("/platform/finance/promotions", info=f"Coupon {result['code']} created.", action="coupon")
 
 
 @web_bp.post("/platform/finance/coupons/<coupon_id>/disable")

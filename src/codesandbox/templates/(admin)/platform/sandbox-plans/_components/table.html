@@ -5,6 +5,7 @@
 {% import "components/ui/input.html" as inp %}
 {% import "components/ui/label.html" as label %}
 {% import "components/ui/alert.html" as alert %}
+{% import "components/ui/delete-dialog.html" as del_dialog %}
 
 {# ═══ LIST VIEW ═══ #}
 {% macro plans_table(plans, can_manage=false) %}
@@ -84,6 +85,16 @@
                         {{ "Deactivate" if plan.is_active else "Activate" }}
                       </button>
                     </form>
+                    {% call del_dialog.delete_dialog_trigger("delete-plan-" ~ plan.id) %}
+                      <button type="button"
+                        data-dialog-trigger
+                        data-target="#delete-plan-{{ plan.id }}"
+                        aria-controls="delete-plan-{{ plan.id }}"
+                        aria-expanded="false"
+                        class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
+                        Delete
+                      </button>
+                    {% endcall %}
                   </div>
                 </div>
               {% endcall %}
@@ -94,6 +105,19 @@
       {% endcall %}
     {% endcall %}
   {% endcall %}
+
+  {% if can_manage %}
+    {% for plan in plans %}
+      {{ del_dialog.delete_dialog(
+        id="delete-plan-" ~ plan.id,
+        name=plan.name,
+        description="This permanently deletes the sandbox plan only if no template mappings, requests, or instances reference it.",
+        action="/platform/sandbox-plans/" ~ plan.id ~ "/delete",
+        confirm_text=plan.id,
+        submit_label="Delete plan"
+      ) }}
+    {% endfor %}
+  {% endif %}
 
 </div>
 {% endmacro %}
@@ -147,8 +171,23 @@
   {# Right: form #}
   <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 
-    <div class="flex h-12 shrink-0 items-center border-b px-4">
+    <div class="flex h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
       <div class="truncate text-sm font-semibold">{{ "New Plan" if is_create else selected_plan.name }}</div>
+      {% if can_manage and not is_create %}
+        {% call del_dialog.delete_dialog_trigger("delete-selected-plan-" ~ pid) %}
+          {% call button.button(type="button", variant="destructive", size="sm", attrs={"data-dialog-trigger": "", "data-target": "#delete-selected-plan-" ~ pid, "aria-controls": "delete-selected-plan-" ~ pid, "aria-expanded": "false"}) %}
+            Delete
+          {% endcall %}
+        {% endcall %}
+        {{ del_dialog.delete_dialog(
+          id="delete-selected-plan-" ~ pid,
+          name=selected_plan.name,
+          description="This permanently deletes the sandbox plan only if no template mappings, requests, or instances reference it.",
+          action="/platform/sandbox-plans/" ~ pid ~ "/delete",
+          confirm_text=pid,
+          submit_label="Delete plan"
+        ) }}
+      {% endif %}
     </div>
 
     {% if error %}

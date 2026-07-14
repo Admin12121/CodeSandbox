@@ -36,6 +36,12 @@ from codesandbox.web._ctx import _user_ctx, _workspaces_ctx
 _TEMPLATES_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../templates"))
 _PUBLIC_DIR = os.path.join(_TEMPLATES_DIR, "public")
 _FAVICON = os.path.join(_TEMPLATES_DIR, "favicon.ico")
+_ORG_INACTIVE_TOAST = "toast=org_inactive"
+
+
+def _org_inactive_url(path: str) -> str:
+    separator = "&" if "?" in path else "?"
+    return f"{path}{separator}{_ORG_INACTIVE_TOAST}"
 
 
 @web_bp.get("/favicon.ico")
@@ -102,6 +108,9 @@ def hub():
 
     org_ctx: dict = {}
     active_workspace = ws_ctx.get("active_workspace")
+    hub_tab = request.args.get("tab", "private" if active_workspace else "catalog")
+    if hub_tab not in {"private", "public", "catalog"}:
+        hub_tab = "private" if active_workspace else "catalog"
     if active_workspace:
         org_id = str(active_workspace["id"])
         org_active = active_workspace.get("status") == "active"
@@ -109,12 +118,17 @@ def hub():
         is_owner = org_repo.is_org_owner(org_id, str(user.id))
         can_manage = org_active and (is_owner or "sandbox.instances.create" in user_perms)
         can_review = org_active and (is_owner or "sandbox.requests.review" in user_perms)
+        public_tab_is_catalog = can_manage or can_review
+        if public_tab_is_catalog and hub_tab == "catalog":
+            hub_tab = "public"
         org_ctx = {
             "org_pool_instances": get_org_instances(org_id) if (org_active and (can_manage or "sandbox.instances.view_all" in user_perms or is_owner)) else [],
             "my_org_requests": get_user_requests_in_org(str(user.id), org_id),
             "pending_requests": get_org_requests(org_id, status="pending") if can_review else [],
             "can_manage_instances": can_manage,
             "can_review_requests": can_review,
+            "hub_public_tab_is_catalog": public_tab_is_catalog,
+            "org_active": org_active,
         }
 
     return {
@@ -123,6 +137,7 @@ def hub():
         "nav": nav,
         "page_title": "Hub",
         "templates": templates,
+        "hub_tab": hub_tab,
         **ws_ctx,
         **org_ctx,
     }
@@ -194,7 +209,7 @@ def hub_sandbox(instance: str, slug: str):
     active_workspace = ws_ctx.get("active_workspace")
     org_id = str(active_workspace["id"]) if active_workspace else None
     if active_workspace and active_workspace.get("status") != "active":
-        return {"_redirect": f"/hub/{instance}?error=Organization+is+not+active."}
+        return {"_redirect": _org_inactive_url(f"/hub/{instance}")}
     sandbox_instance = get_active_hub_instance(
         template["id"], slug, user_id=str(user.id), org_id=org_id
     )
@@ -291,7 +306,7 @@ def private_instances():
     assigned = []
     if active_workspace:
         if active_workspace.get("status") != "active":
-            return {"_redirect": "/dashboard"}
+            return {"_redirect": _org_inactive_url("/dashboard")}
         org_id = str(active_workspace["id"])
         assigned = get_user_assigned_instances(str(user.id), org_id)
 
@@ -325,7 +340,7 @@ def billing():
     if active_workspace:
         org_id = str(active_workspace["id"])
         if active_workspace.get("status") != "active":
-            return {"_redirect": "/dashboard"}
+            return {"_redirect": _org_inactive_url("/dashboard")}
         if not org_repo.is_org_owner(org_id, str(user.id)):
             return {"_redirect": "/dashboard"}
         billing_data = get_org_billing(org_id, page=tx_page, page_size=tx_page_size)
@@ -385,7 +400,7 @@ def hub_start(instance: str):
     active_workspace = ws_ctx.get("active_workspace")
     if active_workspace:
         if active_workspace.get("status") != "active":
-            return redirect(f"/hub/{instance}?error=Organization+is+not+active.", 303)
+            return redirect(_org_inactive_url(f"/hub/{instance}"), 303)
         org_id = str(active_workspace["id"])
         user_perms = org_repo.get_member_permissions(org_id, str(user.id))
         is_owner = org_repo.is_org_owner(org_id, str(user.id))
@@ -426,7 +441,7 @@ def hub_request(instance: str):
     if not active_workspace:
         return redirect("/hub", 303)
     if active_workspace.get("status") != "active":
-        return redirect("/hub?error=Organization+is+not+active.", 303)
+        return redirect(_org_inactive_url("/hub?tab=public"), 303)
 
     plan_id = request.form.get("plan_id", "")
     note = request.form.get("note", "").strip()
@@ -449,7 +464,7 @@ def hub_review_request(request_id: str):
     if not active_workspace:
         return redirect("/hub", 303)
     if active_workspace.get("status") != "active":
-        return redirect("/hub?error=Organization+is+not+active.", 303)
+        return redirect(_org_inactive_url("/hub?tab=public"), 303)
 
     org_id = str(active_workspace["id"])
     user_perms = org_repo.get_member_permissions(org_id, str(user.id))
