@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -9,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from codesandbox.config import get_settings
 
+_logger = logging.getLogger(__name__)
 _TMPL_DIR = os.path.join(os.path.dirname(__file__), "emails")
 _env = Environment(
     loader=FileSystemLoader(_TMPL_DIR),
@@ -25,6 +28,7 @@ def _render(name: str, **ctx: object) -> str:
 def _send(*, to: str, subject: str, html: str) -> bool:
     settings = get_settings()
     if not settings.resend_api_key:
+        _logger.warning("Email to %s not sent: RESEND_APIKEY is not configured.", to)
         return False
     payload = json.dumps({
         "from": settings.from_email,
@@ -44,7 +48,12 @@ def _send(*, to: str, subject: str, html: str) -> bool:
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return 200 <= resp.status < 300
-    except Exception:
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")
+        _logger.error("Resend API rejected email to %s (HTTP %s): %s", to, exc.code, body)
+        return False
+    except Exception as exc:
+        _logger.error("Failed to send email to %s: %s", to, exc)
         return False
 
 
