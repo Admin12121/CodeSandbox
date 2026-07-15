@@ -8,7 +8,7 @@ GOD_TEAR_SLUG = "god-tear-static-reverse"
 GOD_TEAR_LEGACY_SLUG = "reverse-decompile"
 GOD_TEAR_IMAGE = "docker.io/admin12121/decompile:stable"
 GOD_TEAR_REPOSITORY = "https://github.com/Admin12121/decompile"
-GOD_TEAR_SEED_VERSION = 8
+GOD_TEAR_SEED_VERSION = 9
 MANAGED_TEMPLATE_SEED_VERSION = 5
 
 
@@ -256,9 +256,12 @@ if not limit_bytes:
         limit_bytes = 2 * 1024**3
 
 total_mb = max(1024, limit_bytes // MiB)
-reserve_mb = max(768, min(2048, total_mb // 4))
-heap_mb = max(512, min(total_mb - reserve_mb, (total_mb * 65) // 100))
-metaspace_mb = max(128, min(512, total_mb // 16))
+# Keep Java materially below the cgroup limit. Ghidra/JADX plus their wrappers
+# can allocate native memory and filesystem cache outside the Java heap; letting
+# Java take ~65% of a small dev-host test profile can still pressure the host.
+reserve_mb = max(1024, min(2048, total_mb // 2))
+heap_mb = max(512, min(total_mb - reserve_mb, (total_mb * 45) // 100, 1536))
+metaspace_mb = max(128, min(384, total_mb // 20))
 try:
     cpu_count = max(1, int(os.environ.get("CODESANDBOX_VCPU_LIMIT", "1")))
 except ValueError:
@@ -267,7 +270,10 @@ print(heap_mb, metaspace_mb, cpu_count)
 PY_JAVA_LIMITS
 )"
 set -- $java_sizing
-export JAVA_TOOL_OPTIONS="-Xms64m -Xmx${1}m -XX:MaxMetaspaceSize=${2}m -XX:ActiveProcessorCount=${3} -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/workspace/.tmp"
+java_opts="-Xms64m -Xmx${1}m -XX:MaxMetaspaceSize=${2}m -XX:ActiveProcessorCount=${3} -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/workspace/.tmp"
+export JAVA_TOOL_OPTIONS="$java_opts"
+export JDK_JAVA_OPTIONS="$java_opts"
+export _JAVA_OPTIONS="$java_opts"
 printf '[god-tear] memory plan: %s GiB; JVM heap: %s MiB; CPUs: %s\n' "${CODESANDBOX_RAM_LIMIT_GB:-unknown}" "$1" "$3"
 export MALLOC_ARENA_MAX=2
 export GHIDRA_TIMEOUT=30
@@ -275,6 +281,10 @@ export DECOMPILE_NO_UNPACK=1
 ulimit -c 0 2>/dev/null || true
 ulimit -n 1024 2>/dev/null || true
 ulimit -u 128 2>/dev/null || true
+# Cap each child process below the container limit. This prevents Java-based
+# helpers from sizing themselves from host-visible memory if they ignore the
+# exported Java options.
+ulimit -v "$(( (${CODESANDBOX_RAM_LIMIT_GB:-2} * 1024 * 1024 * 80) / 100 ))" 2>/dev/null || true
 export DECOMPILE_IN_DOCKER=1
 export DECOMPILE_NO_AI=1
 export DECOMPILE_NO_OPEN=1
@@ -477,10 +487,11 @@ def _reverse_values(admin_user_id: str) -> dict:
             "max_timeout_hr": 1,
         },
         "resource_guard": {
-            # No early per-instance kill. The selected plan/test cgroup is the
-            # hard memory boundary. Only a true host emergency can stop it.
+            # The decompiler should run inside the Java/process limits above.
+            # Do not treat normal high container memory as a test failure; only
+            # keep a final host-emergency circuit breaker.
             "memory_high_watermark_pct": 0,
-            "host_min_available_mb": 1024,
+            "host_min_available_mb": 2048,
             "max_runtime_seconds": 0,
         },
         "test_config": {

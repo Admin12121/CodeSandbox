@@ -288,6 +288,9 @@ def test_worker_filesystem_paths_stay_in_workspace(ctx: TestContext) -> None:
     class NotFound(Exception):
         pass
 
+    class APIError(Exception):
+        pass
+
     class Mount:
         def __init__(self, *args, **kwargs):
             self.args = args
@@ -295,6 +298,7 @@ def test_worker_filesystem_paths_stay_in_workspace(ctx: TestContext) -> None:
 
     errors_module.ImageNotFound = ImageNotFound
     errors_module.NotFound = NotFound
+    errors_module.APIError = APIError
     types_module.Mount = Mount
     previous = {
         "docker": sys.modules.get("docker"),

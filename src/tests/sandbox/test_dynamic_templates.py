@@ -90,7 +90,11 @@ def test_new_template_types_launch_with_zero_code_changes(ctx: TestContext) -> N
         effective = resolve_effective_plan(template, plan)
         policy = PolicyBuilder().build(template, effective)
 
-        assert policy["docker_image"] == spec["docker_image"]
+        if "/" not in spec["docker_image"].split(":", 1)[0]:
+            expected_image = f"docker.io/library/{spec['docker_image']}"
+        else:
+            expected_image = spec["docker_image"]
+        assert policy["docker_image"] == expected_image
         assert policy["runtime_class"] == spec["runtime_class"]
         assert policy["runtime_provider"] == "docker"
         assert policy["network_mode"] in {"disabled", "restricted"}

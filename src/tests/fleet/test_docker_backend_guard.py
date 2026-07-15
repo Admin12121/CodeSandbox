@@ -25,6 +25,9 @@ def _fake_docker_module(ctx: TestContext) -> types.ModuleType:
     class NotFound(Exception):
         pass
 
+    class APIError(Exception):
+        pass
+
     class Mount:
         def __init__(self, *args, **kwargs):
             pass
@@ -35,6 +38,7 @@ def _fake_docker_module(ctx: TestContext) -> types.ModuleType:
 
     errors_module.ImageNotFound = ImageNotFound
     errors_module.NotFound = NotFound
+    errors_module.APIError = APIError
     types_module.Mount = Mount
     tls_module.TLSConfig = TLSConfig
     docker_module.errors = errors_module

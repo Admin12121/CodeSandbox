@@ -32,8 +32,11 @@ def platform_sandboxes():
     if redirect:
         return redirect
     user = session.user
-    can_manage = user.platform_role == "system_admin" or has_platform_permission(user, "platform.sandboxes.manage")
-    if not can_manage:
+    is_admin = user.platform_role == "system_admin"
+    can_manage = is_admin or has_platform_permission(user, "platform.sandboxes.manage")
+    can_test = is_admin or has_platform_permission(user, "platform.sandboxes.test")
+    can_publish = is_admin or has_platform_permission(user, "platform.sandboxes.publish")
+    if not (can_manage or can_test or can_publish):
         return {"_redirect": "/dashboard"}
     nav = build_nav("/platform/sandboxes", user)
 
@@ -95,6 +98,8 @@ def platform_sandboxes():
         "selected_template": selected_template,
         "tab": tab,
         "can_manage": can_manage,
+        "can_test": can_test,
+        "can_publish": can_publish,
         "sandbox_types": SANDBOX_TYPES,
         "runtime_classes": RUNTIME_CLASSES,
         "interface_modes": INTERFACE_MODES,

@@ -354,14 +354,16 @@ services:
     logging: *default-logging
 
   docker-engine:
+    image: ${COMPOSE_PROJECT_NAME}-docker-engine-lxcfs:local
+    pull_policy: build
     build:
       context: ./docker/dind-lxcfs
       dockerfile: Dockerfile
       args:
         BASE_IMAGE: ${DOCKER_DIND_IMAGE:?Set DOCKER_DIND_IMAGE in .env}
-    image: ${COMPOSE_PROJECT_NAME}-docker-engine-lxcfs:local
     hostname: docker-engine
     privileged: true
+    mem_limit: ${SANDBOX_DIND_MEMORY_LIMIT:-26g}
     environment:
       DOCKER_TLS_CERTDIR: /certs
       DOCKER_DRIVER: overlay2
@@ -422,6 +424,7 @@ services:
       SANDBOX_MAX_ARTIFACT_BYTES: ${SANDBOX_MAX_ARTIFACT_BYTES:?Set SANDBOX_MAX_ARTIFACT_BYTES in .env}
       SANDBOX_WORKER_TOTAL_VCPU: ${SANDBOX_WORKER_TOTAL_VCPU:?Set SANDBOX_WORKER_TOTAL_VCPU in .env}
       SANDBOX_WORKER_TOTAL_RAM_GB: ${SANDBOX_WORKER_TOTAL_RAM_GB:?Set SANDBOX_WORKER_TOTAL_RAM_GB in .env}
+      SANDBOX_DIND_MEMORY_LIMIT_GB: ${SANDBOX_DIND_MEMORY_LIMIT_GB:-26}
       SANDBOX_WORKER_TOTAL_DISK_GB: ${SANDBOX_WORKER_TOTAL_DISK_GB:?Set SANDBOX_WORKER_TOTAL_DISK_GB in .env}
       SANDBOX_WORKER_HEARTBEAT_SECONDS: ${SANDBOX_WORKER_HEARTBEAT_SECONDS:?Set SANDBOX_WORKER_HEARTBEAT_SECONDS in .env}
       SANDBOX_DOCKER_BACKEND: remote_tls

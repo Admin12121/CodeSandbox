@@ -13,7 +13,7 @@
 {% set invoices = invoices if invoices is defined else [] %}
 {% set is_org_billing = active_workspace is defined and active_workspace %}
 {% set billing_scope = "Organization account" if is_org_billing else "Personal account" %}
-{% set can_topup = user.platform_role == "user" and (not is_org_billing or active_workspace.get("is_owner")) %}
+{% set can_topup = can_topup if can_topup is defined else (user.platform_role == "user" and not is_org_billing) %}
 
 <div class="flex min-h-full flex-col gap-5 p-6">
   <div class="flex items-start justify-between gap-4">

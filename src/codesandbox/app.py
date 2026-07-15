@@ -79,9 +79,13 @@ def create_app() -> Flask:
         session = get_current_session()
         if not session:
             return None
+        from flask import g
         from codesandbox.features.billing.service import get_header_balance
         from codesandbox.web._ctx import _workspaces_ctx
-        active_workspace = _workspaces_ctx(session.user).get("active_workspace")
+        if getattr(g, "_billing_workspace_override_set", False):
+            active_workspace = getattr(g, "_billing_workspace_override", None)
+        else:
+            active_workspace = _workspaces_ctx(session.user).get("active_workspace")
         return get_header_balance(session.user, active_workspace)
 
     app.jinja_env.globals["header_balance"] = _header_balance_global

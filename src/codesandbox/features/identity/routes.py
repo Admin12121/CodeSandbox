@@ -34,6 +34,7 @@ from .service import (
     request_email_verification,
     request_password_reset,
     reset_password,
+    record_second_factor_failure,
     sign_in,
     sign_in_with_github,
     sign_in_with_google,
@@ -42,6 +43,7 @@ from .service import (
     totp_qr_data_uri,
     unlink_account,
     verify_email,
+    verify_login_email_challenge,
     verify_totp,
 )
 
@@ -92,6 +94,8 @@ def login_action():
         session.clear()
         session["_2fa_pending_user_id"] = result.user_id
         session["_2fa_pending_at"] = int(time.time())
+        session["_2fa_method"] = result.challenge_method or "totp"
+        session["_2fa_failures"] = 0
         session["_2fa_next"] = next_path
         return redirect("/two-factor", code=303)
 
@@ -113,6 +117,8 @@ def logout_action():
     session.pop("_2fa_pending_user_id", None)
     session.pop("_2fa_pending_at", None)
     session.pop("_2fa_next", None)
+    session.pop("_2fa_method", None)
+    session.pop("_2fa_failures", None)
     response = redirect("/login", code=303)
     response.delete_cookie(cookie_name)
     return response
@@ -132,6 +138,8 @@ def logout_all_action():
     session.pop("_2fa_pending_user_id", None)
     session.pop("_2fa_pending_at", None)
     session.pop("_2fa_next", None)
+    session.pop("_2fa_method", None)
+    session.pop("_2fa_failures", None)
     response = redirect("/login", code=303)
     response.delete_cookie(cookie_name)
     return response
@@ -209,11 +217,29 @@ def two_factor_verify():
     if int(time.time()) - pending_at > 300:
         session.pop("_2fa_pending_user_id", None)
         session.pop("_2fa_pending_at", None)
+        session.pop("_2fa_method", None)
+        session.pop("_2fa_failures", None)
         return redirect("/login?error=Two-factor+verification+expired", code=303)
 
-    if not verify_totp(str(pending_user_id), code):
+    method = str(session.get("_2fa_method") or "totp")
+    valid = (
+        verify_login_email_challenge(str(pending_user_id), code)
+        if method == "email"
+        else verify_totp(str(pending_user_id), code)
+    )
+    if not valid:
+        failures = int(session.get("_2fa_failures") or 0) + 1
+        session["_2fa_failures"] = failures
+        record_second_factor_failure(str(pending_user_id), ip_address=request.remote_addr)
+        if failures >= 5:
+            session.pop("_2fa_pending_user_id", None)
+            session.pop("_2fa_pending_at", None)
+            session.pop("_2fa_method", None)
+            session.pop("_2fa_failures", None)
+            session.pop("_2fa_next", None)
+            return redirect("/login?error=Too+many+invalid+security+codes.+Sign+in+again+later.", code=303)
         session["_2fa_next"] = next_path
-        return redirect("/two-factor?error=Invalid+code", code=303)
+        return redirect("/two-factor?error=Invalid+or+expired+code", code=303)
 
     token = create_session_for_user(
         str(pending_user_id),
@@ -227,6 +253,8 @@ def two_factor_verify():
 
     session.pop("_2fa_pending_user_id", None)
     session.pop("_2fa_pending_at", None)
+    session.pop("_2fa_method", None)
+    session.pop("_2fa_failures", None)
     response = redirect(next_path, code=303)
     _set_session_cookie(response, token)
     return response

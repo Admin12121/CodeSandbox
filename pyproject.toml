@@ -25,6 +25,17 @@ dependencies = [
     "stripe>=11.0",
 ]
 
+[project.scripts]
+test = "tests.cli:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["tests*"]
+
 [tool.uv.workspace]
 members = [
     "packages/app_router",

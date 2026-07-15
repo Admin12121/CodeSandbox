@@ -1150,7 +1150,7 @@
   var amount = document.querySelector("[data-live-balance-gbp]");
   if (!amount) return;
   function refreshBalance() {
-    fetch("/billing/live", {credentials: "same-origin"})
+    fetch({{ (billing_live_url if billing_live_url is defined else "/billing/live") | tojson }}, {credentials: "same-origin"})
       .then(function (response) { return response.ok ? response.json() : null; })
       .then(function (data) {
         if (data && data.ok && data.balance) {

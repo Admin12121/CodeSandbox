@@ -1,47 +1,74 @@
-<div class="flex h-[calc(100vh-4.85rem)] flex-col gap-4 p-6 overflow-y-auto">
+{% import "components/ui/frame.html" as frame %}
+
+<div class="flex h-[calc(100vh-4.85rem)] flex-col gap-4 overflow-y-auto p-6">
+  {% if error %}
+    <div class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+  {% endif %}
   <div>
     <h1 class="text-xl font-semibold">Private Instances</h1>
-    <p class="text-sm text-muted-foreground mt-0.5">
-      Sandbox instances assigned to you by your organization
+    <p class="mt-0.5 text-sm text-muted-foreground">
+      Dedicated organization allocations assigned to you
       {% if active_workspace %} — <span class="font-medium">{{ active_workspace.name }}</span>{% endif %}
     </p>
   </div>
 
   {% if not active_workspace %}
     <div class="flex flex-1 flex-col items-center justify-center text-muted-foreground">
-      <svg class="size-12 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      <p class="text-sm">Switch to an org workspace to see your private instances.</p>
+      <p class="text-sm">Switch to an organization workspace to view dedicated allocations assigned to you.</p>
     </div>
   {% elif instances %}
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {% for inst in instances %}
-        <div class="flex items-center gap-3 rounded-lg border bg-card p-3 text-sm hover:bg-accent/30 transition-colors cursor-pointer"
-             onclick="window.location.href='/hub/{{ inst.template_slug }}/{{ inst.plan_id }}'">
-          <div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            {% if inst.template_icon %}
-              <img src="{{ inst.template_icon }}" alt="" class="size-full rounded-md object-cover">
-            {% else %}
-              <svg viewBox="0 0 256 256" class="size-5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
-            {% endif %}
-          </div>
-          <div class="min-w-0 flex-1">
-            <p class="truncate font-medium">{{ inst.template_name }}</p>
-            <p class="text-xs text-muted-foreground capitalize">{{ inst.plan_id }} · assigned</p>
-          </div>
-          <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
-            {{ 'bg-green-500/15 text-green-600 dark:text-green-400' if inst.status == 'running' else
-               'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' if inst.status in ('provisioning','stopping') else
-               'bg-muted text-muted-foreground' }}">
-            {{ inst.status }}
-          </span>
-        </div>
+    <div class="grid gap-6 pt-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
+      {% for allocation in instances %}
+        {% call frame.frame(class="outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+          {% call frame.frame_header(class="p-0! mb-1 gap-1 flex flex-row justify-between items-center") %}
+            <div class="flex min-w-0 flex-row gap-2">
+              <div class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-muted-foreground">
+                {% if allocation.template_icon %}
+                  <img src="{{ allocation.template_icon }}" alt="" class="size-full object-cover">
+                {% else %}
+                  <svg viewBox="0 0 256 256" class="size-5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+                {% endif %}
+              </div>
+              <div class="min-w-0 flex-1">
+                <h2 class="truncate font-medium">{{ allocation.template_name }}</h2>
+                <p class="text-xs text-muted-foreground">{{ allocation.plan_name }} · assigned to you</p>
+              </div>
+            </div>
+            <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium {{ 'bg-emerald-500/15 text-emerald-500' if allocation.status == 'active' else 'bg-amber-500/15 text-amber-500' if allocation.status == 'in_use' else 'bg-muted text-muted-foreground' }}">{{ "in use" if allocation.status == "in_use" else allocation.status }}</span>
+          {% endcall %}
+
+          {% call frame.frame_panel(class="shadow-sm p-0! overflow-hidden") %}
+            <div class="grid grid-cols-2 gap-2 p-3 text-xs">
+              <div><span class="text-muted-foreground">Quantity</span><p class="mt-0.5">{{ allocation.quantity }}</p></div>
+              <div><span class="text-muted-foreground">Available</span><p class="mt-0.5">{{ allocation.active_count }} / {{ allocation.quantity }}</p></div>
+              <div><span class="text-muted-foreground">Session</span><p class="mt-0.5">{{ allocation.max_session_minutes }} min max</p></div>
+              <div><span class="text-muted-foreground">Starts</span><p class="mt-0.5">{{ allocation.member_start_count }} / {{ allocation.max_starts_per_member }}</p></div>
+            </div>
+            <div class="px-3 pb-3">
+              {% if allocation.can_start %}
+                <form method="post" enctype="multipart/form-data" action="/org-allocations/{{ allocation.start_allocation_id }}/start" class="space-y-2">
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  {% if allocation.input_required %}
+                    <label class="block text-xs text-muted-foreground">Required input
+                      <input type="file" name="input_file" required class="mt-1 block w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1">
+                    </label>
+                  {% endif %}
+                  <button class="w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">Start with organization balance</button>
+                </form>
+              {% elif allocation.live_instance %}
+                <a href="/instances/{{ allocation.live_instance.id }}" class="inline-flex w-full justify-center rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground">Open active session</a>
+              {% else %}
+                <p class="rounded-md bg-muted px-3 py-2 text-center text-xs text-muted-foreground">{{ "All slots are currently in use." if allocation.in_use_count else "Unavailable or your start limit is reached." }}</p>
+              {% endif %}
+            </div>
+          {% endcall %}
+        {% endcall %}
       {% endfor %}
     </div>
   {% else %}
     <div class="flex flex-1 flex-col items-center justify-center text-muted-foreground">
-      <svg class="size-12 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      <p class="text-sm">No instances assigned to you yet.</p>
-      <p class="text-xs mt-1 opacity-60">Managers assign instances from the org pool or by approving requests.</p>
+      <p class="text-sm">No dedicated allocations are assigned to you.</p>
+      <p class="mt-1 text-xs opacity-60">Use Public to request a dedicated sandbox, or ask an authorized role to assign one.</p>
     </div>
   {% endif %}
 </div>

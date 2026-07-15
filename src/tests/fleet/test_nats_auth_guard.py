@@ -64,12 +64,14 @@ types_module = types.ModuleType("docker.types")
 tls_module = types.ModuleType("docker.tls")
 class ImageNotFound(Exception): pass
 class NotFound(Exception): pass
+class APIError(Exception): pass
 class Mount:
     def __init__(self, *a, **k): pass
 class TLSConfig:
     def __init__(self, **k): pass
 errors_module.ImageNotFound = ImageNotFound
 errors_module.NotFound = NotFound
+errors_module.APIError = APIError
 types_module.Mount = Mount
 tls_module.TLSConfig = TLSConfig
 docker_module.errors = errors_module

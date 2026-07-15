@@ -37,7 +37,7 @@
         });
         if (["stopped", "failed", "expired", "killed"].indexOf(item.status) !== -1 && {{ 'false' if test_context else 'true' }}) {
           if (item.exit_reason === "insufficient_balance") {
-            window.location.href = "/my-instances?error=" + encodeURIComponent("Sandbox stopped because the available balance was exhausted.");
+            window.location.href = {{ ("/private_instances" if instance.workspace_type == "org" else "/my-instances") | tojson }} + "?error=" + encodeURIComponent("Sandbox stopped because the available balance was exhausted.");
           }
         }
       })

@@ -102,8 +102,18 @@ def start_workflow_action(slug: str):
     user = session.user
     ws_ctx = _workspaces_ctx(user)
     active_workspace = ws_ctx.get("active_workspace")
-    workspace_type = "org" if active_workspace else "personal"
-    workspace_org_id = active_workspace.get("id") if active_workspace else None
+    if active_workspace:
+        # Cross-template workflows start runtimes immediately. Organization
+        # workspaces intentionally use the prepare/request allocation flow so
+        # ordinary members cannot bypass approval and spend shared funds.
+        from urllib.parse import quote
+        return redirect(
+            f"/workflows/{slug}?error={quote('Organization workflows must be provisioned through the Public catalog and Private allocations.')}" ,
+            code=303,
+        )
+
+    workspace_type = "personal"
+    workspace_org_id = None
 
     result, error = start_workflow_run(
         slug,

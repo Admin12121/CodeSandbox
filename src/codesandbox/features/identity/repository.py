@@ -103,6 +103,55 @@ def record_login_attempt(
     attempt.save()
 
 
+def list_recent_login_attempts(
+    *,
+    email: str | None = None,
+    ip_address: str | None = None,
+    since: datetime | None = None,
+) -> list[LoginAttempt]:
+    """Return recent attempts without relying on database-specific date operators."""
+    try:
+        if email is not None:
+            rows = LoginAttempt.objects.filter(email=email).all()
+        elif ip_address is not None:
+            rows = LoginAttempt.objects.filter(ip_address=ip_address).all()
+        else:
+            rows = LoginAttempt.objects.all()
+    except Exception:
+        return []
+    if since is not None:
+        filtered: list[LoginAttempt] = []
+        for row in rows:
+            created = row.created_at
+            if created and created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            if created and created >= since:
+                filtered.append(row)
+        rows = filtered
+    return sorted(rows, key=lambda row: row.created_at, reverse=True)
+
+
+def find_active_verification_token(
+    *, identifier: str, purpose: str
+) -> VerificationToken | None:
+    now = datetime.now(timezone.utc)
+    try:
+        rows = VerificationToken.objects.filter(
+            identifier=identifier, purpose=purpose, used_at__isnull=True
+        ).all()
+    except Exception:
+        rows = VerificationToken.objects.filter(identifier=identifier, purpose=purpose).all()
+    for token in sorted(rows, key=lambda row: row.created_at, reverse=True):
+        if token.used_at is not None:
+            continue
+        expires = token.expires_at
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires >= now:
+            return token
+    return None
+
+
 # ── Verification tokens ──────────────────────────────────────────────────────
 
 def create_verification_token(

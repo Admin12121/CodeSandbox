@@ -21,15 +21,26 @@ from codesandbox.web.csrf import csrf_exempt
 log = logging.getLogger(__name__)
 
 
-def _resolve_billing_entity(user) -> tuple[str, str] | tuple[None, None]:
-    """Mirrors /billing's own entity resolution: the active org (owner only)
-    or the personal balance. Only the org owner may spend org funds."""
+def _resolve_billing_entity(
+    user,
+    *,
+    permission: str = "sandbox.billing.topup",
+) -> tuple[str, str] | tuple[None, None]:
+    """Resolve the active workspace's independent billing account.
+
+    Personal and organization ledgers never fall back to one another. The
+    caller states the exact organization permission it needs: top-up routes
+    require ``sandbox.billing.topup`` while receipt/read routes require
+    ``sandbox.billing.view``. Organization owners are always authorized.
+    """
     ws_ctx = _workspaces_ctx(user)
     active_workspace = ws_ctx.get("active_workspace")
     if active_workspace:
         org_id = str(active_workspace["id"])
         if not org_repo.is_org_owner(org_id, str(user.id)):
-            return None, None
+            permissions = set(org_repo.get_member_permissions(org_id, str(user.id)))
+            if permission not in permissions:
+                return None, None
         return "org", org_id
     return "user", str(user.id)
 
@@ -49,7 +60,7 @@ def billing_topup_stripe_action():
     user = session.user
     entity_type, entity_id = _resolve_billing_entity(user)
     if entity_type is None:
-        return {"ok": False, "error": "Only the organization owner can add funds."}, 403
+        return {"ok": False, "error": "You do not have permission to add organization funds."}, 403
 
     body = request.get_json(silent=True) or {}
     try:
@@ -151,7 +162,10 @@ def _owned_billing_transaction_receipt(transaction_id: str | None):
     session, redir = require_sandbox_user()
     if redir:
         abort(401)
-    entity_type, entity_id = _resolve_billing_entity(session.user)
+    entity_type, entity_id = _resolve_billing_entity(
+        session.user,
+        permission="sandbox.billing.view",
+    )
     if entity_type is None:
         abort(403)
     if not transaction_id:
@@ -207,7 +221,7 @@ def billing_topup_dev_action():
         return redirect("/login", 303)
     entity_type, entity_id = _resolve_billing_entity(session.user)
     if entity_type is None:
-        return redirect("/billing?error=Only+the+organization+owner+can+add+funds.", 303)
+        return redirect("/billing?error=You+do+not+have+permission+to+add+organization+funds.", 303)
     try:
         amount = Decimal(str(request.form.get("amount", ""))).quantize(Decimal("0.01"))
     except InvalidOperation:
@@ -277,7 +291,7 @@ def billing_topup_esewa_action():
     user = session.user
     entity_type, entity_id = _resolve_billing_entity(user)
     if entity_type is None:
-        return fail("Only the organization owner can add funds.")
+        return fail("You do not have permission to add organization funds.")
 
     try:
         amount = Decimal(request.form.get("amount", ""))

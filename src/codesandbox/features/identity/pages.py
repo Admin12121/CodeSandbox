@@ -55,9 +55,11 @@ def reset_password_page():
 def two_factor():
     if not flask_session.get("_2fa_pending_user_id"):
         return {"_redirect": "/login"}
+    method = str(flask_session.get("_2fa_method") or "totp")
     return {
-        "_meta": {"title": "Two-Factor Auth — CodeSandbox"},
+        "_meta": {"title": "Security Verification — CodeSandbox"},
         "error": request.args.get("error"),
+        "challenge_method": method,
     }
 
 

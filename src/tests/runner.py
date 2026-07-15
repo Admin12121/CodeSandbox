@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import importlib
 import os
+import socket
 import sys
 import threading
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 from typing import Callable
 
 if os.name == "nt":
@@ -92,6 +94,7 @@ _SUITE_MODULES = [
     ("system_rbac",   "tests.platform_admin.test_system_rbac"),
     ("platform_admin","tests.platform_admin.test_rbac"),
     ("sandbox",       "tests.sandbox.test_runtime_policy"),
+    ("org_sandbox",   "tests.sandbox.test_org_allocations"),
     ("sandbox_templates", "tests.sandbox.test_dynamic_templates"),
     ("billing",       "tests.sandbox.test_billing_idempotency"),
     ("sandbox_publish", "tests.sandbox.test_publish_lifecycle"),
@@ -108,6 +111,24 @@ _SUITE_MODULES = [
     ("security_nats", "tests.fleet.test_nats_auth_guard"),
     ("security_nats_subjects", "tests.fleet.test_nats_subject_grants"),
 ]
+
+_DOCKER_NETWORK_REQUIRED_SUITES = {
+    "identity",
+    "organizations",
+    "org_rbac",
+    "system_rbac",
+    "platform_admin",
+    "org_sandbox",
+    "billing",
+    "sandbox_publish",
+    "sandbox_test_launch",
+    "sandbox_ui_workflow",
+    "finance",
+    "worker_routing",
+    "worker_registry",
+}
+
+_APP_CONTEXT_REQUIRED_SUITES = set(_DOCKER_NETWORK_REQUIRED_SUITES)
 
 
 def _load_suites() -> dict[str, list]:
@@ -138,7 +159,10 @@ def _selector(suites: dict[str, list]) -> str | None:
     if not sys.stdin.isatty():
         for index, (name, count) in enumerate(options):
             print(f"  {index}. {name} [{count} tests]")
-        raw = input("  Select a test suite number: ").strip()
+        try:
+            raw = input("  Select a test suite number: ").strip()
+        except EOFError:
+            raw = "0"
         if raw.lower() in {"q", "quit", "exit"}:
             return None
         try:
@@ -200,6 +224,7 @@ class _Result:
     name: str
     category: str
     passed: bool
+    skipped: bool = False
     error: str | None = None
 
 
@@ -260,7 +285,26 @@ def _run_one(local_n: int, global_n: int, test_case) -> _Result:
         name=test_case.name,
         category=test_case.category,
         passed=passed,
+        skipped=False,
         error=error,
+    )
+
+def _skip_one(local_n: int, global_n: int, suite_name: str, test_case, reason: str) -> _Result:
+    name_pad = (test_case.name[:_NAME_W - 1] + "…") if len(test_case.name) >= _NAME_W else test_case.name
+    name_pad = name_pad.ljust(_NAME_W)
+    sys.stdout.write(
+        f"  test-{local_n:<3}  {name_pad}  {_bar(100, _YLW)}  100%  {_c(_YLW, '○ skip  ')}\n"
+    )
+    sys.stdout.write(f"            {_c(_DIM, '↳ ' + reason)}\n")
+    sys.stdout.flush()
+    return _Result(
+        global_n=global_n,
+        local_n=local_n,
+        name=test_case.name,
+        category=suite_name,
+        passed=False,
+        skipped=True,
+        error=reason,
     )
 
 def _print_table(results: list[_Result]) -> None:
@@ -282,7 +326,10 @@ def _print_table(results: list[_Result]) -> None:
 
     for r in results:
         cell = f"{r.global_n:<2}  {r.name}"
-        if r.passed:
+        if r.skipped:
+            s_text = "○ skip"
+            status = _c(_YLW, s_text) + " " * (_STATUS_W - len(s_text))
+        elif r.passed:
             s_text = "✔ pass"
             status = _c(_GRN, s_text) + " " * (_STATUS_W - len(s_text))
         else:
@@ -294,14 +341,63 @@ def _print_table(results: list[_Result]) -> None:
 
     total  = len(results)
     passed = sum(1 for r in results if r.passed)
-    failed = total - passed
+    skipped = sum(1 for r in results if r.skipped)
+    failed = total - passed - skipped
 
     print()
     print(f"  {_c(_DIM, 'total tests  ')}{total}")
     print(f"  {_c(_GRN, 'passed       ')}{passed}")
+    print(f"  {_c(_YLW, 'skipped      ')}{skipped}")
     pcolor = _RED if failed else _DIM
     print(f"  {_c(pcolor, 'failed       ')}{failed}")
     print()
+
+def _service_target_from_url(raw_url: str, default_port: int) -> tuple[str, int] | None:
+    try:
+        parsed = urlparse(raw_url)
+    except Exception:
+        return None
+    if not parsed.hostname:
+        return None
+    return parsed.hostname, int(parsed.port or default_port)
+
+def _tcp_reachable(host: str, port: int, timeout: float = 0.6) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+def _docker_network_ready() -> tuple[bool, str]:
+    """Return whether DB/queue-backed tests can reach internal Compose services.
+
+    MySQL is intentionally no longer exposed to the host. When DATABASE_URL
+    points at the Compose-only hostname ``mysql``, host-side test runs cannot
+    execute DB-backed suites. Running through the docker-compose ``test``
+    service puts the runner on the same bridge network, where this probe passes.
+    """
+    database_url = os.environ.get(
+        "DATABASE_URL",
+        "mysql://codesandbox:codesandbox@127.0.0.1:3306/codesandbox",
+    )
+    redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+
+    targets: list[tuple[str, int, str]] = []
+    db_target = _service_target_from_url(database_url, 3306)
+    if db_target:
+        targets.append((*db_target, "mysql"))
+    redis_target = _service_target_from_url(redis_url, 6379)
+    if redis_target:
+        targets.append((*redis_target, "redis"))
+
+    for host, port, label in targets:
+        if not _tcp_reachable(host, port):
+            return False, (
+                f"{label} service {host}:{port} is not reachable from this process; "
+                "DB-backed tests are skipped on the host. Start the Compose stack "
+                "and run `uv run test <suite>` to execute them inside Docker."
+            )
+    return True, "docker network services are reachable"
 
 def _boot_app() -> bool:
     frames = _SPIN
@@ -340,6 +436,19 @@ def _boot_app() -> bool:
 
     return ok
 
+def _selected_from_argv_or_env(suites: dict[str, list]) -> str | None:
+    raw = (sys.argv[1].strip() if len(sys.argv) > 1 else "") or os.environ.get("TEST_SUITE", "").strip()
+    if not raw:
+        return None
+    if raw.lower() in {"q", "quit", "exit"}:
+        return None
+    if raw.lower() == "all":
+        return "all"
+    if raw not in suites:
+        valid = ", ".join(["all", *suites.keys()])
+        raise SystemExit(f"Unknown test suite {raw!r}. Valid values: {valid}")
+    return raw
+
 def main() -> None:
     _header()
 
@@ -349,7 +458,7 @@ def main() -> None:
     sys.stdout.write("\r\033[K")
     sys.stdout.flush()
 
-    selected = _selector(suites)
+    selected = _selected_from_argv_or_env(suites) or _selector(suites)
     if selected is None:
         print(f"  {_c(_DIM, 'Cancelled.')}\n")
         return
@@ -368,7 +477,22 @@ def main() -> None:
         return
 
     print()
-    if not _boot_app():
+    needs_docker_network = any(suite_name in _DOCKER_NETWORK_REQUIRED_SUITES for suite_name, _tc in to_run)
+    docker_network_ok = True
+    docker_network_reason = ""
+    if needs_docker_network:
+        docker_network_ok, docker_network_reason = _docker_network_ready()
+        if docker_network_ok:
+            print(f"  {_c(_GRN, '✔')}  {_c(_DIM, docker_network_reason)}")
+        else:
+            print(f"  {_c(_YLW, '○')}  {_c(_DIM, docker_network_reason)}")
+
+    needs_app_context = any(
+        suite_name in _APP_CONTEXT_REQUIRED_SUITES
+        for suite_name, _tc in to_run
+        if suite_name not in _DOCKER_NETWORK_REQUIRED_SUITES or docker_network_ok
+    )
+    if needs_app_context and not _boot_app():
         return
 
     results: list[_Result] = []
@@ -386,7 +510,10 @@ def main() -> None:
             print(f"  {_c(_DIM, '─' * 68)}")
 
         local_n += 1
-        r = _run_one(local_n, global_n, tc)
+        if suite_name in _DOCKER_NETWORK_REQUIRED_SUITES and not docker_network_ok:
+            r = _skip_one(local_n, global_n, suite_name, tc, docker_network_reason)
+        else:
+            r = _run_one(local_n, global_n, tc)
         results.append(r)
 
     _print_table(results)

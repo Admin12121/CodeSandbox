@@ -127,6 +127,7 @@ class SandboxInstance(Model):
     workspace_user_id = ForeignKey(to=User, on_delete="SET NULL", nullable=True, related_name="personal_instances")
     workspace_org_id = ForeignKey(to=Organization, on_delete="SET NULL", nullable=True, related_name="org_instances")
     assigned_to_user_id = ForeignKey(to=User, on_delete="SET NULL", nullable=True, related_name="assigned_instances")
+    allocation_id = StringField(max_length=36, nullable=True, index=True)
 
     created_by_user_id = ForeignKey(to=User, on_delete="SET NULL", nullable=True, related_name="created_instances")
 
@@ -180,6 +181,34 @@ class SandboxInstance(Model):
         table_name = "sandbox_instances"
 
 
+class OrganizationSandboxAllocation(Model):
+    """Prepared org sandbox entitlement. Creating this row never starts a runtime.
+
+    Pool allocations may be used by any org member subject to guardrails. Private
+    allocations are visible/startable only by the assigned member and org managers.
+    Each actual use creates a separate SandboxInstance linked by allocation_id.
+    """
+    id = StringField(primary_key=True, max_length=36)
+    org_id = ForeignKey(to=Organization, on_delete="CASCADE")
+    template_id = ForeignKey(to=SandboxTemplate, on_delete="RESTRICT")
+    plan_id = StringField(max_length=40)
+    access_scope = StringField(max_length=20, default="pool")  # pool|private
+    assigned_to_user_id = ForeignKey(to=User, on_delete="SET NULL", nullable=True, related_name="org_sandbox_allocations")
+    max_session_minutes = IntegerField(nullable=True)
+    max_starts_per_member = IntegerField(nullable=True)
+    status = StringField(max_length=20, default="active")  # active|in_use|disabled|archived
+    created_by_user_id = ForeignKey(to=User, on_delete="SET NULL", nullable=True, related_name="created_org_sandbox_allocations")
+    created_at = DateTimeField(default=_now)
+    updated_at = DateTimeField(nullable=True)
+
+    class Meta:
+        table_name = "organization_sandbox_allocations"
+        indexes = [
+            {"name": "idx_org_sandbox_allocations_org_scope", "fields": ["org_id", "access_scope", "status"], "unique": False},
+            {"name": "idx_org_sandbox_allocations_assignee", "fields": ["assigned_to_user_id", "status"], "unique": False},
+        ]
+
+
 class InstanceRequest(Model):
     id = StringField(primary_key=True, max_length=36)
     org_id = ForeignKey(to=Organization, on_delete="CASCADE")
@@ -195,6 +224,7 @@ class InstanceRequest(Model):
     review_note = TextField(nullable=True)
 
     instance_id = ForeignKey(to=SandboxInstance, on_delete="SET NULL", nullable=True)
+    allocation_id = StringField(max_length=36, nullable=True, index=True)
 
     created_at = DateTimeField(default=_now)
 

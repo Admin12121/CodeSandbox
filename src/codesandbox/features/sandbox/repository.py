@@ -12,6 +12,7 @@ from .models import (
     Balance,
     BalanceTransaction,
     InstanceRequest,
+    OrganizationSandboxAllocation,
     SandboxAuditLog,
     SandboxArtifact,
     SandboxInput,
@@ -271,8 +272,31 @@ def create_instance(
     billed_user_id: str | None = None,
     billed_org_id: str | None = None,
     user_config: str | None = None,
+    allocation_id: str | None = None,
     instance_id: str | None = None,
 ) -> SandboxInstance:
+    workspace_type = str(workspace_type or "").strip().lower()
+    billing_entity = str(billing_entity or "").strip().lower()
+    if workspace_type == "personal":
+        if not workspace_user_id or workspace_org_id or billing_entity != "user":
+            raise ValueError("Personal instances require a personal owner and user billing.")
+        if str(billed_user_id or "") != str(workspace_user_id):
+            raise ValueError("Personal instance billing must match the personal workspace owner.")
+        billed_org_id = None
+    elif workspace_type == "org":
+        if not workspace_org_id or workspace_user_id or billing_entity != "org":
+            raise ValueError("Organization instances require an organization workspace and org billing.")
+        if str(billed_org_id or "") != str(workspace_org_id):
+            raise ValueError("Organization instance billing must match its organization workspace.")
+        billed_user_id = None
+    elif workspace_type == "test":
+        if billing_entity != "test":
+            raise ValueError("Test instances must use the non-billable test billing scope.")
+        billed_user_id = None
+        billed_org_id = None
+    else:
+        raise ValueError("Unsupported workspace type.")
+
     now = _now()
     inst = SandboxInstance(
         id=instance_id or str(uuid.uuid4()),
@@ -282,6 +306,7 @@ def create_instance(
         workspace_user_id=workspace_user_id,
         workspace_org_id=workspace_org_id,
         assigned_to_user_id=assigned_to_user_id,
+        allocation_id=allocation_id,
         created_by_user_id=created_by_user_id,
         status="idle",
         status_changed_at=now,
@@ -311,6 +336,13 @@ def archive_instance(instance_id: str) -> SandboxInstance | None:
             return None
         inst.deleted_at = _now()
         inst.save()
+        allocation_id = getattr(inst, "allocation_id", None)
+        if allocation_id:
+            row = get_org_allocation_for_update(str(allocation_id))
+            if row is not None and row.status == "in_use":
+                row.status = "active"
+                row.updated_at = _now()
+                row.save()
         return inst
 
 
@@ -408,6 +440,162 @@ def find_hub_instance(
     return max(live, key=lambda i: i.created_at)
 
 
+# ── Organization sandbox allocations ─────────────────────────────────────────
+
+def create_org_allocation(
+    *,
+    org_id: str,
+    template_id: str,
+    plan_id: str,
+    access_scope: str,
+    created_by_user_id: str,
+    assigned_to_user_id: str | None = None,
+    max_session_minutes: int | None = None,
+    max_starts_per_member: int | None = None,
+) -> OrganizationSandboxAllocation:
+    row = OrganizationSandboxAllocation(
+        id=str(uuid.uuid4()),
+        org_id=org_id,
+        template_id=template_id,
+        plan_id=plan_id,
+        access_scope=access_scope,
+        assigned_to_user_id=assigned_to_user_id,
+        max_session_minutes=max_session_minutes,
+        max_starts_per_member=max_starts_per_member,
+        status="active",
+        created_by_user_id=created_by_user_id,
+        created_at=_now(),
+    )
+    row.save()
+    return row
+
+
+def get_org_allocation(allocation_id: str) -> OrganizationSandboxAllocation | None:
+    return OrganizationSandboxAllocation.objects.filter(id=allocation_id).first()
+
+
+def get_org_allocation_for_update(allocation_id: str) -> OrganizationSandboxAllocation | None:
+    return _select_for_update(
+        OrganizationSandboxAllocation,
+        "organization_sandbox_allocations",
+        id=allocation_id,
+    )
+
+
+def claim_org_allocation_instance(
+    *,
+    allocation_id: str,
+    user_id: str,
+    org_id: str,
+) -> tuple[SandboxInstance | None, str | None]:
+    """Atomically reserve one allocation and create its idle runtime row.
+
+    The allocation row is the concurrency lock. Marking it ``in_use`` in the
+    same transaction prevents two members from claiming the same pool slot.
+    """
+    with transaction.atomic():
+        row = get_org_allocation_for_update(allocation_id)
+        if row is None or str(row.org_id) != str(org_id):
+            return None, "Allocation not found in this organization."
+        if row.status != "active":
+            return None, "This allocation is already in use or unavailable."
+        row.status = "in_use"
+        row.updated_at = _now()
+        row.save()
+        try:
+            inst = create_instance(
+                template_id=str(row.template_id),
+                plan_id=str(row.plan_id),
+                workspace_type="org",
+                workspace_org_id=str(row.org_id),
+                assigned_to_user_id=user_id,
+                allocation_id=allocation_id,
+                created_by_user_id=user_id,
+                billing_entity="org",
+                billed_org_id=str(row.org_id),
+            )
+        except Exception:
+            row.status = "active"
+            row.updated_at = _now()
+            row.save()
+            raise
+        return inst, None
+
+
+def release_org_allocation(allocation_id: str | None) -> None:
+    if not allocation_id:
+        return
+    with transaction.atomic():
+        row = get_org_allocation_for_update(str(allocation_id))
+        if row is not None and row.status == "in_use":
+            row.status = "active"
+            row.updated_at = _now()
+            row.save()
+
+
+def release_org_allocation_for_instance(instance_id: str) -> None:
+    inst = get_instance(instance_id)
+    if inst is not None:
+        release_org_allocation(getattr(inst, "allocation_id", None))
+
+
+def list_org_allocations(org_id: str, *, include_archived: bool = False) -> list[OrganizationSandboxAllocation]:
+    rows = OrganizationSandboxAllocation.objects.filter(org_id=org_id).all()
+    if not include_archived:
+        rows = [r for r in rows if r.status != "archived"]
+    return sorted(rows, key=lambda r: r.created_at or _now(), reverse=True)
+
+
+def list_allocations_for_member(org_id: str, user_id: str) -> list[OrganizationSandboxAllocation]:
+    return [
+        row for row in list_org_allocations(org_id)
+        if row.status in {"active", "in_use"} and (
+            row.access_scope == "pool"
+            or str(row.assigned_to_user_id or "") == str(user_id)
+        )
+    ]
+
+
+def update_org_allocation(allocation_id: str, **kwargs) -> OrganizationSandboxAllocation | None:
+    row = get_org_allocation(allocation_id)
+    if row is None:
+        return None
+    for key, value in kwargs.items():
+        setattr(row, key, value)
+    row.updated_at = _now()
+    row.save()
+    return row
+
+
+def list_instances_for_allocation(allocation_id: str) -> list[SandboxInstance]:
+    rows = SandboxInstance.objects.filter(allocation_id=allocation_id).all()
+    return sorted(_visible_instances(rows), key=lambda row: row.created_at or _now(), reverse=True)
+
+
+def find_live_instance_for_allocation(allocation_id: str) -> SandboxInstance | None:
+    rows = [
+        row for row in list_instances_for_allocation(allocation_id)
+        if row.status in _LIVE_INSTANCE_STATUSES
+    ]
+    return max(rows, key=lambda row: row.created_at or _now(), default=None)
+
+
+def count_allocation_starts_by_user(allocation_id: str, user_id: str) -> int:
+    """Count historical starts, including soft-deleted completed runs.
+
+    Guardrails are an audit property of the allocation. A member must not be
+    able to reset ``max_starts_per_member`` by deleting a completed instance
+    from the UI, so this deliberately bypasses ``_visible_instances``. Idle
+    claims that never started do not consume a start.
+    """
+    rows = SandboxInstance.objects.filter(allocation_id=allocation_id).all()
+    return len([
+        row for row in rows
+        if str(row.assigned_to_user_id or "") == str(user_id)
+        and row.status != "idle"
+    ])
+
+
 # ── InstanceRequest ───────────────────────────────────────────────────────────
 
 def create_instance_request(
@@ -416,6 +604,7 @@ def create_instance_request(
     template_id: str,
     plan_id: str,
     note: str | None = None,
+    requested_config: str | None = None,
 ) -> InstanceRequest:
     req = InstanceRequest(
         id=str(uuid.uuid4()),
@@ -423,6 +612,7 @@ def create_instance_request(
         requested_by=requested_by,
         template_id=template_id,
         plan_id=plan_id,
+        requested_config=requested_config,
         note=note,
         status="pending",
         created_at=_now(),
@@ -433,6 +623,10 @@ def create_instance_request(
 
 def get_instance_request(request_id: str) -> InstanceRequest | None:
     return InstanceRequest.objects.filter(id=request_id).first()
+
+
+def get_instance_request_for_update(request_id: str) -> InstanceRequest | None:
+    return _select_for_update(InstanceRequest, "instance_requests", id=request_id)
 
 
 def list_requests_for_org(org_id: str, status: str | None = None) -> list[InstanceRequest]:

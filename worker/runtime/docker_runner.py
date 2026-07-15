@@ -43,9 +43,6 @@ _LXCFS_BINDINGS = (
     ("proc/swaps", "/proc/swaps"),
     ("proc/uptime", "/proc/uptime"),
     ("proc/slabinfo", "/proc/slabinfo"),
-    ("proc/pressure/io", "/proc/pressure/io"),
-    ("proc/pressure/cpu", "/proc/pressure/cpu"),
-    ("proc/pressure/memory", "/proc/pressure/memory"),
     ("sys/devices/system/cpu", "/sys/devices/system/cpu"),
 )
 

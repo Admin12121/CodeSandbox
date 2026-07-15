@@ -212,6 +212,72 @@ def test_password_not_in_auth_result(ctx: TestContext) -> None:
     assert pw not in leaked, "Raw password must never appear in AuthResult fields"
 
 
+
+
+"""Five recent credential failures trigger an account lock before another password check."""
+def test_adaptive_account_lockout(ctx: TestContext) -> None:
+    user = _make_user(ctx, "lockout")
+    for _ in range(5):
+        result = _svc().sign_in(
+            email=user.email, password="definitely-wrong",
+            ip_address="198.51.100.10", user_agent="lockout-test",
+        )
+        assert not result.ok
+
+    refreshed = _repo().find_user_by_id(str(user.id))
+    assert refreshed is not None
+    assert int(refreshed.auth_failure_streak or 0) >= 5
+    assert refreshed.auth_locked_until is not None
+
+    blocked = _svc().sign_in(
+        email=user.email, password="password123",
+        ip_address="198.51.100.10", user_agent="lockout-test",
+    )
+    assert not blocked.ok
+    assert "try again" in blocked.message.lower()
+
+
+"""A replayed session from a new IP and new user-agent is invalidated server-side."""
+def test_session_anomaly_replay_blocked(ctx: TestContext) -> None:
+    from flask import current_app
+    from codesandbox.shared.session import get_current_session
+
+    user = _make_user(ctx, "sessanom")
+    token = _svc().create_session_for_user(
+        str(user.id), ip_address="198.51.100.20", user_agent="OriginalBrowser/1",
+    )
+    assert token
+    cookie_name = current_app.config.get("CS_AUTH_COOKIE", "cs_session")
+    with current_app.test_request_context(
+        "/dashboard",
+        headers={"Cookie": f"{cookie_name}={token}", "User-Agent": "OtherBrowser/9"},
+        environ_base={"REMOTE_ADDR": "203.0.113.77"},
+    ):
+        assert get_current_session() is None
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    assert _repo().find_active_session(token_hash) is None
+
+
+"""Changing only the client IP does not log out a legitimate mobile user."""
+def test_session_single_signal_change_tolerated(ctx: TestContext) -> None:
+    from flask import current_app
+    from codesandbox.shared.session import get_current_session
+
+    user = _make_user(ctx, "sessmobile")
+    token = _svc().create_session_for_user(
+        str(user.id), ip_address="198.51.100.21", user_agent="MobileBrowser/1",
+    )
+    assert token
+    cookie_name = current_app.config.get("CS_AUTH_COOKIE", "cs_session")
+    with current_app.test_request_context(
+        "/dashboard",
+        headers={"Cookie": f"{cookie_name}={token}", "User-Agent": "MobileBrowser/1"},
+        environ_base={"REMOTE_ADDR": "198.51.100.22"},
+    ):
+        assert get_current_session() is not None
+
+
 TESTS: list[TestCase] = [
     TestCase("signup duplicate email",          "identity", test_signup_duplicate_email),
     TestCase("signup short password",           "identity", test_signup_short_password),
@@ -224,4 +290,7 @@ TESTS: list[TestCase] = [
     TestCase("session invalidated after signout","identity", test_session_invalidated_after_signout),
     TestCase("banned user cannot create session","identity", test_banned_user_cannot_create_session),
     TestCase("password not in auth result",     "identity", test_password_not_in_auth_result),
+    TestCase("adaptive account lockout",        "identity", test_adaptive_account_lockout),
+    TestCase("session anomaly replay blocked",  "identity", test_session_anomaly_replay_blocked),
+    TestCase("single session signal tolerated", "identity", test_session_single_signal_change_tolerated),
 ]

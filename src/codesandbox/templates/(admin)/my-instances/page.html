@@ -5,7 +5,9 @@
   <div class="flex items-center justify-between gap-4">
     <div>
       <h1 class="text-xl font-semibold">My Instances</h1>
-      <p class="mt-0.5 text-sm text-muted-foreground">Open, monitor, stop, or remove your sandboxes.</p>
+      <p class="mt-0.5 text-sm text-muted-foreground">
+        {{ instance_scope_label or "Personal sessions" }} — open, monitor, stop, or remove your sandboxes.
+      </p>
     </div>
     <a href="/hub" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">
       <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>

@@ -15,7 +15,7 @@
 {% import "components/ui/delete-dialog.html" as del_dialog %}
 
 {# ═══ LIST VIEW ═══ #}
-{% macro templates_table(templates, total, page, total_pages, search, status_filter, page_size=25, can_manage=false) %}
+{% macro templates_table(templates, total, page, total_pages, search, status_filter, page_size=25, can_manage=false, can_publish=false) %}
   {% set status_options = [
     {"value": "all", "label": "All status"},
     {"value": "active", "label": "Published"},
@@ -112,23 +112,27 @@
                          class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
                         Edit
                       </a>
-                      <form method="post" action="/platform/sandboxes/{{ tmpl.id }}/status">
-                        {{ csrf_input() }}
-                        <input type="hidden" name="status" value="{{ 'active' if tmpl.status == 'disabled' else 'disabled' }}">
-                        <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
-                          {{ "Activate" if tmpl.status == "disabled" else "Deactivate" }}
-                        </button>
-                      </form>
-                      {% call del_dialog.delete_dialog_trigger("delete-template-" ~ tmpl.id) %}
-                        <button type="button"
-                          data-dialog-trigger
-                          data-target="#delete-template-{{ tmpl.id }}"
-                          aria-controls="delete-template-{{ tmpl.id }}"
-                          aria-expanded="false"
-                          class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
-                          Delete
-                        </button>
-                      {% endcall %}
+                      {% if can_publish %}
+                        <form method="post" action="/platform/sandboxes/{{ tmpl.id }}/status">
+                          {{ csrf_input() }}
+                          <input type="hidden" name="status" value="{{ 'active' if tmpl.status == 'disabled' else 'disabled' }}">
+                          <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
+                            {{ "Activate" if tmpl.status == "disabled" else "Deactivate" }}
+                          </button>
+                        </form>
+                      {% endif %}
+                      {% if can_manage %}
+                        {% call del_dialog.delete_dialog_trigger("delete-template-" ~ tmpl.id) %}
+                          <button type="button"
+                            data-dialog-trigger
+                            data-target="#delete-template-{{ tmpl.id }}"
+                            aria-controls="delete-template-{{ tmpl.id }}"
+                            aria-expanded="false"
+                            class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
+                            Delete
+                          </button>
+                        {% endcall %}
+                      {% endif %}
                     </div>
                   </div>
                 {% endcall %}
@@ -164,7 +168,7 @@
 
 
 {# ═══ EDITOR VIEW ═══ #}
-{% macro template_editor(selected_template, templates, can_manage, sandbox_types, runtime_classes, interface_modes, network_modes, template_statuses, tab="identity", error=none, template_plan_configs=none) %}
+{% macro template_editor(selected_template, templates, can_manage, can_test, can_publish, sandbox_types, runtime_classes, interface_modes, network_modes, template_statuses, tab="identity", error=none, template_plan_configs=none) %}
 {% set is_create = selected_template.id is none %}
 {% set tid = selected_template.id or "" %}
 {% set active_tab = "config" if (not is_create and tab == "config") else ("plans" if (not is_create and tab == "plans") else "identity") %}
@@ -326,7 +330,7 @@
                           {% else %}
                             {{ badge.badge("Disabled", variant="destructive") }}
                           {% endif %}
-                          {% if can_manage %}
+                          {% if can_publish %}
                             {% if selected_template.status != "active" and not publish_ready %}
                               <button type="button" disabled title="{{ failure_title if selected_template.last_test_status == 'failed' else 'Not yet tested — run Test Launch in the Config tab before publishing' }}"
                                 class="inline-flex h-7 items-center justify-center rounded-md border border-input px-2.5 text-xs font-medium opacity-50 cursor-not-allowed">
@@ -1006,7 +1010,7 @@
           </button>
         </div>
         <div class="flex h-full min-w-0 items-center gap-1.5 px-1">
-          {% if can_manage %}
+          {% if can_test %}
             <span id="config-test-status-hint" class="max-w-72 truncate text-[10px] opacity-70" title=""></span>
           {% endif %}
           <button id="ide-monitor-toggle" title="Open Sandbox Monitor" hidden
@@ -1016,7 +1020,7 @@
           </button>
           <span id="ide-save-status" class="opacity-60"></span>
           <span id="ide-active-file" class="font-mono opacity-60"></span>
-          {% if can_manage %}
+          {% if can_test %}
             <div class="w-px h-3.5 bg-border mx-0.5"></div>
             <input type="file" id="test-input-file" hidden>
             <button type="button" id="test-input-btn" title="{{ 'Attach required test input file' if selected_template.test_input_required else 'Attach test input file (optional)' }}"

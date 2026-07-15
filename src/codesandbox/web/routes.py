@@ -4,22 +4,27 @@ import os
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
-from flask import abort, redirect, request, send_from_directory, session as flask_session
+from flask import abort, g, redirect, request, send_from_directory, session as flask_session
 
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.organizations import repository as org_repo
 from codesandbox.features.sandbox.service import (
     archive_instance_for_user,
-    create_org_instance,
+    archive_org_allocation,
+    claim_org_allocation,
+    create_org_allocations,
     create_personal_instance,
     get_active_hub_instance,
     get_hub_template_by_slug,
     get_hub_templates,
     get_instance_ui_context,
     get_live_balance_for_actor,
+    get_org_allocation_edit_context,
+    get_org_allocations_for_user,
     get_org_billing,
     get_org_instances,
     get_org_requests,
+    group_org_allocations_for_display,
     get_template_plans_for_hub,
     get_user_assigned_instances,
     get_user_billing,
@@ -27,8 +32,10 @@ from codesandbox.features.sandbox.service import (
     get_user_requests_in_org,
     review_instance_request,
     save_instance_note_for_view,
+    set_org_allocation_group_status,
     start_instance,
     submit_instance_request,
+    update_org_allocation_group,
     upload_instance_input,
 )
 from codesandbox.shared.session import build_nav, require_sandbox_user, require_session
@@ -117,19 +124,28 @@ def hub():
     if active_workspace:
         org_id = str(active_workspace["id"])
         org_active = active_workspace.get("status") == "active"
-        user_perms = org_repo.get_member_permissions(org_id, str(user.id))
+        user_perms = set(org_repo.get_member_permissions(org_id, str(user.id)))
         is_owner = org_repo.is_org_owner(org_id, str(user.id))
-        can_manage = org_active and (is_owner or "sandbox.instances.create" in user_perms)
+        can_manage = org_active and (is_owner or "sandbox.allocations.prepare" in user_perms or "sandbox.allocations.manage" in user_perms)
         can_review = org_active and (is_owner or "sandbox.requests.review" in user_perms)
-        public_tab_is_catalog = can_manage or can_review
+        can_request = org_active and (is_owner or "sandbox.requests.submit" in user_perms)
+        public_tab_is_catalog = True
         if public_tab_is_catalog and hub_tab == "catalog":
             hub_tab = "public"
+        org_allocations = get_org_allocations_for_user(org_id, str(user.id)) if org_active else []
+        org_pool_allocations = [
+            allocation
+            for allocation in org_allocations
+            if allocation.get("access_scope") == "pool"
+        ]
         org_ctx = {
-            "org_pool_instances": get_org_instances(org_id) if (org_active and (can_manage or "sandbox.instances.view_all" in user_perms or is_owner)) else [],
+            "org_pool_instances": org_pool_allocations,
+            "org_pool_groups": group_org_allocations_for_display(org_pool_allocations),
             "my_org_requests": get_user_requests_in_org(str(user.id), org_id),
             "pending_requests": get_org_requests(org_id, status="pending") if can_review else [],
             "can_manage_instances": can_manage,
             "can_review_requests": can_review,
+            "can_request_instances": can_request,
             "hub_public_tab_is_catalog": public_tab_is_catalog,
             "org_active": org_active,
         }
@@ -141,6 +157,7 @@ def hub():
         "page_title": "Hub",
         "templates": templates,
         "hub_tab": hub_tab,
+        "error": request.args.get("error"),
         **ws_ctx,
         **org_ctx,
     }
@@ -162,12 +179,19 @@ def hub_template(instance: str):
     is_org = active_workspace is not None
     plans = get_template_plans_for_hub(template["id"])
 
-    can_start = True  # personal users can always start
+    can_start = True  # personal users can start immediately
+    can_prepare = False
+    can_request = False
+    org_members = []
     if active_workspace:
         org_id = str(active_workspace["id"])
-        user_perms = org_repo.get_member_permissions(org_id, str(user.id))
+        user_perms = set(org_repo.get_member_permissions(org_id, str(user.id)))
         is_owner = org_repo.is_org_owner(org_id, str(user.id))
-        can_start = active_workspace.get("status") == "active" and (is_owner or "sandbox.instances.create" in user_perms)
+        can_prepare = active_workspace.get("status") == "active" and (is_owner or "sandbox.allocations.prepare" in user_perms)
+        can_request = active_workspace.get("status") == "active" and (is_owner or "sandbox.requests.submit" in user_perms)
+        can_start = can_prepare
+        if can_prepare:
+            org_members = org_repo.get_members_with_info(org_id)
 
     user_balance = None
     available_balance = None
@@ -200,6 +224,13 @@ def hub_template(instance: str):
         )
         plan["can_afford"] = available_balance is None or available_balance >= required
 
+    requested_plan_id = str(request.args.get("plan") or "")
+    selected_plan_id = (
+        requested_plan_id
+        if any(str(plan.get("id")) == requested_plan_id for plan in plans)
+        else (str(plans[0].get("id")) if plans else "")
+    )
+
     nav = build_nav("/hub", user, active_workspace)
     return {
         "_meta": {"title": f"{template['name']} — CodeSandbox"},
@@ -209,8 +240,41 @@ def hub_template(instance: str):
         "plans": plans,
         "is_org": is_org,
         "can_start": can_start,
+        "can_prepare": can_prepare,
+        "can_request": can_request,
+        "org_members": org_members,
+        "selected_plan_id": selected_plan_id,
         "user_balance": user_balance,
         "error": request.args.get("error"),
+        **ws_ctx,
+    }
+
+
+@router.page("/org-allocations/<allocation_id>/edit")
+def org_allocation_edit_page(allocation_id: str):
+    session, redir = require_session()
+    if redir:
+        return redir
+    user = session.user
+    ws_ctx = _workspaces_ctx(user)
+    active_workspace = ws_ctx.get("active_workspace")
+    if not active_workspace:
+        return {"_redirect": "/hub"}
+    context, error = get_org_allocation_edit_context(
+        allocation_id,
+        str(active_workspace["id"]),
+        str(user.id),
+    )
+    if error or context is None:
+        return {"_redirect": f"/hub?tab=private&error={quote_plus(error or 'Allocation not found.')}"}
+    nav = build_nav("/hub", user, active_workspace)
+    return {
+        "_meta": {"title": "Edit allocation — CodeSandbox"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": "Edit allocation",
+        "error": request.args.get("error"),
+        **context,
         **ws_ctx,
     }
 
@@ -256,15 +320,30 @@ def my_instances():
         return redir
     user = session.user
     ws_ctx = _workspaces_ctx(user)
-    nav = build_nav("/my-instances", user, ws_ctx.get("active_workspace"))
-    instances = get_user_instances(str(user.id))
+    active_workspace = ws_ctx.get("active_workspace")
+    if active_workspace:
+        if active_workspace.get("status") != "active":
+            return {"_redirect": _org_inactive_url("/dashboard")}
+        org_id = str(active_workspace["id"])
+        instances = get_user_assigned_instances(str(user.id), org_id)
+        billing_live_url = f"/billing/live?org_id={org_id}"
+    else:
+        g._billing_workspace_override_set = True
+        g._billing_workspace_override = None
+        instances = get_user_instances(str(user.id))
+        billing_live_url = "/billing/live?scope=personal"
+    nav = build_nav("/my-instances", user, active_workspace)
     return {
         "_meta": {"title": "My Instances — CodeSandbox"},
         "user": _user_ctx(user),
         "nav": nav,
         "page_title": "My Instances",
         "instances": instances,
+        "instance_scope_label": (
+            f"{active_workspace['name']} sessions" if active_workspace else "Personal sessions"
+        ),
         "error": request.args.get("error"),
+        "billing_live_url": billing_live_url,
         **ws_ctx,
     }
 
@@ -287,7 +366,27 @@ def instance_detail(instance_id: str):
     if error or ctx is None:
         return {"_redirect": "/my-instances"}
     instance = ctx["instance"]
-    ws_ctx = _workspaces_ctx(user)
+    base_ws_ctx = _workspaces_ctx(user)
+    instance_org_id = str(instance.get("workspace_org_id") or "")
+    if instance.get("workspace_type") == "org" and instance_org_id:
+        contextual_workspace = next(
+            (w for w in (base_ws_ctx.get("workspace_list") or []) if str(w.get("id")) == instance_org_id),
+            None,
+        )
+        if contextual_workspace is None:
+            return {"_redirect": "/my-instances"}
+        ws_ctx = _workspaces_ctx(user, contextual_workspace)
+        g._billing_workspace_override_set = True
+        g._billing_workspace_override = contextual_workspace
+        billing_live_url = f"/billing/live?org_id={instance_org_id}"
+    elif instance.get("workspace_type") == "personal":
+        ws_ctx = _workspaces_ctx(user, force_personal=True)
+        g._billing_workspace_override_set = True
+        g._billing_workspace_override = None
+        billing_live_url = "/billing/live?scope=personal"
+    else:
+        ws_ctx = base_ws_ctx
+        billing_live_url = "/billing/live"
 
     from codesandbox.features.workflow.service import get_workflow_run_context_for_instance
 
@@ -307,6 +406,7 @@ def instance_detail(instance_id: str):
         "page_title": instance["template_name"],
         "error": request.args.get("error"),
         "workflow_run": workflow_run,
+        "billing_live_url": billing_live_url,
         **ctx,
         **ws_ctx,
     }
@@ -345,7 +445,15 @@ def private_instances():
         if active_workspace.get("status") != "active":
             return {"_redirect": _org_inactive_url("/dashboard")}
         org_id = str(active_workspace["id"])
-        assigned = get_user_assigned_instances(str(user.id), org_id)
+        assigned = group_org_allocations_for_display(
+            [
+                allocation
+                for allocation in get_org_allocations_for_user(org_id, str(user.id))
+                if allocation.get("access_scope") == "private"
+                and str(allocation.get("assigned_to_user_id") or "") == str(user.id)
+                and allocation.get("status") in {"active", "in_use"}
+            ]
+        )
 
     nav = build_nav("/private_instances", user, active_workspace)
     return {
@@ -354,6 +462,8 @@ def private_instances():
         "nav": nav,
         "page_title": "Private Instances",
         "instances": assigned,
+        "error": request.args.get("error"),
+        "billing_live_url": (f"/billing/live?org_id={active_workspace['id']}" if active_workspace else "/billing/live"),
         **ws_ctx,
     }
 
@@ -365,9 +475,22 @@ def billing_live():
     session, redir = require_session()
     if redir:
         return {"ok": False, "error": "Authentication required."}, 401
-    ws_ctx = _workspaces_ctx(session.user)
-    active_workspace = ws_ctx.get("active_workspace")
-    org_id = str(active_workspace["id"]) if active_workspace else None
+    requested_org_id = str(request.args.get("org_id") or "").strip()
+    if requested_org_id:
+        org = org_repo.get_organization(requested_org_id)
+        if (
+            org is None
+            or org.status != "active"
+            or org_repo.get_member(requested_org_id, str(session.user.id)) is None
+        ):
+            return {"ok": False, "error": "Organization workspace not available."}, 403
+        org_id = requested_org_id
+    elif request.args.get("scope") == "personal":
+        org_id = None
+    else:
+        ws_ctx = _workspaces_ctx(session.user)
+        active_workspace = ws_ctx.get("active_workspace")
+        org_id = str(active_workspace["id"]) if active_workspace else None
     return {
         "ok": True,
         "balance": get_live_balance_for_actor(str(session.user.id), org_id),
@@ -392,11 +515,17 @@ def billing():
         org_id = str(active_workspace["id"])
         if active_workspace.get("status") != "active":
             return {"_redirect": _org_inactive_url("/dashboard")}
-        if not org_repo.is_org_owner(org_id, str(user.id)):
+        billing_permissions = set(org_repo.get_member_permissions(org_id, str(user.id)))
+        is_org_owner = org_repo.is_org_owner(org_id, str(user.id))
+        can_view_billing = is_org_owner or "sandbox.billing.view" in billing_permissions
+        can_topup_billing = is_org_owner or "sandbox.billing.topup" in billing_permissions
+        if not (can_view_billing or can_topup_billing):
             return {"_redirect": "/dashboard"}
         billing_data = get_org_billing(org_id, page=tx_page, page_size=tx_page_size)
         billing_label = active_workspace.get("name", "Org")
     else:
+        can_view_billing = True
+        can_topup_billing = True
         billing_data = get_user_billing(str(user.id), page=tx_page, page_size=tx_page_size)
         billing_label = user.name or user.email
 
@@ -420,6 +549,7 @@ def billing():
         "balance_npr": npr_display,
         "stripe_publishable_key": get_settings().stripe_publishable_key,
         "billing_dev_topup_enabled": get_settings().billing_dev_topup_enabled,
+        "can_topup": can_topup_billing,
         "min_topup_gbp": stripe_gateway.MIN_TOPUP_GBP,
         "min_topup_npr": esewa_gateway.MIN_TOPUP_NPR,
         "error": request.args.get("error"),
@@ -441,7 +571,7 @@ def billing_topup_action():
 
 @web_bp.post("/hub/<instance>/start")
 def hub_start(instance: str):
-    """Create a workspace SandboxInstance and redirect to the sandbox IDE."""
+    """Personal: start now. Organization: prepare allocations without starting."""
     session, redir = require_sandbox_user()
     if redir:
         return redirect("/login", 303)
@@ -453,22 +583,36 @@ def hub_start(instance: str):
         if active_workspace.get("status") != "active":
             return redirect(_org_inactive_url(f"/hub/{instance}"), 303)
         org_id = str(active_workspace["id"])
-        user_perms = org_repo.get_member_permissions(org_id, str(user.id))
+        user_perms = set(org_repo.get_member_permissions(org_id, str(user.id)))
         is_owner = org_repo.is_org_owner(org_id, str(user.id))
-        if not is_owner and "sandbox.instances.create" not in user_perms:
+        if not is_owner and "sandbox.allocations.prepare" not in user_perms:
             return redirect(f"/hub/{instance}?error=Permission+denied.", 303)
-        result, err = create_org_instance(
-            org_id,
-            str(user.id),
-            instance,
-            plan_id,
-            assigned_to_user_id=str(user.id),
+        try:
+            quantity = int(request.form.get("quantity", "1") or "1")
+            max_session_hours = float(request.form.get("max_session_hours", "2") or "2")
+            max_starts = int(request.form.get("max_starts_per_member", "1") or "1")
+        except (TypeError, ValueError):
+            return redirect(f"/hub/{instance}?error=Invalid+guardrail+values.", 303)
+        scope = request.form.get("access_scope", "pool")
+        assigned_user_id = request.form.get("assigned_to_user_id") or None
+        rows, err = create_org_allocations(
+            org_id=org_id,
+            creator_user_id=str(user.id),
+            template_slug=instance,
+            plan_id=plan_id,
+            access_scope=scope,
+            assigned_to_user_id=assigned_user_id,
+            quantity=quantity,
+            max_session_minutes=max(1, int(max_session_hours * 60)),
+            max_starts_per_member=max_starts,
         )
-    else:
-        result, err = create_personal_instance(str(user.id), instance, plan_id)
+        if err:
+            return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
+        return redirect("/hub?tab=private&prepared=1", 303)
+
+    result, err = create_personal_instance(str(user.id), instance, plan_id)
     if err:
         return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
-
     input_file = request.files.get("input_file")
     if input_file and input_file.filename:
         _, err = upload_instance_input(result["id"], str(user.id), input_file)
@@ -499,11 +643,155 @@ def hub_request(instance: str):
     plan_id = request.form.get("plan_id", "")
     note = request.form.get("note", "").strip()
     org_id = str(active_workspace["id"])
-    _, err = submit_instance_request(org_id, str(user.id), instance, plan_id, note or None)
+    try:
+        max_session_minutes = max(1, int(float(request.form.get("max_session_hours", "2") or "2") * 60))
+        max_starts = max(1, int(request.form.get("max_starts", "1") or "1"))
+    except (TypeError, ValueError):
+        return redirect(f"/hub/{instance}?error=Invalid+request+guardrails.", 303)
+    _, err = submit_instance_request(
+        org_id, str(user.id), instance, plan_id, note or None,
+        max_session_minutes=max_session_minutes, max_starts=max_starts,
+    )
     if err:
-        return redirect(f"/hub/{instance}?error={err}", 303)
+        return redirect(f"/hub/{instance}?error={quote_plus(err)}", 303)
     return redirect("/hub?requested=1", 303)
 
+
+
+
+@web_bp.post("/org-allocations/<allocation_id>/start")
+def org_allocation_start(allocation_id: str):
+    session, redir = require_sandbox_user()
+    if redir:
+        return redirect("/login", 303)
+    user = session.user
+    ws_ctx = _workspaces_ctx(user)
+    active_workspace = ws_ctx.get("active_workspace")
+    if not active_workspace:
+        return redirect("/hub", 303)
+    result, err = claim_org_allocation(
+        allocation_id,
+        str(user.id),
+        expected_org_id=str(active_workspace["id"]),
+    )
+    if err or result is None:
+        return redirect(f"/hub?tab=private&error={quote_plus(err or 'Unable to claim allocation.')}", 303)
+    input_file = request.files.get("input_file")
+    if input_file and input_file.filename:
+        _, err = upload_instance_input(result["id"], str(user.id), input_file)
+        if err:
+            archive_instance_for_user(result["id"], str(user.id))
+            return redirect(f"/hub?tab=private&error={quote_plus(err)}", 303)
+    _, err = start_instance(result["id"], actor_user_id=str(user.id))
+    if err:
+        archive_instance_for_user(result["id"], str(user.id))
+        return redirect(f"/hub?tab=private&error={quote_plus(err)}", 303)
+    return redirect(f"/instances/{result['id']}", 303)
+
+
+@web_bp.post("/org-allocations/archive")
+def org_allocations_bulk_archive():
+    session, redir = require_sandbox_user()
+    if redir:
+        return redirect("/login", 303)
+    ws_ctx = _workspaces_ctx(session.user)
+    active_workspace = ws_ctx.get("active_workspace")
+    if not active_workspace:
+        return redirect("/hub", 303)
+    allocation_ids = [
+        str(value).strip()
+        for value in request.form.getlist("allocation_id")
+        if str(value).strip()
+    ]
+    if not allocation_ids:
+        return redirect("/hub?tab=private&error=No+allocation+selected.", 303)
+
+    _, err = set_org_allocation_group_status(
+        allocation_ids,
+        str(active_workspace["id"]),
+        str(session.user.id),
+        status="archived",
+    )
+    target = "/hub?tab=private"
+    if err:
+        target += "&error=" + quote_plus(err)
+    return redirect(target, 303)
+
+
+@web_bp.post("/org-allocations/status")
+def org_allocations_status():
+    session, redir = require_sandbox_user()
+    if redir:
+        return redirect("/login", 303)
+    ws_ctx = _workspaces_ctx(session.user)
+    active_workspace = ws_ctx.get("active_workspace")
+    if not active_workspace:
+        return redirect("/hub", 303)
+    allocation_ids = [
+        str(value).strip()
+        for value in request.form.getlist("allocation_id")
+        if str(value).strip()
+    ]
+    status = str(request.form.get("status") or "").strip().lower()
+    _, err = set_org_allocation_group_status(
+        allocation_ids,
+        str(active_workspace["id"]),
+        str(session.user.id),
+        status=status,
+    )
+    target = "/hub?tab=private"
+    if err:
+        target += "&error=" + quote_plus(err)
+    return redirect(target, 303)
+
+
+@web_bp.post("/org-allocations/<allocation_id>/edit")
+def org_allocation_edit_action(allocation_id: str):
+    session, redir = require_sandbox_user()
+    if redir:
+        return redirect("/login", 303)
+    ws_ctx = _workspaces_ctx(session.user)
+    active_workspace = ws_ctx.get("active_workspace")
+    if not active_workspace:
+        return redirect("/hub", 303)
+    try:
+        quantity = int(request.form.get("quantity", "1") or "1")
+        max_session_hours = float(request.form.get("max_session_hours", "2") or "2")
+        max_starts = int(request.form.get("max_starts_per_member", "1") or "1")
+    except (TypeError, ValueError):
+        return redirect(f"/org-allocations/{allocation_id}/edit?error=Invalid+guardrail+values.", 303)
+    _, err = update_org_allocation_group(
+        allocation_id,
+        str(active_workspace["id"]),
+        str(session.user.id),
+        access_scope=str(request.form.get("access_scope") or "pool"),
+        assigned_to_user_id=request.form.get("assigned_to_user_id") or None,
+        quantity=quantity,
+        max_session_minutes=max(1, int(max_session_hours * 60)),
+        max_starts_per_member=max_starts,
+        status=str(request.form.get("status") or "active"),
+    )
+    if err:
+        return redirect(f"/org-allocations/{allocation_id}/edit?error={quote_plus(err)}", 303)
+    return redirect("/hub?tab=private", 303)
+
+
+@web_bp.post("/org-allocations/<allocation_id>/archive")
+def org_allocation_archive(allocation_id: str):
+    session, redir = require_sandbox_user()
+    if redir:
+        return redirect("/login", 303)
+    ws_ctx = _workspaces_ctx(session.user)
+    active_workspace = ws_ctx.get("active_workspace")
+    if not active_workspace:
+        return redirect("/hub", 303)
+    _, err = archive_org_allocation(
+        allocation_id, str(active_workspace["id"]), str(session.user.id)
+    )
+    target = "/hub?tab=private"
+    if err:
+        target += "&error=" + quote_plus(err)
+    return redirect(target, 303)
 
 @web_bp.post("/hub/request/<request_id>/review")
 def hub_review_request(request_id: str):
@@ -529,5 +817,5 @@ def hub_review_request(request_id: str):
     review_note = request.form.get("review_note", "").strip()
     _, err = review_instance_request(request_id, org_id, str(user.id), action, review_note or None)
     if err:
-        return redirect(f"/hub?error={err}", 303)
+        return redirect(f"/hub?tab=public&error={quote_plus(err)}", 303)
     return redirect("/hub", 303)

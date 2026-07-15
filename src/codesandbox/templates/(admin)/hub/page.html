@@ -1,10 +1,15 @@
 {% import "components/ui/separator.html" as separator %}
 {% import "components/ui/frame.html" as frame %}
+{% import "components/ui/button.html" as button %}
 {% import "components/media/hover-grid.html" as hover_grid %}
 
 {% if active_workspace %}
 {# ── Org workspace: Private | Public tabs + template catalog ── #}
 <div class="flex h-[calc(100vh-4.85rem)] flex-col overflow-hidden">
+
+  {% if error %}
+    <div class="mx-4 mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+  {% endif %}
 
   {# Org tab bar #}
   <div class="flex h-10 shrink-0 items-end border-b px-4 gap-0">
@@ -38,61 +43,127 @@
     <div id="hub-pane-private" class="hub-pane p-4 space-y-4 {{ 'hidden' if hub_tab != 'private' else '' }}">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-base font-semibold">Org Pool Instances</h2>
-          <p class="text-xs text-muted-foreground mt-0.5">Instances shared across the organization</p>
+          <h2 class="text-base font-semibold">Organization Private Sandbox Pool</h2>
+          <p class="text-xs text-muted-foreground mt-0.5">Prepared allocations are idle until a member starts a session. Runtime usage is billed only to the organization balance.</p>
         </div>
         {% if can_manage_instances %}
-          <a href="/hub?tab={{ 'public' if hub_public_tab_is_catalog else 'catalog' }}" data-hub-tab="{{ 'public' if hub_public_tab_is_catalog else 'catalog' }}" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-            New Instance
+          <a href="/hub?tab=public" data-hub-tab="public" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            Prepare allocation
           </a>
         {% endif %}
       </div>
 
-      {% if org_pool_instances %}
-        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {% for inst in org_pool_instances %}
-            <div class="flex items-center gap-3 rounded-lg border bg-card p-3 text-sm">
-              <div class="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                {% if inst.template_icon %}
-                  <img src="{{ inst.template_icon }}" alt="" class="size-full rounded-md object-cover">
-                {% else %}
-                  <svg viewBox="0 0 256 256" class="size-4"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
-                {% endif %}
-              </div>
-              <div class="min-w-0 flex-1">
-                <p class="truncate font-medium">{{ inst.template_name }}</p>
-                <p class="text-xs text-muted-foreground capitalize">{{ inst.status }} · {{ inst.plan_id }}</p>
-              </div>
-              <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
-                {{ 'bg-green-500/15 text-green-600 dark:text-green-400' if inst.status == 'running' else
-                   'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' if inst.status in ('provisioning','stopping') else
-                   'bg-muted text-muted-foreground' }}">
-                {{ inst.status }}
-              </span>
-            </div>
+      {% if org_pool_groups %}
+        <div class="grid gap-6 pt-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 xl:grid-cols-4">
+          {% for allocation in org_pool_groups %}
+            {% call frame.frame(class="outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+              {% call frame.frame_header(class="p-0! mb-1 gap-1 flex flex-row justify-between items-center") %}
+                <div class="flex min-w-0 flex-row gap-2">
+                  <div class="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted text-muted-foreground">
+                    {% if allocation.template_icon %}
+                      <img src="{{ allocation.template_icon }}" alt="" class="size-full object-cover">
+                    {% else %}
+                      <svg viewBox="0 0 256 256" class="size-5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+                    {% endif %}
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <h2 class="truncate font-medium">{{ allocation.template_name }}</h2>
+                    <p class="text-xs text-muted-foreground">{{ allocation.plan_name }} · Shared pool</p>
+                  </div>
+                </div>
+                <div class="relative flex shrink-0 flex-col items-end gap-2">
+                  {% if allocation.can_manage %}
+                    {% call button.button(variant="ghost", size="icon-xs", class="size-7 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": allocation.group_id, "aria-label": "Allocation actions"}) %}
+                      <svg class="pointer-events-none size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                    {% endcall %}
+                    <div id="{{ allocation.group_id }}" class="hidden fixed z-[100] w-52 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
+                      <div class="px-2 py-1 text-xs font-semibold text-muted-foreground truncate">{{ allocation.template_name }}</div>
+                      <a href="/org-allocations/{{ allocation.id }}/edit"
+                         class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent transition-colors">
+                        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>
+                        Edit allocation
+                      </a>
+                      <form method="post" action="/org-allocations/status">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        {% for allocation_id in allocation.allocation_ids %}
+                          <input type="hidden" name="allocation_id" value="{{ allocation_id }}">
+                        {% endfor %}
+                        {% if allocation.status == "disabled" %}
+                          <input type="hidden" name="status" value="active">
+                          <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent transition-colors">
+                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                            Activate allocation
+                          </button>
+                        {% else %}
+                          <input type="hidden" name="status" value="disabled">
+                          <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent transition-colors">
+                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93 19.07 19.07"/></svg>
+                            Deactivate allocation
+                          </button>
+                        {% endif %}
+                      </form>
+                      <div class="my-1 h-px bg-border"></div>
+                      {% if allocation.can_archive %}
+                        <form method="post" action="/org-allocations/archive">
+                          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                          {% for allocation_id in allocation.archive_allocation_ids %}
+                            <input type="hidden" name="allocation_id" value="{{ allocation_id }}">
+                          {% endfor %}
+                          <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10 transition-colors">
+                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                            Delete allocation{{ 's' if allocation.archive_allocation_ids|length != 1 else '' }}
+                          </button>
+                        </form>
+                      {% else %}
+                        <div class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground opacity-60">
+                          Stop active sessions before deleting
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  <span class="rounded-full px-2 py-0.5 text-[11px] font-medium {{ 'bg-emerald-500/15 text-emerald-500' if allocation.status == 'active' else 'bg-amber-500/15 text-amber-500' if allocation.status == 'in_use' else 'bg-muted text-muted-foreground' }}">{{ "in use" if allocation.status == "in_use" else allocation.status }}</span>
+                </div>
+              {% endcall %}
+              {% call frame.frame_panel(class="shadow-sm p-0! overflow-hidden") %}
+                <div class="grid grid-cols-2 gap-2 p-3 text-xs">
+                  <div><span class="text-muted-foreground">Quantity</span><p class="mt-0.5">{{ allocation.quantity }}</p></div>
+                  <div><span class="text-muted-foreground">Available</span><p class="mt-0.5">{{ allocation.active_count }} / {{ allocation.quantity }}</p></div>
+                  <div><span class="text-muted-foreground">Session limit</span><p class="mt-0.5">{{ allocation.max_session_minutes }} min</p></div>
+                  <div><span class="text-muted-foreground">Starts used</span><p class="mt-0.5">{{ allocation.member_start_count }} / {{ allocation.max_starts_per_member }}</p></div>
+                </div>
+                <div class="px-3 pb-3">
+                  {% if allocation.can_start %}
+                    <form method="post" enctype="multipart/form-data" action="/org-allocations/{{ allocation.start_allocation_id }}/start" class="space-y-2">
+                      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                      {% if allocation.input_required %}
+                        <input type="file" name="input_file" required class="block w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1">
+                      {% endif %}
+                      <button class="w-full rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">Start org session</button>
+                    </form>
+                  {% elif allocation.live_instance %}
+                    <a href="/instances/{{ allocation.live_instance.id }}" class="inline-flex w-full justify-center rounded-md border px-3 py-2 text-xs font-medium hover:bg-accent">Open active session</a>
+                  {% else %}
+                    <p class="rounded-md bg-muted px-3 py-2 text-center text-xs text-muted-foreground">{{ "All slots are currently in use" if allocation.in_use_count else "Unavailable or your start limit is reached" }}</p>
+                  {% endif %}
+                </div>
+              {% endcall %}
+            {% endcall %}
           {% endfor %}
         </div>
       {% else %}
         <div class="flex flex-col items-center justify-center rounded-lg border border-dashed py-12 text-muted-foreground">
-          <svg class="size-10 mb-2 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <p class="text-sm">No pool instances yet.</p>
-          {% if can_manage_instances %}
-            <p class="text-xs mt-1 opacity-60">Start one from the Sandbox Catalog.</p>
-          {% else %}
-            <p class="text-xs mt-1 opacity-60">Ask a manager to create pool instances.</p>
-          {% endif %}
+          <p class="text-sm">No prepared allocations are available.</p>
+          <p class="text-xs mt-1 opacity-60">Authorized roles prepare them from the Public catalog. Members may request a dedicated allocation.</p>
         </div>
       {% endif %}
     </div>
 
     {# ── Public tab ── #}
     <div id="hub-pane-public" class="hub-pane p-4 space-y-4 {{ 'hidden' if hub_tab != 'public' else '' }}">
-      {% if hub_public_tab_is_catalog %}
       <h2 class="text-base font-semibold mb-4">Sandbox Catalog</h2>
       {% include "(admin)/hub/_components/catalog.html" %}
-      {% else %}
-      <div class="flex items-center justify-between">
+      <div class="mt-8 flex items-center justify-between">
         <div>
           <h2 class="text-base font-semibold">Sandbox Requests</h2>
           <p class="text-xs text-muted-foreground mt-0.5">Request a sandbox from the catalog</p>
@@ -110,6 +181,7 @@
             <div class="flex items-center gap-3 rounded-md border bg-card p-2.5 text-sm">
               <div class="min-w-0 flex-1">
                 <p class="font-medium truncate">{{ req.template_name }} · {{ req.plan_id }}</p>
+                <p class="text-xs text-muted-foreground">{{ req.requester_name }} · {{ req.max_session_minutes }} min/session · {{ req.max_starts }} start(s)</p>
                 {% if req.note %}<p class="text-xs text-muted-foreground truncate">{{ req.note }}</p>{% endif %}
               </div>
               <form method="post" action="/hub/request/{{ req.id }}/review" class="flex gap-1.5 shrink-0">
@@ -129,7 +201,8 @@
             <div class="flex items-center gap-3 rounded-lg border bg-card p-3 text-sm">
               <div class="min-w-0 flex-1">
                 <p class="font-medium truncate">{{ req.template_name }}</p>
-                <p class="text-xs text-muted-foreground">{{ req.plan_id }}{% if req.note %} · {{ req.note }}{% endif %}</p>
+                <p class="text-xs text-muted-foreground">{{ req.plan_id }} · {{ req.max_session_minutes }} min/session · {{ req.max_starts }} start(s){% if req.note %} · {{ req.note }}{% endif %}</p>
+                {% if req.status == "approved" and req.allocation_id %}<p class="mt-1 text-xs text-green-600 dark:text-green-400">Dedicated allocation is available in Private.</p>{% endif %}
               </div>
               <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
                 {{ 'bg-green-500/15 text-green-600 dark:text-green-400' if req.status == 'approved' else
@@ -146,7 +219,6 @@
           <p class="text-sm">No requests yet.</p>
           <p class="text-xs mt-1 opacity-60">Browse the catalog and request a sandbox.</p>
         </div>
-      {% endif %}
       {% endif %}
     </div>
 

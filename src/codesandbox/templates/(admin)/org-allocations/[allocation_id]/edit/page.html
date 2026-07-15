@@ -1,0 +1,128 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/button.html" as button %}
+
+<div class="mx-auto max-w-3xl p-4">
+  <div class="mb-4 flex items-center justify-between gap-3">
+    <div>
+      <a href="/hub?tab=private" class="text-xs text-muted-foreground hover:text-foreground">← Back to private pool</a>
+      <h1 class="mt-2 text-2xl font-bold tracking-tight">Edit allocation</h1>
+      <p class="mt-1 text-sm text-muted-foreground">
+        Update this prepared allocation group without creating a new one.
+      </p>
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+  {% endif %}
+
+  {% call frame.frame() %}
+    {% call frame.frame_panel(class="space-y-5") %}
+      <div class="flex items-start gap-3">
+        <div class="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted">
+          {% if allocation.template_icon %}<img src="{{ allocation.template_icon }}" alt="" class="size-full rounded-lg object-cover">{% endif %}
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="truncate text-base font-semibold">{{ allocation.template_name }}</h2>
+            <span class="rounded-full bg-muted px-2 py-0.5 text-[11px]">{{ allocation.status }}</span>
+          </div>
+          <p class="text-xs text-muted-foreground">{{ allocation.plan_name }} · {{ allocation.access_scope | replace("_", " ") }}</p>
+          {% if in_use_count %}
+            <p class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              {{ in_use_count }} slot{{ '' if in_use_count == 1 else 's' }} currently in use. Active sessions are preserved and cannot be deleted by this form.
+            </p>
+          {% endif %}
+        </div>
+      </div>
+
+      <form id="allocation-edit-form" method="post" action="/org-allocations/{{ allocation.id }}/edit" class="space-y-4">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="text-xs font-medium text-muted-foreground">
+            Status
+            <select name="status" class="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm">
+              <option value="active" {% if allocation.status != "disabled" %}selected{% endif %}>Active</option>
+              <option value="disabled" {% if allocation.status == "disabled" %}selected{% endif %}>Deactivated</option>
+            </select>
+          </label>
+
+          <label class="text-xs font-medium text-muted-foreground">
+            Quantity
+            <input name="quantity" type="number" min="{{ in_use_count if in_use_count > 0 else 1 }}" max="50" value="{{ allocation.quantity or 1 }}"
+                   class="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm">
+          </label>
+
+          <label class="text-xs font-medium text-muted-foreground">
+            Access
+            <select name="access_scope" data-allocation-access-scope class="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm">
+              <option value="pool" {% if allocation.access_scope == "pool" %}selected{% endif %}>Shared pool</option>
+              <option value="private" {% if allocation.access_scope == "private" %}selected{% endif %}>Dedicated member</option>
+            </select>
+          </label>
+
+          <label class="text-xs font-medium text-muted-foreground {% if allocation.access_scope != 'private' %}hidden{% endif %}" data-dedicated-member-field>
+            Dedicated member
+            <select name="assigned_to_user_id" data-dedicated-member-select {% if allocation.access_scope != 'private' %}disabled{% else %}required{% endif %} class="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm">
+              <option value="">Only required for Dedicated member</option>
+              {% for member in org_members %}
+                <option value="{{ member.user_id }}" {% if allocation.assigned_to_user_id and member.user_id|string == allocation.assigned_to_user_id|string %}selected{% endif %}>
+                  {{ member.name }} — {{ member.email }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <label class="text-xs font-medium text-muted-foreground">
+            Max hours per session
+            <input name="max_session_hours" type="number" min="0.25" max="72" step="0.25" value="{{ '%.2f' % ((allocation.max_session_minutes or 120) / 60) }}"
+                   class="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm">
+          </label>
+
+          <label class="text-xs font-medium text-muted-foreground">
+            Starts per member
+            <input name="max_starts_per_member" type="number" min="1" max="1000" value="{{ allocation.max_starts_per_member or 1 }}"
+                   class="mt-1 w-full rounded-md border bg-background px-3 py-2 text-sm">
+          </label>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <a href="/hub?tab=private" class="inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-medium hover:bg-accent">Cancel</a>
+          {% call button.button(variant="default", type="submit") %}Save changes{% endcall %}
+        </div>
+      </form>
+    {% endcall %}
+  {% endcall %}
+</div>
+
+{% app_script "allocation-edit-scope-toggle" %}
+(function(){
+  'use strict';
+
+  function sync(root){
+    var scope = root.querySelector('[data-allocation-access-scope]');
+    var field = root.querySelector('[data-dedicated-member-field]');
+    var select = root.querySelector('[data-dedicated-member-select]');
+    if (!scope || !field || !select) return;
+    var dedicated = scope.value === 'private';
+    field.classList.toggle('hidden', !dedicated);
+    select.disabled = !dedicated;
+    select.required = dedicated;
+    if (!dedicated) select.value = '';
+  }
+
+  function init(){
+    document.querySelectorAll('#allocation-edit-form').forEach(function(form){
+      if (form._allocationScopeInit) return;
+      form._allocationScopeInit = true;
+      sync(form);
+      var scope = form.querySelector('[data-allocation-access-scope]');
+      if (scope) scope.addEventListener('change', function(){ sync(form); });
+    });
+  }
+
+  init();
+  window.addEventListener('app-router:patch', init);
+})();
+{% end_app_script %}

@@ -18,7 +18,7 @@ from codesandbox.config import get_settings
 from . import repository
 
 
-_BLOCKED_USER_STATUSES = {"banned"}
+_BLOCKED_USER_STATUSES = {"banned", "inactive"}
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,7 @@ class AuthResult:
     token: str | None = None
     requires_2fa: bool = False
     user_id: str | None = None
+    challenge_method: str | None = None
 
 
 def hash_token(token: str) -> str:
@@ -93,6 +94,128 @@ def sign_up(
     )
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def _ua_hash(user_agent: str | None) -> str:
+    return hashlib.sha256((user_agent or "").encode("utf-8")).hexdigest()
+
+
+def _ip_is_temporarily_blocked(ip_address: str | None) -> bool:
+    if not ip_address:
+        return False
+    since = datetime.now(timezone.utc) - timedelta(minutes=10)
+    recent = repository.list_recent_login_attempts(ip_address=ip_address, since=since)
+    failures = [row for row in recent if not row.succeeded]
+    distinct_accounts = {str(row.email or "").lower() for row in failures if row.email}
+    return len(failures) >= 20 or len(distinct_accounts) >= 8
+
+
+def _lock_duration_for_streak(streak: int) -> timedelta | None:
+    if streak >= 15:
+        return timedelta(hours=1)
+    if streak >= 10:
+        return timedelta(minutes=15)
+    if streak >= 7:
+        return timedelta(minutes=5)
+    if streak >= 5:
+        return timedelta(minutes=1)
+    return None
+
+
+def _recent_account_failure_streak(email: str) -> int:
+    """Adaptive streak for a bounded window, not a lifetime counter.
+
+    A failure from months ago must not combine with today's typo to lock an
+    account. Password and second-factor failures within the last 30 minutes
+    are the signals used for progressive lockout.
+    """
+    since = datetime.now(timezone.utc) - timedelta(minutes=30)
+    counted_reasons = {"invalid_credentials", "invalid_second_factor"}
+    return sum(
+        1
+        for row in repository.list_recent_login_attempts(email=email, since=since)
+        if not row.succeeded and str(row.failure_reason or "") in counted_reasons
+    )
+
+
+def _record_password_failure(user, *, email: str, ip_address: str | None) -> None:
+    repository.record_login_attempt(
+        email=email, ip_address=ip_address, succeeded=False, failure_reason="invalid_credentials"
+    )
+    if user is None:
+        return
+    streak = max(1, _recent_account_failure_streak(email))
+    updates: dict[str, object] = {"auth_failure_streak": streak}
+    duration = _lock_duration_for_streak(streak)
+    if duration is not None:
+        updates["auth_locked_until"] = datetime.now(timezone.utc) + duration
+    repository.update_user(str(user.id), **updates)
+
+
+def record_second_factor_failure(user_id: str, *, ip_address: str | None) -> None:
+    user = repository.find_user_by_id(user_id)
+    if user is None:
+        return
+    repository.record_login_attempt(
+        email=user.email,
+        ip_address=ip_address,
+        succeeded=False,
+        failure_reason="invalid_second_factor",
+    )
+    streak = max(1, _recent_account_failure_streak(user.email))
+    updates: dict[str, object] = {"auth_failure_streak": streak}
+    duration = _lock_duration_for_streak(streak)
+    if duration is not None:
+        updates["auth_locked_until"] = datetime.now(timezone.utc) + duration
+    repository.update_user(str(user.id), **updates)
+
+
+def _login_requires_step_up(user, *, ip_address: str | None, user_agent: str | None) -> bool:
+    if not user.last_login_at:
+        return False
+    new_ip = bool(user.last_login_ip and ip_address and str(user.last_login_ip) != str(ip_address))
+    current_ua = _ua_hash(user_agent)
+    new_device = bool(user.last_login_ua_hash and user.last_login_ua_hash != current_ua)
+    since = datetime.now(timezone.utc) - timedelta(minutes=30)
+    recent_failures = sum(
+        1
+        for row in repository.list_recent_login_attempts(email=user.email, since=since)
+        if not row.succeeded
+    )
+    return (new_ip and new_device) or ((new_ip or new_device) and recent_failures >= 2)
+
+
+def request_login_email_challenge(user_id: str) -> bool:
+    from codesandbox.shared.email import send_otp
+
+    user = repository.find_user_by_id(user_id)
+    if user is None or not user.email_verified:
+        return False
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    repository.create_verification_token(
+        user_id=str(user.id),
+        identifier=f"login:{user.id}",
+        token_hash=hash_token(code),
+        purpose="login_otp",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    return send_otp(to=user.email, otp_code=code, expires_minutes=10)
+
+
+def verify_login_email_challenge(user_id: str, code: str) -> bool:
+    token = repository.find_active_verification_token(
+        identifier=f"login:{user_id}", purpose="login_otp"
+    )
+    if token is None or not secrets.compare_digest(token.token_hash, hash_token(code)):
+        return False
+    repository.consume_verification_token(token)
+    return True
+
+
 def sign_in(
     *,
     email: str,
@@ -100,41 +223,60 @@ def sign_in(
     ip_address: str | None,
     user_agent: str | None,
 ) -> AuthResult:
+    email = email.strip().lower()
+    if _ip_is_temporarily_blocked(ip_address):
+        repository.record_login_attempt(
+            email=email, ip_address=ip_address, succeeded=False, failure_reason="ip_throttled"
+        )
+        return AuthResult(False, "Too many sign-in attempts. Try again later.")
+
     user = repository.find_user_by_email(email)
     if not user or not user.password_hash:
-        repository.record_login_attempt(
-            email=email,
-            ip_address=ip_address,
-            succeeded=False,
-            failure_reason="invalid_credentials",
-        )
+        _record_password_failure(user, email=email, ip_address=ip_address)
         return AuthResult(False, "Invalid email or password.")
+
+    locked_until = _aware(getattr(user, "auth_locked_until", None))
+    if locked_until and locked_until > datetime.now(timezone.utc):
+        repository.record_login_attempt(
+            email=email, ip_address=ip_address, succeeded=False, failure_reason="account_locked"
+        )
+        retry_seconds = max(1, int((locked_until - datetime.now(timezone.utc)).total_seconds()))
+        retry_minutes = max(1, (retry_seconds + 59) // 60)
+        return AuthResult(False, f"Too many failed attempts. Try again in about {retry_minutes} minute(s).")
 
     if user.status in _BLOCKED_USER_STATUSES:
         repository.record_login_attempt(
-            email=email,
-            ip_address=ip_address,
-            succeeded=False,
-            failure_reason=user.status,
+            email=email, ip_address=ip_address, succeeded=False, failure_reason=user.status
         )
         return AuthResult(False, "This account is suspended or banned.")
 
     if not check_password_hash(user.password_hash, password):
-        repository.record_login_attempt(
-            email=email,
-            ip_address=ip_address,
-            succeeded=False,
-            failure_reason="invalid_credentials",
-        )
+        _record_password_failure(user, email=email, ip_address=ip_address)
         return AuthResult(False, "Invalid email or password.")
 
     if user.two_factor_enabled:
-        return AuthResult(True, "2FA required.", requires_2fa=True, user_id=user.id)
+        return AuthResult(
+            True, "2FA required.", requires_2fa=True, user_id=str(user.id), challenge_method="totp"
+        )
+
+    settings = get_settings()
+    if (
+        settings.resend_api_key
+        and user.email_verified
+        and _login_requires_step_up(user, ip_address=ip_address, user_agent=user_agent)
+    ):
+        if not request_login_email_challenge(str(user.id)):
+            return AuthResult(False, "Unable to deliver the security verification code. Try again shortly.")
+        return AuthResult(
+            True,
+            "Email verification required.",
+            requires_2fa=True,
+            user_id=str(user.id),
+            challenge_method="email",
+        )
 
     token = create_session_for_user(
-        user.id,
-        ip_address=ip_address,
-        user_agent=user_agent,
+        str(user.id), ip_address=ip_address, user_agent=user_agent
     )
     return AuthResult(True, "Signed in.", token=token)
 
@@ -149,22 +291,47 @@ def create_session_for_user(
     if not user or _user_is_blocked(user):
         return None
 
+    previous_ip = str(user.last_login_ip or "")
+    previous_ua = str(user.last_login_ua_hash or "")
+    current_ua_hash = _ua_hash(user_agent)
+    is_new_device = bool(
+        user.last_login_at
+        and ((previous_ip and previous_ip != str(ip_address or "")) or (previous_ua and previous_ua != current_ua_hash))
+    )
+
     settings = get_settings()
     raw_token = secrets.token_urlsafe(48)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
     repository.create_session(
-        user_id=user.id,
+        user_id=str(user.id),
         token_hash=hash_token(raw_token),
         expires_at=expires_at,
         ip_address=ip_address,
         user_agent=user_agent,
     )
-    repository.update_user(user.id, last_login_at=datetime.now(timezone.utc))
-    repository.record_login_attempt(
-        email=user.email,
-        ip_address=ip_address,
-        succeeded=True,
+    now = datetime.now(timezone.utc)
+    repository.update_user(
+        str(user.id),
+        last_login_at=now,
+        last_login_ip=ip_address,
+        last_login_ua_hash=current_ua_hash,
+        auth_failure_streak=0,
+        auth_locked_until=None,
     )
+    repository.record_login_attempt(email=user.email, ip_address=ip_address, succeeded=True)
+
+    if is_new_device:
+        try:
+            from codesandbox.shared.email import send_new_device_login_alert
+            send_new_device_login_alert(
+                to=user.email,
+                ip_address=ip_address or "Unknown",
+                user_agent=user_agent or "Unknown",
+                login_time=now.isoformat(),
+                settings_url=f"{settings.app_url}/settings?tab=security",
+            )
+        except Exception:
+            pass
     return raw_token
 
 

@@ -95,6 +95,11 @@ def create_organization(
     seed_org_roles(org.id)
     if created_by:
         add_member(org_id=org.id, user_id=created_by)
+    # A newly-created organization must be usable immediately. The global
+    # seed may have run long before this row existed, so apply the registered
+    # sandbox permissions to its default roles now instead of waiting for an
+    # unrelated Roles page visit or application restart.
+    ensure_org_permissions_seeded()
     return org
 
 
@@ -123,6 +128,9 @@ def add_member(org_id: str, user_id: str) -> OrganizationMember:
         user_id=user_id,
     )
     member.save()
+    member_role = OrganizationRole.objects.filter(org_id=org_id, name="member").first()
+    if member_role:
+        assign_role_to_member(member.id, member_role.id)
     return member
 
 
@@ -387,7 +395,14 @@ def delete_member(member_id: str) -> None:
 
 
 def ensure_org_permissions_seeded() -> None:
+    # Permission registration is import-driven. Guarantee every organization
+    # permission provider is loaded before synchronizing the database; otherwise
+    # creating an organization from a narrow code path could incorrectly treat
+    # valid sandbox permissions as stale and delete them.
+    import codesandbox.features.organizations  # noqa: F401
+    import codesandbox.features.sandbox  # noqa: F401
     from codesandbox.shared.permissions import get_registered_org_permissions
+
     registered = {key: (label, group) for key, label, group in get_registered_org_permissions()}
 
     for perm in OrganizationPermission.objects.all():
@@ -396,11 +411,54 @@ def ensure_org_permissions_seeded() -> None:
             perm.delete()
 
     for key, (label, group) in registered.items():
-        if not OrganizationPermission.objects.filter(key=key).first():
-            p = OrganizationPermission(
+        row = OrganizationPermission.objects.filter(key=key).first()
+        if row is None:
+            row = OrganizationPermission(
                 id=str(uuid.uuid4()), key=key, label=label, group=group,
             )
-            p.save()
+            row.save()
+        elif row.label != label or row.group != group:
+            row.label = label
+            row.group = group
+            row.save()
+
+    admin_defaults = {
+        "sandbox.allocations.prepare",
+        "sandbox.allocations.manage",
+        "sandbox.allocations.view_all",
+        "sandbox.instances.use_pool",
+        "sandbox.instances.use_assigned",
+        "sandbox.instances.stop_own",
+        "sandbox.requests.submit",
+        "sandbox.requests.review",
+        "sandbox.billing.view",
+        "sandbox.billing.topup",
+    }
+    member_defaults = {
+        "sandbox.instances.use_pool",
+        "sandbox.instances.use_assigned",
+        "sandbox.instances.stop_own",
+        "sandbox.requests.submit",
+    }
+
+    for org in Organization.objects.all():
+        seed_org_roles(str(org.id))
+        roles = {role.name: role for role in list_org_roles(str(org.id))}
+        for role_name, keys in (("admin", admin_defaults), ("member", member_defaults)):
+            role = roles.get(role_name)
+            if role is None:
+                continue
+            for key in keys:
+                set_org_role_permission(str(role.id), key, True)
+
+        member_role = roles.get("member")
+        if member_role is not None:
+            for member in list_members(str(org.id)):
+                if is_org_owner(str(org.id), str(member.user_id)):
+                    continue
+                existing = OrganizationMemberRole.objects.filter(member_id=member.id).all()
+                if not existing:
+                    assign_role_to_member(str(member.id), str(member_role.id))
 
 
 def get_all_org_permissions() -> list[OrganizationPermission]:

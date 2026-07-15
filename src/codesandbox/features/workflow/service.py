@@ -378,11 +378,35 @@ def _run_context(stage_run) -> dict | None:
     }
 
 
+
+
+def _can_manage_org_workflow_run(run, actor_user_id: str) -> bool:
+    """Fail closed for legacy organization workflow runs.
+
+    New organization runs are blocked at the route because they bypass the
+    allocation/request model. Existing rows may still exist, so only the org
+    owner or a role that manages sandbox allocations may continue/view them.
+    """
+    if run.owner_type != "org" or not run.owner_id:
+        return False
+    from codesandbox.features.organizations import repository as org_repo
+
+    org_id = str(run.owner_id)
+    if org_repo.get_member(org_id, actor_user_id) is None:
+        return False
+    return (
+        org_repo.is_org_owner(org_id, actor_user_id)
+        or "sandbox.allocations.manage" in org_repo.get_member_permissions(org_id, actor_user_id)
+    )
+
 def continue_workflow_run(run_id: str, actor_user_id: str) -> tuple[dict | None, str | None]:
     run = repository.get_workflow_run(run_id)
     if run is None:
         return None, "Workflow run not found."
-    if run.owner_type != "org" and str(run.owner_id) != actor_user_id:
+    if run.owner_type == "org":
+        if not _can_manage_org_workflow_run(run, actor_user_id):
+            return None, "You do not have permission to continue this organization run."
+    elif str(run.owner_id) != actor_user_id:
         return None, "You do not have permission to continue this run."
     if run.status != "running":
         return None, f"Workflow run is '{run.status}', not running."
@@ -442,7 +466,10 @@ def get_workflow_run_detail(run_id: str, actor_user_id: str) -> tuple[dict | Non
     run = repository.get_workflow_run(run_id)
     if run is None:
         return None, "Workflow run not found."
-    if run.owner_type != "org" and str(run.owner_id) != actor_user_id:
+    if run.owner_type == "org":
+        if not _can_manage_org_workflow_run(run, actor_user_id):
+            return None, "You do not have permission to view this organization run."
+    elif str(run.owner_id) != actor_user_id:
         return None, "You do not have permission to view this run."
     wf = repository.get_workflow(str(run.workflow_id))
     stage_runs = repository.list_stage_runs(run_id)

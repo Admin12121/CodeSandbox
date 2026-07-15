@@ -230,7 +230,7 @@ def save_template_ui_workflow_action(template_id: str):
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/status")
-@platform_perm("platform.sandboxes.manage")
+@platform_perm("platform.sandboxes.publish")
 def set_template_status_action(template_id: str):
     cs = get_current_session()
     if request.is_json:
@@ -344,7 +344,7 @@ def delete_plan_action(plan_id: str):
 # ── Admin: test-run a template ────────────────────────────────────────────────
 
 @web_bp.get("/platform/sandboxes/<template_id>/test-status")
-@platform_perm("platform.sandboxes.manage")
+@platform_perm("platform.sandboxes.test")
 def test_status_action(template_id: str):
     cs = get_current_session()
     result = get_template_test_status(
@@ -356,7 +356,7 @@ def test_status_action(template_id: str):
 
 
 @web_bp.post("/platform/sandboxes/<template_id>/test-run")
-@platform_perm("platform.sandboxes.manage")
+@platform_perm("platform.sandboxes.test")
 def test_run_action(template_id: str):
     cs = get_current_session()
     test_input_file = request.files.get("test_input_file")

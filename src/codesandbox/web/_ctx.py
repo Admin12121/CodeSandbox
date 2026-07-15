@@ -16,7 +16,7 @@ def _user_ctx(user) -> dict:
     }
 
 
-def _workspaces_ctx(user, active_workspace=None) -> dict:
+def _workspaces_ctx(user, active_workspace=None, *, force_personal: bool = False) -> dict:
     if user.platform_role in ("system_admin", "system_staff"):
         return {
             "workspace_list": None,
@@ -32,7 +32,9 @@ def _workspaces_ctx(user, active_workspace=None) -> dict:
         from codesandbox.features.organizations.service import get_user_org_list
         g._workspace_list = get_user_org_list(user.id)
     workspace_list = g._workspace_list
-    if active_workspace is None:
+    if force_personal:
+        active_workspace = None
+    elif active_workspace is None:
         persisted_slug = flask_session.get("active_workspace_slug")
         if persisted_slug:
             active_workspace = next(

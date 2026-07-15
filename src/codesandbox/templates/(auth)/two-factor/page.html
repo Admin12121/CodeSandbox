@@ -22,11 +22,14 @@ as otp_ui %}
                     >
                 </a>
                 <p class="mt-2 text-sm font-medium">
-                    Two-factor authentication
+                    Security verification
                 </p>
                 <p class="mt-1 text-xs text-muted-foreground">
-                    Enter the 6-digit code from your authenticator app, or use a
-                    backup code.
+                    {% if challenge_method == "email" %}
+                    Enter the 6-digit security code sent to your verified email.
+                    {% else %}
+                    Enter the 6-digit code from your authenticator app, or use a backup code.
+                    {% endif %}
                 </p>
             </div>
 

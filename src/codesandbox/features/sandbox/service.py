@@ -535,6 +535,8 @@ def _restart_instance_state(inst, template) -> tuple[bool, str | None]:
         return False, None
     if template is None or template.status != "active":
         return False, "Template is not active."
+    if getattr(inst, "allocation_id", None):
+        return False, "Start a new session from the organization Private tab."
     if bool(getattr(template, "input_required", False)):
         return False, "This template requires a new input upload. Start it again from the Hub."
     plan = repository.get_plan(str(inst.plan_id or ""))
@@ -661,47 +663,506 @@ def create_org_instance(
     plan_id: str,
     assigned_to_user_id: str | None = None,
 ) -> tuple[dict | None, str | None]:
+    """Deprecated: org runtimes must originate from prepared allocations.
+
+    Keeping this explicit failure prevents old routes or extensions from
+    bypassing the organization approval/guardrail workflow and charging the
+    shared balance immediately.
+    """
+    return None, (
+        "Direct organization instance creation is disabled. "
+        "Prepare an allocation from the organization Public catalog instead."
+    )
+
+
+
+def _allocation_dict(row, *, viewer_user_id: str | None = None, manager: bool = False) -> dict:
+    template = repository.get_template(str(row.template_id))
+    plan = repository.get_plan(str(row.plan_id))
+    live = repository.find_live_instance_for_allocation(str(row.id))
+    start_count = (
+        repository.count_allocation_starts_by_user(str(row.id), viewer_user_id)
+        if viewer_user_id
+        else 0
+    )
+    limit = int(row.max_starts_per_member or 0)
+    assigned = str(row.assigned_to_user_id) if row.assigned_to_user_id else None
+    can_start_scope = bool(
+        viewer_user_id
+        and (
+            row.access_scope == "pool"
+            or assigned == str(viewer_user_id)
+        )
+    )
+    can_start = bool(
+        row.status == "active"
+        and template is not None
+        and template.status == "active"
+        and plan is not None
+        and plan.is_active
+        and live is None
+        and can_start_scope
+        and (limit <= 0 or start_count < limit)
+    )
+    # A shared pool allocation may be visible to every member, but the live
+    # instance belongs only to the member who claimed it. Do not leak an
+    # instance ID or an Open link to other members; managers may still inspect
+    # it for support/administration.
+    live_visible = bool(
+        live is not None
+        and (
+            manager
+            or str(live.assigned_to_user_id or "") == str(viewer_user_id or "")
+        )
+    )
+    return {
+        "id": str(row.id),
+        "org_id": str(row.org_id),
+        "template_id": str(row.template_id),
+        "template_name": template.name if template else "Unknown template",
+        "template_slug": template.slug if template else "",
+        "template_icon": (template.icon_path or "") if template else "",
+        "input_required": bool(template.input_required) if template else False,
+        "max_upload_mb": int(template.max_upload_mb or 0) if template else 0,
+        "plan_id": str(row.plan_id),
+        "plan_name": plan.name if plan else str(row.plan_id),
+        "access_scope": row.access_scope,
+        "assigned_to_user_id": assigned,
+        "max_session_minutes": int(row.max_session_minutes or 0),
+        "max_starts_per_member": limit,
+        "member_start_count": start_count,
+        "status": row.status,
+        "live_instance": _instance_dict(live) if live_visible else None,
+        "in_use": live is not None or row.status == "in_use",
+        "can_start": can_start,
+        "can_manage": manager,
+        "created_at": row.created_at,
+    }
+
+
+def create_org_allocations(
+    *,
+    org_id: str,
+    creator_user_id: str,
+    template_slug: str,
+    plan_id: str,
+    access_scope: str = "pool",
+    assigned_to_user_id: str | None = None,
+    quantity: int = 1,
+    max_session_minutes: int | None = None,
+    max_starts_per_member: int | None = None,
+) -> tuple[list[dict] | None, str | None]:
+    """Prepare org allocations without starting or charging any runtime."""
     from codesandbox.features.organizations import repository as org_repo
     from codesandbox.features.identity.models import User
 
     actor = User.objects.filter(id=creator_user_id).first()
+    org = org_repo.get_organization(org_id)
     if actor is None or actor.status != "active":
         return None, "Authenticated user is not active."
-    org = org_repo.get_organization(org_id)
     if org is None or org.status != "active":
         return None, "Organization is not active."
     if org_repo.get_member(org_id, creator_user_id) is None:
         return None, "You are not a member of this organization."
-    permissions = org_repo.get_member_permissions(org_id, creator_user_id)
-    if not org_repo.is_org_owner(org_id, creator_user_id) and "sandbox.instances.create" not in permissions:
-        return None, "You do not have permission to create organization instances."
-    if assigned_to_user_id and org_repo.get_member(org_id, assigned_to_user_id) is None:
-        return None, "Assigned user is not a member of this organization."
-    t = repository.get_template_by_slug(template_slug)
-    if not t or t.status != "active":
+    perms = set(org_repo.get_member_permissions(org_id, creator_user_id))
+    if not org_repo.is_org_owner(org_id, creator_user_id) and "sandbox.allocations.prepare" not in perms:
+        return None, "You do not have permission to prepare organization sandboxes."
+
+    access_scope = str(access_scope or "pool").strip().lower()
+    if access_scope not in {"pool", "private"}:
+        return None, "Invalid allocation scope."
+    if access_scope == "private":
+        if not assigned_to_user_id or org_repo.get_member(org_id, assigned_to_user_id) is None:
+            return None, "A private allocation must be assigned to an organization member."
+    else:
+        assigned_to_user_id = None
+
+    quantity = max(1, min(int(quantity or 1), 50))
+    max_session_minutes = max(1, min(int(max_session_minutes or 120), 72 * 60))
+    max_starts_per_member = max(1, min(int(max_starts_per_member or 1), 1000))
+
+    template = repository.get_template_by_slug(template_slug)
+    if template is None or template.status != "active":
         return None, "Template not found or inactive."
-    effective_plan, plan_error = get_effective_plan(str(t.id), plan_id)
-    if plan_error or effective_plan is None:
+    _, plan_error = get_effective_plan(str(template.id), plan_id)
+    if plan_error:
         return None, plan_error
-    balance_error = _ensure_start_balance(
-        effective_plan,
-        "org",
-        org_id=org_id,
+
+    rows = []
+    for _ in range(quantity):
+        row = repository.create_org_allocation(
+            org_id=org_id,
+            template_id=str(template.id),
+            plan_id=plan_id,
+            access_scope=access_scope,
+            assigned_to_user_id=assigned_to_user_id,
+            max_session_minutes=max_session_minutes,
+            max_starts_per_member=max_starts_per_member,
+            created_by_user_id=creator_user_id,
+        )
+        rows.append(_allocation_dict(row, viewer_user_id=creator_user_id, manager=True))
+    return rows, None
+
+
+def get_org_allocations_for_user(org_id: str, user_id: str) -> list[dict]:
+    from codesandbox.features.organizations import repository as org_repo
+    if org_repo.get_member(org_id, user_id) is None:
+        return []
+    perms = set(org_repo.get_member_permissions(org_id, user_id))
+    manager = org_repo.is_org_owner(org_id, user_id) or bool(
+        {"sandbox.allocations.manage", "sandbox.allocations.view_all"} & perms
     )
+    rows = (
+        repository.list_org_allocations(org_id)
+        if manager
+        else repository.list_allocations_for_member(org_id, user_id)
+    )
+    return [_allocation_dict(row, viewer_user_id=user_id, manager=manager) for row in rows]
+
+
+def group_org_allocations_for_display(allocations: list[dict]) -> list[dict]:
+    """Collapse identical prepared allocation slots into one UI card.
+
+    Creating a shared pool with quantity=5 stores five allocation rows because
+    each row is an independently claimable runtime slot. Showing those rows
+    one-for-one makes the Hub look duplicated, so the UI receives a grouped
+    view while start/archive actions still target the underlying slot IDs.
+    """
+    groups: dict[tuple, dict] = {}
+    order: list[tuple] = []
+    for allocation in allocations:
+        status_bucket = "disabled" if allocation.get("status") == "disabled" else "available"
+        key = (
+            str(allocation.get("template_id") or ""),
+            str(allocation.get("plan_id") or ""),
+            str(allocation.get("access_scope") or ""),
+            str(allocation.get("assigned_to_user_id") or ""),
+            int(allocation.get("max_session_minutes") or 0),
+            int(allocation.get("max_starts_per_member") or 0),
+            bool(allocation.get("input_required")),
+            status_bucket,
+        )
+        group = groups.get(key)
+        if group is None:
+            group = dict(allocation)
+            group.update(
+                group_id=f"allocation-group-{len(order) + 1}",
+                allocation_ids=[],
+                archive_allocation_ids=[],
+                live_instances=[],
+                quantity=0,
+                active_count=0,
+                in_use_count=0,
+                unavailable_count=0,
+                total_member_start_count=0,
+                total_max_starts_per_member=0,
+                start_allocation_id=None,
+                can_archive=False,
+            )
+            groups[key] = group
+            order.append(key)
+
+        allocation_id = str(allocation.get("id") or "")
+        group["allocation_ids"].append(allocation_id)
+        group["quantity"] += 1
+        group["total_member_start_count"] += int(allocation.get("member_start_count") or 0)
+        group["total_max_starts_per_member"] += int(allocation.get("max_starts_per_member") or 0)
+
+        if allocation.get("live_instance"):
+            group["live_instances"].append(allocation["live_instance"])
+            if not group.get("live_instance"):
+                group["live_instance"] = allocation["live_instance"]
+
+        if allocation.get("can_start") and not group.get("start_allocation_id"):
+            group["start_allocation_id"] = allocation_id
+            group["id"] = allocation_id
+            group["can_start"] = True
+
+        if allocation.get("in_use") or allocation.get("status") == "in_use":
+            group["in_use_count"] += 1
+        elif allocation.get("status") == "active":
+            group["active_count"] += 1
+        elif allocation.get("status") == "disabled":
+            group["disabled_count"] = int(group.get("disabled_count") or 0) + 1
+        else:
+            group["unavailable_count"] += 1
+
+        if allocation.get("can_manage") and not allocation.get("in_use") and not allocation.get("live_instance"):
+            group["archive_allocation_ids"].append(allocation_id)
+            group["can_archive"] = True
+
+        group["can_manage"] = bool(group.get("can_manage") or allocation.get("can_manage"))
+
+    result = [groups[key] for key in order]
+    for group in result:
+        if group["active_count"]:
+            group["status"] = "active"
+        elif group["in_use_count"]:
+            group["status"] = "in_use"
+        elif group.get("disabled_count"):
+            group["status"] = "disabled"
+        group["can_start"] = bool(group.get("start_allocation_id"))
+        if group["quantity"] > 1:
+            group["member_start_count"] = group["total_member_start_count"]
+            group["max_starts_per_member"] = group["total_max_starts_per_member"]
+    return result
+
+
+def _can_manage_org_allocations(org_id: str, user_id: str) -> bool:
+    from codesandbox.features.organizations import repository as org_repo
+
+    if org_repo.get_member(org_id, user_id) is None:
+        return False
+    perms = set(org_repo.get_member_permissions(org_id, user_id))
+    return org_repo.is_org_owner(org_id, user_id) or "sandbox.allocations.manage" in perms
+
+
+def _allocation_status_bucket(status: str | None) -> str:
+    return "disabled" if str(status or "") == "disabled" else "available"
+
+
+def _allocation_matches_group(candidate, anchor) -> bool:
+    return (
+        str(candidate.org_id) == str(anchor.org_id)
+        and str(candidate.template_id) == str(anchor.template_id)
+        and str(candidate.plan_id) == str(anchor.plan_id)
+        and str(candidate.access_scope) == str(anchor.access_scope)
+        and str(candidate.assigned_to_user_id or "") == str(anchor.assigned_to_user_id or "")
+        and int(candidate.max_session_minutes or 0) == int(anchor.max_session_minutes or 0)
+        and int(candidate.max_starts_per_member or 0) == int(anchor.max_starts_per_member or 0)
+        and _allocation_status_bucket(candidate.status) == _allocation_status_bucket(anchor.status)
+    )
+
+
+def _allocation_group_rows(anchor):
+    return [
+        row
+        for row in repository.list_org_allocations(str(anchor.org_id))
+        if _allocation_matches_group(row, anchor)
+    ]
+
+
+def get_org_allocation_edit_context(
+    allocation_id: str,
+    org_id: str,
+    actor_user_id: str,
+) -> tuple[dict | None, str | None]:
+    from codesandbox.features.organizations import repository as org_repo
+    from codesandbox.features.identity.models import User
+
+    if not _can_manage_org_allocations(org_id, actor_user_id):
+        return None, "You do not have permission to manage allocations."
+    anchor = repository.get_org_allocation(allocation_id)
+    if anchor is None or str(anchor.org_id) != str(org_id) or anchor.status == "archived":
+        return None, "Allocation not found."
+    rows = _allocation_group_rows(anchor)
+    allocations = [
+        _allocation_dict(row, viewer_user_id=actor_user_id, manager=True)
+        for row in rows
+    ]
+    groups = group_org_allocations_for_display(allocations)
+    group = groups[0] if groups else _allocation_dict(anchor, viewer_user_id=actor_user_id, manager=True)
+    template = repository.get_template(str(anchor.template_id))
+    plan = repository.get_plan(str(anchor.plan_id))
+    members = org_repo.get_members_with_info(org_id)
+    return {
+        "allocation": group,
+        "allocation_ids": [str(row.id) for row in rows],
+        "editable_count": sum(1 for row in rows if row.status in {"active", "disabled"}),
+        "in_use_count": sum(1 for row in rows if row.status == "in_use"),
+        "template": _template_dict(template) if template else None,
+        "plan": _plan_dict(plan) if plan else None,
+        "org_members": members,
+        "assigned_user": (
+            User.objects.filter(id=str(anchor.assigned_to_user_id)).first()
+            if anchor.assigned_to_user_id
+            else None
+        ),
+    }, None
+
+
+def update_org_allocation_group(
+    allocation_id: str,
+    org_id: str,
+    actor_user_id: str,
+    *,
+    access_scope: str,
+    assigned_to_user_id: str | None,
+    quantity: int,
+    max_session_minutes: int,
+    max_starts_per_member: int,
+    status: str,
+) -> tuple[dict | None, str | None]:
+    from codesandbox.features.organizations import repository as org_repo
+
+    if not _can_manage_org_allocations(org_id, actor_user_id):
+        return None, "You do not have permission to manage allocations."
+    anchor = repository.get_org_allocation(allocation_id)
+    if anchor is None or str(anchor.org_id) != str(org_id) or anchor.status == "archived":
+        return None, "Allocation not found."
+    if status not in {"active", "disabled"}:
+        return None, "Invalid allocation status."
+    access_scope = str(access_scope or "pool").strip().lower()
+    if access_scope not in {"pool", "private"}:
+        return None, "Invalid allocation scope."
+    if access_scope == "private":
+        if not assigned_to_user_id or org_repo.get_member(org_id, assigned_to_user_id) is None:
+            return None, "A private allocation must be assigned to an organization member."
+    else:
+        assigned_to_user_id = None
+
+    quantity = max(1, min(int(quantity or 1), 50))
+    max_session_minutes = max(1, min(int(max_session_minutes or 120), 72 * 60))
+    max_starts_per_member = max(1, min(int(max_starts_per_member or 1), 1000))
+
+    rows = _allocation_group_rows(anchor)
+    in_use = [row for row in rows if row.status == "in_use"]
+    editable = [row for row in rows if row.status in {"active", "disabled"}]
+    if quantity < len(in_use):
+        return None, "Quantity cannot be lower than active sessions in this allocation group."
+
+    keep_editable_count = quantity - len(in_use)
+    if keep_editable_count < len(editable):
+        remove_count = len(editable) - keep_editable_count
+        for row in editable[-remove_count:]:
+            repository.update_org_allocation(str(row.id), status="archived")
+        editable = editable[:-remove_count]
+
+    for row in editable:
+        repository.update_org_allocation(
+            str(row.id),
+            access_scope=access_scope,
+            assigned_to_user_id=assigned_to_user_id,
+            max_session_minutes=max_session_minutes,
+            max_starts_per_member=max_starts_per_member,
+            status=status,
+        )
+
+    add_count = keep_editable_count - len(editable)
+    for _ in range(max(0, add_count)):
+        created = repository.create_org_allocation(
+            org_id=org_id,
+            template_id=str(anchor.template_id),
+            plan_id=str(anchor.plan_id),
+            access_scope=access_scope,
+            assigned_to_user_id=assigned_to_user_id,
+            max_session_minutes=max_session_minutes,
+            max_starts_per_member=max_starts_per_member,
+            created_by_user_id=actor_user_id,
+        )
+        if status == "disabled":
+            repository.update_org_allocation(str(created.id), status="disabled")
+
+    context, error = get_org_allocation_edit_context(allocation_id, org_id, actor_user_id)
+    return (context.get("allocation") if context else None), error
+
+
+def set_org_allocation_group_status(
+    allocation_ids: list[str],
+    org_id: str,
+    actor_user_id: str,
+    *,
+    status: str,
+) -> tuple[int, str | None]:
+    if not _can_manage_org_allocations(org_id, actor_user_id):
+        return 0, "You do not have permission to manage allocations."
+    if status not in {"active", "disabled", "archived"}:
+        return 0, "Invalid allocation status."
+    changed = 0
+    for allocation_id in allocation_ids[:50]:
+        row = repository.get_org_allocation(str(allocation_id))
+        if row is None or str(row.org_id) != str(org_id):
+            continue
+        if row.status == "in_use" or repository.find_live_instance_for_allocation(str(row.id)):
+            if status in {"disabled", "archived"}:
+                continue
+        if row.status != "archived":
+            repository.update_org_allocation(str(row.id), status=status)
+            changed += 1
+    return changed, None
+
+
+def claim_org_allocation(
+    allocation_id: str,
+    user_id: str,
+    *,
+    expected_org_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """Create one idle runtime row from a prepared allocation.
+
+    Charging still begins only in start_instance(). Keeping the claim and start
+    separate lets the route attach a required upload before any worker job exists.
+    """
+    from codesandbox.features.organizations import repository as org_repo
+    from codesandbox.features.identity.models import User
+
+    row = repository.get_org_allocation(allocation_id)
+    if row is None or row.status != "active":
+        return None, "Allocation is not available."
+    org_id = str(row.org_id)
+    if expected_org_id and str(expected_org_id) != org_id:
+        return None, "Allocation does not belong to the active organization workspace."
+    org = org_repo.get_organization(org_id)
+    actor = User.objects.filter(id=user_id).first()
+    if actor is None or actor.status != "active" or org is None or org.status != "active":
+        return None, "Organization or user is not active."
+    if org_repo.get_member(org_id, user_id) is None:
+        return None, "You are not a member of this organization."
+
+    perms = set(org_repo.get_member_permissions(org_id, user_id))
+    is_owner = org_repo.is_org_owner(org_id, user_id)
+    manager = is_owner or "sandbox.allocations.manage" in perms
+    if row.access_scope == "private":
+        if str(row.assigned_to_user_id or "") != str(user_id):
+            return None, "This private sandbox is assigned to another member."
+        if not is_owner and "sandbox.instances.use_assigned" not in perms:
+            return None, "You do not have permission to use assigned sandboxes."
+    elif not is_owner and "sandbox.instances.use_pool" not in perms:
+        return None, "You do not have permission to use the organization pool."
+
+    if row.status != "active" or repository.find_live_instance_for_allocation(allocation_id) is not None:
+        return None, "This allocation already has an active session or is unavailable."
+    max_starts = int(row.max_starts_per_member or 0)
+    if (
+        max_starts > 0
+        and repository.count_allocation_starts_by_user(allocation_id, user_id) >= max_starts
+    ):
+        return None, "You have reached the start limit for this allocation."
+
+    template = repository.get_template(str(row.template_id))
+    if template is None or template.status != "active":
+        return None, "Template is not active."
+    effective, plan_error = get_effective_plan(str(template.id), str(row.plan_id))
+    if plan_error or effective is None:
+        return None, plan_error
+    balance_error = _ensure_start_balance(effective, "org", org_id=org_id)
     if balance_error:
         return None, balance_error
-    inst = repository.create_instance(
-        template_id=str(t.id),
-        plan_id=plan_id,
-        workspace_type="org",
-        workspace_org_id=org_id,
-        assigned_to_user_id=assigned_to_user_id,
-        created_by_user_id=creator_user_id,
-        billing_entity="org",
-        billed_org_id=org_id,
+
+    inst, claim_error = repository.claim_org_allocation_instance(
+        allocation_id=allocation_id,
+        user_id=user_id,
+        org_id=org_id,
     )
+    if claim_error or inst is None:
+        return None, claim_error or "Unable to claim this allocation."
     return _instance_dict(inst), None
 
+
+def archive_org_allocation(
+    allocation_id: str, org_id: str, actor_user_id: str
+) -> tuple[dict | None, str | None]:
+    from codesandbox.features.organizations import repository as org_repo
+    row = repository.get_org_allocation(allocation_id)
+    if row is None or str(row.org_id) != str(org_id):
+        return None, "Allocation not found."
+    perms = set(org_repo.get_member_permissions(org_id, actor_user_id))
+    if not org_repo.is_org_owner(org_id, actor_user_id) and "sandbox.allocations.manage" not in perms:
+        return None, "You do not have permission to manage allocations."
+    if row.status == "in_use" or repository.find_live_instance_for_allocation(allocation_id):
+        return None, "Stop the active session before archiving this allocation."
+    row = repository.update_org_allocation(allocation_id, status="archived")
+    return (_allocation_dict(row, viewer_user_id=actor_user_id, manager=True), None) if row else (None, "Allocation not found.")
 
 def get_user_instances(user_id: str) -> list[dict]:
     instances = repository.list_instances_for_user(user_id)
@@ -768,7 +1229,16 @@ def archive_instance_for_user(
     inst = repository.get_instance(instance_id)
     if inst is None or getattr(inst, "deleted_at", None) is not None:
         return None, "Instance not found."
-    if not can_manage_instance(inst, actor_user_id):
+    # An idle row created by a successful allocation claim may need cleanup
+    # after upload/start validation fails. Permit the claimant to discard that
+    # idle row using the same authorization required to start it. Terminal
+    # runs still require the explicit stop/manage permission.
+    authorized = (
+        can_start_instance(inst, actor_user_id)
+        if inst.status == "idle"
+        else can_manage_instance(inst, actor_user_id)
+    )
+    if not authorized:
         return None, "You do not have permission to delete this instance."
     if inst.status not in {"idle", "stopped", "failed", "expired", "killed"}:
         return None, "Stop the instance before deleting it."
@@ -815,22 +1285,35 @@ def get_live_balance_for_actor(
 # ── InstanceRequest ───────────────────────────────────────────────────────────
 
 def _request_dict(req, template_cache: dict | None = None) -> dict:
+    from codesandbox.features.identity import repository as identity_repo
+
     tid = str(req.template_id)
     t = (template_cache or {}).get(tid) or repository.get_template(tid)
+    requester = identity_repo.find_user_by_id(str(req.requested_by))
+    try:
+        requested = json.loads(req.requested_config or "{}")
+        requested = requested if isinstance(requested, dict) else {}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        requested = {}
     return {
         "id": str(req.id),
         "org_id": str(req.org_id),
         "requested_by": str(req.requested_by),
+        "requester_name": requester.name if requester else "Unknown member",
+        "requester_email": requester.email if requester else "",
         "template_id": str(req.template_id),
         "template_name": t.name if t else "Unknown",
         "template_slug": t.slug if t else "",
         "plan_id": req.plan_id,
         "note": req.note or "",
+        "max_session_minutes": int(requested.get("max_session_minutes") or 120),
+        "max_starts": int(requested.get("max_starts") or 1),
         "status": req.status,
         "reviewed_by": str(req.reviewed_by) if req.reviewed_by else None,
         "reviewed_at": req.reviewed_at,
         "review_note": req.review_note or "",
         "instance_id": str(req.instance_id) if req.instance_id else None,
+        "allocation_id": str(req.allocation_id) if getattr(req, "allocation_id", None) else None,
         "created_at": req.created_at,
     }
 
@@ -841,6 +1324,9 @@ def submit_instance_request(
     template_slug: str,
     plan_id: str,
     note: str | None = None,
+    *,
+    max_session_minutes: int = 120,
+    max_starts: int = 1,
 ) -> tuple[dict | None, str | None]:
     from codesandbox.features.organizations import repository as org_repo
     org = org_repo.get_organization(org_id)
@@ -848,6 +1334,11 @@ def submit_instance_request(
         return None, "Organization is not active."
     if org_repo.get_member(org_id, user_id) is None:
         return None, "You are not a member of this organization."
+    if (
+        not org_repo.is_org_owner(org_id, user_id)
+        and "sandbox.requests.submit" not in org_repo.get_member_permissions(org_id, user_id)
+    ):
+        return None, "You do not have permission to request a sandbox."
     t = repository.get_template_by_slug(template_slug)
     if not t or t.status != "active":
         return None, "Template not found or inactive."
@@ -860,6 +1351,10 @@ def submit_instance_request(
         template_id=str(t.id),
         plan_id=plan_id,
         note=note,
+        requested_config=json.dumps({
+            "max_session_minutes": max(1, min(int(max_session_minutes or 120), 72 * 60)),
+            "max_starts": max(1, min(int(max_starts or 1), 1000)),
+        }),
     )
     return _request_dict(req), None
 
@@ -871,49 +1366,62 @@ def review_instance_request(
     action: str,
     review_note: str | None = None,
 ) -> tuple[dict | None, str | None]:
-    from datetime import datetime, timezone
+    from nexorm import transaction
     from codesandbox.features.organizations import repository as org_repo
 
-    if not org_repo.is_org_owner(org_id, reviewer_id) and "sandbox.requests.review" not in org_repo.get_member_permissions(org_id, reviewer_id):
+    if (
+        not org_repo.is_org_owner(org_id, reviewer_id)
+        and "sandbox.requests.review" not in org_repo.get_member_permissions(org_id, reviewer_id)
+    ):
         return None, "You do not have permission to review sandbox requests."
-    req = repository.get_instance_request(request_id)
-    if not req:
-        return None, "Request not found."
-    if str(req.org_id) != org_id:
-        return None, "Request not found in this organization."
-    if req.status != "pending":
-        return None, "Request already reviewed."
     if action not in ("approved", "denied"):
         return None, "Invalid action."
 
-    instance_id = None
-    if action == "approved":
-        org = org_repo.get_organization(str(req.org_id))
-        if org is None or org.status != "active":
-            return None, "Organization is not active."
-        tmpl = repository.get_template(str(req.template_id))
-        if not tmpl:
-            return None, "Template no longer exists; cannot approve."
-        inst, err = create_org_instance(
-            org_id=str(req.org_id),
-            creator_user_id=reviewer_id,
-            template_slug=tmpl.slug,
-            plan_id=req.plan_id,
-            assigned_to_user_id=str(req.requested_by),
-        )
-        if err:
-            return None, err
-        instance_id = inst["id"]
+    with transaction.atomic():
+        req = repository.get_instance_request_for_update(request_id)
+        if not req or str(req.org_id) != str(org_id):
+            return None, "Request not found in this organization."
+        if req.status != "pending":
+            return None, "Request already reviewed."
 
-    req = repository.update_instance_request(
-        request_id,
-        status=action,
-        reviewed_by=reviewer_id,
-        reviewed_at=datetime.now(timezone.utc),
-        review_note=review_note,
-        instance_id=instance_id,
-    )
-    return _request_dict(req), None
+        allocation_id = None
+        if action == "approved":
+            org = org_repo.get_organization(str(req.org_id))
+            if org is None or org.status != "active":
+                return None, "Organization is not active."
+            tmpl = repository.get_template(str(req.template_id))
+            if not tmpl or tmpl.status != "active":
+                return None, "Template is no longer active; cannot approve."
+            try:
+                requested = json.loads(req.requested_config or "{}")
+                requested = requested if isinstance(requested, dict) else {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                requested = {}
+            # Revalidate the plan at approval time; availability may have changed
+            # since the member submitted the request.
+            _, plan_error = get_effective_plan(str(tmpl.id), str(req.plan_id))
+            if plan_error:
+                return None, plan_error
+            allocation = repository.create_org_allocation(
+                org_id=str(req.org_id),
+                template_id=str(tmpl.id),
+                plan_id=str(req.plan_id),
+                access_scope="private",
+                assigned_to_user_id=str(req.requested_by),
+                max_session_minutes=max(1, min(int(requested.get("max_session_minutes") or 120), 72 * 60)),
+                max_starts_per_member=max(1, min(int(requested.get("max_starts") or 1), 1000)),
+                created_by_user_id=reviewer_id,
+            )
+            allocation_id = str(allocation.id)
+
+        req.status = action
+        req.reviewed_by = reviewer_id
+        req.reviewed_at = datetime.now(timezone.utc)
+        req.review_note = review_note
+        req.allocation_id = allocation_id
+        req.instance_id = None
+        req.save()
+        return _request_dict(req), None
 
 
 def get_org_requests(org_id: str, status: str | None = None) -> list[dict]:
@@ -1593,6 +2101,31 @@ def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> str |
 _policy_builder = PolicyBuilder()
 
 
+def can_start_instance(inst, actor_user_id: str | None) -> bool:
+    """Return whether the actor may start this already-created idle run."""
+    if not actor_user_id or getattr(inst, "deleted_at", None) is not None:
+        return False
+    from codesandbox.features.identity.models import User
+    from codesandbox.shared.permissions import has_org_permission, is_platform_staff
+
+    if inst.workspace_type == "personal":
+        return bool(inst.workspace_user_id and str(inst.workspace_user_id) == str(actor_user_id))
+    if inst.workspace_type == "test":
+        user = User.objects.filter(id=actor_user_id).first()
+        return bool(user and is_platform_staff(user))
+    if inst.workspace_type == "org" and inst.workspace_org_id:
+        org_id = str(inst.workspace_org_id)
+        from codesandbox.features.organizations import repository as org_repo
+        if org_repo.is_org_owner(org_id, actor_user_id):
+            return True
+        if inst.assigned_to_user_id and str(inst.assigned_to_user_id) == str(actor_user_id):
+            # Claiming the allocation already verified pool/assigned usage rights.
+            return True
+        user = User.objects.filter(id=actor_user_id).first()
+        return bool(user and has_org_permission(org_id, user, "sandbox.allocations.manage"))
+    return False
+
+
 def can_manage_instance(inst, actor_user_id: str | None) -> bool:
     """Owner, assignee, org managers, and platform staff may act on an instance."""
     if not actor_user_id or getattr(inst, "deleted_at", None) is not None:
@@ -1604,7 +2137,9 @@ def can_manage_instance(inst, actor_user_id: str | None) -> bool:
     if inst.workspace_user_id and str(inst.workspace_user_id) == actor_user_id:
         return True
     if inst.workspace_type == "org" and inst.assigned_to_user_id and str(inst.assigned_to_user_id) == actor_user_id:
-        return True
+        from codesandbox.features.organizations import repository as org_repo
+        org_id = str(inst.workspace_org_id or "")
+        return org_repo.is_org_owner(org_id, actor_user_id) or "sandbox.instances.stop_own" in org_repo.get_member_permissions(org_id, actor_user_id)
 
     user = User.objects.filter(id=actor_user_id).first()
     if user is None:
@@ -1612,7 +2147,7 @@ def can_manage_instance(inst, actor_user_id: str | None) -> bool:
     if is_platform_staff(user):
         return True
     if inst.workspace_type == "org" and inst.workspace_org_id:
-        return has_org_permission(str(inst.workspace_org_id), user, "sandbox.instances.create")
+        return has_org_permission(str(inst.workspace_org_id), user, "sandbox.allocations.manage")
     return False
 
 
@@ -1644,8 +2179,8 @@ def can_view_instance(instance_id: str, actor_user_id: str | None) -> bool:
         if org is None or org.status != "active":
             return False
         return (
-            has_org_permission(org_id, user, "sandbox.instances.view_all")
-            or has_org_permission(org_id, user, "sandbox.instances.create")
+            has_org_permission(org_id, user, "sandbox.allocations.view_all")
+            or has_org_permission(org_id, user, "sandbox.allocations.manage")
         )
     return False
 
@@ -1711,7 +2246,10 @@ def upload_instance_input(
     inst = repository.get_instance(instance_id)
     if inst is None:
         return None, "Instance not found."
-    if not can_manage_instance(inst, actor_user_id):
+    # Upload is a pre-start action. A member who successfully claimed an
+    # allocation is allowed to attach its required input even when their role
+    # intentionally lacks the broader stop/delete permission.
+    if not can_start_instance(inst, actor_user_id):
         return None, "You do not have permission to upload to this instance."
     if inst.status != "idle":
         return None, "Inputs can only be uploaded before the instance starts."
@@ -2086,7 +2624,7 @@ def start_instance(
     inst = repository.get_instance(instance_id)
     if inst is None:
         return None, "Instance not found."
-    if not can_manage_instance(inst, actor_user_id):
+    if not can_start_instance(inst, actor_user_id):
         return None, "You do not have permission to start this instance."
     if inst.status != "idle":
         return None, f"Cannot start an instance in '{inst.status}' state."
@@ -2095,6 +2633,21 @@ def start_instance(
         org = org_repo.get_organization(str(inst.workspace_org_id))
         if org is None or org.status != "active":
             return None, "Organization is not active."
+        if (
+            inst.billing_entity != "org"
+            or str(inst.billed_org_id or "") != str(inst.workspace_org_id)
+            or inst.billed_user_id
+        ):
+            return None, "Organization instance billing scope is invalid."
+    elif inst.workspace_type == "personal":
+        if (
+            inst.billing_entity != "user"
+            or str(inst.billed_user_id or "") != str(inst.workspace_user_id or "")
+            or inst.billed_org_id
+        ):
+            return None, "Personal instance billing scope is invalid."
+    elif inst.workspace_type == "test" and inst.billing_entity != "test":
+        return None, "Test instance billing scope is invalid."
 
     t = repository.get_template(str(inst.template_id))
     if not t:
@@ -2151,6 +2704,13 @@ def start_instance(
         )
     except (RuntimePolicyError, UnsupportedRuntimeError, ValueError, TypeError) as exc:
         return None, str(exc)
+
+    if getattr(inst, "allocation_id", None):
+        allocation = repository.get_org_allocation(str(inst.allocation_id))
+        if allocation and int(allocation.max_session_minutes or 0) > 0:
+            allocation_timeout = int(allocation.max_session_minutes) * 60
+            configured_timeout = int(runtime_policy.get("max_timeout_sec") or allocation_timeout)
+            runtime_policy["max_timeout_sec"] = min(configured_timeout, allocation_timeout)
 
     inputs = repository.list_instance_inputs(instance_id)
     if runtime_policy.get("input_required") and not inputs:
@@ -2906,6 +3466,7 @@ def handle_worker_callback(
         if updated is None:
             return {}, f"Cannot finalize instance in '{current.status if current else inst.status}' state."
         _charge_completed_instance(updated)
+        repository.release_org_allocation(getattr(updated, "allocation_id", None))
         _release_worker_capacity_for(updated)
         _upsert_worker_runtime(updated, status=final_status)
         repository.log_instance_event(instance_id, final_status, actor="worker", detail=detail)
@@ -2944,6 +3505,7 @@ def handle_worker_callback(
             updated.billing_status = "not_charged"
             updated.charged_amount = Decimal("0")
             updated.save()
+        repository.release_org_allocation(getattr(updated, "allocation_id", None))
         _release_worker_capacity_for(updated)
         _upsert_worker_runtime(updated, status="failed")
         repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)

@@ -33,9 +33,30 @@ def get_current_session() -> CurrentSession | None:
     if session is None:
         return None
     user = identity_repo.find_user_by_id(session.user_id)
-    if user is None or user.deleted_at is not None or user.status == "banned":
+    if user is None or user.deleted_at is not None or user.status != "active":
         identity_repo.delete_session(token_hash)
         return None
+
+    # Adaptive session anomaly enforcement: one changing signal (for example a
+    # mobile IP rotation) is tolerated, but a simultaneous IP and user-agent
+    # change is treated as a stolen/replayed session and requires a fresh
+    # login. This is intentionally checked server-side on every request.
+    original_ip = str(session.ip_address or "")
+    current_ip = str(request.remote_addr or "")
+    original_ua = str(session.user_agent or "")
+    current_ua = str(request.headers.get("User-Agent") or "")
+    ip_changed = bool(original_ip and current_ip and original_ip != current_ip)
+    ua_changed = bool(original_ua and current_ua and original_ua != current_ua)
+    if ip_changed and ua_changed:
+        identity_repo.delete_session(token_hash)
+        identity_repo.record_login_attempt(
+            email=user.email,
+            ip_address=current_ip or None,
+            succeeded=False,
+            failure_reason="session_anomaly",
+        )
+        return None
+
     cs_session = CurrentSession(user=user, token_hash=token_hash)
     g._cs_session = cs_session  # type: ignore[attr-defined]
     return cs_session
@@ -121,7 +142,7 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
         ]
         if role != "system_admin":
             from codesandbox.features.platform_admin import repository as rbac_repo
-            perms = rbac_repo.get_user_permission_keys(user.id)
+            perms = set(rbac_repo.get_user_permission_keys(user.id))
             def permitted(items: list[dict]) -> list[dict]:
                 return [
                     i for i in items
@@ -129,7 +150,18 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
                 ]
             core_items = permitted(core_items)
             finance_items = permitted(finance_items)
-            sandbox_items = permitted(sandbox_items)
+            sandbox_items = [
+                i for i in sandbox_items
+                if (
+                    i["href"] == "/platform/sandboxes"
+                    and bool({
+                        "platform.sandboxes.manage",
+                        "platform.sandboxes.test",
+                        "platform.sandboxes.publish",
+                    } & perms)
+                )
+                or (i["href"] != "/platform/sandboxes" and (not i["permission"] or i["permission"] in perms))
+            ]
         sections = [{"label": "Platform", "items": core_items}]
         if sandbox_items:
             sections.append({"label": "Sandboxes", "items": sandbox_items})
