@@ -12,9 +12,15 @@ class FilesystemError(ValueError):
 
 
 class DockerFilesystem:
-    def __init__(self, runner, max_file_bytes: int = 2 * 1024 * 1024) -> None:
+    def __init__(
+        self,
+        runner,
+        max_file_bytes: int = 2 * 1024 * 1024,
+        max_preview_bytes: int = 512 * 1024,
+    ) -> None:
         self.runner = runner
         self.max_file_bytes = max_file_bytes
+        self.max_preview_bytes = max_preview_bytes
 
     @property
     def container(self):
@@ -96,19 +102,64 @@ done
         chunks, stat = self.container.get_archive(target)
         size = int(stat.get("size") or 0)
         if size > self.max_file_bytes:
-            raise FilesystemError("File is too large to open in the editor.")
+            return self._preview_large_file(target, size)
         data = extract_single_file(chunks)
         if len(data) > self.max_file_bytes:
-            raise FilesystemError("File is too large to open in the editor.")
+            return self._preview_large_file(target, len(data))
+        return self._content_response(data)
+
+    def _content_response(self, data: bytes, **extra) -> dict:
         try:
             content = data.decode("utf-8")
-            return {"ok": True, "content": content, "encoding": "utf-8"}
+            return {"ok": True, "content": content, "encoding": "utf-8", **extra}
         except UnicodeDecodeError:
             return {
                 "ok": True,
                 "content": base64.b64encode(data).decode("ascii"),
                 "encoding": "base64",
+                **extra,
             }
+
+    def _preview_large_file(self, target: str, size: int) -> dict:
+        script = r"""
+limit=$1
+path=$2
+[ -f "$path" ] || exit 2
+head -c "$limit" "$path"
+"""
+        result = self.container.exec_run(
+            ["/bin/sh", "-c", script, "codesandbox-fs-preview", str(self.max_preview_bytes), target],
+            user=self._interactive_user(),
+        )
+        if result.exit_code == 2:
+            raise FilesystemError("File does not exist.")
+        if result.exit_code != 0:
+            raise FilesystemError("Large file preview is unavailable.")
+        return self._content_response(
+            bytes(result.output),
+            truncated=True,
+            read_only=True,
+            size=size,
+            preview_bytes=len(result.output),
+        )
+
+    def download(self, path: str) -> dict:
+        target = self.resolve(path)
+        chunks, stat = self.container.get_archive(target)
+        size = int(stat.get("size") or 0)
+        max_download_bytes = int(self.runner.policy.get("max_upload_bytes") or 64 * 1024 * 1024)
+        max_download_bytes = max(1, min(max_download_bytes, 128 * 1024 * 1024))
+        if size > max_download_bytes:
+            raise FilesystemError("File is too large to download from the IDE.")
+        data = extract_single_file(chunks)
+        if len(data) > max_download_bytes:
+            raise FilesystemError("File is too large to download from the IDE.")
+        return {
+            "ok": True,
+            "content": base64.b64encode(data).decode("ascii"),
+            "encoding": "base64",
+            "size": len(data),
+        }
 
     def write(self, path: str, content: str, encoding: str = "utf-8") -> dict:
         target = self.resolve(path)
@@ -186,6 +237,8 @@ done
                 return self.list(payload.get("path", "/"))
             if op == "read":
                 return self.read(payload.get("path", ""))
+            if op == "download":
+                return self.download(payload.get("path", ""))
             if op == "write":
                 return self.write(
                     payload.get("path", ""),

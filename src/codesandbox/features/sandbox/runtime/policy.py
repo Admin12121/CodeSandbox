@@ -512,6 +512,12 @@ class PolicyBuilder:
             pattern = str(value or "").strip()
             if pattern and pattern not in runtime_evidence_logs:
                 runtime_evidence_logs.append(pattern)
+        for value in test_config.get("requirements") or []:
+            requirement = str(value or "").strip()
+            if requirement.startswith("log:"):
+                pattern = requirement.removeprefix("log:").strip()
+                if pattern and pattern not in runtime_evidence_logs:
+                    runtime_evidence_logs.append(pattern)
         for mode_config in ui_feature_config.values():
             if not isinstance(mode_config, dict):
                 continue

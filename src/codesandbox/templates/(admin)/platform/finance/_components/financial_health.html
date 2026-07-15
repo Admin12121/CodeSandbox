@@ -28,8 +28,7 @@
     </div>
 {% endmacro %}
 
-{% macro financial_health(health) %}
-<section class="grid gap-4 lg:grid-cols-3">
+{% macro net_revenue_panel(health) %}
     {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
         {% call frame.frame_panel() %}
             <div class="flex min-h-28 items-end justify-between gap-4">
@@ -51,6 +50,11 @@
             ) }}
         {% endcall %}
     {% endcall %}
+{% endmacro %}
+
+{% macro financial_health(health) %}
+<section class="grid gap-4 lg:grid-cols-3">
+    {{ net_revenue_panel(health) }}
 
     {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
         {% call frame.frame_panel() %}

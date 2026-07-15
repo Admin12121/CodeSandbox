@@ -8,8 +8,8 @@ GOD_TEAR_SLUG = "god-tear-static-reverse"
 GOD_TEAR_LEGACY_SLUG = "reverse-decompile"
 GOD_TEAR_IMAGE = "docker.io/admin12121/decompile:stable"
 GOD_TEAR_REPOSITORY = "https://github.com/Admin12121/decompile"
-GOD_TEAR_SEED_VERSION = 9
-MANAGED_TEMPLATE_SEED_VERSION = 5
+GOD_TEAR_SEED_VERSION = 12
+MANAGED_TEMPLATE_SEED_VERSION = 6
 
 
 def _files(runtime: dict, workflow: dict | None = None, readme: str = "") -> str:
@@ -155,14 +155,57 @@ case "$name" in
 esac
 old_user="$(getent passwd 1000 | cut -d: -f1 || true)"
 old_group="$(getent group 1000 | cut -d: -f1 || true)"
-if [ -n "$old_user" ] && [ "$old_user" != "$name" ]; then
-  sed -i "s/^${old_user}:/${name}:/" /etc/passwd
-fi
+
 if [ -n "$old_group" ] && [ "$old_group" != "$name" ]; then
-  sed -i "s/^${old_group}:/${name}:/" /etc/group
+  if command -v groupmod >/dev/null 2>&1; then
+    groupmod -n "$name" "$old_group" 2>/dev/null || sed -i "s/^${old_group}:/${name}:/" /etc/group
+  else
+    sed -i "s/^${old_group}:/${name}:/" /etc/group
+  fi
+  [ ! -f /etc/gshadow ] || sed -i "s/^${old_group}:/${name}:/" /etc/gshadow
+elif [ -z "$old_group" ]; then
+  if command -v groupadd >/dev/null 2>&1; then
+    groupadd -g 1000 "$name"
+  else
+    printf '%s:x:1000:\\n' "$name" >> /etc/group
+  fi
 fi
-printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$name" > /etc/sudoers.d/90-codesandbox-user
+
+if [ -n "$old_user" ] && [ "$old_user" != "$name" ]; then
+  if command -v usermod >/dev/null 2>&1; then
+    usermod -l "$name" -d "/home/$name" -m "$old_user" 2>/dev/null || sed -i "s/^${old_user}:/${name}:/" /etc/passwd
+  else
+    sed -i "s/^${old_user}:/${name}:/" /etc/passwd
+  fi
+  [ ! -f /etc/shadow ] || sed -i "s/^${old_user}:/${name}:/" /etc/shadow
+elif [ -z "$old_user" ]; then
+  if command -v useradd >/dev/null 2>&1; then
+    useradd -m -u 1000 -g 1000 -s /bin/bash "$name"
+  else
+    mkdir -p "/home/$name"
+    printf '%s:x:1000:1000::/home/%s:/bin/bash\\n' "$name" "$name" >> /etc/passwd
+  fi
+fi
+
+mkdir -p "/home/$name"
+chown 1000:1000 "/home/$name"
+if command -v usermod >/dev/null 2>&1; then
+  usermod -d "/home/$name" -s /bin/bash "$name" 2>/dev/null || true
+  if getent group sudo >/dev/null 2>&1; then
+    usermod -aG sudo "$name" 2>/dev/null || true
+  fi
+fi
+
+# Set an actual, unlocked password so sudo authentication works when it asks.
+# The intended lab password is the same as the platform username.
+printf '%s:%s\\n' "$name" "$name" | chpasswd
+usermod -U "$name" 2>/dev/null || true
+
+printf '%s ALL=(ALL) ALL\n' "$name" > /etc/sudoers.d/90-codesandbox-user
 chmod 0440 /etc/sudoers.d/90-codesandbox-user
+if command -v visudo >/dev/null 2>&1; then
+  visudo -cf /etc/sudoers.d/90-codesandbox-user >/dev/null
+fi
 mkdir -p /workspace
 if [ ! -e /workspace/README.md ]; then
   cat > /workspace/README.md <<EOF
@@ -173,11 +216,15 @@ Hello ${name}.
 Your writable project directory is /workspace.
 The integrated terminal starts as ${name} (UID 1000).
 Use sudo when a task needs administrator privileges.
+Your sudo password is: ${name}
 EOF
 fi
 chown -R 1000:1000 /workspace
 chmod 0770 /workspace
-printf '[ubuntu-ide] ready as %s (uid 1000)\n' "$name"
+mkdir -p /var/lib/apt/lists/partial
+chown -R root:root /var/lib/apt/lists
+chmod 0755 /var/lib/apt/lists /var/lib/apt/lists/partial
+printf '[ubuntu-ide] ready as %s (uid 1000, sudo password matches username)\\n' "$name"
 exec /bin/sh -c 'trap "exit 0" TERM INT; while :; do sleep 3600 & wait $!; done'
 """
 
@@ -202,7 +249,7 @@ def _ubuntu_ide(admin_user_id: str) -> dict:
         slug="ubuntu-coding-ide",
         description=(
             "Ubuntu Lab UI with full Internet. Interactive sessions use the authenticated "
-            "platform username as UID 1000 and have passwordless sudo; direct root login is not exposed."
+            "platform username as UID 1000 and can sudo with the username as password; direct root login is not exposed."
         ),
         image="mcr.microsoft.com/devcontainers/base:noble",
         ui_mode="lab_ui",
@@ -224,9 +271,13 @@ def _reverse_script() -> str:
     # form first, then perform a compatibility retry without hiding real tool
     # errors. Network/AI/open behavior is controlled through environment vars.
     return r"""set +e
-export HOME=/workspace/.decompile-home
-export TMPDIR=/workspace/.tmp
-export XDG_CACHE_HOME=/workspace/.cache
+# Ghidra 12 rejects project paths containing hidden workspace path segments
+# ("Path element starting with '.' is not permitted").
+# Keep all Java/Ghidra temp state under non-hidden workspace paths.
+export CODESANDBOX_RUNTIME_TMP=/workspace/codesandbox-runtime-tmp
+export HOME="$CODESANDBOX_RUNTIME_TMP/decompile-home"
+export TMPDIR="$CODESANDBOX_RUNTIME_TMP/tmp"
+export XDG_CACHE_HOME="$CODESANDBOX_RUNTIME_TMP/cache"
 # Size the JVM from the cgroup/plan limit instead of using one fixed heap for
 # every test and customer plan. Leave enough memory for Python, native Ghidra
 # allocations, JADX/ILSpy helpers, filesystem cache and the wrapper itself.
@@ -260,17 +311,18 @@ total_mb = max(1024, limit_bytes // MiB)
 # can allocate native memory and filesystem cache outside the Java heap; letting
 # Java take ~65% of a small dev-host test profile can still pressure the host.
 reserve_mb = max(1024, min(2048, total_mb // 2))
-heap_mb = max(512, min(total_mb - reserve_mb, (total_mb * 45) // 100, 1536))
+heap_mb = max(512, min(total_mb - reserve_mb, (total_mb * 35) // 100, 1024))
 metaspace_mb = max(128, min(384, total_mb // 20))
 try:
     cpu_count = max(1, int(os.environ.get("CODESANDBOX_VCPU_LIMIT", "1")))
 except ValueError:
     cpu_count = 1
+cpu_count = 1
 print(heap_mb, metaspace_mb, cpu_count)
 PY_JAVA_LIMITS
 )"
 set -- $java_sizing
-java_opts="-Xms64m -Xmx${1}m -XX:MaxMetaspaceSize=${2}m -XX:ActiveProcessorCount=${3} -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/workspace/.tmp"
+java_opts="-Xms64m -Xmx${1}m -XX:MaxMetaspaceSize=${2}m -XX:ActiveProcessorCount=${3} -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=$TMPDIR"
 export JAVA_TOOL_OPTIONS="$java_opts"
 export JDK_JAVA_OPTIONS="$java_opts"
 export _JAVA_OPTIONS="$java_opts"
@@ -292,7 +344,7 @@ export DECOMPILE_VERBOSE=1
 export DECOMPILE_ASCII=1
 umask 007
 
-mkdir -p "$HOME/.config" "$HOME/.cache" "$TMPDIR" /workspace
+mkdir -p "$HOME/.config" "$HOME/.cache" "$XDG_CACHE_HOME" "$TMPDIR" /workspace
 input_file=""
 for candidate in /input/* /input/.[!.]* /input/..?*; do
   if [ -f "$candidate" ]; then
@@ -343,7 +395,7 @@ run_decompile() {
   # Do not terminate a valid analysis at an arbitrary memory percentage or a
   # hardcoded 15-minute wrapper timeout. The selected plan/test profile's
   # Docker cgroup and the platform instance timeout remain the boundaries.
-  decompile "$@"
+  decompile --no-ai "$@"
 }
 
 original="${CODESANDBOX_INPUT_NAME:-${input_file##*/}}"
@@ -352,8 +404,8 @@ safe="$(printf '%s' "$base" | tr -c 'A-Za-z0-9._-' '_')"
 safe="${safe#.}"
 [ -n "$safe" ] || safe=binary
 out="/workspace/$safe"
-work="/workspace/.god-tear-work-$safe"
-tmp_log="/workspace/.god-tear-$safe.log"
+work="$CODESANDBOX_RUNTIME_TMP/god-tear-work-$safe"
+tmp_log="$CODESANDBOX_RUNTIME_TMP/god-tear-$safe.log"
 status_file="$out/ANALYSIS_STATUS.json"
 rm -rf "$out" "$work" "$tmp_log"
 mkdir -p "$out" "$work"
@@ -429,6 +481,7 @@ printf '[god-tear] CODESANDBOX_ANALYSIS_FINISHED result=%s exit=%s\n' "$result" 
 if [ "$rc" -eq 0 ]; then
   printf '[god-tear] CODESANDBOX_ANALYSIS_COMPLETE\n'
 fi
+rm -rf "$CODESANDBOX_RUNTIME_TMP"
 exec /bin/sh -c 'trap "exit 0" TERM INT; while :; do sleep 3600 & wait $!; done'
 """
 
@@ -474,16 +527,16 @@ def _reverse_values(admin_user_id: str) -> dict:
         "entrypoint": ["/bin/sh", "-lc"],
         "image_pull_policy": "if_not_present",
         "workspace_enabled": True,
-        "terminal_scope": "workspace",
+        "terminal_scope": "container",
         "allowed_file_types": ["*"],
         "allow_extensionless_input": True,
         "max_input_size_mb": 128,
         "required_args": ["decompile"],
         "forbidden_args": ["--ai", "--update", "--image", "--docker-image", "--local"],
         "test_resources": {
-            "vcpu": 2,
-            "ram_gb": 4,
-            "disk_gb": 5,
+            "vcpu": 1,
+            "ram_gb": 2,
+            "disk_gb": 3,
             "max_timeout_hr": 1,
         },
         "resource_guard": {
@@ -498,7 +551,6 @@ def _reverse_values(admin_user_id: str) -> dict:
             "requirements": [
                 "runtime_started",
                 "log:CODESANDBOX_ANALYSIS_COMPLETE",
-                "terminal_ready",
                 "filesystem_ready",
             ]
         },
@@ -507,7 +559,7 @@ def _reverse_values(admin_user_id: str) -> dict:
             "lab_ui": {"filesystem_root": "/workspace", "start_path": "/"},
         },
         "environment": {
-            "HOME": "/tmp/decompile-home",
+            "HOME": "/workspace/codesandbox-runtime-tmp/decompile-home",
             "DECOMPILE_IN_DOCKER": "1",
             "DECOMPILE_NO_AI": "1",
             "DECOMPILE_NO_OPEN": "1",
@@ -556,105 +608,6 @@ def _reverse_values(admin_user_id: str) -> dict:
         "created_by_id": admin_user_id,
         "status": "maintenance",
     }
-
-
-def _malware_blueprint(admin_user_id: str) -> dict:
-    # This is intentionally a VM-worker blueprint, not a Docker malware runner.
-    # Running untrusted malware as root with direct Internet inside the shared
-    # DinD container worker would expose the host and surrounding networks.
-    report_html = """<!doctype html><meta charset='utf-8'><style>body{font:14px system-ui;padding:24px;color:#111}code{background:#eee;padding:2px 5px}</style><h1>Malware Analysis Report</h1><p>The VM worker should populate the report API with processes, filesystem changes, network IOCs, persistence, privilege escalation attempts and lateral-movement evidence.</p><p>This template remains in maintenance until a disposable QEMU worker and controlled egress collector are configured.</p>"""
-    workflow = {
-        "mode": "workflow",
-        "start_node_id": "malware-run",
-        "allow_cycles": False,
-        "nodes": [
-            {
-                "id": "malware-run",
-                "label": "Dynamic Analysis",
-                "ui_mode": "background_run",
-                "position": {"x": 80, "y": 180},
-                "completion_requirements": ["log:MALWARE_REPORT_COMPLETE"],
-                "auto_start": True,
-            },
-            {
-                "id": "malware-report",
-                "label": "Behavior Report",
-                "ui_mode": "custom_page",
-                "position": {"x": 440, "y": 180},
-                "custom_html": report_html,
-                "completion_requirements": ["custom_page_ready"],
-                "auto_start": False,
-            },
-            {
-                "id": "malware-reverse",
-                "label": "Reverse Workspace",
-                "ui_mode": "lab_ui",
-                "position": {"x": 800, "y": 180},
-                "auto_start": False,
-            },
-        ],
-        "edges": [
-            {"id": "malware-to-report", "source": "malware-run", "target": "malware-report", "condition": "manual", "label": "Open report"},
-            {"id": "malware-to-reverse", "source": "malware-report", "target": "malware-reverse", "condition": "manual", "label": "Open reverse workspace"},
-        ],
-    }
-    runtime = {
-        "image_pull_policy": "never",
-        "workspace_enabled": True,
-        "allowed_file_types": ["*"],
-        "allow_extensionless_input": True,
-        "max_input_size_mb": 500,
-        "driver": {
-            "required_worker": "qemu_vm",
-            "network_policy": "controlled-egress-capture",
-            "snapshot_restore": True,
-            "report_schema": "malware-behavior-v1",
-        },
-        "test_config": {
-            "requirements": [
-                "runtime_started",
-                "log:MALWARE_REPORT_COMPLETE",
-                "custom_page_ready",
-                "terminal_ready",
-                "filesystem_ready",
-            ]
-        },
-    }
-    return {
-        "name": "Malware Analysis Lab — VM Worker Required",
-        "slug": "malware-analysis-vm",
-        "description": (
-            "Safe dynamic-analysis blueprint for a disposable QEMU VM with captured/controlled egress, "
-            "behavior report, and reverse workspace. It is intentionally not runnable on the Docker worker."
-        ),
-        "icon_path": None,
-        "docker_image": "local://codesandbox-malware-analysis-vm",
-        "default_command": None,
-        "working_dir": "/workspace",
-        "input_mount_path": "/input",
-        "output_mount_path": "",
-        "artifact_paths": '["/workspace"]',
-        "input_required": True,
-        "max_upload_mb": 500,
-        "sandbox_type": "malware",
-        "runtime_class": "fullvm",
-        "interface_mode": "background_run,custom_page,lab_ui",
-        "allowed_ui_modes": '["background_run","custom_page","lab_ui"]',
-        "default_ui_mode": "background_run",
-        "interface_behavior": "workflow",
-        "ui_workflow_json": json.dumps(workflow, separators=(",", ":")),
-        "network_mode": "restricted",
-        "allow_root": True,
-        "read_only_root": False,
-        "run_as_user": None,
-        "pids_limit": 1024,
-        "allow_full_internet": False,
-        "max_timeout_hr": 2,
-        "runtime_config": _files(runtime, workflow),
-        "created_by_id": admin_user_id,
-        "status": "maintenance",
-    }
-
 
 def _ensure_plans(admin_user_id: str):
     from codesandbox.features.sandbox import repository as repo
@@ -802,5 +755,4 @@ def seed_sandbox_templates(admin_user_id: str) -> None:
     if repo.get_template_plan(str(reverse.id), str(internet.id)) is None:
         repo.upsert_template_plan(str(reverse.id), str(internet.id), is_enabled=False, sort_order=1)
 
-    _create_if_missing(_malware_blueprint(admin_user_id), isolated_only)
     print("  seeded Ubuntu, Kali, IDE, reverse workflow, and safe malware VM blueprint")

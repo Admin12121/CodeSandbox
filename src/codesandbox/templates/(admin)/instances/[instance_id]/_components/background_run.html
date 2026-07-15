@@ -171,8 +171,7 @@
   if (!root || !stream || root.dataset.ready === "1") return;
   root.dataset.ready = "1";
   var MAX_ROWS = 13;
-  var ROW_SHIFT_DURATION = 820;
-  var EASE = "cubic-bezier(0.19, 1, 0.22, 1)";
+  var MAX_LOG_CHARS = 700;
   var instanceId = root.dataset.instanceId;
   var workflowReloadScheduled = false;
 
@@ -192,38 +191,21 @@
   }
   function row(level, message, time, animated) {
     var clean = String(level || "LOG").toUpperCase();
+    var text = String(message || "");
+    if (text.length > MAX_LOG_CHARS) text = text.slice(0, MAX_LOG_CHARS) + " …";
     var el = document.createElement("div");
     el.className = animated ? "log-row enter" : "log-row";
     el.innerHTML =
       '<div class="log-time">' + formatTime(time) + '</div>' +
       '<div class="log-level ' + clean.toLowerCase() + '">[' + escapeHtml(clean) + ']</div>' +
-      '<div class="log-message" title="' + escapeHtml(message) + '">' + escapeHtml(message) + '</div>';
+      '<div class="log-message" title="' + escapeHtml(text) + '">' + escapeHtml(text) + '</div>';
     return el;
   }
   function prependLog(level, message, time) {
-    var oldRows = Array.from(stream.children);
-    var oldTops = new Map();
-    oldRows.forEach(function (item) { oldTops.set(item, item.getBoundingClientRect().top); });
-    var newRow = row(level, message, time, true);
+    var newRow = row(level, message, time, false);
     stream.prepend(newRow);
-    Array.from(stream.children).forEach(function (item) {
-      if (item === newRow) return;
-      var oldTop = oldTops.get(item);
-      if (oldTop == null) return;
-      var deltaY = oldTop - item.getBoundingClientRect().top;
-      item.animate([{ transform: "translate3d(0, " + deltaY + "px, 0)" }, { transform: "translate3d(0, 0, 0)" }], {
-        duration: ROW_SHIFT_DURATION, easing: EASE, fill: "both"
-      });
-    });
-    newRow.addEventListener("animationend", function () { newRow.classList.remove("enter"); }, { once: true });
     while (stream.children.length > MAX_ROWS) {
-      let stale = stream.lastElementChild;
-      stale.animate([
-        { opacity: 1, transform: "translate3d(0, 0, 0)", filter: "blur(0)" },
-        { opacity: 0, transform: "translate3d(0, 8px, 0)", filter: "blur(2px)" }
-      ], { duration: 520, easing: EASE, fill: "forwards" }).onfinish = function () {
-        if (stale && stale.parentNode) stale.remove();
-      };
+      stream.lastElementChild.remove();
     }
   }
   function seedEvents() {

@@ -1,78 +1,280 @@
-{% import "components/ui/card.html" as card %}
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/frame.html" as frame %}
+{% import "components/ui/chart.html" as chart_ui2 %}
+{% import "(admin)/platform/finance/_components/revenue_cost_chart.html" as chart_ui %}
+{% import "(admin)/platform/finance/_components/financial_health.html" as health_ui %}
 
-<div class="grid gap-6 p-2">
+{% macro metric_card(item) -%}
+  {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+    {% call frame.frame_panel() %}
+      <div class="flex min-h-28 flex-col justify-between gap-6">
+        <div class="flex items-start justify-between gap-4">
+          <div class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{{ item.label }}</div>
+          <span class="size-2 rounded-full bg-foreground/45 shadow-[0_0_18px_color-mix(in_srgb,var(--foreground)_24%,transparent)]"></span>
+        </div>
+        <div>
+          <div class="font-mono text-4xl font-semibold tracking-tight text-foreground tabular-nums sm:text-5xl">{{ item.value }}</div>
+          <div class="mt-2 text-xs text-muted-foreground">{{ item.meta }}</div>
+        </div>
+      </div>
+    {% endcall %}
+  {% endcall %}
+{%- endmacro %}
 
-  {# Metrics strip #}
-  <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-    {% for item in metrics %}
-      {% call card.card() %}
-        {% call card.card_header() %}
-          {{ card.card_description(item.label) }}
-          {{ card.card_title(item.value, class="text-2xl font-bold tabular-nums") }}
-        {% endcall %}
-        {% call card.card_content() %}
-          <p class="text-sm text-muted-foreground">{{ item.change }}</p>
+{% macro status_heatmap(cells) -%}
+  {% call frame.frame(class="outline-1 outline-offset-2 outline-neutral-300/50 dark:outline-neutral-800/50") %}
+    {% call frame.frame_header(class="py-3") %}
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Runtime status</h2>
+          <p class="mt-1 text-sm text-muted-foreground">45 day launch health by workspace activity.</p>
+        </div>
+        <div class="flex items-center gap-3 text-[11px] text-muted-foreground">
+          <span class="inline-flex items-center gap-1"><span class="h-3 w-1.5 rounded-sm bg-muted"></span>No data</span>
+          <span class="inline-flex items-center gap-1"><span class="h-3 w-1.5 rounded-sm bg-rose-500"></span>Issue</span>
+          <span class="inline-flex items-center gap-1"><span class="h-3 w-1.5 rounded-sm bg-amber-400"></span>Busy</span>
+          <span class="inline-flex items-center gap-1"><span class="h-3 w-1.5 rounded-sm bg-emerald-500"></span>Healthy</span>
+        </div>
+      </div>
+    {% endcall %}
+    {% call frame.frame_panel(class="overflow-hidden") %}
+      <div class="flex min-h-28 items-end gap-[3px] overflow-x-auto pb-1" aria-label="Status heatmap">
+        {% for cell in cells %}
+          {% set color = "bg-muted/70" %}
+          {% if cell.value == 1 %}{% set color = "bg-rose-500" %}{% endif %}
+          {% if cell.value == 2 %}{% set color = "bg-amber-400" %}{% endif %}
+          {% if cell.value == 3 %}{% set color = "bg-emerald-500" %}{% endif %}
+          <span
+            class="block h-16 w-2 shrink-0 rounded-sm {{ color }} opacity-90 transition-opacity hover:opacity-70"
+            title="{{ cell.date }} · {{ cell.label }} · {{ cell.count }} event{{ '' if cell.count == 1 else 's' }}"
+            aria-label="{{ cell.date }}: {{ cell.label }}"
+          ></span>
+        {% endfor %}
+      </div>
+    {% endcall %}
+  {% endcall %}
+{%- endmacro %}
+
+{% macro instance_table(title, rows) -%}
+  {% call frame.frame() %}
+    {% call frame.frame_header(class="py-3") %}
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{{ title }}</h2>
+      </div>
+    {% endcall %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Sandbox") }}
+          {{ table.table_head("Scope") }}
+          {{ table.table_head("Runtime", class="text-right") }}
+          {{ table.table_head("Cost", class="text-right") }}
+          {{ table.table_head("Status", class="text-right") }}
+          {{ table.table_head("Created", class="text-right") }}
         {% endcall %}
       {% endcall %}
-    {% endfor %}
-  </section>
-
-  {# MVP progress #}
-  <section>
-    {% call card.card() %}
-      {% call card.card_header() %}
-        {{ card.card_title("Build progress") }}
-        {{ card.card_description("Phase 1 — User management system") }}
-      {% endcall %}
-      {% call card.card_content(class="p-0") %}
-        {% call table.table(variant="card") %}
-          {% call table.table_header() %}
-            {% call table.table_row() %}
-              {{ table.table_head("Module") }}
-              {{ table.table_head("Status") }}
-              {{ table.table_head("Next") }}
-            {% endcall %}
-          {% endcall %}
-          {% call table.table_body() %}
-            {% for module, bdg_variant, next_step in [
-              ("Identity",      "default", "Email verification, 2FA, social auth"),
-              ("Platform RBAC", "default", "Role editor, permission grants UI"),
-              ("Organizations", "default", "Invitations, org-level RBAC"),
-              ("Labs",          "outline", "Lab templates, machines, steps"),
-              ("Runtime",       "outline", "Sandbox lifecycle, worker queue"),
-              ("Telemetry",     "outline", "Event ingestion pipeline"),
-              ("Cases",         "outline", "Investigation workspace"),
-            ] %}
-              {% call table.table_row() %}
-                {{ table.table_cell(module, class="font-medium") }}
-                {% call table.table_cell() %}
-                  {{ badge.badge("Done" if bdg_variant == "default" else "Pending", variant=bdg_variant) }}
-                {% endcall %}
-                {{ table.table_cell(next_step, class="text-muted-foreground") }}
+      {% call table.table_body() %}
+        {% if rows %}
+          {% for row in rows %}
+            {% call table.table_row(class="cursor-pointer hover:bg-accent/40") %}
+              {% call table.table_cell() %}
+                <div class="font-medium">{{ row.name }}</div>
+                <div class="mt-1 font-mono text-[10px] text-muted-foreground">{{ row.id[:8] }}</div>
               {% endcall %}
-            {% endfor %}
+              {{ table.table_cell(row.scope, class="text-muted-foreground") }}
+              {{ table.table_cell(row.runtime, class="text-right font-mono tabular-nums") }}
+              {{ table.table_cell(row.cost, class="text-right font-mono tabular-nums") }}
+              {% call table.table_cell(class="text-right") %}
+                {{ badge.badge(row.status|title, variant=row.status_variant) }}
+              {% endcall %}
+              {{ table.table_cell(row.created, class="text-right text-xs text-muted-foreground") }}
+            {% endcall %}
+          {% endfor %}
+        {% else %}
+          {% call table.table_row() %}
+            {{ table.table_cell("No sandbox activity yet.", class="py-10 text-center text-muted-foreground", attrs={"colspan": "6"}) }}
           {% endcall %}
-        {% endcall %}
+        {% endif %}
       {% endcall %}
     {% endcall %}
+  {% endcall %}
+{%- endmacro %}
+
+{% macro ledger_table(rows) -%}
+  {% call frame.frame() %}
+    {% call frame.frame_header(class="py-3") %}
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Ledger stream</h2>
+      </div>
+    {% endcall %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Type") }}
+          {{ table.table_head("Reference") }}
+          {{ table.table_head("Amount", class="text-right") }}
+          {{ table.table_head("Status", class="text-right") }}
+          {{ table.table_head("Date", class="text-right") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if rows %}
+          {% for row in rows %}
+            {% call table.table_row() %}
+              {% call table.table_cell() %}
+                {{ badge.badge(row.type, variant="outline") }}
+              {% endcall %}
+              {% call table.table_cell() %}
+                <div class="max-w-64 truncate">{{ row.description }}</div>
+                <div class="mt-1 text-[10px] text-muted-foreground">{{ row.entity }}</div>
+              {% endcall %}
+              {{ table.table_cell(row.amount, class="text-right font-mono tabular-nums " ~ ("text-rose-500" if row.negative else "text-emerald-500")) }}
+              {% call table.table_cell(class="text-right") %}
+                {{ badge.badge(row.status|title, variant="success") }}
+              {% endcall %}
+              {{ table.table_cell(row.created, class="text-right text-xs text-muted-foreground") }}
+            {% endcall %}
+          {% endfor %}
+        {% else %}
+          {% call table.table_row() %}
+            {{ table.table_cell("No ledger activity yet.", class="py-10 text-center text-muted-foreground", attrs={"colspan": "5"}) }}
+          {% endcall %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{%- endmacro %}
+
+{% macro capacity_panel(chart_id, label, unit, res, worker_count) -%}
+  {% call frame.frame(class="cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700") %}
+    {% call frame.frame_panel(block="flex-1", class="flex h-full min-h-28 flex-col gap-3") %}
+      <div class="flex w-full items-start justify-between gap-4">
+        <div class="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{{ label }}</div>
+        <span class="size-2 rounded-full bg-foreground/45 shadow-[0_0_18px_color-mix(in_srgb,var(--foreground)_24%,transparent)]"></span>
+      </div>
+      <div class="flex flex-1 flex-col items-center justify-center gap-2">
+        {{ chart_ui2.radial_chart_stacked(
+          chart_id,
+          {
+            "used": {"label": "Used " ~ unit, "color": "#f97316"},
+            "free": {"label": "Free " ~ unit, "color": "var(--foreground)"},
+          },
+          {"used": res.used, "free": res.free},
+          size=200,
+          thickness=18,
+          center_value=res.pct ~ "%",
+          center_label=worker_count ~ " worker" ~ ("" if worker_count == 1 else "s")
+        ) }}
+      </div>
+    {% endcall %}
+  {% endcall %}
+{%- endmacro %}
+
+{% macro allocations_panel(rows) -%}
+  {% call frame.frame() %}
+    {% call frame.frame_header(class="py-3") %}
+      <h2 class="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Prepared allocations</h2>
+    {% endcall %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Template") }}
+          {{ table.table_head("Access") }}
+          {{ table.table_head("Session") }}
+          {{ table.table_head("Starts", class="text-right") }}
+          {{ table.table_head("Status", class="text-right") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if rows %}
+          {% for row in rows %}
+            {% call table.table_row() %}
+              {{ table.table_cell(row.name, class="font-medium") }}
+              {{ table.table_cell(row.scope, class="text-muted-foreground") }}
+              {{ table.table_cell(row.session, class="font-mono text-xs") }}
+              {{ table.table_cell(row.starts, class="text-right font-mono") }}
+              {% call table.table_cell(class="text-right") %}
+                {{ badge.badge(row.status|title, variant=row.status_variant) }}
+              {% endcall %}
+            {% endcall %}
+          {% endfor %}
+        {% else %}
+          {% call table.table_row() %}
+            {{ table.table_cell("No prepared allocations yet.", class="py-10 text-center text-muted-foreground", attrs={"colspan": "5"}) }}
+          {% endcall %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+{%- endmacro %}
+
+{% set d = dashboard %}
+
+<div class="grid gap-6 p-2">
+  <section class="grid gap-4 sm:grid-cols-2 {{ 'xl:grid-cols-3' if d.kind == 'platform' else 'xl:grid-cols-4' }}">
+    {% for item in d.metrics %}
+      {{ metric_card(item) }}
+    {% endfor %}
+    {% if d.kind == "platform" and d.health %}
+      {{ health_ui.net_revenue_panel(d.health) }}
+    {% endif %}
+    {% if d.kind == "platform" %}
+      {{ capacity_panel("capacity-cpu", "CPU Capacity", "vCPU", d.capacity_radial.vcpu, d.capacity_radial.worker_count) }}
+      {{ capacity_panel("capacity-ram", "Memory Capacity", "GB", d.capacity_radial.ram, d.capacity_radial.worker_count) }}
+      {% app_script "dashboard-capacity-live" %}
+      (function(){
+        function workerSuffix(n){ return n + " worker" + (n === 1 ? "" : "s"); }
+        function refresh(){
+          fetch("/platform/dashboard/capacity/live", {credentials: "same-origin"})
+            .then(function(r){ return r.ok ? r.json() : null; })
+            .then(function(data){
+              if (!data || !data.ok) return;
+              var cap = data.capacity;
+              var suffix = workerSuffix(cap.worker_count);
+              if (window.csRadialCharts && window.csRadialCharts["capacity-cpu"]) {
+                window.csRadialCharts["capacity-cpu"].update(
+                  {used: cap.vcpu.used, free: cap.vcpu.free}, cap.vcpu.pct + "%", suffix
+                );
+              }
+              if (window.csRadialCharts && window.csRadialCharts["capacity-ram"]) {
+                window.csRadialCharts["capacity-ram"].update(
+                  {used: cap.ram.used, free: cap.ram.free}, cap.ram.pct + "%", suffix
+                );
+              }
+            })
+            .catch(function(){});
+        }
+        window.setInterval(refresh, 10000);
+      })();
+      {% end_app_script %}
+    {% endif %}
   </section>
 
-  {# Quick links #}
-  <section class="grid gap-4 sm:grid-cols-3">
-    {% set quick = [
-      {"label": "Manage Users", "href": "/platform/users", "description": "View and update all platform accounts"},
-      {"label": "Organizations", "href": "/platform/organizations", "description": "All tenant organizations"},
-      {"label": "Roles & Permissions", "href": "/platform/roles", "description": "Platform RBAC editor"},
-    ] %}
-    {% for link in quick %}
-      <a href="{{ link.href }}" class="block rounded-lg border bg-card p-4 text-card-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-        <div class="font-medium text-sm">{{ link.label }}</div>
-        <div class="mt-1 text-xs text-muted-foreground">{{ link.description }}</div>
-      </a>
-    {% endfor %}
-  </section>
+  {{ chart_ui.revenue_cost_chart(
+    "dashboard-" ~ d.kind,
+    d.chart_title,
+    d.chart_rows,
+    "overview",
+    total_label=("Total Revenue" if d.kind == "platform" else "Usage Cost"),
+    show_secondary=(d.kind == "platform" and d.can_finance),
+    secondary_label="Compute Cost",
+    primary_tooltip_label=("Net revenue" if d.kind == "platform" else "Usage cost"),
+    secondary_tooltip_label="Compute cost",
+    show_period_toggle=false
+  ) }}
+
+  {{ status_heatmap(d.heatmap) }}
+
+  {% if d.kind != "platform" %}
+    <section class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.8fr)]">
+      {{ instance_table(d.table_title, d.instance_rows) }}
+      {{ ledger_table(d.ledger_rows) }}
+    </section>
+  {% endif %}
+
+  {% if d.kind == "org" %}
+    {{ allocations_panel(d.allocation_rows) }}
+  {% endif %}
 
 </div>

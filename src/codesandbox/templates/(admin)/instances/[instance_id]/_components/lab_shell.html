@@ -145,21 +145,34 @@
     }
 
     // ── Real terminal (xterm.js + WS, max three PTY sessions per instance) ─
+    function loadScriptNoAmd(src, cb) {
+      var savedDefine = window.define;
+      var savedRequire = window.require;
+      window.define = undefined;
+      var script = document.createElement("script");
+      script.src = src;
+      script.onload = function () {
+        window.define = savedDefine;
+        window.require = savedRequire;
+        cb();
+      };
+      script.onerror = function () {
+        window.define = savedDefine;
+        window.require = savedRequire;
+        console.error("Failed to load " + src);
+      };
+      document.head.appendChild(script);
+    }
+
     function xtermCdnLoad(cb) {
       if (window.Terminal && window.FitAddon) { cb(); return; }
-      var s1 = document.createElement("script");
-      s1.src = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js";
-      s1.onload = function () {
+      loadScriptNoAmd("https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js", function () {
         var css = document.createElement("link");
         css.rel = "stylesheet";
         css.href = "https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css";
         document.head.appendChild(css);
-        var s2 = document.createElement("script");
-        s2.src = "https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js";
-        s2.onload = cb;
-        document.head.appendChild(s2);
-      };
-      document.head.appendChild(s1);
+        loadScriptNoAmd("https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js", cb);
+      });
     }
 
     function openTerminalWs(state, instanceId, token) {
@@ -721,99 +734,172 @@
       if (dot) dot.classList.toggle("hidden", !dirty);
     }
 
-    // ── CodeMirror 6 (syntax highlighting, search, bracket matching) ──────
-    // Loaded via dynamic ESM import() — plain ES modules, not UMD/AMD, so
-    // this doesn't hit the Monaco-AMD-hijack problem xterm.js/Chart.js had
-    // elsewhere in this app (this page has no Monaco anyway).
-    //
-    // esm.sh, not jsdelivr's `+esm`: CodeMirror's core bundle and its
-    // language/theme packages share low-level deps (@codemirror/state,
-    // @codemirror/view, ...). jsdelivr's `+esm` resolves each separate
-    // import() URL's dependency tree independently, so those shared deps
-    // silently resolve to different, incompatible versions loaded side by
-    // side (verified: state@6.0.1 *and* state@6.5.2 both loaded on the same
-    // page) — CodeMirror's extension system relies on those being the exact
-    // same module instance, so the editor throws and never mounts. esm.sh
-    // deduplicates shared sub-dependencies consistently across separate
-    // import() calls, which is what this needs.
-    var CM_LANG_URLS = {
-      py: "https://esm.sh/@codemirror/lang-python@6",
-      js: "https://esm.sh/@codemirror/lang-javascript@6",
-      jsx: "https://esm.sh/@codemirror/lang-javascript@6",
-      mjs: "https://esm.sh/@codemirror/lang-javascript@6",
-      ts: "https://esm.sh/@codemirror/lang-javascript@6",
-      tsx: "https://esm.sh/@codemirror/lang-javascript@6",
-      json: "https://esm.sh/@codemirror/lang-json@6",
-      html: "https://esm.sh/@codemirror/lang-html@6",
-      css: "https://esm.sh/@codemirror/lang-css@6",
-      md: "https://esm.sh/@codemirror/lang-markdown@6",
-      c: "https://esm.sh/@codemirror/lang-cpp@6",
-      h: "https://esm.sh/@codemirror/lang-cpp@6",
-      cc: "https://esm.sh/@codemirror/lang-cpp@6",
-      cpp: "https://esm.sh/@codemirror/lang-cpp@6",
-      hpp: "https://esm.sh/@codemirror/lang-cpp@6",
-      java: "https://esm.sh/@codemirror/lang-java@6",
-      rs: "https://esm.sh/@codemirror/lang-rust@6",
-      php: "https://esm.sh/@codemirror/lang-php@6",
-      xml: "https://esm.sh/@codemirror/lang-xml@6",
-      sql: "https://esm.sh/@codemirror/lang-sql@6",
-      yaml: "https://esm.sh/@codemirror/lang-yaml@6",
-      yml: "https://esm.sh/@codemirror/lang-yaml@6",
-    };
+    // ── Monaco editor: same editor family used by the Sandbox Config IDE ──
+    var labMonacoPromise = null;
+    var labMonacoThemesDefined = false;
 
-    function cmCore() {
-      return import("https://esm.sh/codemirror@6.0.1");
+    function labThemeMode() {
+      return document.documentElement.classList.contains("dark") ? "dark" : "light";
     }
 
-    function cmLangExtension(path) {
+    function labMonacoThemeName() {
+      return labThemeMode() === "dark" ? "cs-dark" : "cs-light";
+    }
+
+    function monacoLang(path) {
       var ext = (path.split(".").pop() || "").toLowerCase();
-      var url = CM_LANG_URLS[ext];
-      if (!url) return Promise.resolve(null);
-      return import(url).then(function (mod) {
-        if (mod.python) return mod.python();
-        if (mod.javascript) return mod.javascript({ jsx: ext === "jsx" || ext === "tsx", typescript: ext === "ts" || ext === "tsx" });
-        if (mod.json) return mod.json();
-        if (mod.html) return mod.html();
-        if (mod.css) return mod.css();
-        if (mod.markdown) return mod.markdown();
-        if (mod.cpp) return mod.cpp();
-        if (mod.java) return mod.java();
-        if (mod.rust) return mod.rust();
-        if (mod.php) return mod.php();
-        if (mod.xml) return mod.xml();
-        if (mod.sql) return mod.sql();
-        if (mod.yaml) return mod.yaml();
-        return null;
-      }).catch(function (err) { console.warn("CodeMirror language extension failed to load:", err); return null; });
+      return ({
+        py: "python",
+        js: "javascript", jsx: "javascript", mjs: "javascript",
+        ts: "typescript", tsx: "typescript",
+        json: "json",
+        html: "html",
+        css: "css",
+        md: "markdown",
+        c: "c", h: "c", cc: "cpp", cpp: "cpp", hpp: "cpp",
+        java: "java",
+        rs: "rust",
+        php: "php",
+        xml: "xml",
+        sql: "sql",
+        yaml: "yaml", yml: "yaml",
+        sh: "shell", bash: "shell", asm: "asm"
+      })[ext] || "plaintext";
     }
 
-    function cmTheme() {
-      if (!document.documentElement.classList.contains("dark")) return Promise.resolve(null);
-      return import("https://esm.sh/@codemirror/theme-one-dark@6")
-        .then(function (mod) { return mod.oneDark; })
-        .catch(function (err) { console.warn("CodeMirror theme failed to load:", err); return null; });
+    function defineLabMonacoThemes(monaco) {
+      if (labMonacoThemesDefined) return;
+      labMonacoThemesDefined = true;
+      monaco.editor.defineTheme("cs-dark", {
+        base: "vs-dark",
+        inherit: true,
+        rules: [
+          { token: "", foreground: "c1c1c1", background: "121113" },
+          { token: "comment", foreground: "5c5c5c", fontStyle: "italic" },
+          { token: "string", foreground: "fbcb97" },
+          { token: "keyword", foreground: "999999" },
+          { token: "number", foreground: "aaaaaa" },
+          { token: "type", foreground: "e78a53" }
+        ],
+        colors: {
+          "editor.background": "#121113",
+          "editor.foreground": "#c1c1c1",
+          "editorLineNumber.foreground": "#333333",
+          "editorLineNumber.activeForeground": "#c1c1c1",
+          "editor.lineHighlightBackground": "#121212",
+          "editor.selectionBackground": "#222222",
+          "editorCursor.foreground": "#c1c1c1",
+          "editorGutter.background": "#121113",
+          "scrollbarSlider.background": "#ffffff1f",
+          "scrollbarSlider.hoverBackground": "#3333336f"
+        }
+      });
+      monaco.editor.defineTheme("cs-light", {
+        base: "vs",
+        inherit: true,
+        rules: [
+          { token: "", foreground: "5c6166", background: "fcfcfc" },
+          { token: "comment", foreground: "abb0b6", fontStyle: "italic" },
+          { token: "string", foreground: "86b300" },
+          { token: "keyword", foreground: "fa8d3e" },
+          { token: "number", foreground: "a37acc" },
+          { token: "type", foreground: "389ee6" }
+        ],
+        colors: {
+          "editor.background": "#fcfcfc",
+          "editor.foreground": "#5c6166",
+          "editorLineNumber.foreground": "#b0b3b5",
+          "editorLineNumber.activeForeground": "#313435",
+          "editor.lineHighlightBackground": "#ececedbf",
+          "editor.selectionBackground": "#3b9ee53d",
+          "editorCursor.foreground": "#3b9ee5",
+          "editorGutter.background": "#fcfcfc",
+          "scrollbarSlider.background": "#00000014",
+          "scrollbarSlider.hoverBackground": "#00000024"
+        }
+      });
     }
 
-    function mountCodeMirror(pane, path, content) {
+    function loadLabMonaco() {
+      if (window.monaco && window.monaco.editor) return Promise.resolve(window.monaco);
+      if (labMonacoPromise) return labMonacoPromise;
+      labMonacoPromise = new Promise(function (resolve, reject) {
+        function boot() {
+          try {
+            if (!window.require || !window.require.config) throw new Error("Monaco loader is unavailable");
+            window.require.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.46.0/min/vs" } });
+            window.require(["vs/editor/editor.main"], function (monaco) { resolve(monaco); });
+          } catch (err) {
+            reject(err);
+          }
+        }
+        if (window.require && window.require.config) {
+          boot();
+          return;
+        }
+        var existing = document.querySelector("script[data-lab-monaco-loader]");
+        if (existing) {
+          if (existing.dataset.loaded === "1") {
+            boot();
+            return;
+          }
+          existing.addEventListener("load", boot, { once: true });
+          existing.addEventListener("error", reject, { once: true });
+          return;
+        }
+        var script = document.createElement("script");
+        script.dataset.labMonacoLoader = "1";
+        script.src = "https://cdn.jsdelivr.net/npm/monaco-editor@0.46.0/min/vs/loader.js";
+        script.onload = function () {
+          script.dataset.loaded = "1";
+          boot();
+        };
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+      return labMonacoPromise;
+    }
+
+    function mountMonacoEditor(pane, path, content) {
       var mount = document.createElement("div");
-      mount.className = "cm-mount h-full w-full overflow-auto";
+      mount.className = "h-full w-full overflow-hidden";
       pane.appendChild(mount);
 
-      return Promise.all([cmCore(), cmLangExtension(path), cmTheme()]).then(function (results) {
-        var core = results[0], langExt = results[1], themeExt = results[2];
-        var extensions = [core.basicSetup];
-        if (langExt) extensions.push(langExt);
-        if (themeExt) extensions.push(themeExt);
-        extensions.push(core.EditorView.updateListener.of(function (update) {
-          if (!update.docChanged) return;
+      return loadLabMonaco().then(function (monaco) {
+        defineLabMonacoThemes(monaco);
+        var model = monaco.editor.createModel(content, monacoLang(path));
+        var editor = monaco.editor.create(mount, {
+          model: model,
+          theme: labMonacoThemeName(),
+          automaticLayout: true,
+          fontSize: 13,
+          lineHeight: 22,
+          fontFamily: '"FiraCode Nerd Font", "FiraCode Nerd Font Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace',
+          fontLigatures: true,
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          renderLineHighlight: "all",
+          smoothScrolling: true,
+          cursorBlinking: "smooth",
+          cursorSmoothCaretAnimation: "on",
+          padding: { top: 12, bottom: 12 }
+        });
+        var disposable = editor.onDidChangeModelContent(function () {
           var state = openFileState[path];
           if (!state) return;
-          var dirty = update.state.doc.toString() !== state.original;
+          var dirty = editor.getValue() !== state.original;
           setDirty(path, dirty);
           if (dirty) scheduleFileAutosave(path);
-        }));
-
-        return new core.EditorView({ doc: content, extensions: extensions, parent: mount });
+        });
+        return {
+          getValue: function () { return editor.getValue(); },
+          layout: function () { editor.layout(); },
+          destroy: function () {
+            try { disposable.dispose(); } catch (e) {}
+            try { editor.dispose(); } catch (e) {}
+            try { model.dispose(); } catch (e) {}
+          }
+        };
       });
     }
 
@@ -854,12 +940,29 @@
           pane.innerHTML = '<div class="p-3 text-xs text-muted-foreground">Binary file — cannot edit here.</div>';
           return;
         }
+        if (res.truncated || res.read_only) {
+          var sizeLabel = res.size ? (" of " + Number(res.size).toLocaleString() + " bytes") : "";
+          var previewLabel = res.preview_bytes ? Number(res.preview_bytes).toLocaleString() + " bytes" : "preview";
+          pane.innerHTML =
+            '<div class="flex h-full min-h-0 flex-col">' +
+              '<div class="flex shrink-0 items-center justify-between border-b bg-muted/30 px-3 py-2 text-xs text-muted-foreground">' +
+                '<span>Read-only preview: showing ' + escHtml(previewLabel) + escHtml(sizeLabel) + '.</span>' +
+                '<button type="button" data-large-file-download class="rounded border px-2 py-1 text-foreground hover:bg-accent">Download full file</button>' +
+              '</div>' +
+              '<pre class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words p-3 text-xs leading-relaxed"></pre>' +
+            '</div>';
+          var pre = pane.querySelector("pre");
+          if (pre) pre.textContent = res.content || "";
+          var download = pane.querySelector("[data-large-file-download]");
+          if (download) download.addEventListener("click", function () { downloadFsItem(path, "file"); });
+          return;
+        }
         openFileState[path] = { original: res.content, view: null };
         pane.innerHTML = "";
-        mountCodeMirror(pane, path, res.content).then(function (view) {
+        mountMonacoEditor(pane, path, res.content).then(function (view) {
           if (openFileState[path]) openFileState[path].view = view;
         }).catch(function (err) {
-          console.error("CodeMirror mount failed:", err);
+          console.error("Monaco mount failed:", err);
           pane.innerHTML = '<div class="p-3 text-xs text-red-400">Editor failed to load.</div>';
         });
       }).catch(function (err) {
@@ -872,7 +975,9 @@
       var state = openFileState[path];
       if (!state || !state.view) return Promise.resolve();
 
-      var content = state.view.state.doc.toString();
+      var content = typeof state.view.getValue === "function"
+        ? state.view.getValue()
+        : state.view.state.doc.toString();
       if (content === state.original) {
         setDirty(path, false);
         return Promise.resolve();
@@ -998,6 +1103,10 @@
 
       syncCenterLayout();
       window.dispatchEvent(new Event("resize"));
+      var state = openFileState[file];
+      if (state && state.view && typeof state.view.layout === "function") {
+        window.setTimeout(function () { state.view.layout(); }, 0);
+      }
     }
 
     function closeEditor(file) {
@@ -1210,10 +1319,9 @@
 
     function isTypingInPlainField() {
       // The notes-panel title input / AI textarea are the only real
-      // <input>/<textarea> elements on this page — CodeMirror's content is a
-      // contenteditable div (never matched here, so code-editing keystrokes
-      // always reach the shortcuts below) and xterm.js's own hidden input
-      // lives inside .xterm (excluded so terminal typing isn't touched).
+      // <input>/<textarea> elements on this page. Monaco handles editor
+      // keyboard input internally, and xterm.js's own hidden input lives
+      // inside .xterm (excluded so terminal typing isn't touched).
       var el = document.activeElement;
       if (!el) return false;
       if (el.closest && el.closest("[data-notes-blocks]")) return true;

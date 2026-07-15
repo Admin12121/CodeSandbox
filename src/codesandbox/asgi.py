@@ -664,7 +664,7 @@ async def fs_download(request: Request) -> Response:
     if not _fs_auth(request, instance_id):
         return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
     path = request.query_params.get("path", "")
-    result, status = await _fs_request(instance_id, {"op": "read", "path": path})
+    result, status = await _fs_request(instance_id, {"op": "download", "path": path})
     if result is None:
         return JSONResponse({"ok": False, "error": "sandbox unavailable"}, status_code=status)
     if not result.get("ok"):

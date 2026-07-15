@@ -362,6 +362,144 @@
 {% endmacro %}
 
 
+{# ── Radial Chart - Stacked ──────────────────────────────────────────────
+  Pure SVG progress ring: each config key gets one arc segment, in fixed
+  config order, sized by its share of the sum of `values`. Segments must
+  share one unit and sum to a real whole (e.g. used+free capacity,
+  profit+cost=revenue) — this is not for stacking unlike measures.
+
+  config: {"key": {"label": "…", "color": "var(--chart-1)"}, ...}  (ordered)
+  values: {"key": number, ...}
+#}
+{% macro _radial_sector_path(cx, cy, ro, ri, phi1, phi2) %}
+{%- set large = 1 if (phi2 - phi1) > pi else 0 -%}
+{%- set p_outer_start = (cx - ro * cos(phi1), cy - ro * sin(phi1)) -%}
+{%- set p_outer_end = (cx - ro * cos(phi2), cy - ro * sin(phi2)) -%}
+{%- set p_inner_end = (cx - ri * cos(phi2), cy - ri * sin(phi2)) -%}
+{%- set p_inner_start = (cx - ri * cos(phi1), cy - ri * sin(phi1)) -%}
+M {{ p_outer_start[0] }},{{ p_outer_start[1] }}
+A {{ ro }},{{ ro }} 0 {{ large }} 1 {{ p_outer_end[0] }},{{ p_outer_end[1] }}
+L {{ p_inner_end[0] }},{{ p_inner_end[1] }}
+A {{ ri }},{{ ri }} 0 {{ large }} 0 {{ p_inner_start[0] }},{{ p_inner_start[1] }}
+Z
+{%- endmacro %}
+
+{% macro radial_chart_stacked(chart_id, config, values, class="", size=200, thickness=20, center_value=none, center_label="") %}
+{% set total = values.values() | sum %}
+{% set r = (size - thickness) / 2 %}
+{% set cx = size / 2 %}
+{% set ro = r + (thickness / 2) %}
+{% set ri = r - (thickness / 2) %}
+{% set cy = ro %}
+{# Filled donut-sector path per segment (matches recharts' RadialBar output)
+   instead of a stroked circle — a stroked round linecap gives a full
+   semicircle pill cap, much bigger/rounder than the small corner rounding
+   the reference actually has. corner_radius rounds each segment's 4
+   corners via stroke-linejoin, so adjacent segments simply touch with a
+   small shared fillet at the seam, no manual gap needed. edge_inset keeps
+   the two true ends (9/3 o'clock) off the viewBox's clip line so their
+   rounded corners aren't clipped flat. #}
+{% set corner_radius = [6, thickness * 0.3] | min %}
+{% set edge_inset_angle = corner_radius / r %}
+{% set budget = pi - (edge_inset_angle * 2) %}
+{% set start_angle = edge_inset_angle %}
+{# The same-color outline stroke used for corner rounding runs along the
+   WHOLE path, not just the corners, so it also pushes the outer arc out
+   and the inner arc in by corner_radius — inflating the ring's visible
+   thickness by 2*corner_radius. Pre-shrinking the drawn radii by
+   corner_radius on each side cancels that out so the final visible ring
+   matches the requested `thickness` exactly. #}
+{% set ro_path = ro - corner_radius %}
+{% set ri_path = ri + corner_radius %}
+<div data-slot="chart" data-chart="{{ chart_id }}" class="flex w-full flex-col items-center gap-2 {{ class }}">
+  {{ chart_style(chart_id, config) }}
+  <div class="relative w-full" style="max-width:{{ size }}px;aspect-ratio:{{ size }}/{{ cy }}">
+    <svg viewBox="0 0 {{ size }} {{ cy }}" width="100%" height="100%" preserveAspectRatio="xMidYMax meet" class="block">
+      <path
+        d="{{ _radial_sector_path(cx, cy, ro_path, ri_path, start_angle, start_angle + budget) }}"
+        fill="currentColor"
+        class="text-muted-foreground/20"
+        stroke="currentColor"
+        stroke-width="{{ corner_radius * 2 }}"
+        stroke-linejoin="round"
+      />
+      {% set ns = namespace(offset=0) %}
+      {% for key, cfg in config.items() %}
+        {% set value = values.get(key, 0) %}
+        {% set share = (value / total) if total else 0 %}
+        {% set seg = share * budget %}
+        {% set phi1 = start_angle + ns.offset %}
+        {% set phi2 = phi1 + seg %}
+        <path
+          data-key="{{ key }}"
+          d="{{ _radial_sector_path(cx, cy, ro_path, ri_path, phi1, phi2) }}"
+          fill="var(--color-{{ key }})"
+          stroke="var(--color-{{ key }})"
+          stroke-width="{{ corner_radius * 2 }}"
+          stroke-linejoin="round"
+        ><title>{{ cfg.get("label", key) }}: {{ value }}</title></path>
+        {% set ns.offset = ns.offset + seg %}
+      {% endfor %}
+    </svg>
+    <div class="absolute inset-x-0 bottom-0 flex flex-col items-center pb-0.5 text-center">
+      <span id="{{ chart_id }}-value" class="font-mono text-2xl font-semibold tabular-nums text-foreground">{{ center_value if center_value is not none else total }}</span>
+      {% if center_label %}<span id="{{ chart_id }}-label" class="mt-0.5 max-w-[9rem] text-[11px] uppercase tracking-wide text-muted-foreground">{{ center_label }}</span>{% endif %}
+    </div>
+  </div>
+  {{ chart_legend(config) }}
+</div>
+{% app_script "radial-" ~ chart_id %}
+(function(){
+  var root = document.querySelector('[data-chart="{{ chart_id }}"]');
+  if (!root) return;
+  var cx = {{ cx }}, cy = {{ cy }};
+  var roPath = {{ ro_path }}, riPath = {{ ri_path }};
+  var startAngle = {{ start_angle }}, budget = {{ budget }};
+  var keys = {{ config.keys() | list | tojson }};
+  var paths = {};
+  keys.forEach(function(k){ paths[k] = root.querySelector('path[data-key="' + k + '"]'); });
+  var valueEl = document.getElementById('{{ chart_id }}-value');
+  var labelEl = document.getElementById('{{ chart_id }}-label');
+
+  function pt(rho, phi) { return [cx - rho * Math.cos(phi), cy - rho * Math.sin(phi)]; }
+
+  // Mirrors the server-rendered path exactly, including the corner_radius
+  // pre-shrink that compensates for the same-color outline stroke used to
+  // round the corners (see the Jinja macro's comment for why).
+  function sectorPath(phi1, phi2) {
+    var large = (phi2 - phi1) > Math.PI ? 1 : 0;
+    var pOuterStart = pt(roPath, phi1), pOuterEnd = pt(roPath, phi2);
+    var pInnerEnd = pt(riPath, phi2), pInnerStart = pt(riPath, phi1);
+    return "M " + pOuterStart[0] + "," + pOuterStart[1] +
+      " A " + roPath + "," + roPath + " 0 " + large + " 1 " + pOuterEnd[0] + "," + pOuterEnd[1] +
+      " L " + pInnerEnd[0] + "," + pInnerEnd[1] +
+      " A " + riPath + "," + riPath + " 0 " + large + " 0 " + pInnerStart[0] + "," + pInnerStart[1] + " Z";
+  }
+
+  function update(values, centerValue, centerLabel) {
+    var total = keys.reduce(function(sum, k){ return sum + (values[k] || 0); }, 0);
+    var offset = 0;
+    keys.forEach(function(k){
+      var path = paths[k];
+      if (!path) return;
+      var share = total ? (values[k] || 0) / total : 0;
+      var seg = share * budget;
+      var phi1 = startAngle + offset;
+      var phi2 = phi1 + seg;
+      path.setAttribute('d', sectorPath(phi1, phi2));
+      offset += seg;
+    });
+    if (valueEl && centerValue !== undefined) valueEl.textContent = centerValue;
+    if (labelEl && centerLabel !== undefined) labelEl.textContent = centerLabel;
+  }
+
+  if (!window.csRadialCharts) window.csRadialCharts = {};
+  window.csRadialCharts['{{ chart_id }}'] = { update: update };
+})();
+{% end_app_script %}
+{% endmacro %}
+
+
 {# ── ChartTooltipContent equivalent (static HTML, for custom rendering) ─── #}
 {% macro chart_tooltip(items, label="") %}
 <div class="grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">

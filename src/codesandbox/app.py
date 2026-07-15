@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import warnings
 
 from flask import Flask
@@ -89,6 +90,9 @@ def create_app() -> Flask:
         return get_header_balance(session.user, active_workspace)
 
     app.jinja_env.globals["header_balance"] = _header_balance_global
+    app.jinja_env.globals["sin"] = math.sin
+    app.jinja_env.globals["cos"] = math.cos
+    app.jinja_env.globals["pi"] = math.pi
 
     return app
 
