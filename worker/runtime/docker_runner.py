@@ -35,6 +35,27 @@ _ROOT_STUDY_CAPABILITIES = _SUDO_USER_CAPABILITIES | {
 _USER_RE = re.compile(r"^(?:[0-9]+|[A-Za-z_][A-Za-z0-9_-]*)(?::(?:[0-9]+|[A-Za-z_][A-Za-z0-9_-]*))?$")
 _WORKER_ID = os.environ.get("WORKER_ID", platform.node())
 
+_LXCFS_BINDINGS = (
+    ("proc/cpuinfo", "/proc/cpuinfo"),
+    ("proc/diskstats", "/proc/diskstats"),
+    ("proc/meminfo", "/proc/meminfo"),
+    ("proc/stat", "/proc/stat"),
+    ("proc/swaps", "/proc/swaps"),
+    ("proc/uptime", "/proc/uptime"),
+    ("proc/slabinfo", "/proc/slabinfo"),
+    ("proc/pressure/io", "/proc/pressure/io"),
+    ("proc/pressure/cpu", "/proc/pressure/cpu"),
+    ("proc/pressure/memory", "/proc/pressure/memory"),
+    ("sys/devices/system/cpu", "/sys/devices/system/cpu"),
+)
+
+
+def _env_true(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 
 def _parse_cpu_list(value: str) -> list[int]:
     cpus: list[int] = []
@@ -108,8 +129,12 @@ class DockerRunner(RuntimeRunner):
 
     def _cpuset_cpus(self) -> str:
         allowed = _worker_allowed_cpus()
-        requested = max(1, min(int(self.policy.get("vcpu") or 1), len(allowed)))
-        if requested >= len(allowed):
+        requested = max(1, int(self.policy.get("vcpu") or 1))
+        if requested > len(allowed):
+            raise RuntimeError(
+                f"Worker exposes only {len(allowed)} CPU(s), but the selected plan requires {requested}."
+            )
+        if requested == len(allowed):
             selected = allowed
         else:
             seed = int(hashlib.sha256(self.instance_id.encode()).hexdigest()[:8], 16)
@@ -176,6 +201,10 @@ class DockerRunner(RuntimeRunner):
             or (security.get("no_new_privileges") is not True and not allow_sudo)
         ):
             raise ValueError("Runtime security policy is not sufficiently restricted.")
+        terminal_scope = str(self.policy.get("terminal_scope") or "container").strip().lower()
+        if terminal_scope not in {"container", "workspace"}:
+            raise ValueError("Unsupported terminal scope.")
+        self.policy["terminal_scope"] = terminal_scope
         for field in ("run_as_user", "container_start_user", "terminal_user"):
             value = str(self.policy.get(field) or "")
             if value and not _USER_RE.fullmatch(value):
@@ -254,6 +283,82 @@ class DockerRunner(RuntimeRunner):
         log.info("ensuring image=%s pull_policy=%s", normalized, policy)
         ensure_image(self.client, normalized, pull_policy=policy)
         return normalized
+
+    def _lxcfs_mounts(self) -> list[Mount]:
+        if not _env_true("SANDBOX_LXCFS_ENABLED", True):
+            return []
+        root = os.environ.get("SANDBOX_LXCFS_ROOT", "/var/lib/lxcfs").rstrip("/")
+        if not root.startswith("/") or ".." in root.split("/"):
+            raise RuntimeError("SANDBOX_LXCFS_ROOT must be an absolute normalized path.")
+        return [
+            Mount(
+                target,
+                f"{root}/{source_suffix}",
+                type="bind",
+                read_only=True,
+            )
+            for source_suffix, target in _LXCFS_BINDINGS
+        ]
+
+    def _verify_virtualized_resource_view(self, expected_cpuset: str) -> None:
+        """Fail closed unless procfs/sysfs expose the plan, not the host.
+
+        Docker cgroups are the enforcement boundary. LXCFS is an additional
+        visibility layer so user tools such as htop, btop and free report the
+        same CPU/RAM allocation. Both layers are verified independently.
+        """
+        if not _env_true("SANDBOX_LXCFS_ENABLED", True):
+            return
+        if self.container is None:
+            raise RuntimeError("Sandbox container is unavailable for LXCFS verification.")
+
+        def read_file(path: str) -> str:
+            result = self.container.exec_run(["cat", path])
+            if int(result.exit_code) != 0:
+                detail = bytes(result.output or b"").decode("utf-8", "replace").strip()
+                raise RuntimeError(
+                    f"Container-aware resource view could not read {path}: {detail or 'unknown error'}"
+                )
+            return bytes(result.output or b"").decode("utf-8", "replace")
+
+        cpuinfo = read_file("/proc/cpuinfo")
+        meminfo = read_file("/proc/meminfo")
+        online = read_file("/sys/devices/system/cpu/online").strip()
+
+        visible_cpu_count = sum(
+            1 for line in cpuinfo.splitlines() if line.split(":", 1)[0].strip() == "processor"
+        )
+        expected_cpu_count = len(_parse_cpu_list(expected_cpuset))
+        online_cpu_count = len(_parse_cpu_list(online))
+        if visible_cpu_count != expected_cpu_count or online_cpu_count != expected_cpu_count:
+            raise RuntimeError(
+                "Container CPU visibility does not match the selected plan: "
+                f"/proc/cpuinfo={visible_cpu_count}, sysfs={online_cpu_count}, "
+                f"expected={expected_cpu_count}. LXCFS is missing or not cgroup-aware."
+            )
+
+        mem_total_kib = None
+        for line in meminfo.splitlines():
+            if line.startswith("MemTotal:"):
+                fields = line.split()
+                if len(fields) >= 2:
+                    try:
+                        mem_total_kib = int(fields[1])
+                    except ValueError:
+                        pass
+                break
+        if mem_total_kib is None:
+            raise RuntimeError("Container-aware /proc/meminfo has no valid MemTotal value.")
+
+        visible_memory = mem_total_kib * 1024
+        expected_memory = int(self.policy["ram_gb"]) * 1024**3
+        tolerance = max(32 * 1024**2, expected_memory // 50)  # 32 MiB or 2%.
+        if abs(visible_memory - expected_memory) > tolerance:
+            raise RuntimeError(
+                "Container memory visibility does not match the selected plan: "
+                f"MemTotal={visible_memory} bytes, expected={expected_memory} bytes. "
+                "LXCFS is missing or not cgroup-aware."
+            )
 
     def _instance_network_name(self) -> str:
         return f"cs-net-{uuid.UUID(self.instance_id).hex}"
@@ -430,6 +535,190 @@ class DockerRunner(RuntimeRunner):
         # images valid and leaves lifecycle behavior under admin control.
         return [str(value) for value in command] if command else None
 
+    def _verify_resource_limits(self, expected_cpuset: str) -> None:
+        """Fail closed when Docker ignores a plan-derived cgroup limit."""
+        if self.container is None:
+            raise RuntimeError("Sandbox container was not created.")
+        self.container.reload()
+        host = dict(self.container.attrs.get("HostConfig") or {})
+        expected_nano = int(self.policy["vcpu"]) * 1_000_000_000
+        expected_memory = int(self.policy["ram_gb"]) * 1024**3
+        expected_pids = int(self.policy["pids_limit"])
+        actual = {
+            "NanoCpus": int(host.get("NanoCpus") or 0),
+            "Memory": int(host.get("Memory") or 0),
+            "MemorySwap": int(host.get("MemorySwap") or 0),
+            "PidsLimit": int(host.get("PidsLimit") or 0),
+            "CpusetCpus": str(host.get("CpusetCpus") or ""),
+        }
+        errors = []
+        if actual["NanoCpus"] != expected_nano:
+            errors.append(f"CPU quota {actual['NanoCpus']} != {expected_nano}")
+        if actual["Memory"] != expected_memory:
+            errors.append(f"memory {actual['Memory']} != {expected_memory}")
+        if actual["MemorySwap"] != expected_memory:
+            errors.append(f"memory+swap {actual['MemorySwap']} != {expected_memory}")
+        if actual["PidsLimit"] != expected_pids:
+            errors.append(f"PID limit {actual['PidsLimit']} != {expected_pids}")
+        if _parse_cpu_list(actual["CpusetCpus"]) != _parse_cpu_list(expected_cpuset):
+            errors.append(
+                f"CPU set {actual['CpusetCpus'] or '<empty>'} != {expected_cpuset}"
+            )
+        if errors:
+            raise RuntimeError(
+                "Docker did not apply the selected plan limits: " + "; ".join(errors)
+            )
+
+    def _verify_network_policy(self) -> None:
+        """Verify the exact per-instance bridge instead of trusting labels.
+
+        Full Internet must reach the configured probe. Restricted bridges must
+        not reach it. Disabled instances use Docker's ``none`` network and need
+        no helper probe.
+        """
+        mode = str(self.policy.get("network_mode") or "disabled")
+        if mode == "disabled":
+            return
+        network = self._instance_network()
+        if network is None:
+            raise RuntimeError(f"{mode} sandbox network was not created.")
+        helper_image = self._ensure_image(
+            os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36"),
+            pull_policy="if_not_present",
+        )
+        url = os.environ.get("SANDBOX_RUNTIME_EGRESS_TEST_URL", "https://example.com/")
+        timeout = max(2, min(30, int(os.environ.get("SANDBOX_RUNTIME_EGRESS_TEST_TIMEOUT", "8"))))
+        helper = self.client.containers.create(
+            helper_image,
+            command=["sh", "-c", 'wget -q -T "$PROBE_TIMEOUT" -O /dev/null -- "$PROBE_URL"'],
+            environment={"PROBE_URL": url, "PROBE_TIMEOUT": str(timeout)},
+            network=network.name,
+            read_only=True,
+            tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=8m,mode=1777"},
+            cap_drop=["ALL"],
+            security_opt=["no-new-privileges:true"],
+            pids_limit=32,
+            mem_limit=64 * 1024 * 1024,
+            labels={
+                "com.codesandbox.managed": "true",
+                "com.codesandbox.instance_id": self.instance_id,
+                "com.codesandbox.role": "network-policy-verifier",
+            },
+        )
+        try:
+            helper.start()
+            result = helper.wait(timeout=timeout + 5)
+            code = int((result or {}).get("StatusCode", 1))
+            detail = helper.logs(tail=20).decode("utf-8", errors="replace").strip()
+            if mode == "full_internet" and code != 0:
+                raise RuntimeError(
+                    "Template requests Full Internet, but the runtime bridge cannot reach "
+                    f"the configured egress probe{': ' + detail if detail else '.'}"
+                )
+            if mode == "restricted" and code == 0:
+                raise RuntimeError(
+                    "Restricted network isolation failed: the internal runtime bridge "
+                    "unexpectedly reached the external egress probe."
+                )
+        finally:
+            try:
+                helper.remove(force=True)
+            except Exception:
+                pass
+
+    def _open_workspace_terminal(self):
+        """Open a non-root terminal in a real workspace-only chroot.
+
+        The helper has no network and receives only the workspace volume. A
+        short root bootstrap creates a disposable BusyBox jail, then ``su``
+        drops the interactive shell to the template UID. The user cannot reach
+        the analysis container, uploaded input mount, Docker daemon, or host.
+        """
+        if self.workspace_volume is None:
+            raise RuntimeError("Workspace terminal requires a workspace volume.")
+        helper_image = self._ensure_image(
+            os.environ.get("SANDBOX_VOLUME_INIT_IMAGE", "busybox:1.36"),
+            pull_policy="if_not_present",
+        )
+        terminal_user = self._terminal_user() or "65532:65532"
+        numeric = re.fullmatch(r"([0-9]+)(?::([0-9]+))?", terminal_user)
+        if not numeric:
+            raise RuntimeError("Workspace terminal requires a numeric UID:GID.")
+        uid = numeric.group(1)
+        gid = numeric.group(2) or uid
+        bootstrap = (
+            "set -eu; "
+            "mkdir -p /jail/bin /jail/etc /jail/tmp /jail/workspace; "
+            "cp /bin/busybox /jail/bin/busybox; "
+            "/jail/bin/busybox --install /jail/bin; "
+            f"printf 'sandbox:x:{uid}:{gid}:Sandbox User:/workspace:/bin/sh\\n' > /jail/etc/passwd; "
+            f"printf 'sandbox:x:{gid}:\\n' > /jail/etc/group; "
+            "chmod 0755 /jail /jail/bin /jail/etc /jail/tmp; "
+            f"chown {uid}:{gid} /jail/workspace; chmod 0770 /jail/workspace; "
+            "touch /jail/.ready; "
+            "trap 'exit 0' TERM INT; while :; do sleep 3600 & wait $!; done"
+        )
+        helper = self.client.containers.create(
+            helper_image,
+            command=["sh", "-c", bootstrap],
+            network_mode="none",
+            mounts=[Mount(
+                "/jail/workspace",
+                self.workspace_volume.name,
+                type="volume",
+                no_copy=True,
+            )],
+            # Writable disposable helper root is required only to assemble the
+            # jail. The interactive shell itself is chrooted and non-root.
+            read_only=False,
+            tmpfs={"/tmp": "rw,noexec,nosuid,nodev,size=16m,mode=1777"},
+            cap_drop=["ALL"],
+            cap_add=["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID", "SYS_CHROOT"],
+            security_opt=["no-new-privileges:true"],
+            pids_limit=min(128, int(self.policy.get("pids_limit") or 128)),
+            mem_limit=min(256 * 1024 * 1024, int(self.policy["ram_gb"]) * 1024**3),
+            nano_cpus=min(500_000_000, int(self.policy["vcpu"]) * 1_000_000_000),
+            labels={
+                "com.codesandbox.managed": "true",
+                "com.codesandbox.instance_id": self.instance_id,
+                "com.codesandbox.role": "workspace-terminal",
+            },
+        )
+        try:
+            helper.start()
+            ready = None
+            for _ in range(40):
+                ready = helper.exec_run(["sh", "-c", "test -f /jail/.ready"])
+                if ready.exit_code == 0:
+                    break
+                time.sleep(0.05)
+            if ready is None or ready.exit_code != 0:
+                raise RuntimeError("Workspace terminal jail could not be prepared.")
+            created = self.client.api.exec_create(
+                helper.id,
+                ["/bin/chroot", "/jail", "/bin/su", "-", "sandbox"],
+                stdin=True,
+                tty=True,
+                workdir="/",
+                environment={"TERM": "xterm-256color"},
+            )
+            exec_id = created["Id"]
+            wrapper = self.client.api.exec_start(exec_id, detach=False, tty=True, socket=True)
+        except Exception:
+            try:
+                helper.remove(force=True)
+            except Exception:
+                pass
+            raise
+
+        def cleanup() -> None:
+            try:
+                helper.remove(force=True)
+            except Exception:
+                pass
+
+        return exec_id, wrapper, cleanup
+
     def start(self) -> dict[str, Any]:
         mounts = []
         if self.workspace_volume is not None:
@@ -456,6 +745,10 @@ class DockerRunner(RuntimeRunner):
                 read_only=True,
                 no_copy=True,
             ))
+        # Bind LXCFS-provided procfs/sysfs views into every user-facing runtime.
+        # These mounts affect reporting only; cgroups remain the hard limit.
+        mounts.extend(self._lxcfs_mounts())
+        expected_cpuset = self._cpuset_cpus()
         kwargs: dict[str, Any] = {
             "image": self.policy["docker_image"],
             "command": self._container_command(),
@@ -470,10 +763,11 @@ class DockerRunner(RuntimeRunner):
             "mounts": mounts,
             "read_only": bool(self.policy.get("read_only_root", True)),
             "tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=64m,mode=1777"},
-            # Quota enforces CPU time; cpuset also hides unrelated host CPUs
-            # from tools such as htop/nproc so the visible topology matches the plan.
+            # Quota enforces CPU time and cpuset constrains scheduling affinity.
+            # /proc-based tools such as htop may still display host topology;
+            # post-start HostConfig verification below proves the actual limits.
             "nano_cpus": int(self.policy["vcpu"]) * 1_000_000_000,
-            "cpuset_cpus": self._cpuset_cpus(),
+            "cpuset_cpus": expected_cpuset,
             "mem_limit": int(self.policy["ram_gb"]) * 1024**3,
             "memswap_limit": int(self.policy["ram_gb"]) * 1024**3,
             "pids_limit": int(self.policy["pids_limit"]),
@@ -494,7 +788,17 @@ class DockerRunner(RuntimeRunner):
             kwargs["network"] = network.name
 
         self.container = self.client.containers.create(**kwargs)
-        self.container.start()
+        try:
+            self.container.start()
+            self._verify_resource_limits(expected_cpuset)
+            self._verify_virtualized_resource_view(expected_cpuset)
+            self._verify_network_policy()
+        except Exception:
+            try:
+                self.container.remove(force=True)
+            except Exception:
+                pass
+            raise
         self.started_monotonic = time.monotonic()
         return {
             "runtime_provider": "docker",
@@ -513,6 +817,8 @@ class DockerRunner(RuntimeRunner):
     def open_terminal(self):
         if not self.is_running:
             raise RuntimeError("Sandbox is not running.")
+        if self.policy.get("terminal_scope") == "workspace":
+            return self._open_workspace_terminal()
         shell = None
         for candidate in ("/bin/bash", "/bin/sh"):
             probe = self.container.exec_run([candidate, "-c", "exit 0"])
@@ -537,7 +843,7 @@ class DockerRunner(RuntimeRunner):
             tty=True,
             socket=True,
         )
-        return exec_id, socket_wrapper
+        return exec_id, socket_wrapper, None
 
     def stats(self) -> dict[str, Any]:
         return self.metrics_reader.snapshot()

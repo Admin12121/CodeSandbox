@@ -29,6 +29,7 @@ from .service import (
     log_channel_token_issued,
     make_worker_callback_token,
     record_instance_ui_evidence,
+    restart_instance,
     save_plan,
     save_template,
     save_template_config,
@@ -164,7 +165,7 @@ def save_template_action():
         read_only_root=_form_bool("read_only_root"),
         run_as_user=request.form.get("run_as_user", ""),
         pids_limit=pids_limit,
-        allow_full_internet=_form_bool("allow_full_internet"),
+        allow_full_internet=(request.form.get("network_mode", "disabled") == "full_internet"),
     )
     if error:
         return _sandboxes_redirect(template_id or "new", error)
@@ -317,7 +318,6 @@ def save_plan_action():
         org_cost_hr=request.form.get("org_cost_hr", "0"),
         updated_by_id=str(cs.user.id),
         min_billable_minutes=min_billable_minutes,
-        allowed_network_modes=request.form.getlist("allowed_network_modes"),
     )
     if error:
         return _plans_redirect(request.form.get("plan_id") or "new", error)
@@ -404,6 +404,17 @@ def start_instance_action(instance_id: str):
             return redirect(f"/instances/{instance_id}?error={quote(err)}", 303)
         return redirect(f"/my-instances?error={quote(err)}", 303)
     return redirect(f"/instances/{instance_id}", 303)
+
+
+@web_bp.post("/instances/<instance_id>/restart")
+def restart_instance_action(instance_id: str):
+    cs = get_current_session()
+    if not cs:
+        return redirect("/login", 303)
+    result, error = restart_instance(instance_id, actor_user_id=str(cs.user.id))
+    if error:
+        return redirect(f"/my-instances?error={quote(error)}", 303)
+    return redirect(f"/instances/{result['id']}", 303)
 
 
 @web_bp.post("/instances/<instance_id>/stop")

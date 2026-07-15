@@ -206,17 +206,26 @@
   if(axis2) axis2.textContent = money((max || 1) * 0.4, true);
   if(axis1) axis1.textContent = money((max || 1) * 0.2, true);
 
-  function realRows(sourceRows){
-    return sourceRows.map(function(row, index){
-      return { row: row, sourceIndex: index };
-    });
-  }
-  function blankRows(){
+  function targetColumnCount(){
     var plotWidth = plot.getBoundingClientRect().width || plot.clientWidth || 900;
     var targetColumns = Math.floor((plotWidth + cellGap) / (cellSize + cellGap));
-    targetColumns = Math.max(1, Math.min(180, targetColumns));
+    return Math.max(1, Math.min(180, targetColumns));
+  }
+  // Real data columns first, then faint placeholder columns padding out the
+  // full plot width — so the pixel grid always fills the panel edge-to-edge
+  // exactly like the no-data state, however few (or many) buckets exist.
+  function paddedRows(sourceRows){
+    var result = sourceRows.map(function(row, index){
+      return { row: row, sourceIndex: index };
+    });
+    var target = targetColumnCount();
+    while(result.length < target) result.push({ row: null, sourceIndex: result.length });
+    return result;
+  }
+  function blankRows(){
     var result = [];
-    for(var i = 0; i < targetColumns; i++) result.push({ row: null, sourceIndex: i });
+    var target = targetColumnCount();
+    for(var i = 0; i < target; i++) result.push({ row: null, sourceIndex: i });
     return result;
   }
   function axisText(row, sourceIndex){
@@ -230,7 +239,7 @@
     return '';
   }
 
-  var displayRows = hasRows ? realRows(rows) : blankRows();
+  var displayRows = hasRows ? paddedRows(rows) : blankRows();
   plot.innerHTML = '';
   xAxis.innerHTML = '';
   plot.style.gridTemplateColumns = 'repeat(' + Math.max(displayRows.length, 1) + ', ' + cellSize + 'px)';
@@ -254,13 +263,13 @@
     hit.style.padding = '0';
     hit.style.border = '0';
     hit.style.background = 'transparent';
-    hit.style.cursor = hasRows ? 'crosshair' : 'default';
-    hit.disabled = !hasRows;
-    hit.appendChild(hasRows ? column(row, max) : emptyColumn());
+    hit.style.cursor = row ? 'crosshair' : 'default';
+    hit.disabled = !row;
+    hit.appendChild(row ? column(row, max) : emptyColumn());
     plot.appendChild(hit);
 
     var tick = document.createElement('span');
-    var tickText = hasRows ? axisText(row, sourceIndex) : '';
+    var tickText = row ? axisText(row, sourceIndex) : '';
     if(activePeriod === 'year' && tickText){
       var yearMonthKey = monthLabel(row.label);
       if(yearMonthKey === previousYearMonth) tickText = '';
@@ -300,7 +309,7 @@
       hoverDot.classList.add('hidden');
       tooltip.classList.add('hidden');
     }
-    if(hasRows){
+    if(row){
       hit.addEventListener('mouseenter', show);
       hit.addEventListener('focus', show);
       hit.addEventListener('mouseleave', hide);

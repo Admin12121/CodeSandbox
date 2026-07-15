@@ -150,23 +150,22 @@ def test_disabled_template_plan_rejected_by_service(ctx: TestContext) -> None:
     assert error == "This plan is disabled for the selected template."
 
 
-def test_full_internet_blocked_for_reverse_engineering(ctx: TestContext) -> None:
-    from codesandbox.features.sandbox.runtime.policy import RuntimePolicyError, resolve_effective_plan
+def test_template_is_only_network_policy_source(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.runtime.policy import resolve_effective_plan
 
-    try:
-        resolve_effective_plan(
-            _template(
-                sandbox_type="reverse_engineering",
-                network_mode="full_internet",
-                allow_full_internet=True,
-            ),
-            _plan(allowed_network_modes='["disabled","restricted","full_internet"]'),
-            _template_plan(full_internet_enabled=True),
-        )
-    except RuntimePolicyError as exc:
-        assert "Full internet is not enabled" in str(exc)
-    else:
-        raise AssertionError("Reverse-engineering templates must not resolve full internet access.")
+    # A plan's legacy allowed_network_modes value cannot veto or grant network
+    # access. Runtime network behavior comes only from template Config.
+    effective = resolve_effective_plan(
+        _template(
+            sandbox_type="reverse_engineering",
+            network_mode="full_internet",
+            allow_full_internet=False,  # legacy duplicate column is ignored
+        ),
+        _plan(allowed_network_modes='["disabled"]'),
+        _template_plan(full_internet_enabled=False),
+    )
+    assert effective.network_mode == "full_internet"
+    assert effective.full_internet_enabled is True
 
 
 def _runtime_config(**settings) -> str:
@@ -390,11 +389,22 @@ def test_sudo_ide_profile_is_non_root_but_bootstraps_as_root(ctx: TestContext) -
     assert policy["security"]["no_new_privileges"] is False
 
 
+def test_workspace_terminal_scope_is_carried_to_worker_policy(ctx: TestContext) -> None:
+    from codesandbox.features.sandbox.runtime.policy import PolicyBuilder, resolve_effective_plan
+
+    effective = resolve_effective_plan(_template(network_mode="restricted"), _plan())
+    policy = PolicyBuilder().build(
+        _template(runtime_config=_runtime_config(terminal_scope="workspace")),
+        effective,
+    )
+    assert policy["terminal_scope"] == "workspace"
+
+
 TESTS: list[TestCase] = [
     TestCase("effective plan uses global plan resources only", "sandbox", test_effective_plan_uses_global_plan_resources_only),
     TestCase("container disk is sparse for scheduler", "sandbox", test_container_disk_limit_is_sparse_for_scheduler),
     TestCase("disabled template plan rejected", "sandbox", test_disabled_template_plan_rejected_by_service),
-    TestCase("reverse engineering no internet", "sandbox", test_full_internet_blocked_for_reverse_engineering),
+    TestCase("template controls network policy", "sandbox", test_template_is_only_network_policy_source),
     TestCase("required_args enforced generically", "sandbox", test_required_args_enforced_generically),
     TestCase("forbidden_args enforced generically", "sandbox", test_forbidden_args_enforced_generically),
     TestCase("platform environment names are reserved", "sandbox", test_platform_environment_names_cannot_be_overridden),
@@ -402,4 +412,5 @@ TESTS: list[TestCase] = [
     TestCase("worker filesystem path confinement", "sandbox", test_worker_filesystem_paths_stay_in_workspace),
     TestCase("root study capability profile", "sandbox", test_root_study_profile_uses_fixed_capabilities),
     TestCase("sudo IDE capability profile", "sandbox", test_sudo_ide_profile_is_non_root_but_bootstraps_as_root),
+    TestCase("workspace terminal scope", "sandbox", test_workspace_terminal_scope_is_carried_to_worker_policy),
 ]

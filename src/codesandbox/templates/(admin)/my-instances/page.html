@@ -57,6 +57,14 @@
                     <button type="button" disabled title="{{ inst.start_error }}" class="flex w-full cursor-not-allowed items-center rounded-md px-2.5 py-1.5 text-left opacity-50">Start</button>
                   {% endif %}
                 {% endif %}
+                {% if inst.can_restart %}
+                  <form method="post" action="/instances/{{ inst.id }}/restart">
+                    {{ csrf_input() }}
+                    <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">Start again</button>
+                  </form>
+                {% elif inst.restart_error and inst.status in ('stopped','failed','expired','killed') %}
+                  <button type="button" disabled title="{{ inst.restart_error }}" class="flex w-full cursor-not-allowed items-center rounded-md px-2.5 py-1.5 text-left opacity-50">Start again</button>
+                {% endif %}
                 {% if inst.can_stop %}
                   <form method="post" action="/instances/{{ inst.id }}/stop">
                     {{ csrf_input() }}

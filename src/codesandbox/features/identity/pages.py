@@ -7,14 +7,16 @@ from flask import request, session as flask_session
 
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.identity.service import totp_qr_data_uri
-from codesandbox.shared.session import build_nav, format_role_label, require_session
+from codesandbox.shared.session import build_nav, format_role_label, get_current_session, require_session
 from codesandbox.web.blueprint import router
 from codesandbox.web._ctx import _user_ctx, _workspaces_ctx
 
 
 @router.page("/")
 def home():
-    return {"_redirect": "/dashboard"}
+    if get_current_session():
+        return {"_redirect": "/dashboard"}
+    return {"_meta": {"title": "CodeSandbox — Cloud sandboxes on demand"}}
 
 
 @router.page("/login")

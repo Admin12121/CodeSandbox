@@ -277,7 +277,6 @@ class EffectivePlan:
     max_timeout_hr: int
     network_mode: str
     min_billable_minutes: int
-    allowed_network_modes: tuple[str, ...]
     full_internet_enabled: bool
     is_active: bool
     is_enabled: bool
@@ -287,7 +286,6 @@ class EffectivePlan:
         result = asdict(self)
         result["ind_cost_hr"] = str(self.ind_cost_hr)
         result["org_cost_hr"] = str(self.org_cost_hr)
-        result["allowed_network_modes"] = list(self.allowed_network_modes)
         return result
 
     def tier(self, workspace_type: str) -> dict:
@@ -309,28 +307,13 @@ def resolve_effective_plan(template: Any, global_plan: Any, template_plan: Any =
     intentionally ignored here.
     """
 
-    allowed = tuple(
-        dict.fromkeys(
-            normalize_network_mode(mode)
-            for mode in _json_list(
-                _value(global_plan, "allowed_network_modes"),
-                ["disabled", "restricted"],
-            )
-            if normalize_network_mode(mode) in SUPPORTED_NETWORK_MODES
-        )
-    ) or ("disabled",)
-
+    # Network policy belongs exclusively to SandboxTemplate. Plans provide
+    # capacity, price and minimum-billing values only; they must never silently
+    # enable, disable or veto a template's configured network isolation.
     network_mode = normalize_network_mode(_value(template, "network_mode", "disabled"))
     if network_mode not in SUPPORTED_NETWORK_MODES:
         raise RuntimePolicyError(f"Unsupported network mode: {network_mode}.")
-    if network_mode not in allowed:
-        raise RuntimePolicyError(
-            f"Network mode '{network_mode}' is not allowed by plan '{_value(global_plan, 'id', '')}'."
-        )
-
-    full_internet_enabled = bool(_value(template, "allow_full_internet", False))
-    if network_mode == "full_internet" and not full_internet_enabled:
-        raise RuntimePolicyError("Full internet must be explicitly enabled on the template.")
+    full_internet_enabled = network_mode == "full_internet"
 
     max_timeout_hr = max(
         1, min(72, int(_value(template, "max_timeout_hr", 2) or 2))
@@ -353,7 +336,6 @@ def resolve_effective_plan(template: Any, global_plan: Any, template_plan: Any =
         max_timeout_hr=max_timeout_hr,
         network_mode=network_mode,
         min_billable_minutes=min_billable_minutes,
-        allowed_network_modes=allowed,
         full_internet_enabled=full_internet_enabled,
         is_active=bool(_value(global_plan, "is_active", True)),
         is_enabled=bool(_value(template_plan, "is_enabled", True)),
@@ -421,6 +403,9 @@ class PolicyBuilder:
         exposed_ports = _exposed_ports(template_runtime_config.get("exposed_ports"))
         container_start_user = str(template_runtime_config.get("container_start_user") or "").strip()
         terminal_user = str(template_runtime_config.get("terminal_user") or "").strip()
+        terminal_scope = str(template_runtime_config.get("terminal_scope") or "container").strip().lower()
+        if terminal_scope not in {"container", "workspace"}:
+            raise RuntimePolicyError("terminal_scope must be 'container' or 'workspace'.")
         allow_sudo = bool(template_runtime_config.get("allow_sudo", False))
         security_profile = str(
             template_runtime_config.get("security_profile") or "restricted"
@@ -600,6 +585,7 @@ class PolicyBuilder:
             "run_as_user": str(_value(template, "run_as_user", "") or ""),
             "container_start_user": container_start_user,
             "terminal_user": terminal_user,
+            "terminal_scope": terminal_scope,
             "allow_sudo": allow_sudo,
             "pids_limit": max(32, min(4096, int(_value(template, "pids_limit", 256) or 256))),
             "security": {
@@ -629,7 +615,6 @@ class PolicyBuilder:
             max_timeout_hr=int(plan.get("max_timeout_hr", 2)),
             network_mode=normalize_network_mode(plan.get("network_mode", "disabled")),
             min_billable_minutes=int(plan.get("min_billable_minutes", 1)),
-            allowed_network_modes=tuple(plan.get("allowed_network_modes", ["disabled", "restricted"])),
             full_internet_enabled=bool(plan.get("full_internet_enabled", False)),
             is_active=bool(plan.get("is_active", True)),
             is_enabled=bool(plan.get("is_enabled", True)),

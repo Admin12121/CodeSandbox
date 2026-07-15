@@ -326,7 +326,7 @@
               {% call table.table(variant="card") %}
                 {% call table.table_header() %}
                   {% call table.table_row() %}
-                    {{ table.table_head("Runtime Policy", class="w-44") }}
+                    {{ table.table_head("Billing", class="w-44") }}
                     {{ table.table_head("") }}
                   {% endcall %}
                 {% endcall %}
@@ -339,21 +339,6 @@
                           value="{{ selected_plan.min_billable_minutes or 0 }}"
                           class="h-8 w-20 rounded-md border border-input bg-background px-3 py-1 text-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         <span class="text-xs text-muted-foreground">minutes</span>
-                      </div>
-                    {% endcall %}
-                  {% endcall %}
-                  {% call table.table_row() %}
-                    {% call table.table_cell(class="font-medium text-sm align-top pt-3") %}Network Modes{% endcall %}
-                    {% call table.table_cell() %}
-                      <div class="flex flex-wrap gap-3">
-                        {% for mode in ["disabled", "restricted", "full_internet"] %}
-                          <label class="inline-flex items-center gap-2 text-sm">
-                            <input type="checkbox" name="allowed_network_modes" value="{{ mode }}"
-                              {% if mode in selected_plan.allowed_network_mode_values %}checked{% endif %}
-                              class="size-4 rounded border-input accent-primary">
-                            <span>{{ mode | replace("_", " ") | title }}</span>
-                          </label>
-                        {% endfor %}
                       </div>
                     {% endcall %}
                   {% endcall %}
@@ -399,10 +384,6 @@
                 {% call table.table_row() %}
                   {% call table.table_cell(class="font-medium text-sm") %}Minimum Billing{% endcall %}
                   {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ selected_plan.min_billable_minutes }} minutes{% endcall %}
-                {% endcall %}
-                {% call table.table_row() %}
-                  {% call table.table_cell(class="font-medium text-sm") %}Network Modes{% endcall %}
-                  {% call table.table_cell(class="text-sm text-muted-foreground") %}{{ selected_plan.allowed_network_mode_values | join(", ") | replace("_", " ") }}{% endcall %}
                 {% endcall %}
               {% endcall %}
             {% endcall %}

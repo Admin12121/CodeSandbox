@@ -1,157 +1,577 @@
-{% import "components/ui/alert.html" as alert %}
-{% import "components/ui/badge.html" as badge %}
-{% import "components/ui/button.html" as button %}
-{% import "components/ui/card.html" as card %}
-{% import "components/ui/frame.html" as frame %}
-{% import "components/ui/input.html" as input %}
-{% import "components/ui/table.html" as table %}
+<link rel="stylesheet" href="/ascii-transition.css">
+<script defer src="/ascii-page-transition.js"></script>
+<link rel="stylesheet" href="/footer-ascii-hands.css">
+<script defer src="/footer-ascii-hands.js"></script>
+<div class="w-full flex flex-col items-center bg-stone-50 dark:bg-stone-950 min-h-screen text-stone-800 dark:text-stone-200">
 
-<main class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-8 px-6 py-10">
-  <section class="flex flex-col gap-4">
-    <div class="flex flex-wrap items-center gap-3">
-      {{ badge.badge("Flask", variant="secondary") }}
-      {{ badge.badge("Jinja macros", variant="success") }}
-      {{ badge.badge("app-router", variant="info") }}
+  <div class="sticky top-0 w-full backdrop-blur-lg z-50 flex justify-center bg-stone-50/80 dark:bg-stone-950/80">
+    <div class="max-w-6xl w-full">
+      <div class="flex items-center justify-between h-14 w-full gap-2 py-1 px-4 lg:px-6">
+        <a aria-label="Go to home" class="w-fit hover:opacity-70 py-2 m-0 flex items-center gap-2.5" href="/">
+          <img src="/logo.webp" alt="" class="size-10 object-contain">
+          <span class="font-semibold text-base tracking-tight text-stone-800 dark:text-stone-100">CodeSandbox</span>
+        </a>
+        <div class="flex gap-2 lg:gap-4 justify-end w-max">
+          <a class="cursor-pointer box-border inline-flex items-center justify-center font-semibold font-mono uppercase border transition-all ease-in duration-75 whitespace-nowrap text-center select-none gap-x-2 active:scale-95 text-sm leading-5 rounded-xl px-4 py-1.5 h-8 bg-white border-stone-200 hover:bg-stone-100 hover:border-stone-300 text-stone-800 dark:bg-stone-900 dark:border-stone-700 dark:text-stone-100 dark:hover:bg-stone-800"
+             href="/login" data-ascii-transition="1" data-no-transition="true">Log in</a>
+          <a class="cursor-pointer box-border inline-flex items-center justify-center font-semibold font-mono uppercase border transition-all ease-in duration-75 whitespace-nowrap text-center select-none gap-x-2 active:scale-95 text-sm leading-5 rounded-xl px-4 py-1.5 h-8 text-stone-50 bg-stone-900 border-stone-900 hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:border-stone-100 dark:hover:bg-stone-300"
+             href="/login?mode=signup" data-ascii-transition="1" data-no-transition="true">Sign up</a>
+        </div>
+      </div>
     </div>
-    <div class="max-w-3xl space-y-3">
-      <h1 class="text-4xl font-semibold tracking-tight">Shadcn-style UI macros for Flask</h1>
-      <p class="text-muted-foreground">
-        The demo TSX component names are mirrored under <code>templates/components/ui</code>
-        as normal Jinja macro files.
-      </p>
+  </div>
+
+  <div class="max-w-6xl w-full">
+    <div class="w-full px-4 md:px-6 pb-10">
+      <div class="flex flex-col">
+
+        <div class="flex flex-col items-center gap-10 pt-20 lg:pt-30 pb-10 md:pb-20 text-center">
+          <div class="flex flex-col gap-4">
+            <h1 class="text-[40px] lg:text-[72px] leading-[1.1] font-semibold tracking-tight text-stone-900 dark:text-stone-50" style='font-family: "cooperLtBT", "cooperLtBT Fallback", serif;'>
+              Sandboxes for <em>builders</em> who
+              <br class="hidden md:inline">ship with <em>speed</em>
+            </h1>
+            <h2 class="text-stone-500 dark:text-stone-400 text-base md:text-xl max-w-3xl leading-[30px] mx-auto">
+              Terminal, IDE, desktop &amp; background runtimes in one platform.<br class="hidden md:inline">
+              Priced by runtime, not seats.
+            </h2>
+          </div>
+        </div>
+
+        <div class="relative w-full min-h-80 md:min-h-[38.75rem] flex items-center justify-center overflow-hidden">
+            <img
+                alt="animated input background"
+                class="absolute inset-0 w-full h-full object-cover"
+                decoding="async"
+                src="/pixel-mountain-lake.png"
+                style="
+                    position: absolute;
+                    height: 100%;
+                    width: 100%;
+                    inset: 0px;
+                    color: transparent;
+                "
+            />
+          <div class="relative z-10 flex flex-col items-center gap-16 w-full max-w-80 md:max-w-2xl px-4">
+            <div class="relative w-full flex flex-col border-2 border-stone-800 rounded-2xl bg-stone-950 shadow-2xl overflow-hidden">
+              <div class="flex items-center gap-1.5 px-4 py-3 border-b border-stone-800">
+                <span class="size-2.5 rounded-full bg-stone-700"></span>
+                <span class="size-2.5 rounded-full bg-stone-700"></span>
+                <span class="size-2.5 rounded-full bg-stone-700"></span>
+                <span class="ml-3 text-stone-500 text-xs font-mono">sandbox — /workspace</span>
+              </div>
+              <div class="px-4 pt-4 pb-5 font-mono text-sm leading-[22px] text-left">
+                <p class="text-stone-400"><span class="text-emerald-400">$</span> launch coding-ide</p>
+                <p class="text-stone-500">Booting isolated instance… ready in 4s</p>
+                <p class="text-stone-400 mt-2"><span class="text-emerald-400">$</span> python solve.py</p>
+                <p class="text-stone-500">All 12 checks passed ✓</p>
+                <p class="text-stone-400 mt-2"><span class="text-emerald-400">$</span> <span class="inline-block w-px h-4 bg-stone-200 ml-0.5 mb-px align-middle animate-pulse"></span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-10 border-x border-stone-200 dark:border-stone-800">
+          <ul class="grid grid-cols-1 sm:grid-cols-3 sm:border-b border-t border-stone-200 dark:border-stone-800">
+            <li class="flex flex-col border-b border-stone-200 dark:border-stone-800 sm:border-b-0 [&:not(:last-child)]:sm:border-r">
+              <div class="flex flex-col gap-2 px-4 sm:px-6 py-6 flex-1 bg-white dark:bg-stone-900">
+                <p class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono">Templates</p>
+                <p class="text-stone-500 dark:text-stone-400 font-normal text-base leading-[22px]">
+                  Curated environments — coding IDEs, background jobs, desktop GUIs — published with the right image and resources.
+                </p>
+              </div>
+              <ul class="grid grid-cols-1 border-t border-stone-200 dark:border-stone-800">
+                <li>
+                  <a class="flex items-center text-stone-500 justify-between gap-4 px-6 py-3 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors duration-100" href="/hub">
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-xs font-mono uppercase">Browse the Hub</p>
+                    <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                  </a>
+                </li>
+              </ul>
+            </li>
+            <li class="flex flex-col border-b border-stone-200 dark:border-stone-800 sm:border-b-0 [&:not(:last-child)]:sm:border-r">
+              <div class="flex flex-col gap-2 px-4 sm:px-6 py-6 flex-1 bg-white dark:bg-stone-900">
+                <p class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono">Terminal &amp; IDE</p>
+                <p class="text-stone-500 dark:text-stone-400 font-normal text-base leading-[22px]">
+                  A real shell and a file-backed CodeMirror editor over your instance's own isolated workspace.
+                </p>
+              </div>
+              <ul class="grid grid-cols-1 border-t border-stone-200 dark:border-stone-800">
+                <li>
+                  <a class="flex items-center text-stone-500 justify-between gap-4 px-6 py-3 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors duration-100" href="/login?mode=signup" data-ascii-transition="1" data-no-transition="true">
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-xs font-mono uppercase">Try it free</p>
+                    <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                  </a>
+                </li>
+              </ul>
+            </li>
+            <li class="flex flex-col border-b border-stone-200 dark:border-stone-800 sm:border-b-0 [&:not(:last-child)]:sm:border-r">
+              <div class="flex flex-col gap-2 px-4 sm:px-6 py-6 flex-1 bg-white dark:bg-stone-900">
+                <p class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono">Workflows</p>
+                <p class="text-stone-500 dark:text-stone-400 font-normal text-base leading-[22px]">
+                  Chain interfaces into guided flows — start in a background run, continue in a terminal, finish on a custom page.
+                </p>
+              </div>
+              <ul class="grid grid-cols-1 border-t border-stone-200 dark:border-stone-800">
+                <li>
+                  <a class="flex items-center text-stone-500 justify-between gap-4 px-6 py-3 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors duration-100" href="/login" data-ascii-transition="1" data-no-transition="true">
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-xs font-mono uppercase">See it in action</p>
+                    <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                  </a>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+
+        <div class="my-10 md:my-20 border-x border-stone-200 dark:border-stone-800">
+          <div class="md:border-b border-t border-b-0 border-stone-200 dark:border-stone-800">
+            <div class="grid grid-cols-2 md:grid-cols-4 border-b border-stone-200 dark:border-stone-800">
+              <div class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r">
+                <p class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center">5</p>
+                <p class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center">Runtime classes, one launcher</p>
+              </div>
+              <div class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r">
+                <p class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center">&lt;10s</p>
+                <p class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center">From click to live terminal</p>
+              </div>
+              <div class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r">
+                <p class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center">1s</p>
+                <p class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center">Metering granularity — pay for what runs</p>
+              </div>
+              <div class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r">
+                <p class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center">2</p>
+                <p class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center">Payment gateways — eSewa &amp; card</p>
+              </div>
+            </div>
+            <div class="flex justify-center items-center p-6 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800">
+              <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase leading-5 text-center">
+                Every instance isolated, audited, and billed on a transparent ledger
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {# ── #01 Runtime deep-dive: 4-tab left list + switching preview panel (was #01/#02/#03 email sections; #02/#03 excluded, this one kept and renumbered #01) ── #}
+        <div class="flex my-10 md:my-20 flex-col gap-20">
+          <div class="flex flex-col border-x border-t border-b-0 md:border-b border-stone-200 dark:border-stone-800" data-runtime-tabs>
+            <div class="grid grid-cols-1 md:grid-cols-2 border-b gap-4 border-stone-200 dark:border-stone-800 px-4 md:px-6 py-6">
+              <div class="flex flex-col gap-2 md:gap-4">
+                <p class="text-indigo-500 dark:text-indigo-400 font-medium text-sm font-mono uppercase leading-4">#01 - Runtime Classes</p>
+                <h2 class="text-[32px] md:text-[40px] leading-[1.2] text-stone-900 dark:text-stone-50">
+                  One instance, any interface you need.
+                </h2>
+              </div>
+            </div>
+
+            {# Mobile: accordion, no JS needed #}
+            <div class="block md:hidden">
+              <details open class="group border-b border-stone-200 dark:border-stone-800">
+                <summary class="flex items-center gap-2 p-4 cursor-pointer list-none bg-white dark:bg-stone-900">
+                  <p class="text-stone-800 dark:text-stone-100 font-medium text-base flex-1 text-left font-mono uppercase leading-4">Terminal</p>
+                </summary>
+                <div class="p-4 bg-white dark:bg-stone-900">
+                  <p class="text-stone-500 dark:text-stone-400">A full shell over an isolated workspace, streamed straight to your browser.</p>
+                </div>
+              </details>
+              <details class="group border-b border-stone-200 dark:border-stone-800">
+                <summary class="flex items-center gap-2 p-4 cursor-pointer list-none bg-stone-50 dark:bg-stone-950">
+                  <p class="text-stone-800 dark:text-stone-100 font-medium text-base flex-1 text-left font-mono uppercase leading-4">Lab UI</p>
+                </summary>
+                <div class="p-4 bg-stone-50 dark:bg-stone-950">
+                  <p class="text-stone-500 dark:text-stone-400">A file-backed CodeMirror editor with a live preview pane, for exercises and courses.</p>
+                </div>
+              </details>
+              <details class="group border-b border-stone-200 dark:border-stone-800">
+                <summary class="flex items-center gap-2 p-4 cursor-pointer list-none bg-white dark:bg-stone-900">
+                  <p class="text-stone-800 dark:text-stone-100 font-medium text-base flex-1 text-left font-mono uppercase leading-4">Desktop GUI</p>
+                </summary>
+                <div class="p-4 bg-white dark:bg-stone-900">
+                  <p class="text-stone-500 dark:text-stone-400">A secured remote desktop session for tools that need a real windowing environment.</p>
+                </div>
+              </details>
+              <details class="group border-b border-stone-200 dark:border-stone-800">
+                <summary class="flex items-center gap-2 p-4 cursor-pointer list-none bg-stone-50 dark:bg-stone-950">
+                  <p class="text-stone-800 dark:text-stone-100 font-medium text-base flex-1 text-left font-mono uppercase leading-4">Background Run</p>
+                </summary>
+                <div class="p-4 bg-stone-50 dark:bg-stone-950">
+                  <p class="text-stone-500 dark:text-stone-400">Kick off a long job and walk away — progress and logs stream back until it finishes.</p>
+                </div>
+              </details>
+            </div>
+
+            {# Desktop: left tab list + right preview panel #}
+            <div class="hidden md:grid md:grid-cols-2 md:h-130 md:overflow-hidden">
+              <div class="md:border-r border-stone-200 dark:border-stone-800 flex flex-col">
+                <div class="flex divide-y divide-stone-200 dark:divide-stone-800 flex-col h-full">
+                  <button type="button" data-runtime-tab="terminal" class="relative isolate flex items-center gap-4 p-6 text-left cursor-pointer flex-grow bg-white dark:bg-stone-900" aria-current="true">
+                    <div class="flex gap-4">
+                      <span class="shrink-0 text-stone-800 dark:text-stone-200">
+                        <svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="m4 17 6-6-6-6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path><path d="M12 19h8" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                      </span>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono uppercase leading-4">Terminal</p>
+                        <p class="text-stone-500 dark:text-stone-400 font-normal text-base">A full shell over an isolated workspace, streamed straight to your browser.</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button type="button" data-runtime-tab="lab" class="relative isolate flex items-center gap-4 p-6 text-left cursor-pointer flex-grow bg-white dark:bg-stone-900">
+                    <div class="flex gap-4">
+                      <span class="shrink-0 text-stone-800 dark:text-stone-200">
+                        <svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M4 4h16v12H4z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M9 20h6M12 16v4" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path></svg>
+                      </span>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono uppercase leading-4">Lab UI</p>
+                        <p class="text-stone-500 dark:text-stone-400 font-normal text-base">A file-backed CodeMirror editor with a live preview pane, for exercises and courses.</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button type="button" data-runtime-tab="desktop" class="relative isolate flex items-center gap-4 p-6 text-left cursor-pointer flex-grow bg-white dark:bg-stone-900">
+                    <div class="flex gap-4">
+                      <span class="shrink-0 text-stone-800 dark:text-stone-200">
+                        <svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="12" rx="1" stroke="currentColor" stroke-width="1.5"></rect><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path></svg>
+                      </span>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono uppercase leading-4">Desktop GUI</p>
+                        <p class="text-stone-500 dark:text-stone-400 font-normal text-base">A secured remote desktop session for tools that need a real windowing environment.</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button type="button" data-runtime-tab="background" class="relative isolate flex items-center gap-4 p-6 text-left cursor-pointer flex-grow bg-white dark:bg-stone-900">
+                    <div class="flex gap-4">
+                      <span class="shrink-0 text-stone-800 dark:text-stone-200">
+                        <svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M12 6v6l4 2" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5"></circle></svg>
+                      </span>
+                      <div class="flex flex-col gap-2">
+                        <p class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono uppercase leading-4">Background Run</p>
+                        <p class="text-stone-500 dark:text-stone-400 font-normal text-base">Kick off a long job and walk away — progress and logs stream back until it finishes.</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+              <div class="overflow-hidden relative">
+                <img alt="" class="w-full h-full object-cover" decoding="async" src="/pixel-mountain-lake.png">
+                <div class="absolute inset-0 z-10 w-full h-full">
+                  <div class="relative overflow-hidden h-full flex items-center justify-center">
+                    <div class="hidden md:flex h-full p-6 z-10 rounded-xl w-full">
+                      <div class="bg-stone-50 dark:bg-stone-900 rounded-lg overflow-hidden flex flex-col w-full h-full">
+                        <div class="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 px-3 py-2.5 border-b border-stone-200 dark:border-stone-700">
+                          <span class="size-3 rounded-full bg-stone-200 dark:bg-stone-600"></span>
+                          <span class="size-3 rounded-full bg-stone-200 dark:bg-stone-600"></span>
+                          <span class="size-3 rounded-full bg-stone-200 dark:bg-stone-600"></span>
+                        </div>
+                        <div class="flex-1 flex flex-col items-center justify-center p-4">
+                          <div class="relative w-full max-w-sm min-h-[132px]">
+                            <div data-runtime-panel="terminal" class="absolute inset-0 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-950 p-4 font-mono text-xs leading-5 text-stone-300 shadow-[0_8px_16px_rgba(33,33,33,0.05)] transition-all duration-300 ease-out opacity-100 translate-y-0">
+                              <p><span class="text-emerald-400">$</span> connect --instance sbx_9f21</p>
+                              <p class="text-stone-500">Shell ready — /workspace</p>
+                              <p><span class="text-emerald-400">$</span> python main.py</p>
+                              <p class="text-stone-500">All checks passed ✓</p>
+                            </div>
+                            <div data-runtime-panel="lab" class="absolute inset-0 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-950 p-4 font-mono text-xs leading-5 text-stone-300 shadow-[0_8px_16px_rgba(33,33,33,0.05)] transition-all duration-300 ease-out opacity-0 translate-y-2 pointer-events-none">
+                              <p><span class="text-sky-400">def</span> <span class="text-amber-300">solve</span>(nums):</p>
+                              <p>&nbsp;&nbsp;seen = {}</p>
+                              <p>&nbsp;&nbsp;<span class="text-fuchsia-400">return</span> pairs(nums, seen)</p>
+                              <p class="text-stone-500"># autosaved · live preview →</p>
+                            </div>
+                            <div data-runtime-panel="desktop" class="absolute inset-0 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-950 p-4 font-mono text-xs leading-5 text-stone-300 shadow-[0_8px_16px_rgba(33,33,33,0.05)] transition-all duration-300 ease-out opacity-0 translate-y-2 pointer-events-none">
+                              <p><span class="text-emerald-400">$</span> connecting to remote desktop…</p>
+                              <p class="text-stone-500">Encrypted session established</p>
+                              <p class="text-stone-500">Streaming display to browser ✓</p>
+                            </div>
+                            <div data-runtime-panel="background" class="absolute inset-0 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-950 p-4 font-mono text-xs leading-5 text-stone-300 shadow-[0_8px_16px_rgba(33,33,33,0.05)] transition-all duration-300 ease-out opacity-0 translate-y-2 pointer-events-none">
+                              <p><span class="text-emerald-400">$</span> queue train_model.sh</p>
+                              <p>Job <span class="text-amber-300">bg_4471</span> queued</p>
+                              <p class="text-stone-500">[00:03:12] epoch 8/20 — loss 0.184</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# ── Organization workspaces split panel (was "Multi project support") ── #}
+        <div class="my-10 border border-stone-200 dark:border-stone-800">
+          <div class="flex flex-col">
+            <div class="hidden md:grid md:grid-cols-2 gap-px bg-stone-200 dark:bg-stone-800 [&>*:first-child]:order-last">
+              <div class="relative w-full h-full md:h-100 overflow-hidden bg-gradient-to-br from-stone-100 to-stone-200 dark:from-stone-900 dark:to-stone-950">
+                <div class="relative z-10 w-full h-full flex items-center justify-center p-6">
+                  <div class="bg-white dark:bg-stone-900 rounded-lg overflow-hidden flex flex-col w-full max-w-sm shadow-lg border border-stone-200 dark:border-stone-800">
+                    <div class="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 px-3 py-2.5 border-b border-stone-200 dark:border-stone-700">
+                      <span class="size-3 rounded-full bg-stone-300 dark:bg-stone-600"></span>
+                      <span class="size-3 rounded-full bg-stone-300 dark:bg-stone-600"></span>
+                      <span class="size-3 rounded-full bg-stone-300 dark:bg-stone-600"></span>
+                      <span class="ml-2 text-stone-500 dark:text-stone-400 text-xs font-mono">acme-labs · workspace</span>
+                    </div>
+                    <div class="flex flex-col gap-3 p-4">
+                      <div class="flex items-center justify-between px-3 py-2 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-950">
+                        <span class="text-stone-800 dark:text-stone-100 text-sm font-medium">Balance</span>
+                        <span class="text-stone-800 dark:text-stone-100 text-sm font-mono">£128.40</span>
+                      </div>
+                      <div class="flex flex-col gap-1">
+                        <div class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-stone-50 dark:hover:bg-stone-950">
+                          <div class="flex items-center gap-2 min-w-0">
+                            <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-stone-200 dark:bg-stone-700 text-[10px] font-mono font-semibold text-stone-700 dark:text-stone-200">SK</span>
+                            <span class="text-sm text-stone-700 dark:text-stone-300 truncate">Sujal · coding-ide</span>
+                          </div>
+                          <span class="size-2 rounded-full bg-emerald-500 shrink-0"></span>
+                        </div>
+                        <div class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-stone-50 dark:hover:bg-stone-950">
+                          <div class="flex items-center gap-2 min-w-0">
+                            <span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-stone-200 dark:bg-stone-700 text-[10px] font-mono font-semibold text-stone-700 dark:text-stone-200">AP</span>
+                            <span class="text-sm text-stone-700 dark:text-stone-300 truncate">Anita · desktop-gui</span>
+                          </div>
+                          <span class="size-2 rounded-full bg-emerald-500 shrink-0"></span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="bg-stone-50 dark:bg-stone-950 flex flex-col justify-between px-4 gap-6 py-6 md:px-6">
+                <p class="text-indigo-500 dark:text-indigo-400 font-medium text-sm uppercase font-mono leading-4">#02 - Organization workspaces</p>
+                <div class="flex flex-col gap-4 md:gap-6">
+                  <h2 class="text-[32px] md:text-[40px] leading-[1.2] -tracking-[0.02em] text-stone-900 dark:text-stone-50">
+                    One balance, every teammate's sandbox.
+                  </h2>
+                  <p class="text-stone-500 dark:text-stone-400 text-base md:text-xl leading-7">
+                    Fund a shared workspace as the owner — members launch instances against it,
+                    and every charge lands on one auditable ledger.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="md:hidden">
+              <div class="bg-stone-50 dark:bg-stone-950 flex flex-col justify-between px-4 gap-6 py-6">
+                <p class="text-indigo-500 dark:text-indigo-400 font-medium text-sm uppercase font-mono leading-4">Organization workspaces</p>
+                <div class="flex flex-col gap-4">
+                  <h2 class="text-[32px] leading-[1.2] text-stone-900 dark:text-stone-50">One balance, every teammate's sandbox.</h2>
+                  <p class="text-stone-500 dark:text-stone-400 text-base leading-7">
+                    Fund a shared workspace as the owner — members launch instances against it, and every charge lands on one auditable ledger.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {# ── "Built different" feature grid (was "Agentic Integrations") ── #}
+        <div class="my-10 md:my-20 border-x border-stone-200 dark:border-stone-800">
+          <div class="grid grid-cols-1 lg:grid-cols-2 border-y border-stone-200 dark:border-stone-800">
+            <div class="flex flex-col gap-2 md:gap-4 justify-between px-4 md:px-6 py-6 lg:border-r border-stone-200 dark:border-stone-800 border-b lg:border-b-0">
+              <p class="text-indigo-500 dark:text-indigo-400 font-medium text-sm font-mono uppercase leading-4">#03 - Built different</p>
+              <p class="text-[32px] md:text-[40px] leading-[1.2] text-stone-900 dark:text-stone-50">Every layer, built for isolation.</p>
+            </div>
+            <ul class="grid grid-cols-2">
+              <li class="odd:border-r h-full border-b border-stone-200 dark:border-stone-800">
+                <a class="flex justify-between p-4 md:p-6 group gap-4 h-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100" href="/hub">
+                  <div class="flex flex-col justify-between gap-4">
+                    <span class="text-stone-800 dark:text-stone-200"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Curated templates</p>
+                  </div>
+                  <span class="text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100 transition-colors ease duration-100"><svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                </a>
+              </li>
+              <li class="h-full border-b border-stone-200 dark:border-stone-800">
+                <a class="flex justify-between p-4 md:p-6 group gap-4 h-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100" href="/login" data-ascii-transition="1" data-no-transition="true">
+                  <div class="flex flex-col justify-between gap-4">
+                    <span class="text-stone-800 dark:text-stone-200"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="6" r="3" stroke="currentColor" stroke-width="1.5"></circle><circle cx="18" cy="18" r="3" stroke="currentColor" stroke-width="1.5"></circle><path d="M9 6h6a3 3 0 0 1 3 3v6" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Multi-stage workflows</p>
+                  </div>
+                  <span class="text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100 transition-colors ease duration-100"><svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                </a>
+              </li>
+              <li class="odd:border-r h-full border-b border-stone-200 dark:border-stone-800">
+                <a class="flex justify-between p-4 md:p-6 group gap-4 h-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100" href="/login" data-ascii-transition="1" data-no-transition="true">
+                  <div class="flex flex-col justify-between gap-4">
+                    <span class="text-stone-800 dark:text-stone-200"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.5"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Org workspaces</p>
+                  </div>
+                  <span class="text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100 transition-colors ease duration-100"><svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                </a>
+              </li>
+              <li class="h-full border-b border-stone-200 dark:border-stone-800">
+                <a class="flex justify-between p-4 md:p-6 group gap-4 h-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100" href="/billing">
+                  <div class="flex flex-col justify-between gap-4">
+                    <span class="text-stone-800 dark:text-stone-200"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"></path></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Ledger &amp; receipts</p>
+                  </div>
+                  <span class="text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100 transition-colors ease duration-100"><svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                </a>
+              </li>
+              <li class="odd:border-r h-full [&:nth-last-child(-n+2)]:border-b-0">
+                <a class="flex justify-between p-4 md:p-6 group gap-4 h-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100" href="/login" data-ascii-transition="1" data-no-transition="true">
+                  <div class="flex flex-col justify-between gap-4">
+                    <span class="text-stone-800 dark:text-stone-200"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" stroke-width="1.5"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="currentColor" stroke-width="1.5"></path></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Isolated worker runtime</p>
+                  </div>
+                  <span class="text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100 transition-colors ease duration-100"><svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                </a>
+              </li>
+              <li class="h-full [&:nth-last-child(-n+2)]:border-b-0">
+                <a class="flex justify-between p-4 md:p-6 group gap-4 h-full hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100" href="/login" data-ascii-transition="1" data-no-transition="true">
+                  <div class="flex flex-col justify-between gap-4">
+                    <span class="text-stone-800 dark:text-stone-200"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path><path d="M12 3c3 2 6 2 8 1 0 8-3 13-8 15-5-2-8-7-8-15 2 1 5 1 8-1Z" stroke="currentColor" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Test-gated publishing</p>
+                  </div>
+                  <span class="text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100 transition-colors ease duration-100"><svg fill="none" height="20" viewBox="0 0 24 24" width="20" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg></span>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {# ── "Still wondering? Ask your favorite LLM" — same pattern as the source, real ChatGPT/Google/Claude/Perplexity query links, only the question text swapped for a CodeSandbox-relevant one ── #}
+        <div class="mt-10 md:mt-20 border-x border-stone-200 dark:border-stone-800">
+          <div class="grid grid-cols-1 lg:grid-cols-2 border-y border-stone-200 dark:border-stone-800">
+            <div class="flex flex-col justify-center gap-2 md:gap-4 px-4 md:px-6 py-6 lg:border-r border-stone-200 dark:border-stone-800">
+              <p class="text-[32px] md:text-[40px] leading-[1.2] text-stone-900 dark:text-stone-50">Still wondering?</p>
+              <p class="text-base text-stone-500 dark:text-stone-400 md:text-xl leading-[22px] md:leading-[30px]">
+                See what your favorite LLM has to say about us,<br class="hidden lg:inline">
+                then make an informed decision.
+              </p>
+            </div>
+            <div class="border-t border-stone-200 dark:border-stone-800 lg:border-t-0">
+              <div class="grid grid-cols-2">
+                <a class="flex items-center justify-between p-6 group gap-6 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b" href="https://chat.openai.com/?q=how%20does%20CodeSandbox's%20per-second%20billed%20cloud%20sandboxes%20compare%20to%20running%20your%20own%20Docker%20containers%3F" target="_blank" rel="noopener">
+                  <span class="flex items-center gap-2">
+                    <span class="text-black dark:text-white"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M9.67 9.304V7.421c0-.158.06-.277.2-.357l3.785-2.18c.516-.297 1.13-.436 1.764-.436 2.379 0 3.885 1.844 3.885 3.806 0 .138 0 .297-.02.456l-3.924-2.3a.66.66 0 0 0-.714 0zm8.841 7.334v-4.5a.66.66 0 0 0-.357-.614L13.18 8.63l1.626-.931a.36.36 0 0 1 .396 0l3.786 2.18c1.09.634 1.824 1.982 1.824 3.29 0 1.507-.892 2.894-2.3 3.47m-10.01-3.964-1.625-.951c-.139-.08-.198-.199-.198-.357v-4.36c0-2.122 1.625-3.727 3.826-3.727a3.7 3.7 0 0 1 2.26.773l-3.906 2.26a.66.66 0 0 0-.356.614zM12 14.696l-2.33-1.308v-2.775L12 9.304l2.329 1.309v2.775zm1.496 6.026a3.7 3.7 0 0 1-2.26-.774l3.906-2.26a.66.66 0 0 0 .356-.614v-5.748l1.646.951c.138.08.198.199.198.357v4.36c0 2.122-1.645 3.728-3.845 3.728M8.8 16.302 5.013 14.12c-1.09-.634-1.824-1.982-1.824-3.29 0-1.527.912-2.894 2.32-3.47v4.52c0 .278.118.476.356.615l4.955 2.874-1.625.931a.36.36 0 0 1-.396 0m-.218 3.25c-2.24 0-3.885-1.685-3.885-3.766 0-.159.02-.317.04-.476l3.904 2.26a.66.66 0 0 0 .714 0l4.975-2.874v1.883c0 .159-.06.278-.198.357l-3.786 2.18c-.516.297-1.13.436-1.764.436m4.916 2.359c2.398 0 4.4-1.705 4.856-3.965C20.573 17.372 22 15.29 22 13.17a5.01 5.01 0 0 0-1.665-3.706c.1-.416.159-.833.159-1.249 0-2.834-2.3-4.955-4.956-4.955-.535 0-1.05.079-1.566.257a4.97 4.97 0 0 0-3.468-1.427 4.956 4.956 0 0 0-4.857 3.965C3.427 6.628 2 8.71 2 10.83c0 1.387.595 2.735 1.665 3.706a5.4 5.4 0 0 0-.159 1.249c0 2.834 2.3 4.955 4.956 4.955.535 0 1.05-.079 1.566-.257a4.97 4.97 0 0 0 3.468 1.427" fill="currentColor"></path></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Ask ChatGPT</p>
+                  </span>
+                  <span class="hidden md:inline text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100">
+                    <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                  </span>
+                </a>
+                <a class="flex items-center justify-between p-6 group gap-6 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b" href="https://www.google.com/search?q=how%20does%20CodeSandbox's%20per-second%20billed%20cloud%20sandboxes%20compare%20to%20running%20your%20own%20Docker%20containers%3F" target="_blank" rel="noopener">
+                  <span class="flex items-center gap-2">
+                    <svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z" fill="currentColor"></path></svg>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Ask Google</p>
+                  </span>
+                  <span class="hidden md:inline text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100">
+                    <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                  </span>
+                </a>
+                <a class="flex items-center justify-between p-6 group gap-6 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b" href="https://claude.ai/new?q=how%20does%20CodeSandbox's%20per-second%20billed%20cloud%20sandboxes%20compare%20to%20running%20your%20own%20Docker%20containers%3F" target="_blank" rel="noopener">
+                  <span class="flex items-center gap-2">
+                    <span class="text-[#D97757]"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><g><path d="m4.715 15.956 4.717-2.648.079-.23-.079-.128h-.23l-.79-.048-2.696-.073-2.337-.097-2.265-.122-.57-.121-.535-.705.055-.352.48-.322.686.061 1.517.104 2.277.157 1.652.098 2.446.255h.389l.055-.158-.134-.098-.103-.097-2.356-1.596-2.55-1.688-1.335-.972-.723-.492-.364-.46-.158-1.009.656-.722.88.06.225.061.892.686 1.906 1.476 2.49 1.833.364.304.146-.104.018-.072-.164-.274-1.354-2.446-1.445-2.49-.643-1.032-.17-.619a3 3 0 0 1-.104-.728L6.287.133 6.7 0l.996.134.419.364.619 1.415L9.736 4.14l1.554 3.03.455.898.243.832.091.255h.158V9.01l.127-1.706.237-2.095.231-2.695.079-.76.376-.91.747-.492.583.28.48.685-.067.444-.285 1.851-.56 2.903-.363 1.942h.212l.243-.243.984-1.305 1.65-2.064.73-.82.85-.904.546-.431h1.032l.759 1.129-.34 1.166-1.062 1.347-.88 1.142-1.264 1.7-.789 1.36.073.11.188-.02 2.854-.606 1.542-.28 1.84-.315.831.388.091.395-.328.807-1.967.486-2.307.461-3.436.814-.043.03.049.061 1.548.146.662.036h1.62l3.018.225.79.522.473.638-.079.485-1.214.62-1.64-.389-3.824-.91-1.312-.329h-.182v.11l1.093 1.068 2.004 1.81 2.507 2.33.127.578-.321.455-.34-.049-2.204-1.657-.85-.747-1.925-1.62h-.127v.17l.443.649 2.344 3.521.12 1.08-.17.353-.606.212-.668-.12-1.372-1.925-1.415-2.168-1.141-1.943-.14.08-.674 7.254-.316.37-.728.28-.607-.461-.322-.747.322-1.476.388-1.924.316-1.53.285-1.9.17-.632-.012-.042-.14.018-1.432 1.967-2.18 2.945-1.724 1.845-.413.164-.716-.37.066-.662.401-.589L8.17 17.57l1.44-1.882.928-1.086-.006-.158h-.055L4.138 18.56l-1.13.146-.485-.456.06-.746.231-.243 1.907-1.312z" fill="currentColor"></path></g></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Ask Claude</p>
+                  </span>
+                  <span class="hidden md:inline text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100">
+                    <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                  </span>
+                </a>
+                <a class="flex items-center justify-between p-6 group gap-6 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100 border-stone-200 dark:border-stone-800" href="https://perplexity.ai/?q=how%20does%20CodeSandbox's%20per-second%20billed%20cloud%20sandboxes%20compare%20to%20running%20your%20own%20Docker%20containers%3F" target="_blank" rel="noopener">
+                  <span class="flex items-center gap-2">
+                    <span class="text-[#22B8CD]"><svg fill="none" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip0_landing)"><path d="M22.398 7.09h-2.31V.068l-7.51 6.354V.158h-1.155v6.196L4.49 0v7.09H1.603v10.397H4.49V24l6.932-6.36v6.201h1.155v-6.047l6.932 6.181v-6.488h2.888zm-3.466-4.531v4.53h-5.355zm-13.286.067 4.87 4.464h-4.87zM2.758 16.332V8.245h7.847L4.491 14.36v1.972zm2.888 5.04v-6.534l5.776-5.776v7.011zm12.709.025-5.777-5.15V9.061l5.777 5.776zm2.888-5.065H19.51V14.36l-6.115-6.115h7.848z" fill="currentColor"></path></g><defs><clipPath id="clip0_landing"><path d="M0 0h24v24H0z" fill="#fff"></path></clipPath></defs></svg></span>
+                    <p class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase">Ask Perplexity</p>
+                  </span>
+                  <span class="hidden md:inline text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100">
+                    <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                  </span>
+                </a>
+              </div>
+              <a class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase flex items-center justify-between p-6 group gap-6 bg-white dark:bg-stone-900 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors ease duration-100 border-t border-stone-200 dark:border-stone-800" href="/login?mode=signup" data-ascii-transition="1" data-no-transition="true">
+                Get Started
+                <span class="text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-100">
+                  <svg fill="none" height="14" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M5 12H19.5833M19.5833 12L12.5833 5M19.5833 12L12.5833 19" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"></path></svg>
+                </span>
+              </a>
+            </div>
+          </div>
+          <div class="h-12 w-full border-stone-200 dark:border-stone-800 border-b"></div>
+        </div>
+
+        <footer>
+          <div class="border-x border-b border-t-0 border-stone-200 dark:border-stone-800">
+            <div
+              class="relative w-screen -left-[calc((100vw-100%)/2)] hidden sm:block overflow-hidden bg-stone-50 dark:bg-stone-950"
+              data-footer-ascii-hands
+              data-left-src="/footer-hand-left.png"
+              data-right-src="/footer-hand-right.png"
+              data-cols="80"
+            >
+              <div class="footer-ascii-hand-wrap">
+                <div class="footer-ascii-hand-left"><pre></pre></div>
+                <div class="footer-ascii-hand-right"><pre></pre></div>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 divide-y divide-stone-200 dark:divide-stone-800 sm:grid-cols-3 sm:divide-y-0 sm:items-center sm:px-6 sm:py-6 border-t border-stone-200 dark:border-stone-800">
+              <div class="flex flex-col sm:flex-col items-center sm:items-start justify-between gap-4 sm:gap-3 p-4 sm:p-0">
+                <a aria-label="Go to home" class="w-fit hover:opacity-70 py-0 m-0 flex items-center gap-2" href="/">
+                  <img src="/logo.webp" alt="" class="size-6 object-contain">
+                  <span class="font-semibold text-sm tracking-tight text-stone-800 dark:text-stone-100">CodeSandbox</span>
+                </a>
+                <p class="text-stone-400 font-normal text-xs font-mono uppercase leading-4">© 2026 • CodeSandbox Platform</p>
+              </div>
+              <div class="flex items-center justify-center p-4 sm:p-0">
+                <span class="flex items-center gap-2">
+                  <span class="relative flex size-2.5 shrink-0">
+                    <span class="absolute inline-flex size-full rounded-full bg-lime-400 border border-lime-600 opacity-75 animate-ping motion-reduce:animate-none"></span>
+                    <span class="inline-flex size-2.5 rounded-full bg-lime-400 border border-lime-600"></span>
+                  </span>
+                  <p class="text-stone-800 dark:text-stone-100 font-semibold text-xs font-mono uppercase leading-4">All systems operational</p>
+                </span>
+              </div>
+
+            </div>
+          </div>
+        </footer>
+
+      </div>
     </div>
-    <div class="flex flex-wrap gap-3">
-      {% call button.button(variant="default") %}Primary action{% endcall %}
-      {% call button.button(variant="outline") %}Secondary{% endcall %}
-      {% call button.button(variant="ghost") %}Ghost{% endcall %}
-    </div>
-  </section>
-
-  {% call alert.alert(variant="info") %}
-    {{ alert.alert_title("Components are server rendered") }}
-    {{ alert.alert_description("Import macro files from components/ui and compose them inside any app-router page.html or layout.html.") }}
-  {% endcall %}
-
-  <section class="grid gap-4 md:grid-cols-3">
-    {% for item in stats %}
-      {% call card.card() %}
-        {% call card.card_header() %}
-          {{ card.card_title(item.value) }}
-          {{ card.card_description(item.label) }}
-        {% endcall %}
-        {% call card.card_content() %}
-          <p class="text-sm text-muted-foreground">Ready for Flask templates.</p>
-        {% endcall %}
-      {% endcall %}
-    {% endfor %}
-  </section>
-
-  <section class="grid gap-4">
-    {% call card.card() %}
-      {% call card.card_header() %}
-        {{ card.card_title("Form controls") }}
-        {{ card.card_description("Button, input, table, badge, alert, and the rest of the UI set live in components/ui.") }}
-      {% endcall %}
-      {% call card.card_content() %}
-        <form class="grid gap-4 md:grid-cols-[1fr_auto]">
-          {{ input.input(name="project", placeholder="Project name") }}
-          {% call button.button(variant="default") %}Save{% endcall %}
-        </form>
-      {% endcall %}
-    {% endcall %}
-
-    {% call frame.frame(class="w-full") %}
-      {% call table.table(variant="card") %}
-        {% call table.table_header() %}
-          {% call table.table_row() %}
-            {{ table.table_head("Project") }}
-            {{ table.table_head("Status") }}
-            {{ table.table_head("Team") }}
-            {{ table.table_head("Budget", class="text-right") }}
-          {% endcall %}
-        {% endcall %}
-
-        {% call table.table_body() %}
-          {% call table.table_row() %}
-            {{ table.table_cell("Website Redesign", class="font-medium") }}
-            {% call table.table_cell() %}
-              {% call badge.badge(variant="outline") %}
-                <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
-                Paid
-              {% endcall %}
-            {% endcall %}
-            {{ table.table_cell("Frontend Team") }}
-            {{ table.table_cell("$12,500", class="text-right") }}
-          {% endcall %}
-
-          {% call table.table_row() %}
-            {{ table.table_cell("Mobile App", class="font-medium") }}
-            {% call table.table_cell() %}
-              {% call badge.badge(variant="outline") %}
-                <span aria-hidden="true" class="size-1.5 rounded-full bg-muted-foreground/64"></span>
-                Unpaid
-              {% endcall %}
-            {% endcall %}
-            {{ table.table_cell("Mobile Team") }}
-            {{ table.table_cell("$8,750", class="text-right") }}
-          {% endcall %}
-
-          {% call table.table_row() %}
-            {{ table.table_cell("API Integration", class="font-medium") }}
-            {% call table.table_cell() %}
-              {% call badge.badge(variant="outline") %}
-                <span aria-hidden="true" class="size-1.5 rounded-full bg-amber-500"></span>
-                Pending
-              {% endcall %}
-            {% endcall %}
-            {{ table.table_cell("Backend Team") }}
-            {{ table.table_cell("$5,200", class="text-right") }}
-          {% endcall %}
-
-          {% call table.table_row() %}
-            {{ table.table_cell("Database Migration", class="font-medium") }}
-            {% call table.table_cell() %}
-              {% call badge.badge(variant="outline") %}
-                <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
-                Paid
-              {% endcall %}
-            {% endcall %}
-            {{ table.table_cell("DevOps Team") }}
-            {{ table.table_cell("$3,800", class="text-right") }}
-          {% endcall %}
-
-          {% call table.table_row() %}
-            {{ table.table_cell("User Dashboard", class="font-medium") }}
-            {% call table.table_cell() %}
-              {% call badge.badge(variant="outline") %}
-                <span aria-hidden="true" class="size-1.5 rounded-full bg-emerald-500"></span>
-                Paid
-              {% endcall %}
-            {% endcall %}
-            {{ table.table_cell("UX Team") }}
-            {{ table.table_cell("$7,200", class="text-right") }}
-          {% endcall %}
-
-          {% call table.table_row() %}
-            {{ table.table_cell("Security Audit", class="font-medium") }}
-            {% call table.table_cell() %}
-              {% call badge.badge(variant="outline") %}
-                <span aria-hidden="true" class="size-1.5 rounded-full bg-red-500"></span>
-                Failed
-              {% endcall %}
-            {% endcall %}
-            {{ table.table_cell("Security Team") }}
-            {{ table.table_cell("$2,100", class="text-right") }}
-          {% endcall %}
-        {% endcall %}
-
-        {% call table.table_footer() %}
-          {% call table.table_row() %}
-            {{ table.table_cell("Total Budget", attrs={"colspan": 3}) }}
-            {{ table.table_cell("$39,550", class="text-right") }}
-          {% endcall %}
-        {% endcall %}
-      {% endcall %}
-    {% endcall %}
-  </section>
-</main>
+  </div>
+</div>
+{% app_script "landing-ascii-transition" %}
+(function(){
+  var PENDING_REVEAL_KEY = '__exact_ascii_transition_reveal__';
+  document.addEventListener('click', function(event){
+    var link = event.target.closest('a[data-ascii-transition="1"]');
+    if(!link) return;
+    if(event.defaultPrevented || event.button !== 0) return;
+    if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    var href = link.href;
+    function go(){
+      try { sessionStorage.setItem(PENDING_REVEAL_KEY, '1'); } catch(e) {}
+      window.location.href = href;
+    }
+    if(window.asciiPageTransition && window.asciiPageTransition.cover){
+      window.asciiPageTransition.cover().then(go, go);
+    } else {
+      go();
+    }
+  });
+})();
+{% end_app_script %}
+{% app_script "landing-runtime-tabs" %}
+(function(){
+  var root = document.querySelector('[data-runtime-tabs]');
+  if(!root) return;
+  var tabs = root.querySelectorAll('[data-runtime-tab]');
+  var panels = root.querySelectorAll('[data-runtime-panel]');
+  tabs.forEach(function(tab){
+    tab.addEventListener('click', function(){
+      tabs.forEach(function(t){ t.removeAttribute('aria-current'); t.classList.remove('bg-stone-50', 'dark:bg-stone-950'); t.classList.add('bg-white', 'dark:bg-stone-900'); });
+      tab.setAttribute('aria-current', 'true');
+      tab.classList.remove('bg-white', 'dark:bg-stone-900');
+      tab.classList.add('bg-stone-50', 'dark:bg-stone-950');
+      var key = tab.getAttribute('data-runtime-tab');
+      panels.forEach(function(panel){
+        var active = panel.getAttribute('data-runtime-panel') === key;
+        panel.classList.toggle('opacity-100', active);
+        panel.classList.toggle('translate-y-0', active);
+        panel.classList.toggle('pointer-events-auto', active);
+        panel.classList.toggle('opacity-0', !active);
+        panel.classList.toggle('translate-y-2', !active);
+        panel.classList.toggle('pointer-events-none', !active);
+      });
+    });
+  });
+})();
+{% end_app_script %}

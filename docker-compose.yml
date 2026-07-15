@@ -354,19 +354,31 @@ services:
     logging: *default-logging
 
   docker-engine:
-    image: ${DOCKER_DIND_IMAGE:?Set DOCKER_DIND_IMAGE in .env}
+    build:
+      context: ./docker/dind-lxcfs
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${DOCKER_DIND_IMAGE:?Set DOCKER_DIND_IMAGE in .env}
+    image: ${COMPOSE_PROJECT_NAME}-docker-engine-lxcfs:local
     hostname: docker-engine
     privileged: true
     environment:
       DOCKER_TLS_CERTDIR: /certs
       DOCKER_DRIVER: overlay2
+      LXCFS_ROOT: /var/lib/lxcfs
     volumes:
       - docker_engine_data:/var/lib/docker
       - docker_engine_certs:/certs
       - docker_engine_client_certs:/certs/client
     network_mode: bridge
     healthcheck:
-      test: ["CMD-SHELL", "docker info >/dev/null 2>&1 || exit 1"]
+      test:
+        - CMD-SHELL
+        - >-
+          docker info >/dev/null 2>&1 &&
+          grep -q '^MemTotal:' /var/lib/lxcfs/proc/meminfo &&
+          test -s /var/lib/lxcfs/proc/cpuinfo &&
+          test -r /var/lib/lxcfs/sys/devices/system/cpu/online
       interval: 10s
       timeout: 5s
       retries: 15
@@ -400,6 +412,8 @@ services:
       SANDBOX_JOB_MAX_AGE_SECONDS: ${SANDBOX_JOB_MAX_AGE_SECONDS:?Set SANDBOX_JOB_MAX_AGE_SECONDS in .env}
       SANDBOX_VOLUME_INIT_IMAGE: ${SANDBOX_VOLUME_INIT_IMAGE:?Set SANDBOX_VOLUME_INIT_IMAGE in .env}
       SANDBOX_RUNTIME_EGRESS_TEST_URL: ${SANDBOX_RUNTIME_EGRESS_TEST_URL:-http://example.com/}
+      SANDBOX_LXCFS_ENABLED: ${SANDBOX_LXCFS_ENABLED:-true}
+      SANDBOX_LXCFS_ROOT: /var/lib/lxcfs
       SANDBOX_REGISTRY_SERVER: ${SANDBOX_REGISTRY_SERVER:-}
       SANDBOX_REGISTRY_USERNAME: ${SANDBOX_REGISTRY_USERNAME:-}
       SANDBOX_REGISTRY_PASSWORD: ${SANDBOX_REGISTRY_PASSWORD:-}

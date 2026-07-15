@@ -8,7 +8,7 @@ GOD_TEAR_SLUG = "god-tear-static-reverse"
 GOD_TEAR_LEGACY_SLUG = "reverse-decompile"
 GOD_TEAR_IMAGE = "docker.io/admin12121/decompile:stable"
 GOD_TEAR_REPOSITORY = "https://github.com/Admin12121/decompile"
-GOD_TEAR_SEED_VERSION = 5
+GOD_TEAR_SEED_VERSION = 8
 MANAGED_TEMPLATE_SEED_VERSION = 5
 
 
@@ -218,17 +218,63 @@ def _ubuntu_ide(admin_user_id: str) -> dict:
 
 
 def _reverse_script() -> str:
-    # Keep the wrapper deliberately POSIX-shell compatible. The analysis image
-    # guarantees /bin/sh, while relying on bash-only PIPESTATUS caused the whole
-    # workflow to disappear when the wrapper could not be invoked. Tool output
-    # is captured first and replayed, so we retain the real exit code without a
-    # bash pipeline. Even a partial/failed analysis remains alive long enough to
-    # inspect its log and status file in the Full UI.
+    # The published image has existed with more than one CLI contract. Newer
+    # builds accept INPUT OUTPUT, while older cached builds accept INPUT only
+    # and create <name>.ghidra-out in the current directory. Try the explicit
+    # form first, then perform a compatibility retry without hiding real tool
+    # errors. Network/AI/open behavior is controlled through environment vars.
     return r"""set +e
 export HOME=/workspace/.decompile-home
 export TMPDIR=/workspace/.tmp
 export XDG_CACHE_HOME=/workspace/.cache
-export JAVA_TOOL_OPTIONS="-Djava.io.tmpdir=/workspace/.tmp"
+# Size the JVM from the cgroup/plan limit instead of using one fixed heap for
+# every test and customer plan. Leave enough memory for Python, native Ghidra
+# allocations, JADX/ILSpy helpers, filesystem cache and the wrapper itself.
+java_sizing="$(python3 - <<'PY_JAVA_LIMITS'
+import os
+
+MiB = 1024 * 1024
+limit_bytes = 0
+for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+    try:
+        raw = open(path, encoding="utf-8").read().strip()
+    except OSError:
+        continue
+    if raw and raw != "max":
+        try:
+            value = int(raw)
+        except ValueError:
+            continue
+        # Ignore cgroup-v1's very large sentinel for "unlimited".
+        if 0 < value < (1 << 60):
+            limit_bytes = value
+            break
+if not limit_bytes:
+    try:
+        limit_bytes = max(1, int(os.environ.get("CODESANDBOX_RAM_LIMIT_GB", "2"))) * 1024**3
+    except ValueError:
+        limit_bytes = 2 * 1024**3
+
+total_mb = max(1024, limit_bytes // MiB)
+reserve_mb = max(768, min(2048, total_mb // 4))
+heap_mb = max(512, min(total_mb - reserve_mb, (total_mb * 65) // 100))
+metaspace_mb = max(128, min(512, total_mb // 16))
+try:
+    cpu_count = max(1, int(os.environ.get("CODESANDBOX_VCPU_LIMIT", "1")))
+except ValueError:
+    cpu_count = 1
+print(heap_mb, metaspace_mb, cpu_count)
+PY_JAVA_LIMITS
+)"
+set -- $java_sizing
+export JAVA_TOOL_OPTIONS="-Xms64m -Xmx${1}m -XX:MaxMetaspaceSize=${2}m -XX:ActiveProcessorCount=${3} -XX:+ExitOnOutOfMemoryError -Djava.io.tmpdir=/workspace/.tmp"
+printf '[god-tear] memory plan: %s GiB; JVM heap: %s MiB; CPUs: %s\n' "${CODESANDBOX_RAM_LIMIT_GB:-unknown}" "$1" "$3"
+export MALLOC_ARENA_MAX=2
+export GHIDRA_TIMEOUT=30
+export DECOMPILE_NO_UNPACK=1
+ulimit -c 0 2>/dev/null || true
+ulimit -n 1024 2>/dev/null || true
+ulimit -u 128 2>/dev/null || true
 export DECOMPILE_IN_DOCKER=1
 export DECOMPILE_NO_AI=1
 export DECOMPILE_NO_OPEN=1
@@ -251,25 +297,96 @@ if [ -z "$input_file" ]; then
   exec /bin/sh -c 'trap "exit 0" TERM INT; while :; do sleep 3600 & wait $!; done'
 fi
 
+# Reject oversized inputs and archive bombs before invoking Ghidra/JADX.
+if ! python3 - "$input_file" <<'PY_PREFLIGHT'
+import os, sys, zipfile
+path = sys.argv[1]
+max_input = 128 * 1024 * 1024
+max_unpacked = 512 * 1024 * 1024
+max_entries = 20000
+max_ratio = 100
+size = os.path.getsize(path)
+if size <= 0:
+    raise SystemExit('input is empty')
+if size > max_input:
+    raise SystemExit(f'input exceeds safe analysis limit ({size} > {max_input} bytes)')
+if zipfile.is_zipfile(path):
+    with zipfile.ZipFile(path) as archive:
+        infos = archive.infolist()
+        if len(infos) > max_entries:
+            raise SystemExit(f'archive has too many entries ({len(infos)} > {max_entries})')
+        unpacked = sum(max(0, int(item.file_size)) for item in infos)
+        packed = sum(max(0, int(item.compress_size)) for item in infos)
+        if unpacked > max_unpacked:
+            raise SystemExit(f'archive expands beyond safe limit ({unpacked} > {max_unpacked} bytes)')
+        ratio = unpacked / max(1, packed)
+        if ratio > max_ratio:
+            raise SystemExit(f'archive compression ratio is unsafe ({ratio:.1f} > {max_ratio})')
+PY_PREFLIGHT
+then
+  printf '[god-tear] ANALYSIS_FAILED: unsafe or oversized input\n' >&2
+  printf '[god-tear] CODESANDBOX_ANALYSIS_FINISHED result=failed exit=2\n'
+  exec /bin/sh -c 'trap "exit 0" TERM INT; while :; do sleep 3600 & wait $!; done'
+fi
+
+run_decompile() {
+  # Do not terminate a valid analysis at an arbitrary memory percentage or a
+  # hardcoded 15-minute wrapper timeout. The selected plan/test profile's
+  # Docker cgroup and the platform instance timeout remain the boundaries.
+  decompile "$@"
+}
+
 original="${CODESANDBOX_INPUT_NAME:-${input_file##*/}}"
 base="${original##*/}"
 safe="$(printf '%s' "$base" | tr -c 'A-Za-z0-9._-' '_')"
 safe="${safe#.}"
 [ -n "$safe" ] || safe=binary
 out="/workspace/$safe"
-log_file="$out/analysis.log"
+work="/workspace/.god-tear-work-$safe"
+tmp_log="/workspace/.god-tear-$safe.log"
 status_file="$out/ANALYSIS_STATUS.json"
-mkdir -p "$out"
+rm -rf "$out" "$work" "$tmp_log"
+mkdir -p "$out" "$work"
 
 printf '[god-tear] analysing %s from %s into %s\n' "$original" "$input_file" "$out"
-if command -v decompile >/dev/null 2>&1; then
-  decompile --no-ai --no-open "$input_file" "$out" >"$log_file" 2>&1
-  rc=$?
-else
+if ! command -v decompile >/dev/null 2>&1; then
   rc=127
-  printf 'The decompile command is missing from the configured image.\n' >"$log_file"
+  printf 'The decompile command is missing from the configured image.\n' >"$tmp_log"
+else
+  run_decompile "$input_file" "$out" >"$tmp_log" 2>&1
+  rc=$?
+
+  # Compatibility with older :stable images whose CLI accepts only INPUT.
+  if [ "$rc" -ne 0 ] && grep -qi 'too many arguments' "$tmp_log"; then
+    printf '[god-tear] retrying legacy one-argument CLI\n' >>"$tmp_log"
+    legacy_log="$work/legacy-analysis.log"
+    (
+      cd "$work" || exit 1
+      run_decompile "$input_file"
+    ) >"$legacy_log" 2>&1
+    legacy_rc=$?
+    cat "$legacy_log" >>"$tmp_log" 2>/dev/null || true
+    if [ "$legacy_rc" -eq 0 ]; then
+      generated=""
+      for candidate in "$work"/*.ghidra-out; do
+        if [ -d "$candidate" ]; then generated="$candidate"; break; fi
+      done
+      if [ -n "$generated" ]; then
+        cp -a "$generated"/. "$out"/
+        rc=0
+      else
+        printf '[god-tear] legacy CLI exited successfully but produced no output directory\n' >>"$tmp_log"
+        rc=1
+      fi
+    else
+      rc=$legacy_rc
+    fi
+  fi
 fi
-cat "$log_file" 2>/dev/null || true
+
+cp "$tmp_log" "$out/analysis.log" 2>/dev/null || true
+cat "$tmp_log" 2>/dev/null || true
+rm -rf "$work" "$tmp_log"
 
 result=success
 if [ "$rc" -ne 0 ]; then
@@ -277,8 +394,8 @@ if [ "$rc" -ne 0 ]; then
   cat > "$out/ANALYSIS_FAILED.txt" <<EOF
 Static analysis returned exit code $rc.
 
-The sandbox remains open so you can inspect analysis.log, the uploaded sample,
-and any partial files produced by the tool.
+Inspect analysis.log for the exact decompiler error. The sandbox remains open
+for manual inspection, but Test Launch will not pass until analysis succeeds.
 EOF
   printf '[god-tear] ANALYSIS_FAILED exit=%s\n' "$rc" >&2
 else
@@ -288,17 +405,14 @@ fi
 python3 - "$status_file" "$original" "$safe" "$rc" "$result" <<'PY_STATUS'
 import json, sys
 path, original, output_name, code, result = sys.argv[1:]
-try:
-    with open(path, 'w', encoding='utf-8') as handle:
-        json.dump({
-            'input_name': original,
-            'output_directory': '/workspace/' + output_name,
-            'exit_code': int(code),
-            'result': result,
-        }, handle, indent=2)
-        handle.write('\n')
-except Exception as exc:
-    print(f'[god-tear] could not write status file: {exc}', file=sys.stderr)
+with open(path, 'w', encoding='utf-8') as handle:
+    json.dump({
+        'input_name': original,
+        'output_directory': '/workspace/' + output_name,
+        'exit_code': int(code),
+        'result': result,
+    }, handle, indent=2)
+    handle.write('\n')
 PY_STATUS
 
 printf '[god-tear] CODESANDBOX_ANALYSIS_FINISHED result=%s exit=%s\n' "$result" "$rc"
@@ -350,11 +464,25 @@ def _reverse_values(admin_user_id: str) -> dict:
         "entrypoint": ["/bin/sh", "-lc"],
         "image_pull_policy": "if_not_present",
         "workspace_enabled": True,
+        "terminal_scope": "workspace",
         "allowed_file_types": ["*"],
         "allow_extensionless_input": True,
-        "max_input_size_mb": 500,
-        "required_args": ["--no-ai", "--no-open", "decompile"],
+        "max_input_size_mb": 128,
+        "required_args": ["decompile"],
         "forbidden_args": ["--ai", "--update", "--image", "--docker-image", "--local"],
+        "test_resources": {
+            "vcpu": 2,
+            "ram_gb": 4,
+            "disk_gb": 5,
+            "max_timeout_hr": 1,
+        },
+        "resource_guard": {
+            # No early per-instance kill. The selected plan/test cgroup is the
+            # hard memory boundary. Only a true host emergency can stop it.
+            "memory_high_watermark_pct": 0,
+            "host_min_available_mb": 1024,
+            "max_runtime_seconds": 0,
+        },
         "test_config": {
             "requirements": [
                 "runtime_started",
@@ -372,6 +500,9 @@ def _reverse_values(admin_user_id: str) -> dict:
             "DECOMPILE_IN_DOCKER": "1",
             "DECOMPILE_NO_AI": "1",
             "DECOMPILE_NO_OPEN": "1",
+            "DECOMPILE_NO_UNPACK": "1",
+            "GHIDRA_TIMEOUT": "30",
+            "MALLOC_ARENA_MAX": "2",
         },
         "source_repository": GOD_TEAR_REPOSITORY,
     }
@@ -395,7 +526,7 @@ def _reverse_values(admin_user_id: str) -> dict:
         "output_mount_path": "",
         "artifact_paths": '["/workspace"]',
         "input_required": True,
-        "max_upload_mb": 500,
+        "max_upload_mb": 128,
         "sandbox_type": "reverse_engineering",
         "runtime_class": "container",
         "interface_mode": "background_run,lab_ui",
@@ -407,9 +538,9 @@ def _reverse_values(admin_user_id: str) -> dict:
         "allow_root": False,
         "read_only_root": True,
         "run_as_user": "65532:65532",
-        "pids_limit": 512,
+        "pids_limit": 192,
         "allow_full_internet": False,
-        "max_timeout_hr": 4,
+        "max_timeout_hr": 1,
         "runtime_config": files,
         "created_by_id": admin_user_id,
         "status": "maintenance",
@@ -532,7 +663,6 @@ def _ensure_plans(admin_user_id: str):
             org_disk_gb=40,
             org_cost_hr=Decimal("0.0000"),
             min_billable_minutes=0,
-            allowed_network_modes='["disabled","restricted"]',
             updated_by_id=admin_user_id,
         )
     internet = repo.get_plan("local-internet")
@@ -550,7 +680,6 @@ def _ensure_plans(admin_user_id: str):
             org_disk_gb=60,
             org_cost_hr=Decimal("0.0000"),
             min_billable_minutes=0,
-            allowed_network_modes='["disabled","restricted","full_internet"]',
             updated_by_id=admin_user_id,
         )
     return general, internet

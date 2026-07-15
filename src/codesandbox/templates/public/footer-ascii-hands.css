@@ -1,0 +1,65 @@
+/* Compact adaptation of footer_ascii_rebuild's `.footer-ascii-wrap` for a
+   thin (h-12) footer strip instead of the original's full-viewport reveal.
+   Image-to-ASCII conversion + hover glitch are ported unmodified in
+   footer-ascii-hands.js; only the reveal trigger (IntersectionObserver
+   instead of document-scroll percentage) and parallax scale are adapted
+   to fit a 48px-tall bar. */
+
+[data-footer-ascii-hands] {
+  --footer-hand-accent: #ff3b14;
+}
+
+[data-footer-ascii-hands] pre {
+  font-family: 'Courier New', monospace;
+  font-size: clamp(0.35rem, 0.5vw, 0.6rem);
+  line-height: 1.1;
+  letter-spacing: 0.5em;
+  white-space: pre;
+  margin: 0;
+  color: var(--footer-hand-accent);
+  opacity: 0.7;
+  user-select: none;
+  pointer-events: auto;
+  cursor: default;
+  will-change: transform;
+}
+
+.footer-ascii-hand-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 1rem 0;
+  box-sizing: border-box;
+}
+
+.footer-ascii-hand-left,
+.footer-ascii-hand-right {
+  width: 50%;
+  display: flex;
+  align-items: center;
+  will-change: transform;
+  transition: transform 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.footer-ascii-hand-left {
+  justify-content: flex-start;
+  transform: translateX(-110%);
+}
+
+.footer-ascii-hand-right {
+  justify-content: flex-end;
+  transform: translateX(110%);
+}
+
+[data-footer-ascii-hands].is-visible .footer-ascii-hand-left,
+[data-footer-ascii-hands].is-visible .footer-ascii-hand-right {
+  transform: translateX(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footer-ascii-hand-left,
+  .footer-ascii-hand-right {
+    transition: none;
+  }
+}

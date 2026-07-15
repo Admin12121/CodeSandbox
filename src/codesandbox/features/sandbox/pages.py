@@ -154,7 +154,6 @@ def platform_sandbox_plans():
             "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 10, "ind_cost_hr": "0.0000",
             "org_vcpu": 2, "org_ram_gb": 2, "org_disk_gb": 20, "org_cost_hr": "0.0000",
             "min_billable_minutes": 1,
-            "allowed_network_modes": '["disabled","restricted"]',
             "is_active": True,
         }
     elif plan_param:
@@ -165,7 +164,7 @@ def platform_sandbox_plans():
         "user": _user_ctx(user),
         "nav": nav,
         "page_title": "Sandbox Plans",
-        "page_description": "Resource tiers and pricing for sandbox instances",
+        "page_description": "CPU, RAM, disk, pricing, and minimum billing only",
         **_workspaces_ctx(user),
         "plans": plans,
         "selected_plan": selected_plan,

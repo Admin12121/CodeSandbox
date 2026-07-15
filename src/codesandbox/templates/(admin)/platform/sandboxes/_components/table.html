@@ -639,23 +639,20 @@
                     {% call table.table_cell(class="font-medium text-sm align-middle") %}Network Mode{% endcall %}
                     {% call table.table_cell() %}
                       {% set current_net_mode = selected_template.network_mode %}
-                      {% call sel.select(name="network_mode", value=current_net_mode, class="w-64") %}
-                        {% call sel.select_trigger(target="network-mode-popup") %}
-                          {{ sel.select_value(current_net_mode | replace("_", " ") | title) }}
-                          <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                      <div class="space-y-1.5">
+                        {% call sel.select(name="network_mode", value=current_net_mode, class="w-64") %}
+                          {% call sel.select_trigger(target="network-mode-popup") %}
+                            {{ sel.select_value(current_net_mode | replace("_", " ") | title) }}
+                            <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                          {% endcall %}
+                          {% call sel.select_popup(attrs={"id": "network-mode-popup"}) %}
+                            {% for m in network_modes %}
+                              {% call sel.select_item(value=m, selected=(m == current_net_mode)) %}{{ m | replace("_", " ") | title }}{% endcall %}
+                            {% endfor %}
+                          {% endcall %}
                         {% endcall %}
-                        {% call sel.select_popup(attrs={"id": "network-mode-popup"}) %}
-                          {% for m in network_modes %}
-                            {% call sel.select_item(value=m, selected=(m == current_net_mode)) %}{{ m | replace("_", " ") | title }}{% endcall %}
-                          {% endfor %}
-                        {% endcall %}
-                      {% endcall %}
-                    {% endcall %}
-                  {% endcall %}
-                  {% call table.table_row() %}
-                    {% call table.table_cell(class="font-medium text-sm align-middle") %}Full Internet{% endcall %}
-                    {% call table.table_cell() %}
-                      {{ sw.switch(name="allow_full_internet", checked=selected_template.allow_full_internet, attrs={"value": "1"}) }}
+                        <p class="text-xs text-muted-foreground">Disabled: no network. Restricted: isolated internal bridge. Full Internet: outbound access through the worker egress bridge.</p>
+                      </div>
                     {% endcall %}
                   {% endcall %}
                   {% call table.table_row() %}

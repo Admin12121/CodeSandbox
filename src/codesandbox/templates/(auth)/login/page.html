@@ -1,11 +1,51 @@
 {% import "(auth)/login/_components/form.html" as login %}
 {% import "components/ui/field.html" as field %}
 
-<main class="grid min-h-screen place-items-center px-6 py-10">
-  <section class="w-full max-w-sm">
-    {% if info %}
-      <div class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">{{ info }}</div>
-    {% endif %}
-    {{ login.login_form(mode=mode, error=error, next_path=next_path) }}
-  </section>
-</main>
+{# Reveals the ASCII curtain (if this page was reached via the home page's
+   Login/Signup links) — the same unmodified library used there; its own
+   init() checks the sessionStorage flag on load and runs the reveal. The
+   header's "Home" link below also lets it play the *other* direction
+   (login/signup -> home), reusing the exact same cover()-then-hard-navigate
+   handler as the home page. #}
+<link rel="stylesheet" href="/ascii-transition.css">
+<script defer src="/ascii-page-transition.js"></script>
+<div class="flex min-h-screen flex-col bg-stone-50 dark:bg-stone-950">
+  <header class="w-full">
+    <div class="mx-auto flex h-14 w-full max-w-6xl items-center px-4 lg:px-6">
+      <a aria-label="Go to home" class="flex w-fit items-center gap-2.5 py-2 hover:opacity-70" href="/" data-ascii-transition="1" data-no-transition="true">
+        <img src="/logo.webp" alt="" class="size-10 object-contain">
+        <span class="text-base font-semibold tracking-tight text-stone-800 dark:text-stone-100">CodeSandbox</span>
+      </a>
+    </div>
+  </header>
+  <main class="grid flex-1 place-items-center px-6 py-10">
+    <section class="w-full max-w-sm">
+      {% if info %}
+        <div class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">{{ info }}</div>
+      {% endif %}
+      {{ login.login_form(mode=mode, error=error, next_path=next_path) }}
+    </section>
+  </main>
+</div>
+{% app_script "login-ascii-transition" %}
+(function(){
+  var PENDING_REVEAL_KEY = '__exact_ascii_transition_reveal__';
+  document.addEventListener('click', function(event){
+    var link = event.target.closest('a[data-ascii-transition="1"]');
+    if(!link) return;
+    if(event.defaultPrevented || event.button !== 0) return;
+    if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    var href = link.href;
+    function go(){
+      try { sessionStorage.setItem(PENDING_REVEAL_KEY, '1'); } catch(e) {}
+      window.location.href = href;
+    }
+    if(window.asciiPageTransition && window.asciiPageTransition.cover){
+      window.asciiPageTransition.cover().then(go, go);
+    } else {
+      go();
+    }
+  });
+})();
+{% end_app_script %}

@@ -57,7 +57,12 @@ class DockerTerminalManager:
             })
             return
         try:
-            exec_id, wrapper = runner.open_terminal()
+            opened = runner.open_terminal()
+            if len(opened) == 3:
+                exec_id, wrapper, cleanup = opened
+            else:  # compatibility with non-Docker runtime implementations
+                exec_id, wrapper = opened
+                cleanup = None
             raw = self._raw_socket(wrapper)
         except Exception as exc:
             log.warning("terminal open failed instance=%s error=%s", instance_id[:8], exc)
@@ -74,6 +79,7 @@ class DockerTerminalManager:
             "socket": raw,
             "stop": stop_event,
             "runner": runner,
+            "cleanup": cleanup,
         }
         with self._lock:
             self._sessions[key] = session
@@ -105,6 +111,12 @@ class DockerTerminalManager:
             with self._lock:
                 if self._sessions.get(key) is session:
                     self._sessions.pop(key, None)
+            cleanup = session.get("cleanup")
+            if cleanup:
+                try:
+                    cleanup()
+                except Exception:
+                    pass
             self._publish(instance_id, terminal_id, {"type": "closed"})
 
     def write(self, instance_id: str, terminal_id: str, data: str) -> None:
@@ -150,6 +162,12 @@ class DockerTerminalManager:
             for candidate in (session["socket"], session["wrapper"]):
                 try:
                     candidate.close()
+                except Exception:
+                    pass
+            cleanup = session.get("cleanup")
+            if cleanup:
+                try:
+                    cleanup()
                 except Exception:
                     pass
 

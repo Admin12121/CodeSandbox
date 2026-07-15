@@ -522,12 +522,47 @@ def _idle_instance_start_state(inst, template) -> tuple[bool, str | None]:
     )
     return error is None, error
 
+def _restart_instance_state(inst, template) -> tuple[bool, str | None]:
+    """Whether a completed customer instance may be started again as a fresh run.
+
+    A restart creates a new SandboxInstance row. This deliberately preserves the
+    old run's immutable billing/audit history and avoids reusing a deleted Docker
+    volume or an already-charged billing idempotency key.
+    """
+    if inst.status not in {"stopped", "failed", "expired", "killed"}:
+        return False, None
+    if inst.workspace_type == "test":
+        return False, None
+    if template is None or template.status != "active":
+        return False, "Template is not active."
+    if bool(getattr(template, "input_required", False)):
+        return False, "This template requires a new input upload. Start it again from the Hub."
+    plan = repository.get_plan(str(inst.plan_id or ""))
+    mapping = repository.get_template_plan(str(template.id), str(inst.plan_id or ""))
+    if plan is None or not plan.is_active:
+        return False, "Plan is not active."
+    if mapping is not None and not mapping.is_enabled:
+        return False, "This plan is disabled for the template."
+    try:
+        effective = resolve_effective_plan(template, plan, mapping)
+    except RuntimePolicyError as exc:
+        return False, str(exc)
+    error = _ensure_start_balance(
+        effective,
+        inst.workspace_type or "personal",
+        user_id=str(inst.billed_user_id or inst.workspace_user_id or "") or None,
+        org_id=str(inst.billed_org_id or inst.workspace_org_id or "") or None,
+    )
+    return error is None, error
+
+
 def _instance_dict(inst, template_cache: dict | None = None) -> dict:
     tid = str(inst.template_id)
     t = (template_cache or {}).get(tid) or repository.get_template(tid)
     allowed_ui_modes = template_allowed_ui_modes(t) if t else ["terminal_only"]
     default_ui_mode = template_default_ui_mode(t) if t else "terminal_only"
     can_start, start_error = _idle_instance_start_state(inst, t)
+    can_restart, restart_error = _restart_instance_state(inst, t)
     return {
         "id": str(inst.id),
         "template_id": tid,
@@ -567,6 +602,8 @@ def _instance_dict(inst, template_cache: dict | None = None) -> dict:
         "deleted_at": getattr(inst, "deleted_at", None),
         "can_start": can_start,
         "start_error": start_error or "",
+        "can_restart": can_restart,
+        "restart_error": restart_error or "",
         "can_open": inst.status in {"provisioning", "running", "stopping", "cleanup"},
         "can_stop": inst.status in {"provisioning", "running"},
         "can_delete": inst.status in {"idle", "stopped", "failed", "expired", "killed"},
@@ -717,6 +754,8 @@ def get_instance_live_status(
         "billing": data["billing"],
         "can_start": data["can_start"],
         "start_error": data["start_error"],
+        "can_restart": data["can_restart"],
+        "restart_error": data["restart_error"],
         "can_open": data["can_open"],
         "can_stop": data["can_stop"],
         "can_delete": data["can_delete"],
@@ -1020,8 +1059,9 @@ def save_template(
     network_mode = normalize_network_mode(
         network_mode if network_mode in NETWORK_MODES else "disabled"
     )
-    if network_mode == "full_internet" and not allow_full_internet:
-        return None, "Enable full internet explicitly before selecting that network mode."
+    # Network Mode is the single source of truth. The legacy boolean column is
+    # retained only for database compatibility and is always derived here.
+    allow_full_internet = network_mode == "full_internet"
     max_timeout_hr = max(1, min(72, int(max_timeout_hr or 2)))
     max_upload_mb = max(1, min(1024, int(max_upload_mb or 50)))
     pids_limit = max(32, min(4096, int(pids_limit or 256)))
@@ -1107,7 +1147,7 @@ def save_template(
         read_only_root=read_only_root,
         run_as_user=run_as_user.strip() or None,
         pids_limit=pids_limit,
-        allow_full_internet=allow_full_internet,
+        allow_full_internet=(network_mode == "full_internet"),
         max_timeout_hr=max_timeout_hr,
     )
 
@@ -1155,7 +1195,7 @@ def save_template(
             "default_ui_mode": default_ui_mode,
             "interface_behavior": interface_behavior,
             "network_mode": network_mode,
-            "allow_full_internet": allow_full_internet,
+            "allow_full_internet": network_mode == "full_internet",
         }),
         template_id=str(t.id),
     )
@@ -1344,12 +1384,6 @@ def get_platform_plans() -> list[dict]:
 
 
 def _plan_dict(p) -> dict:
-    try:
-        allowed_network_modes = json.loads(
-            p.allowed_network_modes or '["disabled","restricted"]'
-        )
-    except (TypeError, ValueError):
-        allowed_network_modes = ["disabled", "restricted"]
     return {
         "id": p.id,
         "name": p.name,
@@ -1361,8 +1395,6 @@ def _plan_dict(p) -> dict:
         "org_cost_hr": str(p.org_cost_hr),
         "org_cost_hr_display": f"{_money(p.org_cost_hr):.4f}",
         "min_billable_minutes": int(p.min_billable_minutes or 0),
-        "allowed_network_modes": p.allowed_network_modes or '["disabled","restricted"]',
-        "allowed_network_mode_values": allowed_network_modes,
         "is_active": bool(p.is_active),
         "updated_at": p.updated_at,
     }
@@ -1375,7 +1407,6 @@ def save_plan(
     org_vcpu: int, org_ram_gb: int, org_disk_gb: int, org_cost_hr: str,
     updated_by_id: str | None,
     min_billable_minutes: int = 1,
-    allowed_network_modes: list[str] | str | None = None,
 ) -> tuple[dict | None, str | None]:
     name = name.strip()
     if not name:
@@ -1401,23 +1432,6 @@ def save_plan(
     if ind_cost is None or org_cost is None or ind_cost < 0 or org_cost < 0:
         return None, "Cost per hour must be a non-negative decimal value."
     min_billable_minutes = max(0, min(1440, int(min_billable_minutes or 0)))
-    if isinstance(allowed_network_modes, str):
-        try:
-            allowed_values = json.loads(allowed_network_modes)
-        except ValueError:
-            allowed_values = allowed_network_modes.split(",")
-    else:
-        allowed_values = allowed_network_modes or ["disabled", "restricted"]
-    allowed_values = list(
-        dict.fromkeys(normalize_network_mode(value) for value in allowed_values)
-    )
-    if not allowed_values or any(
-        value not in {"disabled", "restricted", "full_internet"}
-        for value in allowed_values
-    ):
-        return None, "Select at least one valid network mode."
-    allowed_network_json = json.dumps(allowed_values, separators=(",", ":"))
-
     existing = repository.get_plan(plan_id)
     if existing:
         p = repository.update_plan(
@@ -1426,7 +1440,6 @@ def save_plan(
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
             org_vcpu=org_vcpu, org_ram_gb=org_ram_gb, org_disk_gb=org_disk_gb, org_cost_hr=org_cost,
             min_billable_minutes=min_billable_minutes,
-            allowed_network_modes=allowed_network_json,
             updated_by=updated_by_id,
         )
     else:
@@ -1436,7 +1449,6 @@ def save_plan(
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
             org_vcpu=org_vcpu, org_ram_gb=org_ram_gb, org_disk_gb=org_disk_gb, org_cost_hr=org_cost,
             min_billable_minutes=min_billable_minutes,
-            allowed_network_modes=allowed_network_json,
             updated_by_id=updated_by_id,
         )
     return _plan_dict(p), None
@@ -2041,11 +2053,7 @@ def _test_effective_plan(template) -> EffectivePlan:
     disk_gb = _bounded("disk_gb", 5, 100)
     timeout_hr = _bounded("max_timeout_hr", 1, 4)
     network_mode = normalize_network_mode(template.network_mode or "disabled")
-    full_internet = bool(template.allow_full_internet)
-    if network_mode == "full_internet" and not full_internet:
-        raise RuntimePolicyError(
-            "Full internet must be explicitly enabled on the template."
-        )
+    full_internet = network_mode == "full_internet"
 
     return EffectivePlan(
         id="__test__",
@@ -2061,7 +2069,6 @@ def _test_effective_plan(template) -> EffectivePlan:
         max_timeout_hr=min(timeout_hr, max(1, int(template.max_timeout_hr or 1))),
         network_mode=network_mode,
         min_billable_minutes=0,
-        allowed_network_modes=(network_mode,),
         full_internet_enabled=full_internet,
         is_active=True,
         is_enabled=True,
@@ -2282,6 +2289,63 @@ def start_instance(
     return _instance_dict(inst), None
 
 
+def restart_instance(
+    instance_id: str,
+    actor_user_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """Start a fresh billable run with the same template, plan and owner.
+
+    The old instance remains as immutable usage history. Workspace contents are
+    intentionally not reused because normal worker cleanup removes that volume;
+    input-requiring templates must be launched from the Hub with a new upload.
+    """
+    previous = repository.get_instance(instance_id)
+    if previous is None or getattr(previous, "deleted_at", None) is not None:
+        return None, "Instance not found."
+    if not can_manage_instance(previous, actor_user_id):
+        return None, "You do not have permission to restart this instance."
+    template = repository.get_template(str(previous.template_id))
+    allowed, error = _restart_instance_state(previous, template)
+    if not allowed:
+        return None, error or f"Cannot restart an instance in '{previous.status}' state."
+    created_by = str(actor_user_id or previous.created_by_user_id or "")
+    if not created_by:
+        return None, "A user identity is required to restart this instance."
+    fresh_user_config = previous.user_config
+    try:
+        parsed_user_config = json.loads(previous.user_config or "{}")
+        if isinstance(parsed_user_config, dict):
+            parsed_user_config.pop("_ui_state", None)
+            fresh_user_config = json.dumps(parsed_user_config, separators=(",", ":"))
+    except (TypeError, ValueError):
+        pass
+    fresh = repository.create_instance(
+        template_id=str(previous.template_id),
+        plan_id=str(previous.plan_id),
+        workspace_type=str(previous.workspace_type or "personal"),
+        workspace_user_id=(str(previous.workspace_user_id) if previous.workspace_user_id else None),
+        workspace_org_id=(str(previous.workspace_org_id) if previous.workspace_org_id else None),
+        assigned_to_user_id=(str(previous.assigned_to_user_id) if previous.assigned_to_user_id else None),
+        created_by_user_id=created_by,
+        billing_entity=str(previous.billing_entity or "user"),
+        billed_user_id=(str(previous.billed_user_id) if previous.billed_user_id else None),
+        billed_org_id=(str(previous.billed_org_id) if previous.billed_org_id else None),
+        user_config=fresh_user_config,
+    )
+    started, start_error = start_instance(str(fresh.id), actor_user_id=actor_user_id)
+    if start_error:
+        repository.archive_instance(str(fresh.id))
+        return None, start_error
+    repository.archive_instance(str(previous.id))
+    repository.log_instance_event(
+        str(fresh.id),
+        "instance.restarted",
+        actor=f"user:{actor_user_id}" if actor_user_id else "system",
+        detail=json.dumps({"previous_instance_id": str(previous.id)}),
+    )
+    return started, None
+
+
 def stop_instance(
     instance_id: str,
     actor_user_id: str | None = None,
@@ -2385,7 +2449,6 @@ def _template_test_revision(template) -> str:
         "read_only_root": bool(template.read_only_root),
         "run_as_user": str(template.run_as_user or ""),
         "pids_limit": int(template.pids_limit or 0),
-        "allow_full_internet": bool(template.allow_full_internet),
         "max_timeout_hr": int(template.max_timeout_hr or 0),
         "runtime_config": _runtime_execution_config(parse_runtime_config(template.runtime_config)),
     }

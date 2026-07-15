@@ -56,13 +56,34 @@ _FS_REQUEST_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.fs.request"
 _GUI_CTL_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.gui.ctl"
 _GUI_INPUT_SUBJECT = f"codesandbox.worker.{WORKER_ID}.sandbox.*.gui.input"
 _TOTAL_VCPU = int(os.environ.get("SANDBOX_WORKER_TOTAL_VCPU", "8"))
-_TOTAL_RAM_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_RAM_GB", "16"))
+_CONFIGURED_RAM_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_RAM_GB", "16"))
+_DIND_MEMORY_LIMIT_GB = max(2, int(os.environ.get("SANDBOX_DIND_MEMORY_LIMIT_GB", "8")))
+# Reserve one GiB inside the outer DinD cgroup for dockerd/containerd/LXCFS.
+_TOTAL_RAM_GB = min(_CONFIGURED_RAM_GB, max(1, _DIND_MEMORY_LIMIT_GB - 1))
 _TOTAL_DISK_GB = int(os.environ.get("SANDBOX_WORKER_TOTAL_DISK_GB", "100"))
+if _TOTAL_RAM_GB < _CONFIGURED_RAM_GB:
+    log.warning(
+        "worker RAM capacity clamped from %s GiB to %s GiB by the %s GiB DinD safety envelope",
+        _CONFIGURED_RAM_GB,
+        _TOTAL_RAM_GB,
+        _DIND_MEMORY_LIMIT_GB,
+    )
 _HEARTBEAT_INTERVAL_SECONDS = int(os.environ.get("SANDBOX_WORKER_HEARTBEAT_SECONDS", "10"))
 _READY_FILE = "/tmp/codesandbox-worker-ready"
 _EGRESS_CHECK_INTERVAL_SECONDS = max(
     30, int(os.environ.get("SANDBOX_EGRESS_CHECK_INTERVAL_SECONDS", "300"))
 )
+
+
+def _host_available_memory_bytes() -> int | None:
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
 
 
 def _redact_url(value: str) -> str:
@@ -519,16 +540,61 @@ class WorkerApp:
         """Poll a running container until it exits, times out, breaches its
         disk quota, or is told to stop — shared by freshly-started jobs and
         containers reattached at worker boot (see _reattach_running)."""
-        timeout_at = runner.started_monotonic + int(runner.policy["max_timeout_sec"])
+        guard = runner.policy.get("resource_guard") or {}
+        guard_timeout = int(guard.get("max_runtime_seconds") or 0)
+        effective_timeout = int(runner.policy["max_timeout_sec"])
+        if guard_timeout:
+            effective_timeout = min(effective_timeout, guard_timeout)
+        timeout_at = runner.started_monotonic + effective_timeout
+        memory_high_pct = int(guard.get("memory_high_watermark_pct") or 0)
+        host_min_available = int(guard.get("host_min_available_mb") or 0) * 1024**2
         next_heartbeat = 0.0
         while not runner.external_control.wait(1):
             if not runner.is_running:
                 runner.container.reload()
-                exit_code = runner.container.attrs.get("State", {}).get("ExitCode")
-                self._finish(runner, callback, "stopped", "process_exited", exit_code)
+                state = runner.container.attrs.get("State", {})
+                exit_code = state.get("ExitCode")
+                reason = "oom_killed" if state.get("OOMKilled") else "process_exited"
+                self._finish(runner, callback, "failed" if state.get("OOMKilled") else "stopped", reason, exit_code)
                 return
-            metrics = runner.stats()
+            try:
+                metrics = runner.stats()
+            except Exception:
+                if not runner.is_running:
+                    runner.container.reload()
+                    state = runner.container.attrs.get("State", {})
+                    reason = "oom_killed" if state.get("OOMKilled") else "process_exited"
+                    self._finish(
+                        runner,
+                        callback,
+                        "failed" if state.get("OOMKilled") else "stopped",
+                        reason,
+                        state.get("ExitCode"),
+                    )
+                    return
+                raise
             self.publish(f"codesandbox.sandbox.metrics.{instance_id}", metrics)
+            if memory_high_pct:
+                threshold = metrics["memory_limit_bytes"] * memory_high_pct // 100
+                if metrics["memory_used_bytes"] >= threshold:
+                    runner.kill()
+                    self._finish(runner, callback, "failed", "memory_high_watermark_exceeded", 137)
+                    return
+            if host_min_available:
+                available = _host_available_memory_bytes()
+                if available is not None and available < host_min_available:
+                    # This is the final host-safety circuit breaker, not a
+                    # normal analysis limit. Ask the container to stop cleanly
+                    # first; Docker escalates only if it ignores SIGTERM.
+                    result = runner.stop()
+                    self._finish(
+                        runner,
+                        callback,
+                        "failed",
+                        "host_memory_pressure",
+                        result.get("exit_code"),
+                    )
+                    return
             if metrics["disk_used_bytes"] > metrics["disk_limit_bytes"]:
                 runner.kill()
                 self._finish(runner, callback, "failed", "workspace_limit_exceeded", 137)
