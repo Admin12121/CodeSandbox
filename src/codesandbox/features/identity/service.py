@@ -575,7 +575,6 @@ def passkey_register_complete(user_id: str, challenge_b64: str, credential_json:
     from webauthn import verify_registration_response
     from webauthn.helpers.structs import RegistrationCredential
     from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
-    import json
 
     rp_id, origin = _get_rp_config()
 

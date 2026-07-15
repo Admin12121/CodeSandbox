@@ -362,15 +362,7 @@
 {% endmacro %}
 
 
-{# ── Radial Chart - Stacked ──────────────────────────────────────────────
-  Pure SVG progress ring: each config key gets one arc segment, in fixed
-  config order, sized by its share of the sum of `values`. Segments must
-  share one unit and sum to a real whole (e.g. used+free capacity,
-  profit+cost=revenue) — this is not for stacking unlike measures.
-
-  config: {"key": {"label": "…", "color": "var(--chart-1)"}, ...}  (ordered)
-  values: {"key": number, ...}
-#}
+{# ── Radial Chart - Stacked — values must share one unit and sum to a real whole (e.g. used+free) #}
 {% macro _radial_sector_path(cx, cy, ro, ri, phi1, phi2) %}
 {%- set large = 1 if (phi2 - phi1) > pi else 0 -%}
 {%- set p_outer_start = (cx - ro * cos(phi1), cy - ro * sin(phi1)) -%}
@@ -391,24 +383,12 @@ Z
 {% set ro = r + (thickness / 2) %}
 {% set ri = r - (thickness / 2) %}
 {% set cy = ro %}
-{# Filled donut-sector path per segment (matches recharts' RadialBar output)
-   instead of a stroked circle — a stroked round linecap gives a full
-   semicircle pill cap, much bigger/rounder than the small corner rounding
-   the reference actually has. corner_radius rounds each segment's 4
-   corners via stroke-linejoin, so adjacent segments simply touch with a
-   small shared fillet at the seam, no manual gap needed. edge_inset keeps
-   the two true ends (9/3 o'clock) off the viewBox's clip line so their
-   rounded corners aren't clipped flat. #}
+{# donut-sector paths, corner-rounded via stroke-linejoin; edge_inset keeps the two true ends off the viewBox clip line #}
 {% set corner_radius = [6, thickness * 0.3] | min %}
 {% set edge_inset_angle = corner_radius / r %}
 {% set budget = pi - (edge_inset_angle * 2) %}
 {% set start_angle = edge_inset_angle %}
-{# The same-color outline stroke used for corner rounding runs along the
-   WHOLE path, not just the corners, so it also pushes the outer arc out
-   and the inner arc in by corner_radius — inflating the ring's visible
-   thickness by 2*corner_radius. Pre-shrinking the drawn radii by
-   corner_radius on each side cancels that out so the final visible ring
-   matches the requested `thickness` exactly. #}
+{# outline stroke runs the whole path, not just corners — pre-shrink radii so it doesn't inflate the ring #}
 {% set ro_path = ro - corner_radius %}
 {% set ri_path = ri + corner_radius %}
 <div data-slot="chart" data-chart="{{ chart_id }}" class="flex w-full flex-col items-center gap-2 {{ class }}">
@@ -463,9 +443,7 @@ Z
 
   function pt(rho, phi) { return [cx - rho * Math.cos(phi), cy - rho * Math.sin(phi)]; }
 
-  // Mirrors the server-rendered path exactly, including the corner_radius
-  // pre-shrink that compensates for the same-color outline stroke used to
-  // round the corners (see the Jinja macro's comment for why).
+  // Mirrors the server-rendered path (roPath/riPath already corner-compensated).
   function sectorPath(phi1, phi2) {
     var large = (phi2 - phi1) > Math.PI ? 1 : 0;
     var pOuterStart = pt(roPath, phi1), pOuterEnd = pt(roPath, phi2);

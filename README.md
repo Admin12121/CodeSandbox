@@ -15,3 +15,30 @@
     <img alt="Contributors" src="https://img.shields.io/github/contributors/Admin12121/codesandbox?style=for-the-badge&labelColor=34364d&color=a7dc9a">
   </a>
 </p>
+
+CodeSandbox is a self-hosted sandbox platform: spin up disposable, browser-based dev environments (terminal, editor, live preview) from templates, run them in isolated Docker workers, and manage usage, billing, and access across personal, organization, and platform-admin workspaces.
+
+## Stack
+
+- **Backend:** Flask + [NexORM](./packages/nexorm) (MySQL) + a custom [app-router](./packages/app_router) for file-based pages
+- **Frontend:** server-rendered Jinja templates + Tailwind (no build step — Tailwind runs via CDN in the browser)
+- **Sandboxes:** Docker-in-Docker workers, orchestrated over NATS
+- **Auth:** sessions, 2FA (TOTP), WebAuthn passkeys
+
+## Getting started
+
+```bash
+uv sync
+docker compose -f docker/dind-lxcfs/docker-compose.yml up -d           # sandbox worker
+uv run uvicorn codesandbox.asgi:app --host 0.0.0.0 --port 5000 --reload
+```
+
+Environment variables are documented in `src/codesandbox/config.py`.
+
+## Project layout
+
+- `src/codesandbox/features/` — one folder per domain (identity, sandbox, organizations, finance, worker, workflow, billing)
+- `src/codesandbox/templates/` — Jinja pages and `components/ui/*.html` macros
+- `packages/` — the two in-house libraries (`nexorm`, `app_router`) this app is built on
+- `worker/` — the sandbox runtime that runs inside each worker node
+- `docs/` — design notes and the finance/permissions model

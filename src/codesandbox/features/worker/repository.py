@@ -4,8 +4,6 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from nexorm.exceptions import DoesNotExist
-
 from .models import WorkerInstanceRuntime, WorkerNode
 
 

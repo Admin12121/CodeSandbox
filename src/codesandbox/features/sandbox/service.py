@@ -1111,7 +1111,6 @@ def claim_org_allocation(
 
     perms = set(org_repo.get_member_permissions(org_id, user_id))
     is_owner = org_repo.is_org_owner(org_id, user_id)
-    manager = is_owner or "sandbox.allocations.manage" in perms
     if row.access_scope == "private":
         if str(row.assigned_to_user_id or "") != str(user_id):
             return None, "This private sandbox is assigned to another member."
@@ -1567,9 +1566,6 @@ def save_template(
     network_mode = normalize_network_mode(
         network_mode if network_mode in NETWORK_MODES else "disabled"
     )
-    # Network Mode is the single source of truth. The legacy boolean column is
-    # retained only for database compatibility and is always derived here.
-    allow_full_internet = network_mode == "full_internet"
     max_timeout_hr = max(1, min(72, int(max_timeout_hr or 2)))
     max_upload_mb = max(1, min(1024, int(max_upload_mb or 50)))
     pids_limit = max(32, min(4096, int(pids_limit or 256)))

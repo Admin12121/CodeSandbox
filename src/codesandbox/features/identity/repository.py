@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from nexorm.exceptions import DoesNotExist
 
-from .models import ApiKey, AuthAccount, LoginAttempt, Session, TwoFactorMethod, User, UserPasskey, VerificationToken
+from .models import AuthAccount, LoginAttempt, Session, TwoFactorMethod, User, UserPasskey, VerificationToken
 
 
 def find_user_by_email(email: str) -> User | None:

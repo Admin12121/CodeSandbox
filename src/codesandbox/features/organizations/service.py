@@ -393,7 +393,6 @@ def remove_org_member(
         return False, "You don't have permission to remove members."
 
     from .models import OrganizationMember
-    from nexorm.exceptions import DoesNotExist
     try:
         target = OrganizationMember.objects.get(id=member_id)
     except Exception:

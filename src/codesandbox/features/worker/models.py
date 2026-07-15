@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from nexorm.fields import (
-    BooleanField,
     DateTimeField,
     ForeignKey,
     IntegerField,

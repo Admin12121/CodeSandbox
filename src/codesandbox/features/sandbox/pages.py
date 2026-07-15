@@ -4,8 +4,6 @@ import math
 
 from flask import request
 
-from codesandbox.config import get_settings
-
 from codesandbox.shared.permissions import has_platform_permission
 from codesandbox.shared.session import build_nav, require_platform_role
 from codesandbox.web.blueprint import router

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json as _json
-
 from flask import redirect, request
 
 from codesandbox.shared.guards import platform_perm

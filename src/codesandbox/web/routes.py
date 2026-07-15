@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
-from flask import abort, g, redirect, request, send_from_directory, session as flask_session
+from flask import abort, g, redirect, request, send_from_directory
 
 from codesandbox.features.finance import service as finance_service
 from codesandbox.features.organizations import repository as org_repo
@@ -32,7 +32,6 @@ from codesandbox.features.sandbox.service import (
     get_org_allocation_edit_context,
     get_org_allocations_for_user,
     get_org_billing,
-    get_org_instances,
     get_org_requests,
     group_org_allocations_for_display,
     get_template_plans_for_hub,
@@ -360,8 +359,6 @@ def _org_dashboard(user, workspace: dict) -> dict:
     live = [row for row in instances if str(row.status) in _LIVE_INSTANCE_STATUSES]
     pending_requests = [row for row in requests_rows if row.status == "pending"]
     balance = _balance_summary("org", org_id)
-    total_runtime = sum(int(row.total_runtime_sec or 0) for row in instances)
-    total_cost = sum(Decimal(str(row.charged_amount or "0")) for row in instances)
     return {
         "kind": "org",
         "is_owner": is_owner,
