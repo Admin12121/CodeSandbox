@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -8,6 +9,8 @@ from urllib.parse import quote_plus
 from flask import abort, g, redirect, request, send_from_directory
 
 from codesandbox.features.finance import service as finance_service
+
+_logger = logging.getLogger(__name__)
 from codesandbox.features.organizations import repository as org_repo
 from codesandbox.features.platform_admin import repository as platform_repo
 from codesandbox.features.sandbox.models import (
@@ -92,7 +95,8 @@ def _pct(part: int | Decimal, whole: int | Decimal) -> int:
         if whole_dec <= 0:
             return 0
         return int((Decimal(str(part)) / whole_dec * Decimal(100)).quantize(Decimal("1")))
-    except Exception:
+    except Exception as exc:
+        _logger.error("_pct(%r, %r) failed: %s", part, whole, exc)
         return 0
 
 
@@ -103,7 +107,8 @@ def _metric(label: str, value: str, meta: str, radial_value=0) -> dict:
 def _compact_number(value) -> str:
     try:
         amount = float(value or 0)
-    except Exception:
+    except Exception as exc:
+        _logger.error("_compact_number(%r) failed: %s", value, exc)
         amount = 0.0
     if amount >= 1_000_000:
         return f"{amount / 1_000_000:.1f}M"
@@ -884,8 +889,8 @@ def billing():
     npr_display = None
     try:
         npr_display = fx.gbp_to_npr(Decimal(str(billing_data["balance"]["amount"])))
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.error("GBP to NPR conversion failed: %s", exc)
 
     nav = build_nav("/billing", user, active_workspace)
     return {

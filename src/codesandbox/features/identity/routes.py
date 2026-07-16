@@ -32,6 +32,7 @@ from .service import (
     passkey_register_begin,
     passkey_register_complete,
     request_email_verification,
+    request_login_email_challenge,
     request_password_reset,
     reset_password,
     record_second_factor_failure,
@@ -168,7 +169,9 @@ def resend_verification():
         settings = get_settings()
         token = request_email_verification(cs.user.id, cs.user.email)
         verify_url = f"{settings.app_url}/verify-email?token={token}"
-        send_email_verification(to=cs.user.email, verify_url=verify_url)
+        if send_email_verification(to=cs.user.email, verify_url=verify_url):
+            return redirect("/settings?info=Verification+email+sent.+Check+your+inbox.", code=303)
+        return redirect("/settings?error=Couldn%27t+send+the+verification+email.+Try+again+shortly.", code=303)
     return redirect("/settings?info=Verification+email+sent.+Check+your+inbox.", code=303)
 
 
@@ -258,6 +261,20 @@ def two_factor_verify():
     response = redirect(next_path, code=303)
     _set_session_cookie(response, token)
     return response
+
+
+@web_bp.post("/two-factor/resend")
+@limiter.limit("5 per hour")
+def two_factor_resend():
+    from flask import jsonify
+    pending_user_id = session.get("_2fa_pending_user_id")
+    method = str(session.get("_2fa_method") or "totp")
+    if not pending_user_id or method != "email":
+        return jsonify({"ok": False, "error": "Your session expired. Sign in again."}), 400
+    if request_login_email_challenge(str(pending_user_id)):
+        session["_2fa_pending_at"] = int(time.time())
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Couldn't send a new code. Try again shortly."}), 502
 
 
 # ── TOTP setup (in settings) ──────────────────────────────────────────────────
@@ -382,6 +399,9 @@ def change_password_action():
 
 @web_bp.get("/auth/github")
 def github_authorize():
+    from codesandbox.shared.session import get_current_session
+    if get_current_session():
+        return redirect("/dashboard", code=303)
     settings = get_settings()
     if not settings.github_client_id:
         return redirect("/login?error=GitHub+OAuth+not+configured", code=303)
@@ -424,6 +444,9 @@ def github_callback():
 
 @web_bp.get("/auth/google")
 def google_authorize():
+    from codesandbox.shared.session import get_current_session
+    if get_current_session():
+        return redirect("/dashboard", code=303)
     settings = get_settings()
     if not settings.google_client_id:
         return redirect("/login?error=Google+OAuth+not+configured", code=303)

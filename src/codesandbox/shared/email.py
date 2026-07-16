@@ -42,6 +42,11 @@ def _send(*, to: str, subject: str, html: str) -> bool:
         headers={
             "Authorization": f"Bearer {settings.resend_api_key}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            # urllib's default "Python-urllib/x.y" User-Agent gets blocked by
+            # Cloudflare (in front of api.resend.com) as a bot signature —
+            # every send fails with HTTP 403 before Resend even sees it.
+            "User-Agent": "Mozilla/5.0 (compatible; CodeSandbox/1.0)",
         },
         method="POST",
     )

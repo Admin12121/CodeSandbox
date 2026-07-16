@@ -21,6 +21,8 @@ def home():
 
 @router.page("/login")
 def login():
+    if get_current_session():
+        return {"_redirect": "/dashboard"}
     return {
         "_meta": {"title": "Sign in — CodeSandbox"},
         "mode": request.args.get("mode", "signin"),
@@ -32,6 +34,8 @@ def login():
 
 @router.page("/forgot-password")
 def forgot_password():
+    if get_current_session():
+        return {"_redirect": "/dashboard"}
     return {
         "_meta": {"title": "Forgot Password — CodeSandbox"},
         "sent": bool(request.args.get("sent")),
@@ -41,6 +45,8 @@ def forgot_password():
 
 @router.page("/reset-password")
 def reset_password_page():
+    if get_current_session():
+        return {"_redirect": "/dashboard"}
     token = request.args.get("token", "")
     if not token:
         return {"_redirect": "/forgot-password"}
@@ -53,12 +59,15 @@ def reset_password_page():
 
 @router.page("/two-factor")
 def two_factor():
+    if get_current_session():
+        return {"_redirect": "/dashboard"}
     if not flask_session.get("_2fa_pending_user_id"):
         return {"_redirect": "/login"}
     method = str(flask_session.get("_2fa_method") or "totp")
     return {
         "_meta": {"title": "Security Verification — CodeSandbox"},
         "error": request.args.get("error"),
+        "info": request.args.get("info"),
         "challenge_method": method,
     }
 

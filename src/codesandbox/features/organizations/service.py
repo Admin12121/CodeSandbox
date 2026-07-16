@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from . import repository
 from .models import Organization, OrganizationInvitation, OrganizationMemberRole, OrganizationRole
+
+_logger = logging.getLogger(__name__)
 
 
 def _safe_url(url: str | None) -> str | None:
@@ -128,8 +131,8 @@ def update_organization_status(org_id: str, status: str, reason: str | None = No
                         reason=reason,
                         support_url=support_url,
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("Org status-change notification failed for org %s: %s", org_id, exc)
 
     return org
 

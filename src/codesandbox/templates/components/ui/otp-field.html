@@ -1,3 +1,11 @@
-{% macro otp_field(class="", attrs={}) -%}<div class="{{ cn('flex items-center gap-2', class) }}" data-slot="otp-field" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro otp_field_input(name="", index=0, value="", class="", attrs={}) -%}<input class="{{ cn('relative flex size-10 items-center justify-center rounded-md border border-input bg-background text-center text-sm shadow-xs outline-none focus:ring-2 focus:ring-ring', class) }}" data-slot="otp-field-input" maxlength="1" inputmode="numeric" {% if name %}name="{{ name }}_{{ index }}"{% endif %} value="{{ value }}" {{ html_attrs(**attrs) }}>{%- endmacro %}
-{% macro otp_field_separator(text="-", class="", attrs={}) -%}<span class="{{ cn('text-muted-foreground', class) }}" data-slot="otp-field-separator" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>{%- endmacro %}
+{% macro otp_field(class="", attrs={}) -%}
+    <div class="{{ cn('flex items-center gap-2', class) }}" data-slot="otp-field" {{ html_attrs(**attrs) }}>
+        {% if caller is defined %}{{ caller() }}{% endif %}
+    </div>
+{%- endmacro %}
+{% macro otp_field_input(name="", index=0, value="", class="", attrs={}) -%}
+    <input class="{{ cn('relative flex size-10 items-center justify-center rounded-md border border-input bg-background text-center text-sm shadow-xs outline-none focus:ring-2 focus:ring-ring', class) }}" data-slot="otp-field-input" maxlength="1" inputmode="numeric" {% if name %}name="{{ name }}_{{ index }}"{% endif %} value="{{ value }}" {{ html_attrs(**attrs) }}>
+{%- endmacro %}
+{% macro otp_field_separator(text="-", class="", attrs={}) -%}
+    <span class="{{ cn('text-muted-foreground', class) }}" data-slot="otp-field-separator" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>
+{%- endmacro %}

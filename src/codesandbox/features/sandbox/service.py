@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import posixpath
 import os
 import re
@@ -18,6 +19,8 @@ from codesandbox.shared.storage import (
 )
 
 from . import repository
+
+_logger = logging.getLogger(__name__)
 from .image_refs import normalize_image_reference
 from .runtime.policy import (
     EffectivePlan,
@@ -1246,13 +1249,13 @@ def archive_instance_for_user(
     for item in repository.list_instance_inputs(instance_id):
         try:
             delete_private_object(item.storage_key)
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("Failed to delete input object %s: %s", item.storage_key, exc)
     for item in repository.list_instance_artifacts(instance_id):
         try:
             delete_private_object(item.storage_key)
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("Failed to delete artifact object %s: %s", item.storage_key, exc)
     archived = repository.archive_instance(instance_id)
     if archived is None:
         return None, "Instance not found."
@@ -3699,13 +3702,13 @@ def start_test_instance(
         if staged_upload is not None and safe_to_remove:
             try:
                 delete_private_object(staged_upload["storage_key"])
-            except Exception:
-                pass
+            except Exception as cleanup_exc:
+                _logger.error("Failed to remove staged upload after error: %s", cleanup_exc)
         if current is not None and current.status == "idle":
             try:
                 current.delete()
-            except Exception:
-                pass
+            except Exception as cleanup_exc:
+                _logger.error("Failed to remove partially-created instance %s: %s", current.id, cleanup_exc)
         return None, str(exc)
 
 

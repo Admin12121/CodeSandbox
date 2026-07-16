@@ -4,6 +4,7 @@ import base64
 import hashlib
 import io
 import json
+import logging
 import secrets
 import urllib.parse
 import urllib.request
@@ -17,8 +18,14 @@ from codesandbox.config import get_settings
 
 from . import repository
 
+_logger = logging.getLogger(__name__)
+
 
 _BLOCKED_USER_STATUSES = {"banned", "inactive"}
+# GitHub's API rejects requests with no User-Agent (403), and urllib's default
+# "Python-urllib/x.y" UA also gets bot-blocked by Cloudflare in front of
+# similar APIs (confirmed with the same failure mode against Resend's API).
+_OAUTH_USER_AGENT = "Mozilla/5.0 (compatible; CodeSandbox/1.0)"
 
 
 @dataclass(frozen=True)
@@ -265,14 +272,20 @@ def sign_in(
         and user.email_verified
         and _login_requires_step_up(user, ip_address=ip_address, user_agent=user_agent)
     ):
-        if not request_login_email_challenge(str(user.id)):
-            return AuthResult(False, "Unable to deliver the security verification code. Try again shortly.")
-        return AuthResult(
-            True,
-            "Email verification required.",
-            requires_2fa=True,
-            user_id=str(user.id),
-            challenge_method="email",
+        if request_login_email_challenge(str(user.id)):
+            return AuthResult(
+                True,
+                "Email verification required.",
+                requires_2fa=True,
+                user_id=str(user.id),
+                challenge_method="email",
+            )
+        # Step-up is a risk-based, opt-in-by-default enhancement, not a
+        # user-configured 2FA requirement — an email provider outage should
+        # not turn into a full login lockout for an otherwise-valid password.
+        _logger.warning(
+            "Step-up email challenge could not be delivered for user %s; skipping step-up and signing in.",
+            user.id,
         )
 
     token = create_session_for_user(
@@ -330,8 +343,8 @@ def create_session_for_user(
                 login_time=now.isoformat(),
                 settings_url=f"{settings.app_url}/settings?tab=security",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("New-device login alert failed for %s: %s", user.email, exc)
     return raw_token
 
 
@@ -492,8 +505,8 @@ def verify_totp(user_id: str, code: str) -> bool:
                     backup_codes_encrypted=_encrypt_secret(json.dumps(codes)),
                 )
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("Backup-code check failed for user %s: %s", user_id, exc)
     return False
 
 
@@ -542,8 +555,8 @@ def passkey_register_begin(user_id: str, attachment: str | None = None) -> dict:
             exclude_credentials.append(
                 PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id))
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("Skipping malformed passkey credential_id for user %s: %s", user_id, exc)
 
     auth_attach = None
     if attachment == "platform":
@@ -715,36 +728,47 @@ def github_exchange_code(code: str) -> dict | None:
     req = urllib.request.Request(
         "https://github.com/login/oauth/access_token",
         data=data,
-        headers={"Accept": "application/json"},
+        headers={"Accept": "application/json", "User-Agent": _OAUTH_USER_AGENT},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
-    except Exception:
+    except Exception as exc:
+        _logger.error("GitHub token exchange failed: %s", exc)
         return None
 
 
 def github_get_user(access_token: str) -> dict | None:
     req = urllib.request.Request(
         "https://api.github.com/user",
-        headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": _OAUTH_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
-    except Exception:
+    except Exception as exc:
+        _logger.error("GitHub get-user failed: %s", exc)
         return None
 
 
 def github_get_primary_verified_email(access_token: str) -> str | None:
     req = urllib.request.Request(
         "https://api.github.com/user/emails",
-        headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": _OAUTH_USER_AGENT,
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             emails = json.loads(resp.read())
-    except Exception:
+    except Exception as exc:
+        _logger.error("GitHub get-emails failed: %s", exc)
         return None
     for item in emails:
         email = str(item.get("email") or "").strip().lower()
@@ -766,25 +790,30 @@ def google_exchange_code(code: str, redirect_uri: str) -> dict | None:
     req = urllib.request.Request(
         "https://oauth2.googleapis.com/token",
         data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": _OAUTH_USER_AGENT,
+        },
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
-    except Exception:
+    except Exception as exc:
+        _logger.error("Google token exchange failed: %s", exc)
         return None
 
 
 def google_get_user(access_token: str) -> dict | None:
     req = urllib.request.Request(
         "https://www.googleapis.com/oauth2/v3/userinfo",
-        headers={"Authorization": f"Bearer {access_token}"},
+        headers={"Authorization": f"Bearer {access_token}", "User-Agent": _OAUTH_USER_AGENT},
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read())
-    except Exception:
+    except Exception as exc:
+        _logger.error("Google get-user failed: %s", exc)
         return None
 
 

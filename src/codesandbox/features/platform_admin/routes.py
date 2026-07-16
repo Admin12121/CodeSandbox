@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import urllib.parse
 from urllib.parse import quote
 
@@ -8,6 +9,8 @@ from flask import jsonify, redirect, request
 from codesandbox.shared.guards import platform_perm
 from codesandbox.shared.session import get_current_session
 from codesandbox.web.blueprint import web_bp
+
+_logger = logging.getLogger(__name__)
 
 from .service import (
     add_role_member,
@@ -154,8 +157,8 @@ def platform_update_user_field_action(user_id: str):
                         new_status=value,
                         support_url=f"{_settings.app_url}/support",
                     )
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("Role/status-change notification failed for user %s: %s", user_id, exc)
 
     return jsonify({"ok": True})
 

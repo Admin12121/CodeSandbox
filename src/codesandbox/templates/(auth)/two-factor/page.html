@@ -36,8 +36,16 @@ as otp_ui %}
             {% call card.card_content(class="px-4 py-0") %} {% call
             form.form(action="/two-factor/verify", method="post") %} {% call
             field.field_group() %} {% call field.field(class="flex flex-col
-            items-center gap-3") %} {{ field.field_label("Authentication code",
-            for_id="otp-0") }} {% call otp_ui.otp_field(attrs={"data-otp-root":
+            items-center gap-3") %}
+            <div class="flex w-full items-center justify-between">
+              {{ field.field_label("Authentication code", for_id="otp-0") }}
+              {% if error and challenge_method == "email" %}
+              <button type="button" id="resend-otp-btn" title="Resend code" aria-label="Resend code" class="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                <svg id="resend-otp-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              </button>
+              {% endif %}
+            </div>
+            {% call otp_ui.otp_field(attrs={"data-otp-root":
             "", "id": "otp-root"}) %} {{ otp_ui.otp_field_input(attrs={"id":
             "otp-0", "data-otp-idx": "0", "autofocus": "autofocus"}) }} {{
             otp_ui.otp_field_input(attrs={"data-otp-idx": "1"}) }} {{
@@ -48,7 +56,11 @@ as otp_ui %}
             otp_ui.otp_field_input(attrs={"data-otp-idx": "5"}) }} {% endcall %}
             <input type="hidden" name="code" id="otp-hidden" />
             {% endcall %} {% if error %} {{ field.field_error(error) }} {% endif
-            %} {% call field.field(class="space-y-1") %} {% call
+            %} {% if info %}
+            <p class="text-sm font-normal text-emerald-600 dark:text-emerald-500">{{ info }}</p>
+            {% endif %}
+            <p id="resend-otp-status" class="hidden text-sm font-normal"></p>
+            {% call field.field(class="space-y-1") %} {% call
             button.button(type="submit", class="w-full") %}Verify{% endcall %}
             {% endcall %} {% call field.field_description(class="text-center")
             %}
@@ -61,7 +73,7 @@ as otp_ui %}
     </section>
 </main>
 
-<script>
+{% app_script "two-factor-otp" %}
     (function () {
         var root = document.getElementById("otp-root");
         var hidden = document.getElementById("otp-hidden");
@@ -116,5 +128,41 @@ as otp_ui %}
         });
         var frm = root.closest("form");
         if (frm) frm.addEventListener("submit", sync, true);
+
+        var resendBtn = document.getElementById("resend-otp-btn");
+        var resendIcon = document.getElementById("resend-otp-icon");
+        var resendStatus = document.getElementById("resend-otp-status");
+        if (resendBtn) {
+            resendBtn.addEventListener("click", function () {
+                if (resendBtn.disabled) return;
+                resendBtn.disabled = true;
+                if (resendIcon) resendIcon.classList.add("animate-spin", "[animation-duration:1.5s]");
+                if (resendStatus) resendStatus.classList.add("hidden");
+                fetch("/two-factor/resend", { method: "POST", credentials: "same-origin" })
+                    .then(function (r) { return r.json().catch(function () { return {}; }); })
+                    .then(function (data) {
+                        if (resendStatus) {
+                            resendStatus.textContent = data && data.ok
+                                ? "A new code has been sent."
+                                : (data && data.error) || "Couldn't send a new code. Try again shortly.";
+                            resendStatus.classList.remove("hidden");
+                            resendStatus.classList.toggle("text-emerald-600", !!(data && data.ok));
+                            resendStatus.classList.toggle("dark:text-emerald-500", !!(data && data.ok));
+                            resendStatus.classList.toggle("text-destructive", !(data && data.ok));
+                        }
+                    })
+                    .catch(function () {
+                        if (resendStatus) {
+                            resendStatus.textContent = "Couldn't send a new code. Try again shortly.";
+                            resendStatus.classList.remove("hidden");
+                            resendStatus.classList.add("text-destructive");
+                        }
+                    })
+                    .finally(function () {
+                        if (resendIcon) resendIcon.classList.remove("animate-spin", "[animation-duration:1.5s]");
+                        setTimeout(function () { resendBtn.disabled = false; }, 3000);
+                    });
+            });
+        }
     })();
-</script>
+{% end_app_script %}

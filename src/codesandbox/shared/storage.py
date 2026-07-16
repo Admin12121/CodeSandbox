@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import uuid
 import hashlib
@@ -12,6 +13,7 @@ from werkzeug.utils import secure_filename
 
 from codesandbox.config import get_settings
 
+_logger = logging.getLogger(__name__)
 _ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 _EXTS = {"image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp"}
 _FORMAT_TO_MIME = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp"}
@@ -79,7 +81,8 @@ def upload_image(data: bytes, mime: str, prefix: str = "uploads") -> str | None:
         key = f"{prefix}/{uuid.uuid4().hex}.{ext}"
         client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=mime)
         return f"/media/{bucket}/{key}"
-    except Exception:
+    except Exception as exc:
+        _logger.error("Image upload to %s/%s failed: %s", bucket, prefix, exc)
         return None
 
 
@@ -118,7 +121,8 @@ def upload_private_bytes(
             Body=data,
             ContentType=content_type or "application/octet-stream",
         )
-    except Exception:
+    except Exception as exc:
+        _logger.error("Private upload to %s/%s failed: %s", target_bucket, prefix, exc)
         return None
     return {
         "bucket": target_bucket,

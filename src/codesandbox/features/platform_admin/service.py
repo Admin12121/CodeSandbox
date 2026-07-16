@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.identity.models import User
 
 from . import repository
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -342,8 +345,8 @@ def save_staff_member(
                 name=name,
                 login_url=f"{get_settings().app_url}/login",
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            _logger.error("Staff-account-created email failed for %s: %s", email, exc)
 
     valid_role_ids = {r.id for r in repository.list_roles()}
     wanted = {rid for rid in role_ids if rid in valid_role_ids}
