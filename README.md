@@ -21,7 +21,7 @@ CodeSandbox is a self-hosted sandbox platform: spin up disposable, browser-based
 ## Stack
 
 - **Backend:** Flask + [NexORM](./packages/nexorm) (MySQL) + a custom [app-router](./packages/app_router) for file-based pages
-- **Frontend:** server-rendered Jinja templates + Tailwind (no build step — Tailwind runs via CDN in the browser)
+- **Frontend:** server-rendered Jinja templates + Tailwind v4 (browser compiler for dev, prebuilt CSS for Windows fast mode)
 - **Sandboxes:** Docker-in-Docker workers, orchestrated over NATS
 - **Auth:** sessions, 2FA (TOTP), WebAuthn passkeys
 
@@ -31,6 +31,8 @@ CodeSandbox is a self-hosted sandbox platform: spin up disposable, browser-based
 cp .env.example .env   # fill in the required secrets — docker-compose.yml fails fast on any that are missing
 docker compose up -d
 ```
+
+On Docker Desktop for Windows, set `WINDOW=true` in `.env`; the app image serves baked source and prebuilt CSS instead of using Python reload/browser Tailwind compilation.
 
 Environment variables are documented in `.env.example` and `src/codesandbox/config.py`.
 

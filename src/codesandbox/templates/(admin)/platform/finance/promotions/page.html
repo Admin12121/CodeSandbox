@@ -7,7 +7,7 @@
 {% import "(admin)/platform/finance/promotions/_components/coupon_dialog.html" as coupon_dialog %}
 {% import "(admin)/platform/finance/promotions/_components/credit_dialog.html" as credit_dialog %}
 
-<div class="grid auto-rows-max content-start gap-8 p-4 lg:p-6 h-[calc(100vh-49px)] overflow-y-auto">
+<div class="grid auto-rows-max content-start gap-8 p-2 h-[calc(100vh-49px)] overflow-y-auto">
   <div class="flex flex-wrap items-center justify-end gap-2">
     {{ period_ui.period_toolbar(period, "/platform/finance/promotions") }}
     {% if can_manage_coupons %}

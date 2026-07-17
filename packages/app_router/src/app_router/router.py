@@ -462,7 +462,7 @@ class AppRouter:
             return self._redirect_response(redirect_result)
 
         meta = _metadata_from_data(data)
-        layout_state = _layout_state_from_data(data)
+        layout_state = _layout_state_from_data(data) or _implicit_layout_state_from_data(data)
         cache_enabled = bool(data.get("_cache", False))
         ttl = int(data.get("_ttl", 0) or 0)
         context = self._template_context(data)
@@ -528,10 +528,10 @@ class AppRouter:
         next_tree = self._layout_tree(layouts)
         if client_tree != current_tree:
             return self._reload_json()
-        if request.headers.get(CURRENT_LAYOUT_STATE_HEADER, "") != layout_state:
-            return self._reload_json()
-
+        layout_state_changed = request.headers.get(CURRENT_LAYOUT_STATE_HEADER, "") != layout_state
         boundary = _patch_boundary(current_tree, next_tree)
+        if layout_state_changed or _context_has_layout_shell_state(context):
+            boundary = _parent_boundary(next_tree, boundary)
         if boundary not in next_tree:
             return self._reload_json()
 
@@ -1011,6 +1011,47 @@ def _layout_state_from_data(data: Mapping[str, Any]) -> str:
     return json.dumps(raw, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _implicit_layout_state_from_data(data: Mapping[str, Any]) -> str:
+    if "nav" not in data:
+        return ""
+
+    state: dict[str, Any] = {
+        "path": request.full_path.rstrip("?") if has_request_context() else "",
+    }
+    for key in ("page_title", "requires_wide_admin_view"):
+        if key in data:
+            state[key] = data.get(key)
+
+    active_workspace = data.get("active_workspace")
+    if isinstance(active_workspace, Mapping):
+        state["active_workspace"] = {
+            "id": active_workspace.get("id"),
+            "slug": active_workspace.get("slug"),
+            "name": active_workspace.get("name"),
+            "status": active_workspace.get("status"),
+        }
+
+    nav = data.get("nav")
+    if isinstance(nav, Mapping):
+        active_items: list[str] = []
+        for section in nav.get("sections", []) or []:
+            if not isinstance(section, Mapping):
+                continue
+            for item in section.get("items", []) or []:
+                if isinstance(item, Mapping) and item.get("active"):
+                    active_items.append(str(item.get("href", "")))
+        for item in nav.get("secondary", []) or []:
+            if isinstance(item, Mapping) and item.get("active"):
+                active_items.append(str(item.get("href", "")))
+        state["active_nav"] = active_items
+
+    return json.dumps(state, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _context_has_layout_shell_state(context: Mapping[str, Any]) -> bool:
+    return "nav" in context
+
+
 def _patch_boundary(current_tree: Sequence[str], next_tree: Sequence[str]) -> str:
     common: list[str] = []
     for current, next_item in zip(current_tree, next_tree, strict=False):
@@ -1020,6 +1061,16 @@ def _patch_boundary(current_tree: Sequence[str], next_tree: Sequence[str]) -> st
     if not common:
         return "root"
     return common[-1]
+
+
+def _parent_boundary(tree: Sequence[str], boundary: str) -> str:
+    try:
+        index = list(tree).index(boundary)
+    except ValueError:
+        return "root"
+    if index <= 0:
+        return "root"
+    return tree[index - 1]
 
 
 def _jsonify_result(result: object) -> Response:

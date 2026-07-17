@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
-from flask import abort, g, redirect, request, send_from_directory
+from flask import abort, g, redirect, request, send_file, send_from_directory
 
 from codesandbox.features.finance import service as finance_service
 
@@ -58,6 +58,7 @@ from codesandbox.web._ctx import _user_ctx, _workspaces_ctx
 
 _TEMPLATES_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "../templates"))
 _PUBLIC_DIR = os.path.join(_TEMPLATES_DIR, "public")
+_GENERATED_PUBLIC_DIR = os.environ.get("GENERATED_PUBLIC_DIR", "/app/generated-public")
 _FAVICON = os.path.join(_TEMPLATES_DIR, "favicon.ico")
 _ORG_INACTIVE_TOAST = "toast=org_inactive"
 _LIVE_INSTANCE_STATUSES = {"idle", "provisioning", "running", "stopping", "cleanup"}
@@ -408,6 +409,11 @@ def _favicon():
 
 @web_bp.get("/<path:filename>")
 def _public_static(filename):
+    if filename == "app.css":
+        generated_css = os.path.join(_GENERATED_PUBLIC_DIR, "app.css")
+        if os.path.isfile(generated_css):
+            return send_file(generated_css, mimetype="text/css")
+
     target = os.path.normpath(os.path.join(_PUBLIC_DIR, filename))
     if target.startswith(_PUBLIC_DIR) and os.path.isfile(target):
         return send_from_directory(_PUBLIC_DIR, filename)

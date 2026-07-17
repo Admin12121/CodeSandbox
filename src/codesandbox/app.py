@@ -62,7 +62,7 @@ def create_app() -> Flask:
 
     app.register_blueprint(web_bp)
     init_limiter(app, settings.redis_url)
-    app.jinja_env.auto_reload = True
+    app.jinja_env.auto_reload = not settings.window
 
     @app.teardown_appcontext
     def _release_db_connection(_exc: BaseException | None) -> None:
@@ -106,6 +106,7 @@ def create_app() -> Flask:
     app.jinja_env.globals["sin"] = math.sin
     app.jinja_env.globals["cos"] = math.cos
     app.jinja_env.globals["pi"] = math.pi
+    app.jinja_env.globals["use_built_tailwind"] = settings.use_built_tailwind
 
     return app
 

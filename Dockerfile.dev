@@ -1,3 +1,21 @@
+FROM node:22-slim AS tailwind
+
+WORKDIR /build
+
+RUN npm install --no-audit --no-fund @tailwindcss/cli@4.3.3 tailwindcss@4.3.3
+
+COPY packages/ ./packages/
+COPY src/ ./src/
+RUN printf '%s\n' \
+    '@import "tailwindcss";' \
+    '@source "./src/codesandbox/templates/**/*.html";' \
+    '@source "./src/codesandbox/**/*.py";' \
+    '@source "./packages/app_router/src/**/*.html";' \
+    '@source "./packages/app_router/src/**/*.js";' \
+    '@import "./src/codesandbox/templates/style.css";' \
+    > /build/tailwind.css \
+    && ./node_modules/.bin/tailwindcss -i /build/tailwind.css -o /build/dist/app.css --minify
+
 FROM python:3.12-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
@@ -7,6 +25,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/ ./packages/
 COPY src/ ./src/
+COPY migrations/ ./migrations/
+COPY migrations/ /app/.baked/migrations/
+COPY seeds/ ./seeds/
+COPY seed.py ./seed.py
+COPY --from=tailwind /build/dist/app.css /app/generated-public/app.css
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/codesandbox/.venv
 RUN uv sync --frozen
@@ -16,7 +39,8 @@ ENV PYTHONPATH=/app/src
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV FLASK_APP=codesandbox.app:app
-ENV FLASK_DEBUG=1
+ENV FLASK_DEBUG=0
+ENV TAILWIND_CSS_PATH=/app/generated-public/app.css
 
 EXPOSE 5000
 

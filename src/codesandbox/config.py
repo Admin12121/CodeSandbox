@@ -81,9 +81,17 @@ class Settings:
             os.environ.get("SANDBOX_MAX_UPLOAD_BYTES", str(100 * 1024 * 1024))
         )
         self.nats_url = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
+        self.window = env_bool("WINDOW", False)
+        self.tailwind_css_path = os.environ.get("TAILWIND_CSS_PATH", "/app/generated-public/app.css")
         # Read explicitly rather than relying on Flask's `flask run --debug` CLI flag,
         # since the app is served via `uvicorn` (ASGI) in dev, which never sets it.
-        self.debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+        self.debug = False if self.window else env_bool("FLASK_DEBUG", False)
+        raw_built_tailwind = os.environ.get("USE_BUILT_TAILWIND")
+        if raw_built_tailwind is None or raw_built_tailwind.strip().lower() in {"", "auto"}:
+            requested_built_tailwind = self.window
+        else:
+            requested_built_tailwind = env_bool("USE_BUILT_TAILWIND", False)
+        self.use_built_tailwind = requested_built_tailwind and os.path.isfile(self.tailwind_css_path)
         self.billing_dev_topup_enabled = env_bool("BILLING_DEV_TOPUP_ENABLED", False)
         self.finance_cost_per_vcpu_hour = os.environ.get("FINANCE_COST_PER_VCPU_HOUR", "0")
         self.finance_cost_per_ram_gb_hour = os.environ.get("FINANCE_COST_PER_RAM_GB_HOUR", "0")

@@ -27,10 +27,14 @@
         font-family: "AtAero", ui-sans-serif, system-ui, sans-serif;
       }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <style type="text/tailwindcss">
-      {% include "style.css" %}
-    </style>
+    {% if use_built_tailwind %}
+      <link rel="stylesheet" href="/app.css" />
+    {% else %}
+      <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+      <style type="text/tailwindcss">
+        {% include "style.css" %}
+      </style>
+    {% endif %}
   </head>
   <body class="min-h-screen bg-background text-foreground antialiased overflow-x-hidden">
     {% include "components/csrf-fetch.html" %}

@@ -16,7 +16,10 @@ x-python-runtime-env: &python-runtime-env
 x-app-environment: &app-environment
   <<: *python-runtime-env
   ENVIRONMENT: ${ENVIRONMENT:?Set ENVIRONMENT in .env}
+  WINDOW: ${WINDOW:-false}
   FLASK_DEBUG: ${FLASK_DEBUG:?Set FLASK_DEBUG in .env}
+  USE_BUILT_TAILWIND: ${USE_BUILT_TAILWIND:-auto}
+  TAILWIND_CSS_PATH: ${TAILWIND_CSS_PATH:-/app/generated-public/app.css}
   SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
   DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
   REDIS_URL: ${REDIS_URL:?Set REDIS_URL in .env}
@@ -64,23 +67,10 @@ x-app-environment: &app-environment
   FINANCE_COST_PER_DISK_GB_HOUR: ${FINANCE_COST_PER_DISK_GB_HOUR:?Set FINANCE_COST_PER_DISK_GB_HOUR in .env}
 
 x-app-build: &app-build
+  image: ${COMPOSE_PROJECT_NAME}-app:local
   build:
     context: .
     dockerfile: Dockerfile.dev
-
-x-app-source-volumes: &app-source-volumes
-  - ./src:/app/src:ro
-  - ./packages:/app/packages:ro
-  - ./migrations:/app/migrations:ro
-  - ./seeds:/app/seeds:ro
-  - ./seed.py:/app/seed.py:ro
-
-x-bootstrap-source-volumes: &bootstrap-source-volumes
-  - ./src:/app/src:ro
-  - ./packages:/app/packages:ro
-  - ./migrations:/source/migrations:ro
-  - ./seeds:/app/seeds:ro
-  - ./seed.py:/app/seed.py:ro
 
 services:
   nginx:
@@ -132,14 +122,12 @@ services:
           exit 0
         fi
 
-        echo "[bootstrap] copying root migrations into writable tmpfs"
+        cd /app
+        echo "[bootstrap] preparing writable migrations"
         find /app/migrations -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-        cp -R /source/migrations/. /app/migrations/
-        find /app/migrations -type d -name __pycache__ -prune -exec rm -rf {} +
-        find /app/migrations -type f -name '*.pyc' -delete
+        cp -R /app/.baked/migrations/. /app/migrations/
 
         echo "[bootstrap] running pending migrations"
-        cd /app
         /opt/codesandbox/.venv/bin/nexorm migrate
 
         : "$${SEED_ADMIN_EMAIL:?Set SEED_ADMIN_EMAIL when AUTO=true}"
@@ -156,7 +144,6 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
-    volumes: *bootstrap-source-volumes
     network_mode: bridge
     links:
       - mysql:mysql
@@ -186,21 +173,30 @@ services:
   app:
     <<: *app-build
     command:
-      - /opt/codesandbox/.venv/bin/uvicorn
-      - codesandbox.asgi:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "5000"
-      - --proxy-headers
-      - --forwarded-allow-ips=*
-      - --reload
-      - --reload-dir
-      - /app/src
-      - --reload-dir
-      - /app/packages
+      - /bin/sh
+      - -ec
+      - |
+        is_true() {
+          case "$${1:-}" in
+            1|true|TRUE|True|yes|YES|Yes|on|ON|On) return 0 ;;
+            *) return 1 ;;
+          esac
+        }
+
+        set -- /opt/codesandbox/.venv/bin/uvicorn codesandbox.asgi:app \
+          --host 0.0.0.0 \
+          --port 5000 \
+          --proxy-headers \
+          --forwarded-allow-ips=*
+
+        if is_true "$${WINDOW:-false}"; then
+          echo "[app] WINDOW=true: disabling uvicorn reload"
+        else
+          set -- "$$@" --reload --reload-dir /app/src --reload-dir /app/packages
+        fi
+
+        exec "$$@"
     environment: *app-environment
-    volumes: *app-source-volumes
     network_mode: bridge
     links:
       - mysql:mysql
@@ -247,16 +243,13 @@ services:
       - /bin/sh
       - -ec
       - |
-        find /app/migrations -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-        cp -R /source/migrations/. /app/migrations/
-        find /app/migrations -type d -name __pycache__ -prune -exec rm -rf {} +
-        find /app/migrations -type f -name '*.pyc' -delete
         cd /app
+        find /app/migrations -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+        cp -R /app/.baked/migrations/. /app/migrations/
         exec /opt/codesandbox/.venv/bin/nexorm migrate
     environment:
       <<: *python-runtime-env
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
-    volumes: *bootstrap-source-volumes
     network_mode: bridge
     links:
       - mysql:mysql
@@ -283,7 +276,6 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?Set SEED_ADMIN_EMAIL in .env}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:?Set SEED_ADMIN_NAME in .env}
-    volumes: *app-source-volumes
     network_mode: bridge
     links:
       - mysql:mysql
@@ -326,9 +318,6 @@ services:
       SANDBOX_CLEANUP_STALE_SECONDS: ${SANDBOX_CLEANUP_STALE_SECONDS:?Set SANDBOX_CLEANUP_STALE_SECONDS in .env}
       SANDBOX_RECONCILE_INTERVAL_SECONDS: ${SANDBOX_RECONCILE_INTERVAL_SECONDS:?Set SANDBOX_RECONCILE_INTERVAL_SECONDS in .env}
       WORKER_OFFLINE_TIMEOUT_SECONDS: ${WORKER_OFFLINE_TIMEOUT_SECONDS:?Set WORKER_OFFLINE_TIMEOUT_SECONDS in .env}
-    volumes:
-      - ./src:/app/src:ro
-      - ./packages:/app/packages:ro
     network_mode: bridge
     links:
       - mysql:mysql

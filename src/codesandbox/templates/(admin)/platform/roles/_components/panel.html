@@ -33,7 +33,7 @@
 {# ════════════════════════════ LIST VIEW ════════════════════════════ #}
 {% macro roles_list(visible_roles, roles, search, error, page=1, page_size=20, total=none, total_pages=1) %}
   {% set _total = total if total is not none else roles|length %}
-  <div class="grid gap-4 p-3">
+  <div class="grid gap-4 p-2">
 
     <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
       <form method="get" action="/platform/roles">
