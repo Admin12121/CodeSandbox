@@ -28,12 +28,11 @@ CodeSandbox is a self-hosted sandbox platform: spin up disposable, browser-based
 ## Getting started
 
 ```bash
-uv sync
-docker compose -f docker/dind-lxcfs/docker-compose.yml up -d           # sandbox worker
-uv run uvicorn codesandbox.asgi:app --host 0.0.0.0 --port 5000 --reload
+cp .env.example .env   # fill in the required secrets — docker-compose.yml fails fast on any that are missing
+docker compose up -d
 ```
 
-Environment variables are documented in `src/codesandbox/config.py`.
+Environment variables are documented in `.env.example` and `src/codesandbox/config.py`.
 
 ## Project layout
 
@@ -41,4 +40,3 @@ Environment variables are documented in `src/codesandbox/config.py`.
 - `src/codesandbox/templates/` — Jinja pages and `components/ui/*.html` macros
 - `packages/` — the two in-house libraries (`nexorm`, `app_router`) this app is built on
 - `worker/` — the sandbox runtime that runs inside each worker node
-- `docs/` — design notes and the finance/permissions model

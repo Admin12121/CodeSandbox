@@ -1,12 +1,13 @@
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from urllib.parse import parse_qsl, unquote, urlparse
 
 from nexorm.dialects.mysql import MySQLDialect
 from nexorm.dialects.postgres import PostgresDialect
 from nexorm.dialects.sqlite import SQLiteDialect
-from nexorm.exceptions import ConfigurationError
+from nexorm.exceptions import ConfigurationError, PoolTimeoutError
 
 
 _BACKEND_ALIASES = {
@@ -18,6 +19,95 @@ _BACKEND_ALIASES = {
     "mysql": "mysql",
     "mariadb": "mysql",
 }
+
+DEFAULT_POOL_SIZE = 10
+DEFAULT_POOL_TIMEOUT = 30.0
+
+
+class _ConnectionPool:
+    """Bounded pool of live DB-API connections, shared across every thread
+    that talks to one Database instance.
+
+    Threads no longer permanently own a connection for the life of the
+    process (the previous thread-local-forever design) — they borrow one via
+    `acquire()` and give it back via `release()`/`invalidate()`, capped at
+    `max_size` concurrent connections, with idle ones health-checked before
+    reuse so a connection that's gone stale (server `wait_timeout`, an idle
+    TCP drop) is transparently replaced instead of surfacing a "server has
+    gone away" error on next use.
+    """
+
+    def __init__(self, create_conn, ping_conn, max_size, timeout):
+        self._create_conn = create_conn
+        self._ping_conn = ping_conn
+        self.max_size = max(1, int(max_size))
+        self.timeout = max(0.1, float(timeout))
+        self._cond = threading.Condition()
+        self._idle: list = []
+        self._created = 0
+
+    def acquire(self):
+        deadline = time.monotonic() + self.timeout
+        with self._cond:
+            while True:
+                while self._idle:
+                    conn = self._idle.pop()
+                    if self._is_alive(conn):
+                        return conn
+                    self._created -= 1
+                    self._cond.notify()
+                if self._created < self.max_size:
+                    self._created += 1
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise PoolTimeoutError(
+                        f"Timed out after {self.timeout}s waiting for a free "
+                        f"database connection (pool_size={self.max_size})."
+                    )
+                self._cond.wait(remaining)
+        try:
+            return self._create_conn()
+        except Exception:
+            with self._cond:
+                self._created -= 1
+                self._cond.notify()
+            raise
+
+    def release(self, conn):
+        with self._cond:
+            self._idle.append(conn)
+            self._cond.notify()
+
+    def invalidate(self, conn):
+        try:
+            conn.close()
+        except Exception:
+            pass
+        with self._cond:
+            self._created = max(0, self._created - 1)
+            self._cond.notify()
+
+    def close_all(self):
+        with self._cond:
+            for conn in self._idle:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            self._idle.clear()
+            self._created = 0
+            self._cond.notify_all()
+
+    def _is_alive(self, conn):
+        try:
+            return bool(self._ping_conn(conn))
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            return False
 
 
 class Database:
@@ -43,8 +133,11 @@ class Database:
 
     def configure(self, path="db.sqlite3", dialect=None, backend=None, **options):
         if getattr(self, "_local", None) is not None:
-            self.close()
+            self._force_close()
             self._atomic_depth = 0
+        if getattr(self, "_pool", None) is not None:
+            self._pool.close_all()
+        self._pool = None
         settings = normalize_settings(path, backend=backend, **options)
         self.settings = settings
         self.backend = settings["backend"]
@@ -52,19 +145,51 @@ class Database:
         self.path = self.database
         self.dsn = settings.get("dsn")
         self.dialect = dialect or dialect_for_backend(self.backend)
+        self.pool_size = int(settings.get("pool_size") or DEFAULT_POOL_SIZE)
+        self.pool_timeout = float(settings.get("pool_timeout") or DEFAULT_POOL_TIMEOUT)
         return self
 
-    def connect(self):
-        if self.connection is None:
-            if self.backend == "sqlite":
-                self.connection = self._connect_sqlite()
-            elif self.backend == "postgresql":
-                self.connection = self._connect_postgresql()
+    def _get_pool(self):
+        if self._pool is None:
+            if self.backend == "postgresql":
+                create_conn, ping_conn = self._connect_postgresql, self._ping_postgresql
             elif self.backend == "mysql":
-                self.connection = self._connect_mysql()
+                create_conn, ping_conn = self._connect_mysql, self._ping_mysql
             else:
                 raise ConfigurationError(f"Unsupported database backend: {self.backend}")
+            self._pool = _ConnectionPool(
+                create_conn, ping_conn, self.pool_size, self.pool_timeout
+            )
+        return self._pool
+
+    def connect(self):
+        if self.backend == "sqlite":
+            # A single connection per thread is the idiomatic, correct model
+            # for SQLite (file-locking semantics, no client/server pooling to
+            # do) — only mysql/postgresql go through the bounded pool below.
+            if self.connection is None:
+                self.connection = self._connect_sqlite()
+            return self.connection
+        if self.connection is None:
+            self.connection = self._get_pool().acquire()
         return self.connection
+
+    def _ping_mysql(self, conn) -> bool:
+        conn.ping(reconnect=False)
+        return True
+
+    def _ping_postgresql(self, conn) -> bool:
+        if getattr(conn, "closed", False):
+            return False
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT 1")
+        finally:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+        return True
 
     def _connect_sqlite(self):
         conn = sqlite3.connect(self.database)
@@ -117,7 +242,7 @@ class Database:
         return pymysql.connect(**kwargs)
 
     def _driver_kwargs(self, dbname_key):
-        ignored = {"backend", "database", "dsn", "url", "driver"}
+        ignored = {"backend", "database", "dsn", "url", "driver", "pool_size", "pool_timeout"}
         kwargs = {dbname_key: self.database}
         for key, value in self.settings.items():
             if key in ignored or value is None:
@@ -149,8 +274,35 @@ class Database:
             self.connection.rollback()
 
     def close(self):
-        if self.connection is not None:
+        """Give this thread's connection back so another thread can use it.
+
+        Call this at the end of a unit of work (a request, a job) — it's
+        what actually makes pooling bounded rather than every thread
+        permanently holding its own connection for the life of the process.
+        Refuses to release mid-transaction (the transaction() context
+        manager owns that lifecycle itself); nothing to do for sqlite, which
+        isn't pooled.
+        """
+        if self.connection is None:
+            return
+        if self._atomic_depth > 0:
+            return
+        if self.backend == "sqlite":
             self.connection.close()
+            self.connection = None
+            return
+        self._get_pool().release(self.connection)
+        self.connection = None
+
+    def _force_close(self) -> None:
+        """Unconditionally close this thread's connection — used when
+        reconfiguring to a different database/backend, never for routine
+        per-request cleanup (use close() for that)."""
+        if self.connection is not None:
+            try:
+                self.connection.close()
+            except Exception:
+                pass
             self.connection = None
 
     @contextmanager

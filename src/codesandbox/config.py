@@ -27,6 +27,12 @@ class Settings:
             "DATABASE_URL",
             "mysql://codesandbox:codesandbox@127.0.0.1:3306/codesandbox",
         )
+        # Max concurrent DB connections this process's connection pool will
+        # ever hold open (per Database instance) — see
+        # packages/nexorm/src/nexorm/database.py:_ConnectionPool. Threads
+        # borrow/return connections rather than each holding one forever.
+        self.database_pool_size = int(os.environ.get("DATABASE_POOL_SIZE", "10"))
+        self.database_pool_timeout = float(os.environ.get("DATABASE_POOL_TIMEOUT", "30"))
         self.session_cookie_name = os.environ.get("SESSION_COOKIE_NAME", "cs_session")
         self.session_ttl_hours = int(os.environ.get("SESSION_TTL_HOURS", "24"))
         self.redis_url = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")

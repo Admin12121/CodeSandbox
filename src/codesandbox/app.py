@@ -25,7 +25,11 @@ def create_app() -> Flask:
             "SECURITY: SECRET_KEY is weak or default. Generate one with: "
             "python -c \"import secrets; print(secrets.token_hex(32))\""
         )
-    configure_db(settings.database_url)
+    configure_db(
+        settings.database_url,
+        pool_size=settings.database_pool_size,
+        pool_timeout=settings.database_pool_timeout,
+    )
 
     app = Flask(__name__, template_folder="templates")
     app.debug = settings.debug
@@ -59,6 +63,15 @@ def create_app() -> Flask:
     app.register_blueprint(web_bp)
     init_limiter(app, settings.redis_url)
     app.jinja_env.auto_reload = True
+
+    @app.teardown_appcontext
+    def _release_db_connection(_exc: BaseException | None) -> None:
+        # Give this thread's connection back to the pool at the end of every
+        # request instead of holding it for the life of the process — what
+        # actually makes DATABASE_POOL_SIZE a real bound rather than every
+        # request-serving thread permanently owning its own connection.
+        from codesandbox.infrastructure.nexorm import get_db
+        get_db().close()
 
     # In debug mode, disable the Jinja2 LRU cache so every request reloads
     # templates from disk. This makes template edits visible immediately without
