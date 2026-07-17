@@ -7,6 +7,7 @@ FROM ${BASE_IMAGE}
 RUN apk add --no-cache fuse3 lxcfs
 
 COPY codesandbox-dind-entrypoint.sh /usr/local/bin/codesandbox-dind-entrypoint.sh
-RUN chmod 0755 /usr/local/bin/codesandbox-dind-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/codesandbox-dind-entrypoint.sh \
+    && chmod 0755 /usr/local/bin/codesandbox-dind-entrypoint.sh
 
 ENTRYPOINT ["/usr/local/bin/codesandbox-dind-entrypoint.sh"]

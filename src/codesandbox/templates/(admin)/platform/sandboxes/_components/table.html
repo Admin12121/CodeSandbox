@@ -65,15 +65,15 @@
 
     {# Table #}
     {% call frame.frame() %}
-      {% call table.table(variant="card") %}
+      {% call table.table(variant="card", class="table-fixed") %}
         {% call table.table_header() %}
           {% call table.table_row() %}
-            {{ table.table_head("Templates — " ~ total) }}
-            {{ table.table_head("Type", class="w-36") }}
-            {{ table.table_head("Runtime", class="w-36") }}
-            {{ table.table_head("Status", class="w-28") }}
-            {{ table.table_head("Instances", class="w-24 text-right") }}
-            {{ table.table_head("Actions", class="w-24 text-right") }}
+            {{ table.table_head("Templates — " ~ total, class="w-32 max-w-[250px]") }}
+            {{ table.table_head("Type", class="w-32") }}
+            {{ table.table_head("Runtime", class="w-28") }}
+            {{ table.table_head("Status", class="w-20") }}
+            {{ table.table_head("Instances", class="w-16 text-right") }}
+            {{ table.table_head("Actions", class="w-14 text-right") }}
           {% endcall %}
         {% endcall %}
         {% call table.table_body() %}

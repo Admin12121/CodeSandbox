@@ -54,6 +54,28 @@ def _env_true(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _lxcfs_enabled() -> bool:
+    value = os.environ.get("SANDBOX_LXCFS_ENABLED")
+    if value is None:
+        return True
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    if normalized == "auto":
+        state_file = os.environ.get(
+            "SANDBOX_LXCFS_STATE_FILE",
+            "/certs/client/codesandbox-lxcfs-enabled",
+        )
+        try:
+            with open(state_file, encoding="utf-8") as handle:
+                return handle.read().strip().lower() in {"1", "true", "yes", "on"}
+        except OSError:
+            return False
+    return False
+
+
 def _parse_cpu_list(value: str) -> list[int]:
     cpus: list[int] = []
     for part in str(value or "").strip().split(","):
@@ -282,7 +304,7 @@ class DockerRunner(RuntimeRunner):
         return normalized
 
     def _lxcfs_mounts(self) -> list[Mount]:
-        if not _env_true("SANDBOX_LXCFS_ENABLED", True):
+        if not _lxcfs_enabled():
             return []
         root = os.environ.get("SANDBOX_LXCFS_ROOT", "/var/lib/lxcfs").rstrip("/")
         if not root.startswith("/") or ".." in root.split("/"):
@@ -304,7 +326,7 @@ class DockerRunner(RuntimeRunner):
         visibility layer so user tools such as htop, btop and free report the
         same CPU/RAM allocation. Both layers are verified independently.
         """
-        if not _env_true("SANDBOX_LXCFS_ENABLED", True):
+        if not _lxcfs_enabled():
             return
         if self.container is None:
             raise RuntimeError("Sandbox container is unavailable for LXCFS verification.")

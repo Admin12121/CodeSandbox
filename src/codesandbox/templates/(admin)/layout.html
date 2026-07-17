@@ -5,6 +5,8 @@
 {% import "components/ui/dialog.html" as dlg %}
 {% import "components/media/qr-code.html" as media_qr %}
 {% import "components/media/avatar.html" as media_avatar %}
+{% import "(admin)/_components/mobile_dock.html" as mobile_dock with context %}
+{% import "(admin)/_components/header_breadcrumb.html" as header_breadcrumb with context %}
 
 {# ── Icon macro keyed by href ─────────────────────────────────────────────── #}
 {% macro nav_icon(href) -%}
@@ -197,12 +199,8 @@
       </button>
       <span class="hidden group-data-[state=collapsed]:block h-5 w-px bg-border shrink-0"></span>
 
-      <div class="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
-        <a href="/dashboard" class="shrink-0 text-muted-foreground hover:text-foreground transition-colors">Dashboard</a>
-        {% if page_title is defined and page_title and page_title != "Dashboard" %}
-          <svg class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
-          <h1 class="truncate text-sm font-medium text-foreground">{{ page_title }}</h1>
-        {% endif %}
+      <div class="min-w-0 flex-1">
+        {{ header_breadcrumb.header_breadcrumb(nav, page_title if page_title is defined else "", active_workspace if active_workspace is defined else none) }}
       </div>
 
       {% set _hb = header_balance() %}
@@ -218,12 +216,23 @@
       {% endif %}
     </header>
 
+    {% set _requires_wide_admin_view = requires_wide_admin_view if requires_wide_admin_view is defined else false %}
     <main class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden relative">
         <div
           style="background-image: url(/noise.webp);"
           class="pointer-events-none absolute inset-0 bg-[size:180px] bg-repeat opacity-[0.035] dark:opacity-[0.012]"
         ></div>
-      {{ children|safe }}
+      <div class="relative min-h-full min-w-0 pb-24 transition-[filter,opacity] duration-200 md:pb-0 {% if _requires_wide_admin_view %}max-[899px]:pointer-events-none max-[899px]:blur-[3px] max-[899px]:opacity-40{% endif %}" data-admin-main-content>
+        {{ children|safe }}
+      </div>
+      {% if _requires_wide_admin_view %}
+      <div class="pointer-events-none absolute inset-0 z-30 hidden items-start justify-center bg-black/45 px-4 pt-8 backdrop-blur-md max-[899px]:flex" aria-live="polite" data-admin-min-width-warning>
+        <div class="max-w-[20rem] rounded-xl border bg-background/90 px-4 py-3 text-center shadow-xl">
+          <p class="text-sm font-medium text-foreground">Minimum 900 px required</p>
+          <p class="mt-1 text-xs text-muted-foreground">Expand the viewport to use this workspace.</p>
+        </div>
+      </div>
+      {% endif %}
     </main>
 
   </div>
@@ -231,6 +240,8 @@
 </div>
 
 {# Nav user dropdown — outside sidebar, position:fixed so overflow never clips #}
+{{ mobile_dock.mobile_admin_dock(nav, user, active_workspace, nav_icon) }}
+
 <div id="nav-user-menu" role="menu"
   class="hidden fixed z-[200] min-w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-lg">
   <div class="mb-1 flex items-center gap-2.5 rounded-md bg-muted p-2">
@@ -665,9 +676,10 @@
       a.classList.toggle('hover:text-sidebar-accent-foreground',!active);
     });
   }
-  window.addEventListener('app-router:navigate',function(e){
-    syncNavActive(e.detail&&e.detail.url);
-  });
+	  window.addEventListener('app-router:navigate',function(e){
+	    syncNavActive(e.detail&&e.detail.url);
+	    syncMobileDockActive(e.detail&&e.detail.url);
+	  });
 
   /* ── fixed-position dropdown manager ─────────────────────────────── */
   var _el=null,_tr=null;
@@ -747,8 +759,73 @@
       var inner=cmd.querySelector('[data-slot="command-dialog-popup"]');
       if(inner&&!inner.contains(e.target))closeCmd();
     });
-    if(cmdInput)cmdInput.addEventListener('input',function(){filterCmd(this.value);});
-  }
+	    if(cmdInput)cmdInput.addEventListener('input',function(){filterCmd(this.value);});
+	  }
+
+	  /* mobile dock */
+	  var mobileDock=document.getElementById('cs-mobile-dock');
+	  var mobileDockPanel=document.getElementById('cs-mobile-dock-panel');
+	  var mobileDockActive=null;
+	  function mobileDockButtons(){
+	    return mobileDock?Array.from(mobileDock.querySelectorAll('[data-mobile-dock-menu-button]')):[];
+	  }
+	  function mobileDockMenus(){
+	    return mobileDock?Array.from(mobileDock.querySelectorAll('[data-mobile-dock-menu-panel]')):[];
+	  }
+	  function closeMobileDock(){
+	    if(!mobileDock||!mobileDockPanel)return;
+	    mobileDockActive=null;
+	    mobileDockMenus().forEach(function(menu){menu.classList.add('hidden');});
+	    mobileDockButtons().forEach(function(button){
+	      button.setAttribute('aria-expanded','false');
+	      button.classList.remove('bg-foreground','text-background','shadow-sm');
+	      button.classList.add('text-muted-foreground');
+	    });
+	    mobileDockPanel.classList.remove('grid-rows-[1fr]','opacity-100');
+	    mobileDockPanel.classList.add('grid-rows-[0fr]','opacity-0');
+	    syncMobileDockActive();
+	  }
+	  function openMobileDock(button,menuId){
+	    if(!mobileDock||!mobileDockPanel)return;
+	    if(mobileDockActive===menuId){closeMobileDock();return;}
+	    mobileDockMenus().forEach(function(menu){
+	      menu.classList.toggle('hidden',menu.id!==menuId);
+	    });
+	    mobileDockButtons().forEach(function(item){
+	      item.setAttribute('aria-expanded','false');
+	      item.classList.remove('bg-foreground','text-background','shadow-sm');
+	      item.classList.add('text-muted-foreground');
+	    });
+	    button.setAttribute('aria-expanded','true');
+	    button.classList.remove('text-muted-foreground');
+	    button.classList.add('bg-foreground','text-background','shadow-sm');
+	    mobileDockPanel.classList.remove('grid-rows-[0fr]','opacity-0');
+	    mobileDockPanel.classList.add('grid-rows-[1fr]','opacity-100');
+	    mobileDockActive=menuId;
+	  }
+	  function syncMobileDockActive(path){
+	    if(!mobileDock)return;
+	    path=(path||window.location.pathname).split('?')[0].split('#')[0];
+	    mobileDock.querySelectorAll('[data-mobile-nav-href]').forEach(function(a){
+	      var href=a.getAttribute('data-mobile-nav-href');
+	      var active=path===href||(href!=='#help'&&path.indexOf(href+'/')===0);
+	      a.classList.toggle('bg-accent',active);
+	      a.classList.toggle('text-accent-foreground',active);
+	      a.classList.toggle('text-foreground',!active);
+	      a.classList.toggle('hover:bg-accent',!active);
+	      a.classList.toggle('hover:text-accent-foreground',!active);
+	    });
+	    mobileDockButtons().forEach(function(button){
+	      var menu=document.getElementById(button.getAttribute('aria-controls'));
+	      if(!menu||menu.id==='cs-mobile-dock-user')return;
+	      var active=!!menu.querySelector('[data-mobile-nav-href].bg-accent');
+	      if(button.getAttribute('aria-expanded')==='true')return;
+	      button.classList.toggle('bg-foreground',active);
+	      button.classList.toggle('text-background',active);
+	      button.classList.toggle('shadow-sm',active);
+	      button.classList.toggle('text-muted-foreground',!active);
+	    });
+	  }
 
   /* ── dark-mode toggle with View Transitions circular reveal ────────── */
   var _vtBusy=false;
@@ -790,22 +867,34 @@
 
     /* dropdown menus */
     t=e.target.closest('[data-cs-menu]');
-    if(t){
-      e.preventDefault();
-      var el=document.getElementById(t.getAttribute('data-cs-menu'));
-      if(el)_open(el,t,t.getAttribute('data-cs-menu-dir')||'',t.hasAttribute('data-cs-menu-match'));
-      return;
-    }
+	    if(t){
+	      e.preventDefault();
+	      var el=document.getElementById(t.getAttribute('data-cs-menu'));
+	      if(el)_open(el,t,t.getAttribute('data-cs-menu-dir')||'',t.hasAttribute('data-cs-menu-match'));
+	      return;
+	    }
 
-    /* dark mode with VT animation */
-    t=e.target.closest('[data-cs-toggle-dark]');
-    if(t){toggleDark(t);return;}
+	    /* mobile dock menus */
+	    t=e.target.closest('[data-cs-mobile-dock-menu]');
+	    if(t){
+	      e.preventDefault();
+	      openMobileDock(t,t.getAttribute('data-cs-mobile-dock-menu'));
+	      return;
+	    }
+	    if(e.target.closest('[data-cs-mobile-dock-link], [data-cs-mobile-dock-close]')){
+	      closeMobileDock();
+	    }
+
+	    /* dark mode with VT animation */
+	    t=e.target.closest('[data-cs-toggle-dark]');
+	    if(t){toggleDark(t);return;}
 
     /* command palette */
     if(e.target.closest('[data-cs-search-open]')){openCmd();return;}
 
-    /* close dropdown on outside click */
-    if(_el&&!_el.contains(e.target))_close();
+	    /* close dropdown on outside click */
+	    if(_el&&!_el.contains(e.target))_close();
+	    if(mobileDock&&mobileDockActive&&!mobileDock.contains(e.target))closeMobileDock();
 
     /* table row / button navigation */
     var row=e.target.closest('[data-cs-href]');
@@ -831,7 +920,7 @@
   });
 
   document.addEventListener('keydown',function(e){
-    if(e.key==='Escape'){_close();closeCmd();return;}
+	    if(e.key==='Escape'){_close();closeCmd();closeMobileDock();return;}
     if((e.ctrlKey||e.metaKey)&&(e.key==='j'||e.key==='J')){e.preventDefault();openCmd();return;}
     if(cmd&&!cmd.classList.contains('hidden')){
       if(e.key==='ArrowDown'||e.key==='ArrowUp'){
@@ -852,7 +941,7 @@
       }
     }
   });
-  window.addEventListener('resize',_close);
+	  window.addEventListener('resize',function(){_close();closeMobileDock();});
 
   /* ── OTP field auto-advance (delegated — works after SPA navigation) ── */
   function _otpSync(root){

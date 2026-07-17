@@ -1,5 +1,5 @@
 {% macro table(variant="default", class="", attrs={}) -%}
-    <div class="relative w-full overflow-x-auto" data-slot="table-container" data-variant="{{ variant }}">
+    <div class="relative min-w-0 w-full max-w-full" data-slot="table-container" data-variant="{{ variant }}">
         <table class="{{ cn('w-full caption-bottom in-data-[variant=card]:border-separate in-data-[variant=card]:border-spacing-0 text-sm', class) }}" data-slot="table" {{ html_attrs(**attrs) }}>
             {% if caller is defined %}{{ caller() }}{% endif %}
         </table>
@@ -31,13 +31,13 @@
 {%- endmacro %}
 
 {% macro table_head(text="", class="", attrs={}) -%}
-    <th class="{{ cn('h-10 whitespace-nowrap px-2.5 text-left align-middle font-medium text-muted-foreground leading-none has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}" data-slot="table-head" {{ html_attrs(**attrs) }}>
+    <th class="{{ cn('h-10 whitespace-nowrap overflow-hidden text-ellipsis px-2.5 text-left align-middle font-medium text-muted-foreground leading-none has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}" data-slot="table-head" {{ html_attrs(**attrs) }}>
         {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
     </th>
 {%- endmacro %}
 
 {% macro table_cell(text="", class="", attrs={}) -%}
-    <td class="{{ cn('whitespace-nowrap bg-clip-padding p-2.5 in-data-[slot=table-footer]:py-3.5 align-middle leading-none in-data-[variant=card]:first:ps-[calc(--spacing(2.5)-1px)] in-data-[variant=card]:last:pe-[calc(--spacing(2.5)-1px)] has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}" data-slot="table-cell" {{ html_attrs(**attrs) }}>
+    <td class="{{ cn('whitespace-nowrap overflow-hidden text-ellipsis bg-clip-padding p-2.5 in-data-[slot=table-footer]:py-3.5 align-middle leading-none in-data-[variant=card]:first:ps-[calc(--spacing(2.5)-1px)] in-data-[variant=card]:last:pe-[calc(--spacing(2.5)-1px)] has-[[role=checkbox]]:w-px last:has-[[role=checkbox]]:ps-0 first:has-[[role=checkbox]]:pe-0', class) }}" data-slot="table-cell" {{ html_attrs(**attrs) }}>
         {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
     </td>
 {%- endmacro %}

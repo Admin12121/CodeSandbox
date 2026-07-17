@@ -1,12 +1,12 @@
 {% macro frame(class="", attrs={}) -%}
-    <div class="{{ cn('relative flex flex-col rounded-2xl bg-muted/72 p-1 *:[[data-slot=frame-panel]+[data-slot=frame-panel]]:mt-1', class) }}" data-slot="frame" {{ html_attrs(**attrs) }}>
+    <div class="{{ cn('relative flex min-w-0 max-w-full flex-col rounded-2xl bg-muted/72 p-1 overflow-x-auto *:[[data-slot=frame-panel]+[data-slot=frame-panel]]:mt-1', class) }}" data-slot="frame" {{ html_attrs(**attrs) }}>
         {% if caller is defined %}{{ caller() }}{% endif %}
     </div>
 {%- endmacro %}
 
 {% macro frame_panel(block="", class="", attrs={}) -%}
-    <div class="{{ cn('relative rounded-xl', block) }}">
-        <div class="{{ cn('relative h-full rounded-xl bg-background bg-clip-padding p-5 shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)]', class) }}" data-slot="frame-panel" {{ html_attrs(**attrs) }}>
+    <div class="{{ cn('relative min-w-0 max-w-full rounded-xl', block) }}">
+        <div class="{{ cn('relative h-full min-w-0 max-w-full rounded-xl bg-background bg-clip-padding p-5 shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)]', class) }}" data-slot="frame-panel" {{ html_attrs(**attrs) }}>
             {% if caller is defined %}
                 {{ caller() }}
             {% endif %}

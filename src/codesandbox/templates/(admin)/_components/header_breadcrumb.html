@@ -1,0 +1,86 @@
+{% import "components/ui/breadcrumb.html" as bc %}
+
+{% macro _separator() -%}
+  {% call bc.breadcrumb_separator(class="shrink-0") %}
+    <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+  {% endcall %}
+{%- endmacro %}
+
+{% macro header_breadcrumb(nav, page_title="", active_workspace=None) -%}
+  {%- set path = request.path if request is defined else "" -%}
+  {%- set ns = namespace(section_label="", section_href="", item_label="", item_href="") -%}
+
+  {%- if active_workspace and path.startswith("/my/organizations/" ~ active_workspace["slug"]) -%}
+    {%- set org_base = "/my/organizations/" ~ active_workspace["slug"] -%}
+    {%- set ns.section_label = active_workspace["name"] -%}
+    {%- set ns.section_href = org_base -%}
+    {%- if path == org_base -%}
+      {%- set ns.item_label = "Overview" -%}
+      {%- set ns.item_href = org_base -%}
+    {%- elif path.startswith(org_base ~ "/members") -%}
+      {%- set ns.item_label = "Members" -%}
+      {%- set ns.item_href = org_base ~ "/members" -%}
+    {%- elif path.startswith(org_base ~ "/roles") -%}
+      {%- set ns.item_label = "Roles" -%}
+      {%- set ns.item_href = org_base ~ "/roles" -%}
+    {%- elif path.startswith(org_base ~ "/settings") -%}
+      {%- set ns.item_label = "Settings" -%}
+      {%- set ns.item_href = org_base ~ "/settings" -%}
+    {%- endif -%}
+  {%- endif -%}
+
+  {%- if not ns.item_label -%}
+    {%- for section in nav["sections"] -%}
+      {%- for item in section["items"] -%}
+        {%- if not item.get("separator") -%}
+          {%- set href = item["href"] -%}
+          {%- if path == href or (href != "#help" and path.startswith(href ~ "/")) or item.get("active") -%}
+            {%- set ns.section_label = section["label"] -%}
+            {%- set ns.section_href = section["items"][0]["href"] if section["items"] else href -%}
+            {%- set ns.item_label = item["label"] -%}
+            {%- set ns.item_href = href -%}
+          {%- endif -%}
+        {%- endif -%}
+      {%- endfor -%}
+    {%- endfor -%}
+  {%- endif -%}
+
+  {%- if not ns.item_label -%}
+    {%- for item in nav["secondary"] -%}
+      {%- set href = item["href"] -%}
+      {%- if path == href or (href != "#help" and path.startswith(href ~ "/")) or item.get("active") -%}
+        {%- set ns.item_label = item["label"] -%}
+        {%- set ns.item_href = href -%}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endif -%}
+
+  {%- set final_label = page_title if page_title and page_title != "Dashboard" else ns.item_label -%}
+  {%- set show_section = ns.section_label and ns.section_label != final_label -%}
+
+  {% call bc.breadcrumb(class="min-w-0") %}
+    {% call bc.breadcrumb_list(class="min-w-0 flex-nowrap overflow-hidden gap-1.5") %}
+      {% call bc.breadcrumb_item(class="min-w-0 shrink-0") %}
+        {% if path == "/dashboard" %}
+          {{ bc.breadcrumb_page(text="Dashboard", class="text-sm font-medium") }}
+        {% else %}
+          {{ bc.breadcrumb_link(text="Dashboard", href="/dashboard", class="text-sm text-muted-foreground hover:text-foreground") }}
+        {% endif %}
+      {% endcall %}
+
+      {% if show_section %}
+        {{ _separator() }}
+        {% call bc.breadcrumb_item(class="min-w-0 shrink-0") %}
+          {{ bc.breadcrumb_link(text=ns.section_label, href=ns.section_href or "#", class="max-w-[9rem] truncate text-sm text-muted-foreground hover:text-foreground") }}
+        {% endcall %}
+      {% endif %}
+
+      {% if final_label and path != "/dashboard" %}
+        {{ _separator() }}
+        {% call bc.breadcrumb_item(class="min-w-0") %}
+          {{ bc.breadcrumb_page(text=final_label, class="block max-w-[min(42vw,22rem)] truncate text-sm font-medium") }}
+        {% endcall %}
+      {% endif %}
+    {% endcall %}
+  {% endcall %}
+{%- endmacro %}

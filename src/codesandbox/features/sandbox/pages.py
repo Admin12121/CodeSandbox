@@ -94,6 +94,7 @@ def platform_sandboxes():
         "search": search,
         "status_filter": status,
         "selected_template": selected_template,
+        "requires_wide_admin_view": bool(selected_template),
         "tab": tab,
         "can_manage": can_manage,
         "can_test": can_test,
@@ -171,6 +172,7 @@ def platform_sandbox_plans():
         **_workspaces_ctx(user),
         "plans": plans,
         "selected_plan": selected_plan,
+        "requires_wide_admin_view": bool(selected_plan),
         "can_manage": can_manage,
         "error": request.args.get("error"),
     }

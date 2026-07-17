@@ -1,0 +1,129 @@
+{% import "components/media/avatar.html" as media_avatar %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/button.html" as button %}
+
+{% macro _section_button(section, panel_id, icon_macro) -%}
+    {%- set active = (section['items'] | selectattr('active') | list | length) > 0 -%}
+    {% call button.button(
+        variant="secondary",
+        size="icon",
+        attrs={
+            "data-cs-mobile-dock-menu": panel_id,
+            "data-mobile-dock-menu-button": "",
+            "aria-controls": panel_id,
+            "aria-expanded": "false",
+            "aria-label": section['label'],
+        }
+    ) %}
+        {{ icon_macro(section['items'][0]['icon'] if section['items'][0]['icon'] is defined else section['items'][0]['href']) }}
+    {% endcall %}
+{%- endmacro %}
+
+{% macro _section_menu(section, panel_id, icon_macro) -%}
+<div id="{{ panel_id }}" class="hidden" data-mobile-dock-menu-panel role="menu" aria-label="{{ section['label'] }}">
+  <div class="grid gap-1">
+    {% for item in section['items'] %}
+      {% if not item.get('separator') %}
+      <a
+        href="{{ item['href'] }}"
+        class="flex h-9 min-w-0 items-center justify-between gap-3 rounded-xl px-2.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring {% if item['active'] %}bg-accent text-accent-foreground{% else %}text-foreground hover:bg-accent hover:text-accent-foreground{% endif %}"
+        data-mobile-nav-href="{{ item['href'] }}"
+        data-cs-mobile-dock-link
+        role="menuitem"
+      >
+        <span class="flex min-w-0 items-center gap-2">
+          {{ icon_macro(item['icon'] if item['icon'] is defined else item['href']) }}
+          <span class="truncate">{{ item['label'] }}</span>
+        </span>
+        <svg class="size-3.5 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+      </a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro mobile_admin_dock(nav, user, active_workspace, icon_macro) -%}
+<div
+  id="cs-mobile-dock"
+  class="fixed inset-x-0 bottom-3 z-[180] mx-auto w-auto md:hidden flex items-center justify-center"
+  aria-label="Mobile admin navigation"
+>
+    {% call frame.frame(class="backdrop-blur-[8px] cursor-pointer outline-1 outline-offset-2 outline-neutral-300/50 dark:outline-neutral-800/50") %}
+            <div id="cs-mobile-dock-panel" class="grid grid-rows-[0fr] opacity-0 transition-[grid-template-rows,opacity] duration-200 ease-out" data-mobile-dock-panel >
+                <div class="overflow-hidden">
+                    <div class="max-h-[min(55dvh,22rem)] overflow-y-auto pb-1">
+                    {% for section in nav['sections'] %}
+                        {% if section['items'] %}
+                        {{ _section_menu(section, "cs-mobile-dock-section-" ~ loop.index, icon_macro) }}
+                        {% endif %}
+                    {% endfor %}
+            
+                    <div id="cs-mobile-dock-user" class="hidden" data-mobile-dock-menu-panel role="menu" aria-label="User menu">
+                        <div class="mb-1 flex items-center gap-2 rounded-md bg-muted p-2">
+                        {{ media_avatar.image_avatar(user['name'], user['avatar_url'], size="sm", class="bg-background text-muted-foreground", bind_key="user:" ~ user['id']) }}
+                        <div class="grid min-w-0 flex-1">
+                            <span class="truncate text-sm font-medium">{{ user['name'] }}</span>
+                            <span class="truncate text-xs text-muted-foreground">{{ user['email'] }}</span>
+                        </div>
+                        </div>
+            
+                        <div class="grid gap-1">
+                        <a href="/settings" class="flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground" data-cs-mobile-dock-link role="menuitem">
+                            {{ icon_macro("/settings") }}
+                            <span class="truncate">Settings</span>
+                        </a>
+                        {% if user['platform_role'] == 'user' and (not active_workspace or active_workspace.get('is_owner')) %}
+                        <a href="/billing" class="flex h-9 items-center gap-2 rounded-md px-2.5 text-sm font-medium hover:bg-accent hover:text-accent-foreground" data-cs-mobile-dock-link role="menuitem">
+                            {{ icon_macro("/billing") }}
+                            <span class="truncate">Billing</span>
+                        </a>
+                        {% endif %}
+                        <form method="post" action="/logout">
+                            {{ csrf_input() }}
+                            {% call button.button(type="submit", variant="ghost", size="default", class="h-9 w-full justify-start gap-2 px-2.5 text-left text-sm text-destructive shadow-none hover:bg-destructive/10 hover:text-destructive", attrs={"role": "menuitem"}) %}
+                                <svg class="size-4.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                                <span class="truncate">Log out</span>
+                            {% endcall %}
+                        </form>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            {% call frame.frame_panel(class="grid grid-cols-5 items-center gap-1 p-1!") %}
+                {% for section in nav['sections'][:2] %}
+                    {% if section['items'] %}
+                    {{ _section_button(section, "cs-mobile-dock-section-" ~ loop.index, icon_macro) }}
+                    {% endif %}
+                {% endfor %}
+            
+                {% call button.button(
+                    variant="secondary",
+                    size="icon",
+                    attrs={
+                        "data-cs-mobile-dock-menu": "cs-mobile-dock-user",
+                        "data-mobile-dock-menu-button": "",
+                        "aria-controls": "cs-mobile-dock-user",
+                        "aria-expanded": "false",
+                        "aria-label": "User menu",
+                        "style": "grid-column:3",
+                    }
+                ) %}
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user-round-icon lucide-user-round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>
+                {% endcall %}
+            
+                {% for section in nav['sections'][2:] %}
+                    {% if section['items'] %}
+                    {{ _section_button(section, "cs-mobile-dock-section-" ~ (loop.index + 2), icon_macro) }}
+                    {% endif %}
+                {% endfor %}
+
+                {% call button.button(variant="secondary", size="icon", attrs={"data-cs-toggle-dark": "", "data-cs-mobile-dock-close": "", "aria-label": "Theme"}) %}
+                    <svg class="size-4.5 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                {% endcall %}
+            {% endcall %}
+    {% endcall %}
+</div>
+{%- endmacro %}

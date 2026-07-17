@@ -368,6 +368,8 @@ services:
       DOCKER_TLS_CERTDIR: /certs
       DOCKER_DRIVER: overlay2
       LXCFS_ROOT: /var/lib/lxcfs
+      SANDBOX_LXCFS_ENABLED: ${SANDBOX_LXCFS_ENABLED:-auto}
+      SANDBOX_LXCFS_STATE_FILE: /certs/client/codesandbox-lxcfs-enabled
     volumes:
       - docker_engine_data:/var/lib/docker
       - docker_engine_certs:/certs
@@ -378,9 +380,17 @@ services:
         - CMD-SHELL
         - >-
           docker info >/dev/null 2>&1 &&
-          grep -q '^MemTotal:' /var/lib/lxcfs/proc/meminfo &&
-          test -s /var/lib/lxcfs/proc/cpuinfo &&
-          test -r /var/lib/lxcfs/sys/devices/system/cpu/online
+          lxcfs_state="$$(cat "$${SANDBOX_LXCFS_STATE_FILE:-/certs/client/codesandbox-lxcfs-enabled}" 2>/dev/null || echo false)" &&
+          case "$${SANDBOX_LXCFS_ENABLED:-auto}:$${lxcfs_state}" in
+            true:*|TRUE:*|True:*|1:*|yes:*|YES:*|Yes:*|on:*|ON:*|On:*|auto:true|AUTO:true|Auto:true)
+              grep -q '^MemTotal:' /var/lib/lxcfs/proc/meminfo &&
+              test -s /var/lib/lxcfs/proc/cpuinfo &&
+              test -r /var/lib/lxcfs/sys/devices/system/cpu/online
+              ;;
+            *)
+              true
+              ;;
+          esac
       interval: 10s
       timeout: 5s
       retries: 15
@@ -414,8 +424,9 @@ services:
       SANDBOX_JOB_MAX_AGE_SECONDS: ${SANDBOX_JOB_MAX_AGE_SECONDS:?Set SANDBOX_JOB_MAX_AGE_SECONDS in .env}
       SANDBOX_VOLUME_INIT_IMAGE: ${SANDBOX_VOLUME_INIT_IMAGE:?Set SANDBOX_VOLUME_INIT_IMAGE in .env}
       SANDBOX_RUNTIME_EGRESS_TEST_URL: ${SANDBOX_RUNTIME_EGRESS_TEST_URL:-http://example.com/}
-      SANDBOX_LXCFS_ENABLED: ${SANDBOX_LXCFS_ENABLED:-true}
+      SANDBOX_LXCFS_ENABLED: ${SANDBOX_LXCFS_ENABLED:-auto}
       SANDBOX_LXCFS_ROOT: /var/lib/lxcfs
+      SANDBOX_LXCFS_STATE_FILE: /certs/client/codesandbox-lxcfs-enabled
       SANDBOX_REGISTRY_SERVER: ${SANDBOX_REGISTRY_SERVER:-}
       SANDBOX_REGISTRY_USERNAME: ${SANDBOX_REGISTRY_USERNAME:-}
       SANDBOX_REGISTRY_PASSWORD: ${SANDBOX_REGISTRY_PASSWORD:-}

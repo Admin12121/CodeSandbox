@@ -23,7 +23,7 @@
   {% set role_match = role_options | selectattr('value', 'equalto', role_filter) | list %}
   {% set status_match = status_options | selectattr('value', 'equalto', status_filter) | list %}
 
-  <div class="flex flex-col gap-4 p-2 h-[calc(100vh-43px)] overflow-y-auto">
+  <div class="flex flex-col gap-4 p-2 h-[calc(100vh-49px)] overflow-y-auto">
 
     {# Filter toolbar #}
     <form method="get" action="/platform/users" class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_13rem_13rem]">
