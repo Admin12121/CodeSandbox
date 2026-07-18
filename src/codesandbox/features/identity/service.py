@@ -223,6 +223,31 @@ def verify_login_email_challenge(user_id: str, code: str) -> bool:
     return True
 
 
+def _user_login_block_error(user, *, email: str, ip_address: str | None) -> AuthResult | None:
+    locked_until = _aware(getattr(user, "auth_locked_until", None))
+    if locked_until and locked_until > datetime.now(timezone.utc):
+        repository.record_login_attempt(
+            email=email, ip_address=ip_address, succeeded=False, failure_reason="account_locked"
+        )
+        retry_seconds = max(1, int((locked_until - datetime.now(timezone.utc)).total_seconds()))
+        retry_minutes = max(1, (retry_seconds + 59) // 60)
+        return AuthResult(False, f"Too many failed attempts. Try again in about {retry_minutes} minute(s).")
+
+    if user.status in _BLOCKED_USER_STATUSES:
+        repository.record_login_attempt(
+            email=email, ip_address=ip_address, succeeded=False, failure_reason=user.status
+        )
+        return AuthResult(False, "This account is suspended or banned.")
+
+    if user.deleted_at is not None:
+        repository.record_login_attempt(
+            email=email, ip_address=ip_address, succeeded=False, failure_reason="deleted"
+        )
+        return AuthResult(False, "This account is suspended or banned.")
+
+    return None
+
+
 def sign_in(
     *,
     email: str,
@@ -242,36 +267,36 @@ def sign_in(
         _record_password_failure(user, email=email, ip_address=ip_address)
         return AuthResult(False, "Invalid email or password.")
 
-    locked_until = _aware(getattr(user, "auth_locked_until", None))
-    if locked_until and locked_until > datetime.now(timezone.utc):
-        repository.record_login_attempt(
-            email=email, ip_address=ip_address, succeeded=False, failure_reason="account_locked"
-        )
-        retry_seconds = max(1, int((locked_until - datetime.now(timezone.utc)).total_seconds()))
-        retry_minutes = max(1, (retry_seconds + 59) // 60)
-        return AuthResult(False, f"Too many failed attempts. Try again in about {retry_minutes} minute(s).")
-
-    if user.status in _BLOCKED_USER_STATUSES:
-        repository.record_login_attempt(
-            email=email, ip_address=ip_address, succeeded=False, failure_reason=user.status
-        )
-        return AuthResult(False, "This account is suspended or banned.")
+    block_error = _user_login_block_error(user, email=email, ip_address=ip_address)
+    if block_error:
+        return block_error
 
     if not check_password_hash(user.password_hash, password):
         _record_password_failure(user, email=email, ip_address=ip_address)
         return AuthResult(False, "Invalid email or password.")
+
+    settings = get_settings()
+    needs_email_step_up = (
+        settings.resend_api_key
+        and user.email_verified
+        and _login_requires_step_up(user, ip_address=ip_address, user_agent=user_agent)
+    )
+
+    if repository.get_user_passkeys(str(user.id), enabled_only=True) and (user.two_factor_enabled or needs_email_step_up):
+        return AuthResult(
+            True,
+            "Passkey verification required.",
+            requires_2fa=True,
+            user_id=str(user.id),
+            challenge_method="passkey",
+        )
 
     if user.two_factor_enabled:
         return AuthResult(
             True, "2FA required.", requires_2fa=True, user_id=str(user.id), challenge_method="totp"
         )
 
-    settings = get_settings()
-    if (
-        settings.resend_api_key
-        and user.email_verified
-        and _login_requires_step_up(user, ip_address=ip_address, user_agent=user_agent)
-    ):
+    if needs_email_step_up:
         if request_login_email_challenge(str(user.id)):
             return AuthResult(
                 True,
@@ -574,7 +599,7 @@ def passkey_register_begin(user_id: str, attachment: str | None = None) -> dict:
         authenticator_selection=AuthenticatorSelectionCriteria(
             authenticator_attachment=auth_attach,
             resident_key=ResidentKeyRequirement.REQUIRED,
-            user_verification=UserVerificationRequirement.PREFERRED,
+            user_verification=UserVerificationRequirement.REQUIRED,
         ),
     )
 
@@ -586,20 +611,18 @@ def passkey_register_begin(user_id: str, attachment: str | None = None) -> dict:
 def passkey_register_complete(user_id: str, challenge_b64: str, credential_json: str, passkey_name: str | None = None) -> AuthResult:
     """Verify WebAuthn registration response and save the passkey."""
     from webauthn import verify_registration_response
-    from webauthn.helpers.structs import RegistrationCredential
     from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
 
     rp_id, origin = _get_rp_config()
 
     try:
         challenge_bytes = base64url_to_bytes(challenge_b64)
-        credential = RegistrationCredential.parse_raw(credential_json)
         verification = verify_registration_response(
-            credential=credential,
+            credential=credential_json,
             expected_challenge=challenge_bytes,
             expected_rp_id=rp_id,
             expected_origin=origin,
-            require_user_verification=False,
+            require_user_verification=True,
         )
     except Exception as exc:
         return AuthResult(False, f"Passkey registration failed: {exc}")
@@ -625,12 +648,128 @@ def passkey_register_complete(user_id: str, challenge_b64: str, credential_json:
     return AuthResult(True, "Passkey registered successfully.")
 
 
+def passkey_auth_begin(*, email: str | None = None, user_id: str | None = None, ip_address: str | None = None) -> dict:
+    """Generate WebAuthn authentication options for login or step-up verification."""
+    from webauthn import generate_authentication_options, options_to_json
+    from webauthn.helpers import base64url_to_bytes, bytes_to_base64url
+    from webauthn.helpers.structs import PublicKeyCredentialDescriptor, UserVerificationRequirement
+
+    if _ip_is_temporarily_blocked(ip_address):
+        return {}
+
+    user = None
+    passkeys = []
+    if user_id:
+        user = repository.find_user_by_id(user_id)
+    elif email:
+        user = repository.find_user_by_email(email.strip().lower())
+
+    if user is not None:
+        block_error = _user_login_block_error(user, email=user.email, ip_address=ip_address)
+        if block_error:
+            return {}
+        passkeys = repository.get_user_passkeys(str(user.id), enabled_only=True)
+        if not passkeys:
+            return {}
+
+    allow_credentials = []
+    for pk in passkeys:
+        try:
+            allow_credentials.append(PublicKeyCredentialDescriptor(id=base64url_to_bytes(pk.credential_id)))
+        except Exception as exc:
+            _logger.error("Skipping malformed passkey credential_id for auth %s: %s", pk.id, exc)
+
+    rp_id, _ = _get_rp_config()
+    options = generate_authentication_options(
+        rp_id=rp_id,
+        allow_credentials=allow_credentials or None,
+        user_verification=UserVerificationRequirement.REQUIRED,
+    )
+    return {
+        "challenge": bytes_to_base64url(options.challenge),
+        "options": json.loads(options_to_json(options)),
+        "user_id": str(user.id) if user is not None else None,
+    }
+
+
+def passkey_auth_complete(
+    *,
+    challenge_b64: str,
+    credential_json: str,
+    expected_user_id: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    create_session: bool = False,
+) -> AuthResult:
+    """Verify a WebAuthn authentication response and optionally issue a session."""
+    from webauthn import verify_authentication_response
+    from webauthn.helpers import base64url_to_bytes
+
+    try:
+        credential_data = json.loads(credential_json)
+        credential_id = str(credential_data.get("rawId") or credential_data.get("id") or "")
+    except Exception:
+        return AuthResult(False, "Invalid passkey response.")
+
+    passkey = repository.find_passkey_by_credential_id(credential_id)
+    if passkey is None:
+        return AuthResult(False, "Passkey not recognized.")
+    if not getattr(passkey, "is_enabled", True):
+        return AuthResult(False, "This passkey is disabled.")
+
+    user = repository.find_user_by_id(str(passkey.user_id))
+    if user is None:
+        return AuthResult(False, "Passkey account not found.")
+    if expected_user_id and str(user.id) != str(expected_user_id):
+        repository.record_login_attempt(
+            email=user.email,
+            ip_address=ip_address,
+            succeeded=False,
+            failure_reason="passkey_wrong_account",
+        )
+        return AuthResult(False, "This passkey belongs to a different account.")
+
+    block_error = _user_login_block_error(user, email=user.email, ip_address=ip_address)
+    if block_error:
+        return block_error
+
+    rp_id, origin = _get_rp_config()
+    try:
+        verification = verify_authentication_response(
+            credential=credential_json,
+            expected_challenge=base64url_to_bytes(challenge_b64),
+            expected_rp_id=rp_id,
+            expected_origin=origin,
+            credential_public_key=base64url_to_bytes(passkey.public_key),
+            credential_current_sign_count=int(passkey.sign_count or 0),
+            require_user_verification=True,
+        )
+    except Exception as exc:
+        repository.record_login_attempt(
+            email=user.email,
+            ip_address=ip_address,
+            succeeded=False,
+            failure_reason="invalid_passkey",
+        )
+        return AuthResult(False, f"Passkey verification failed: {exc}")
+
+    repository.update_passkey_sign_count(str(passkey.id), int(verification.new_sign_count or 0))
+    if not create_session:
+        return AuthResult(True, "Passkey verified.", user_id=str(user.id))
+
+    token = create_session_for_user(str(user.id), ip_address=ip_address, user_agent=user_agent)
+    if not token:
+        return AuthResult(False, "Unable to create session.")
+    return AuthResult(True, "Signed in.", token=token, user_id=str(user.id))
+
+
 def get_user_passkeys(user_id: str) -> list[dict]:
     passkeys = repository.get_user_passkeys(user_id)
     return [
         {
             "id": str(pk.id),
             "name": pk.name or "Passkey",
+            "is_enabled": bool(getattr(pk, "is_enabled", True)),
             "created_at": pk.created_at.isoformat() if pk.created_at else None,
             "last_used_at": pk.last_used_at.isoformat() if pk.last_used_at else None,
         }

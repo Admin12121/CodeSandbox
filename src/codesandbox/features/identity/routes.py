@@ -29,6 +29,8 @@ from .service import (
     get_user_passkeys,
     link_github_account,
     link_google_account,
+    passkey_auth_begin,
+    passkey_auth_complete,
     passkey_register_begin,
     passkey_register_complete,
     request_email_verification,
@@ -47,6 +49,30 @@ from .service import (
     verify_login_email_challenge,
     verify_totp,
 )
+
+
+def _clear_pending_2fa() -> None:
+    session.pop("_2fa_pending_user_id", None)
+    session.pop("_2fa_pending_at", None)
+    session.pop("_2fa_next", None)
+    session.pop("_2fa_method", None)
+    session.pop("_2fa_failures", None)
+    session.pop("_2fa_passkey_challenge", None)
+
+
+def _available_pending_2fa_methods(user_id: str) -> list[str]:
+    user = repository.find_user_by_id(user_id)
+    if user is None:
+        return []
+    methods: list[str] = []
+    if repository.get_user_passkeys(user_id, enabled_only=True):
+        methods.append("passkey")
+    if user.two_factor_enabled:
+        methods.append("totp")
+    settings = get_settings()
+    if settings.resend_api_key and user.email_verified:
+        methods.append("email")
+    return methods
 
 
 def _set_session_cookie(response, token: str) -> None:
@@ -115,11 +141,7 @@ def logout_action():
     token = request.cookies.get(cookie_name)
     if token:
         sign_out(token)
-    session.pop("_2fa_pending_user_id", None)
-    session.pop("_2fa_pending_at", None)
-    session.pop("_2fa_next", None)
-    session.pop("_2fa_method", None)
-    session.pop("_2fa_failures", None)
+    _clear_pending_2fa()
     response = redirect("/login", code=303)
     response.delete_cookie(cookie_name)
     return response
@@ -136,11 +158,7 @@ def logout_all_action():
                 s.delete()
             except Exception:
                 pass
-    session.pop("_2fa_pending_user_id", None)
-    session.pop("_2fa_pending_at", None)
-    session.pop("_2fa_next", None)
-    session.pop("_2fa_method", None)
-    session.pop("_2fa_failures", None)
+    _clear_pending_2fa()
     response = redirect("/login", code=303)
     response.delete_cookie(cookie_name)
     return response
@@ -218,13 +236,13 @@ def two_factor_verify():
         return redirect("/login", code=303)
 
     if int(time.time()) - pending_at > 300:
-        session.pop("_2fa_pending_user_id", None)
-        session.pop("_2fa_pending_at", None)
-        session.pop("_2fa_method", None)
-        session.pop("_2fa_failures", None)
+        _clear_pending_2fa()
         return redirect("/login?error=Two-factor+verification+expired", code=303)
 
     method = str(session.get("_2fa_method") or "totp")
+    if method == "passkey":
+        session["_2fa_next"] = next_path
+        return redirect("/two-factor?error=Use+your+passkey+to+continue+or+choose+another+option.", code=303)
     valid = (
         verify_login_email_challenge(str(pending_user_id), code)
         if method == "email"
@@ -235,11 +253,7 @@ def two_factor_verify():
         session["_2fa_failures"] = failures
         record_second_factor_failure(str(pending_user_id), ip_address=request.remote_addr)
         if failures >= 5:
-            session.pop("_2fa_pending_user_id", None)
-            session.pop("_2fa_pending_at", None)
-            session.pop("_2fa_method", None)
-            session.pop("_2fa_failures", None)
-            session.pop("_2fa_next", None)
+            _clear_pending_2fa()
             return redirect("/login?error=Too+many+invalid+security+codes.+Sign+in+again+later.", code=303)
         session["_2fa_next"] = next_path
         return redirect("/two-factor?error=Invalid+or+expired+code", code=303)
@@ -250,14 +264,10 @@ def two_factor_verify():
         user_agent=request.headers.get("User-Agent"),
     )
     if not token:
-        session.pop("_2fa_pending_user_id", None)
-        session.pop("_2fa_pending_at", None)
+        _clear_pending_2fa()
         return redirect("/login?error=Unable+to+create+session", code=303)
 
-    session.pop("_2fa_pending_user_id", None)
-    session.pop("_2fa_pending_at", None)
-    session.pop("_2fa_method", None)
-    session.pop("_2fa_failures", None)
+    _clear_pending_2fa()
     response = redirect(next_path, code=303)
     _set_session_cookie(response, token)
     return response
@@ -278,6 +288,99 @@ def two_factor_resend():
 
 
 # ── TOTP setup (in settings) ──────────────────────────────────────────────────
+
+@web_bp.post("/two-factor/method")
+@limiter.limit("10 per minute")
+def two_factor_method_action():
+    pending_user_id = session.get("_2fa_pending_user_id")
+    pending_at = session.get("_2fa_pending_at")
+    next_path = _safe_next(str(session.get("_2fa_next") or "/dashboard"))
+    method = str(request.form.get("method") or "").strip()
+    if not pending_user_id or not isinstance(pending_at, int):
+        return redirect("/login", code=303)
+    if int(time.time()) - pending_at > 300:
+        _clear_pending_2fa()
+        return redirect("/login?error=Two-factor+verification+expired", code=303)
+
+    available = _available_pending_2fa_methods(str(pending_user_id))
+    if method not in available:
+        session["_2fa_next"] = next_path
+        return redirect("/two-factor?error=That+verification+option+is+not+available.", code=303)
+
+    if method == "email" and not request_login_email_challenge(str(pending_user_id)):
+        session["_2fa_next"] = next_path
+        return redirect("/two-factor?error=Couldn%27t+send+an+email+code.+Choose+another+option.", code=303)
+
+    session["_2fa_method"] = method
+    session["_2fa_pending_at"] = int(time.time())
+    session["_2fa_next"] = next_path
+    session.pop("_2fa_passkey_challenge", None)
+    labels = {
+        "passkey": "Use your passkey to continue.",
+        "totp": "Enter your authenticator code.",
+        "email": "A security code was sent to your email.",
+    }
+    return redirect(f"/two-factor?info={urllib.parse.quote(labels.get(method, 'Verification method updated.'))}", code=303)
+
+
+@web_bp.post("/two-factor/passkey/begin")
+@limiter.limit("10 per minute")
+def two_factor_passkey_begin_action():
+    from flask import jsonify
+
+    pending_user_id = session.get("_2fa_pending_user_id")
+    pending_at = session.get("_2fa_pending_at")
+    if not pending_user_id or not isinstance(pending_at, int):
+        return jsonify({"ok": False, "error": "Your verification session expired. Sign in again."}), 401
+    if int(time.time()) - pending_at > 300:
+        _clear_pending_2fa()
+        return jsonify({"ok": False, "error": "Your verification session expired. Sign in again."}), 401
+    if "passkey" not in _available_pending_2fa_methods(str(pending_user_id)):
+        return jsonify({"ok": False, "error": "Passkey verification is not available."}), 400
+
+    result = passkey_auth_begin(user_id=str(pending_user_id), ip_address=request.remote_addr)
+    if not result:
+        return jsonify({"ok": False, "error": "Unable to start passkey verification."}), 400
+    session["_2fa_method"] = "passkey"
+    session["_2fa_passkey_challenge"] = result["challenge"]
+    session["_2fa_pending_at"] = int(time.time())
+    return jsonify({"ok": True, "options": result["options"]})
+
+
+@web_bp.post("/two-factor/passkey/verify")
+@limiter.limit("10 per minute")
+def two_factor_passkey_verify_action():
+    from flask import jsonify
+    import json
+
+    pending_user_id = session.get("_2fa_pending_user_id")
+    challenge_b64 = session.pop("_2fa_passkey_challenge", None)
+    next_path = _safe_next(str(session.get("_2fa_next") or "/dashboard"))
+    if not pending_user_id or not challenge_b64:
+        return jsonify({"ok": False, "error": "No pending passkey verification. Try again."}), 400
+
+    data = request.get_json(silent=True) or {}
+    result = passkey_auth_complete(
+        challenge_b64=str(challenge_b64),
+        credential_json=json.dumps(data.get("credential", {})),
+        expected_user_id=str(pending_user_id),
+        ip_address=request.remote_addr,
+        user_agent=request.headers.get("User-Agent"),
+        create_session=True,
+    )
+    if not result.ok or not result.token:
+        failures = int(session.get("_2fa_failures") or 0) + 1
+        session["_2fa_failures"] = failures
+        record_second_factor_failure(str(pending_user_id), ip_address=request.remote_addr)
+        if failures >= 5:
+            _clear_pending_2fa()
+        return jsonify({"ok": False, "error": result.message}), 400
+
+    _clear_pending_2fa()
+    response = jsonify({"ok": True, "next": next_path})
+    _set_session_cookie(response, result.token)
+    return response
+
 
 @web_bp.post("/settings/2fa/setup")
 def totp_setup_action():
@@ -734,6 +837,40 @@ def delete_passkey_action(passkey_id: str):
     if not deleted:
         return jsonify({"ok": False, "error": "Passkey not found."}), 404
     return jsonify({"ok": True})
+
+
+@web_bp.post("/settings/passkeys/<passkey_id>/status")
+def update_passkey_status_action(passkey_id: str):
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    from . import repository
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    if "enabled" not in data:
+        return jsonify({"ok": False, "error": "Missing passkey status."}), 400
+    updated = repository.set_passkey_enabled(passkey_id, cs.user.id, bool(data.get("enabled")))
+    if not updated:
+        return jsonify({"ok": False, "error": "Passkey not found."}), 404
+    return jsonify({"ok": True})
+
+
+@web_bp.post("/settings/passkeys/status")
+def update_account_passkey_status_action():
+    from flask import jsonify
+    from codesandbox.shared.session import require_session
+    from . import repository
+    cs, redir = require_session()
+    if redir:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+    data = request.get_json(silent=True) or {}
+    if "enabled" not in data:
+        return jsonify({"ok": False, "error": "Missing passkey status."}), 400
+    updated = repository.set_user_passkeys_enabled(cs.user.id, bool(data.get("enabled")))
+    if updated == 0:
+        return jsonify({"ok": False, "error": "No passkeys found."}), 404
+    return jsonify({"ok": True, "updated": updated})
 
 
 @web_bp.post("/settings/connected-accounts/<provider>/disconnect")

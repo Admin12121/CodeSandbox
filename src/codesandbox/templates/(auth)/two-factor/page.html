@@ -1,168 +1,283 @@
-{% import "components/ui/button.html" as button %} {% import
-"components/ui/card.html" as card %} {% import "components/ui/field.html" as
-field %} {% import "components/ui/form.html" as form %} {% import
-"components/ui/frame.html" as frame %} {% import "components/ui/otp-field.html"
-as otp_ui %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/card.html" as card %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/form.html" as form %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/otp-field.html" as otp_ui %}
 
 <main class="grid min-h-screen place-items-center px-6 py-10">
-    <section class="w-full max-w-sm">
-        <div class="flex flex-col gap-6">
-            {% call frame.frame(class="border-none py-5") %}
-            <div class="mb-5 text-center">
-                <a
-                    href="/"
-                    class="flex flex-col items-center gap-2 self-center text-3xl font-medium"
-                >
-                    <img
-                        src="/logo.webp"
-                        class="flex object-contain size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground text-lg font-bold tracking-tight"
-                    />
-                    <span class="text-xl font-semibold tracking-tight"
-                        >CodeSandbox</span
-                    >
-                </a>
-                <p class="mt-2 text-sm font-medium">
-                    Security verification
-                </p>
-                <p class="mt-1 text-xs text-muted-foreground">
-                    {% if challenge_method == "email" %}
-                    Enter the 6-digit security code sent to your verified email.
-                    {% else %}
-                    Enter the 6-digit code from your authenticator app, or use a backup code.
-                    {% endif %}
-                </p>
-            </div>
-
-            {% call card.card_content(class="px-4 py-0") %} {% call
-            form.form(action="/two-factor/verify", method="post") %} {% call
-            field.field_group() %} {% call field.field(class="flex flex-col
-            items-center gap-3") %}
-            <div class="flex w-full items-center justify-between">
-              {{ field.field_label("Authentication code", for_id="otp-0") }}
-              {% if error and challenge_method == "email" %}
-              <button type="button" id="resend-otp-btn" title="Resend code" aria-label="Resend code" class="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none">
-                <svg id="resend-otp-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-              </button>
-              {% endif %}
-            </div>
-            {% call otp_ui.otp_field(attrs={"data-otp-root":
-            "", "id": "otp-root"}) %} {{ otp_ui.otp_field_input(attrs={"id":
-            "otp-0", "data-otp-idx": "0", "autofocus": "autofocus"}) }} {{
-            otp_ui.otp_field_input(attrs={"data-otp-idx": "1"}) }} {{
-            otp_ui.otp_field_input(attrs={"data-otp-idx": "2"}) }} {{
-            otp_ui.otp_field_separator() }} {{
-            otp_ui.otp_field_input(attrs={"data-otp-idx": "3"}) }} {{
-            otp_ui.otp_field_input(attrs={"data-otp-idx": "4"}) }} {{
-            otp_ui.otp_field_input(attrs={"data-otp-idx": "5"}) }} {% endcall %}
-            <input type="hidden" name="code" id="otp-hidden" />
-            {% endcall %} {% if error %} {{ field.field_error(error) }} {% endif
-            %} {% if info %}
-            <p class="text-sm font-normal text-emerald-600 dark:text-emerald-500">{{ info }}</p>
+  <section class="w-full max-w-sm">
+    <div class="flex flex-col gap-6">
+      {% call frame.frame(class="border-none py-5") %}
+        <div class="mb-5 text-center">
+          <a href="/" class="flex flex-col items-center gap-2 self-center text-3xl font-medium">
+            <img src="/logo.webp" class="flex object-contain size-14 items-center justify-center rounded-lg bg-primary text-primary-foreground text-lg font-bold tracking-tight" />
+            <span class="text-xl font-semibold tracking-tight">CodeSandbox</span>
+          </a>
+          <p class="mt-2 text-sm font-medium">Security verification</p>
+          <p class="mt-1 text-xs text-muted-foreground">
+            {% if challenge_method == "passkey" %}
+              Use your passkey to continue.
+            {% elif challenge_method == "email" %}
+              Enter the 6-digit security code sent to your verified email.
+            {% else %}
+              Enter the 6-digit code from your authenticator app.
             {% endif %}
-            <p id="resend-otp-status" class="hidden text-sm font-normal"></p>
-            {% call field.field(class="space-y-1") %} {% call
-            button.button(type="submit", class="w-full") %}Verify{% endcall %}
-            {% endcall %} {% call field.field_description(class="text-center")
-            %}
-            <a href="/login" class="underline-offset-4 hover:underline text-xs"
-                >Use a different account</a
-            >
-            {% endcall %} {% endcall %} {% endcall %} {% endcall %} {% endcall
-            %}
+          </p>
         </div>
-    </section>
+
+        {% call card.card_content(class="px-4 py-0") %}
+          {% if challenge_method == "passkey" %}
+            {% call field.field_group() %}
+              {% call field.field(class="space-y-3") %}
+                <button id="two-factor-passkey-btn" type="button" class="flex w-full items-center justify-center gap-2 rounded-md border bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                  <svg class="size-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 7.5a3.5 3.5 0 1 1-1.02-2.47"/><path d="M12.5 10 21 1.5"/><path d="m16 1 5 5"/><path d="m18 4-2 2"/><path d="M5 14a7 7 0 0 0 14 0"/><path d="M5 14a2 2 0 0 1 4 0"/><path d="M15 14a2 2 0 0 1 4 0"/></svg>
+                  Verify with passkey
+                </button>
+                <p id="two-factor-passkey-status" class="text-sm text-muted-foreground">Waiting for passkey...</p>
+              {% endcall %}
+
+              {% if error %}{{ field.field_error(error) }}{% endif %}
+              {% if info %}<p class="text-sm font-normal text-emerald-600 dark:text-emerald-500">{{ info }}</p>{% endif %}
+
+              {% if available_methods|length > 1 %}
+                {{ field.field_separator("Other options", class="mt-1") }}
+                <div class="grid gap-2">
+                  {% if "totp" in available_methods %}
+                    {% call form.form(action="/two-factor/method", method="post", class="") %}
+                      <button type="submit" name="method" value="totp" class="flex w-full items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors">Use authenticator code</button>
+                    {% endcall %}
+                  {% endif %}
+                  {% if "email" in available_methods %}
+                    {% call form.form(action="/two-factor/method", method="post", class="") %}
+                      <button type="submit" name="method" value="email" class="flex w-full items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors">Send email code</button>
+                    {% endcall %}
+                  {% endif %}
+                </div>
+              {% endif %}
+            {% endcall %}
+          {% else %}
+            {% call form.form(action="/two-factor/verify", method="post") %}
+              {% call field.field_group() %}
+                {% call field.field(class="flex flex-col items-center gap-3") %}
+                  <div class="flex w-full items-center justify-between">
+                    {{ field.field_label("Authentication code", for_id="otp-0") }}
+                    {% if error and challenge_method == "email" %}
+                      <button type="button" id="resend-otp-btn" title="Resend code" aria-label="Resend code" class="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none">
+                        <svg id="resend-otp-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                      </button>
+                    {% endif %}
+                  </div>
+                  {% call otp_ui.otp_field(attrs={"data-otp-root": "", "id": "otp-root"}) %}
+                    {{ otp_ui.otp_field_input(attrs={"id": "otp-0", "data-otp-idx": "0", "autofocus": "autofocus"}) }}
+                    {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "1"}) }}
+                    {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "2"}) }}
+                    {{ otp_ui.otp_field_separator() }}
+                    {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "3"}) }}
+                    {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "4"}) }}
+                    {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "5"}) }}
+                  {% endcall %}
+                  <input type="hidden" name="code" id="otp-hidden" />
+                {% endcall %}
+
+                {% if error %}{{ field.field_error(error) }}{% endif %}
+                {% if info %}<p class="text-sm font-normal text-emerald-600 dark:text-emerald-500">{{ info }}</p>{% endif %}
+                <p id="resend-otp-status" class="hidden text-sm font-normal"></p>
+
+                {% call field.field(class="space-y-1") %}
+                  {% call button.button(type="submit", class="w-full") %}Verify{% endcall %}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+
+            {% if available_methods|length > 1 %}
+              {{ field.field_separator("Other options", class="mt-1") }}
+              <div class="grid gap-2">
+                {% if "passkey" in available_methods %}
+                  {% call form.form(action="/two-factor/method", method="post", class="") %}
+                    <button type="submit" name="method" value="passkey" class="flex w-full items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors">Use passkey</button>
+                  {% endcall %}
+                {% endif %}
+                {% if challenge_method != "totp" and "totp" in available_methods %}
+                  {% call form.form(action="/two-factor/method", method="post", class="") %}
+                    <button type="submit" name="method" value="totp" class="flex w-full items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors">Use authenticator code</button>
+                  {% endcall %}
+                {% endif %}
+                {% if challenge_method != "email" and "email" in available_methods %}
+                  {% call form.form(action="/two-factor/method", method="post", class="") %}
+                    <button type="submit" name="method" value="email" class="flex w-full items-center justify-center rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent transition-colors">Send email code</button>
+                  {% endcall %}
+                {% endif %}
+              </div>
+            {% endif %}
+          {% endif %}
+
+          {% call field.field_description(class="mt-4 text-center") %}
+            <a href="/login" class="underline-offset-4 hover:underline text-xs">Use a different account</a>
+          {% endcall %}
+        {% endcall %}
+      {% endcall %}
+    </div>
+  </section>
 </main>
 
 {% app_script "two-factor-otp" %}
-    (function () {
-        var root = document.getElementById("otp-root");
-        var hidden = document.getElementById("otp-hidden");
-        if (!root || !hidden) return;
-        function inputs() {
-            return Array.from(root.querySelectorAll("[data-otp-idx]"));
-        }
-        function sync() {
-            hidden.value = inputs()
-                .map(function (i) {
-                    return i.value;
-                })
-                .join("");
-        }
-        root.addEventListener("input", function (e) {
-            var el = e.target;
-            if (!el.hasAttribute("data-otp-idx")) return;
-            el.value = el.value.replace(/[^0-9]/g, "").slice(-1);
-            sync();
-            var idx = +el.getAttribute("data-otp-idx"),
-                inp = inputs();
-            if (el.value && idx < 5) inp[idx + 1].focus();
-        });
-        root.addEventListener(
-            "keydown",
-            function (e) {
-                var el = e.target;
-                if (!el.hasAttribute("data-otp-idx")) return;
-                var idx = +el.getAttribute("data-otp-idx"),
-                    inp = inputs();
-                if (e.key === "Backspace" && !el.value && idx > 0) {
-                    inp[idx - 1].focus();
-                    inp[idx - 1].value = "";
-                    sync();
-                } else if (e.key === "ArrowLeft" && idx > 0)
-                    inp[idx - 1].focus();
-                else if (e.key === "ArrowRight" && idx < 5)
-                    inp[idx + 1].focus();
-            },
-            true,
-        );
-        root.addEventListener("paste", function (e) {
-            e.preventDefault();
-            var d = (e.clipboardData || window.clipboardData)
-                .getData("text")
-                .replace(/[^0-9]/g, "")
-                .slice(0, 6);
-            var inp = inputs();
-            for (var i = 0; i < d.length; i++) if (inp[i]) inp[i].value = d[i];
-            sync();
-            if (inp[Math.min(d.length, 5)]) inp[Math.min(d.length, 5)].focus();
-        });
-        var frm = root.closest("form");
-        if (frm) frm.addEventListener("submit", sync, true);
+(function(){
+  var root = document.getElementById("otp-root");
+  var hidden = document.getElementById("otp-hidden");
+  if(!root || !hidden) return;
+  function inputs(){ return Array.from(root.querySelectorAll("[data-otp-idx]")); }
+  function sync(){ hidden.value = inputs().map(function(i){ return i.value; }).join(""); }
+  root.addEventListener("input", function(e){
+    var el = e.target;
+    if(!el.hasAttribute("data-otp-idx")) return;
+    el.value = el.value.replace(/[^0-9]/g, "").slice(-1);
+    sync();
+    var idx = +el.getAttribute("data-otp-idx"), inp = inputs();
+    if(el.value && idx < 5) inp[idx + 1].focus();
+  });
+  root.addEventListener("keydown", function(e){
+    var el = e.target;
+    if(!el.hasAttribute("data-otp-idx")) return;
+    var idx = +el.getAttribute("data-otp-idx"), inp = inputs();
+    if(e.key === "Backspace" && !el.value && idx > 0){ inp[idx - 1].focus(); inp[idx - 1].value = ""; sync(); }
+    else if(e.key === "ArrowLeft" && idx > 0) inp[idx - 1].focus();
+    else if(e.key === "ArrowRight" && idx < 5) inp[idx + 1].focus();
+  }, true);
+  root.addEventListener("paste", function(e){
+    e.preventDefault();
+    var d = (e.clipboardData || window.clipboardData).getData("text").replace(/[^0-9]/g, "").slice(0, 6);
+    var inp = inputs();
+    for(var i = 0; i < d.length; i++) if(inp[i]) inp[i].value = d[i];
+    sync();
+    if(inp[Math.min(d.length, 5)]) inp[Math.min(d.length, 5)].focus();
+  });
+  var frm = root.closest("form");
+  if(frm) frm.addEventListener("submit", sync, true);
 
-        var resendBtn = document.getElementById("resend-otp-btn");
-        var resendIcon = document.getElementById("resend-otp-icon");
-        var resendStatus = document.getElementById("resend-otp-status");
-        if (resendBtn) {
-            resendBtn.addEventListener("click", function () {
-                if (resendBtn.disabled) return;
-                resendBtn.disabled = true;
-                if (resendIcon) resendIcon.classList.add("animate-spin", "[animation-duration:1.5s]");
-                if (resendStatus) resendStatus.classList.add("hidden");
-                fetch("/two-factor/resend", { method: "POST", credentials: "same-origin" })
-                    .then(function (r) { return r.json().catch(function () { return {}; }); })
-                    .then(function (data) {
-                        if (resendStatus) {
-                            resendStatus.textContent = data && data.ok
-                                ? "A new code has been sent."
-                                : (data && data.error) || "Couldn't send a new code. Try again shortly.";
-                            resendStatus.classList.remove("hidden");
-                            resendStatus.classList.toggle("text-emerald-600", !!(data && data.ok));
-                            resendStatus.classList.toggle("dark:text-emerald-500", !!(data && data.ok));
-                            resendStatus.classList.toggle("text-destructive", !(data && data.ok));
-                        }
-                    })
-                    .catch(function () {
-                        if (resendStatus) {
-                            resendStatus.textContent = "Couldn't send a new code. Try again shortly.";
-                            resendStatus.classList.remove("hidden");
-                            resendStatus.classList.add("text-destructive");
-                        }
-                    })
-                    .finally(function () {
-                        if (resendIcon) resendIcon.classList.remove("animate-spin", "[animation-duration:1.5s]");
-                        setTimeout(function () { resendBtn.disabled = false; }, 3000);
-                    });
-            });
-        }
-    })();
+  var resendBtn = document.getElementById("resend-otp-btn");
+  var resendIcon = document.getElementById("resend-otp-icon");
+  var resendStatus = document.getElementById("resend-otp-status");
+  if(resendBtn){
+    resendBtn.addEventListener("click", function(){
+      if(resendBtn.disabled) return;
+      resendBtn.disabled = true;
+      if(resendIcon) resendIcon.classList.add("animate-spin", "[animation-duration:1.5s]");
+      if(resendStatus) resendStatus.classList.add("hidden");
+      fetch("/two-factor/resend", {method: "POST", credentials: "same-origin"})
+        .then(function(r){ return r.json().catch(function(){ return {}; }); })
+        .then(function(data){
+          if(!resendStatus) return;
+          resendStatus.textContent = data && data.ok ? "A new code has been sent." : (data && data.error) || "Couldn't send a new code. Try again shortly.";
+          resendStatus.classList.remove("hidden");
+          resendStatus.classList.toggle("text-emerald-600", !!(data && data.ok));
+          resendStatus.classList.toggle("dark:text-emerald-500", !!(data && data.ok));
+          resendStatus.classList.toggle("text-destructive", !(data && data.ok));
+        })
+        .catch(function(){
+          if(resendStatus){
+            resendStatus.textContent = "Couldn't send a new code. Try again shortly.";
+            resendStatus.classList.remove("hidden");
+            resendStatus.classList.add("text-destructive");
+          }
+        })
+        .finally(function(){
+          if(resendIcon) resendIcon.classList.remove("animate-spin", "[animation-duration:1.5s]");
+          setTimeout(function(){ resendBtn.disabled = false; }, 3000);
+        });
+    });
+  }
+})();
+{% end_app_script %}
+
+{% app_script "two-factor-passkey" %}
+(function(){
+  var btn = document.getElementById("two-factor-passkey-btn");
+  if(!btn) return;
+  var status = document.getElementById("two-factor-passkey-status");
+  var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  var csrfToken = csrfMeta ? csrfMeta.content : "";
+
+  function setStatus(message, error){
+    if(!status) return;
+    status.textContent = message || "";
+    status.classList.toggle("text-destructive", !!error);
+    status.classList.toggle("text-muted-foreground", !error);
+  }
+
+  function base64urlToBuffer(value){
+    var base64 = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
+    while(base64.length % 4) base64 += "=";
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for(var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+
+  function bufferToBase64url(buffer){
+    var bytes = new Uint8Array(buffer);
+    var binary = "";
+    for(var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+  }
+
+  function normalizeOptions(options){
+    options.challenge = base64urlToBuffer(options.challenge);
+    if(options.allowCredentials){
+      options.allowCredentials = options.allowCredentials.map(function(item){
+        item.id = base64urlToBuffer(item.id);
+        return item;
+      });
+    }
+    return options;
+  }
+
+  function credentialToJSON(credential){
+    return {
+      id: credential.id,
+      rawId: bufferToBase64url(credential.rawId),
+      type: credential.type,
+      authenticatorAttachment: credential.authenticatorAttachment || undefined,
+      clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {},
+      response: {
+        clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+        authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+        signature: bufferToBase64url(credential.response.signature),
+        userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null
+      }
+    };
+  }
+
+  function verifyPasskey(){
+    if(!window.PublicKeyCredential || !navigator.credentials){
+      setStatus("Passkeys are not available in this browser. Choose another option.", true);
+      return;
+    }
+    btn.disabled = true;
+    setStatus("Waiting for passkey...");
+    fetch("/two-factor/passkey/begin", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken},
+      body: "{}"
+    })
+    .then(function(response){ return response.json().then(function(data){ if(!response.ok || !data.ok) throw new Error(data.error || "Passkey verification failed."); return data; }); })
+    .then(function(data){ return navigator.credentials.get({publicKey: normalizeOptions(data.options)}); })
+    .then(function(credential){
+      return fetch("/two-factor/passkey/verify", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {"Content-Type": "application/json", "X-CSRFToken": csrfToken},
+        body: JSON.stringify({credential: credentialToJSON(credential)})
+      });
+    })
+    .then(function(response){ return response.json().then(function(data){ if(!response.ok || !data.ok) throw new Error(data.error || "Passkey verification failed."); return data; }); })
+    .then(function(data){ window.location.assign(data.next || "/dashboard"); })
+    .catch(function(error){ setStatus(error.message || "Passkey verification failed. Choose another option.", true); })
+    .finally(function(){ btn.disabled = false; });
+  }
+
+  btn.addEventListener("click", verifyPasskey);
+  setTimeout(verifyPasskey, 150);
+})();
 {% end_app_script %}

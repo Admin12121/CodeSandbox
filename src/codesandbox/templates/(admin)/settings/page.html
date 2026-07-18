@@ -4,6 +4,7 @@
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/table-pagination.html" as tp %}
+{% import "components/ui/select.html" as select %}
 {% import "components/media/upload.html" as media_upload %}
 {% import "components/ui/dialog.html" as dlg_ui %}
 {% import "components/media/qr-code.html" as media_qr %}
@@ -230,7 +231,15 @@
                   <div class="text-xs font-normal text-muted-foreground">Sign in with fingerprint, face, or device PIN</div>
                 {% endcall %}
                 {% call table.table_cell() %}
-                  <span id="passkey-status" class="text-xs text-muted-foreground">Checking…</span>
+                  {% call select.select(name="passkey_status", value="disabled", class="hidden w-28", attrs={"id": "passkey-account-status-select", "aria-label": "Passkey status"}) %}
+                    {% call select.select_trigger(size="sm", target="passkey-account-status-popup") %}
+                      {{ select.select_value("Disabled", attrs={"id": "passkey-account-status-value"}) }}
+                    {% endcall %}
+                    {% call select.select_popup(attrs={"id": "passkey-account-status-popup"}) %}
+                      {% call select.select_item(value="enabled") %}Enabled{% endcall %}
+                      {% call select.select_item(value="disabled", selected=true) %}Disabled{% endcall %}
+                    {% endcall %}
+                  {% endcall %}
                 {% endcall %}
                 {% call table.table_cell(class="text-right") %}
                   <div id="passkey-actions" class="flex justify-end gap-2">
@@ -348,6 +357,21 @@
               {% endcall %}
 
             {% endcall %}
+          {% endcall %}
+        {% endcall %}
+
+        {# Passkeys table #}
+        {% call frame.frame() %}
+          {% call table.table(variant="card", attrs={"id": "passkey-table"}) %}
+            {% call table.table_header() %}
+              {% call table.table_row() %}
+                {{ table.table_head("Name") }}
+                {{ table.table_head("Created", class="w-40") }}
+                {{ table.table_head("Last used", class="w-40") }}
+                {{ table.table_head("", class="w-24 text-right") }}
+              {% endcall %}
+            {% endcall %}
+            {% call table.table_body(attrs={"id": "passkey-list"}) %}{% endcall %}
           {% endcall %}
         {% endcall %}
 
@@ -753,19 +777,163 @@
   if(dlg2fa) dlg2fa.addEventListener('close', function(){ reset2faDialog(); });
 
   // ── Passkey detection ──────────────────────────────────────────
-  var passkeyStatus = document.getElementById('passkey-status');
-  var passkeyAddBtn = document.getElementById('passkey-add-btn');
+		  var passkeyAddBtn = document.getElementById('passkey-add-btn');
+		  var passkeyList = document.getElementById('passkey-list');
+		  var passkeyAccountStatusSelect = document.getElementById('passkey-account-status-select');
+		  var passkeyAccountStatusInput = passkeyAccountStatusSelect ? passkeyAccountStatusSelect.querySelector('input[type="hidden"]') : null;
+		  var passkeyAccountStatusValue = document.getElementById('passkey-account-status-value');
+		  var passkeyAccountStatusTrigger = passkeyAccountStatusSelect ? passkeyAccountStatusSelect.querySelector('[data-slot="select-trigger"]') : null;
 
-  if(window.PublicKeyCredential){
-    if(passkeyAddBtn) passkeyAddBtn.hidden = false;
-    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-      .then(function(platform){
-        if(passkeyStatus) passkeyStatus.textContent = platform ? 'Available on this device' : 'Available via another device';
-      })
-      .catch(function(){});
-  } else {
-    if(passkeyStatus) passkeyStatus.textContent = 'Not supported in this browser';
-  }
+	  function getCsrfToken(){
+	    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+	    return csrfMeta ? csrfMeta.content : '';
+	  }
+
+	  function formatPasskeyDate(value){
+	    if(!value) return 'Never';
+	    try{
+	      return new Date(value).toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
+	    }catch(e){
+	      return value;
+	    }
+	  }
+
+				  function setPasskeySelectValue(value){
+				    if(!passkeyAccountStatusSelect) return;
+				    if(passkeyAccountStatusInput) passkeyAccountStatusInput.value = value;
+				    if(passkeyAccountStatusValue) passkeyAccountStatusValue.textContent = value === 'enabled' ? 'Enabled' : 'Disabled';
+				    passkeyAccountStatusSelect.querySelectorAll('[data-slot="select-item"]').forEach(function(item){
+				      var selected = item.dataset.value === value;
+				      item.toggleAttribute('data-selected', selected);
+				      item.setAttribute('aria-selected', selected ? 'true' : 'false');
+				    });
+				  }
+
+				  function setPasskeyStatus(passkeys){
+				    passkeys = Array.isArray(passkeys) ? passkeys : [];
+				    var enabledCount = passkeys.filter(function(pk){ return pk.is_enabled !== false; }).length;
+				    if(passkeyAccountStatusSelect){
+				      passkeyAccountStatusSelect.classList.toggle('hidden', passkeys.length === 0);
+				      setPasskeySelectValue(enabledCount > 0 ? 'enabled' : 'disabled');
+				      if(passkeyAccountStatusTrigger) passkeyAccountStatusTrigger.disabled = false;
+				    }
+				  }
+
+			  function renderPasskeys(passkeys){
+		    passkeys = Array.isArray(passkeys) ? passkeys : [];
+		    setPasskeyStatus(passkeys);
+		    if(!passkeyList) return;
+		    passkeyList.textContent = '';
+		    if(passkeys.length === 0){
+		      var emptyTr = document.createElement('tr');
+		      emptyTr.className = 'relative border-b';
+		      var emptyTd = document.createElement('td');
+		      emptyTd.className = 'h-24 bg-clip-padding p-2.5 text-center text-sm text-muted-foreground';
+		      emptyTd.colSpan = 4;
+		      emptyTd.textContent = 'No passkeys found.';
+		      emptyTr.appendChild(emptyTd);
+		      passkeyList.appendChild(emptyTr);
+		      return;
+		    }
+		    passkeys.forEach(function(pk){
+		      var tr = document.createElement('tr');
+		      tr.className = 'relative border-b';
+
+	      var nameTd = document.createElement('td');
+	      nameTd.className = 'whitespace-nowrap overflow-hidden text-ellipsis bg-clip-padding p-2.5 align-middle leading-none';
+	      var name = document.createElement('div');
+	      name.className = 'text-sm font-medium';
+	      name.textContent = pk.name || 'Passkey';
+	      var id = document.createElement('div');
+	      id.className = 'mt-1 text-xs font-normal text-muted-foreground';
+	      id.textContent = pk.id || '';
+		      nameTd.appendChild(name);
+		      nameTd.appendChild(id);
+
+		      var createdTd = document.createElement('td');
+		      createdTd.className = 'whitespace-nowrap overflow-hidden text-ellipsis bg-clip-padding p-2.5 align-middle leading-none text-muted-foreground';
+	      createdTd.textContent = formatPasskeyDate(pk.created_at);
+
+	      var usedTd = document.createElement('td');
+	      usedTd.className = 'whitespace-nowrap overflow-hidden text-ellipsis bg-clip-padding p-2.5 align-middle leading-none text-muted-foreground';
+	      usedTd.textContent = formatPasskeyDate(pk.last_used_at);
+
+	      var actionTd = document.createElement('td');
+	      actionTd.className = 'whitespace-nowrap bg-clip-padding p-2.5 align-middle leading-none text-right';
+	      var del = document.createElement('button');
+	      del.type = 'button';
+	      del.className = 'inline-flex h-8 items-center rounded-md border px-3 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors';
+	      del.textContent = 'Delete';
+	      del.addEventListener('click', function(){
+	        if(!window.confirm('Delete this passkey?')) return;
+	        del.disabled = true;
+	        fetch('/settings/passkeys/' + encodeURIComponent(pk.id) + '/delete', {
+	          method: 'POST',
+	          credentials: 'same-origin',
+	          headers: {'X-CSRFToken': getCsrfToken()}
+	        })
+	        .then(function(r){ return r.json().catch(function(){ return {}; }); })
+	        .then(function(body){
+	          if(!body.ok) throw new Error(body.error || 'Could not delete passkey.');
+	          window.Toast.create({title:'Passkey deleted',type:'success'});
+	          loadPasskeys();
+	        })
+	        .catch(function(err){
+	          del.disabled = false;
+	          window.Toast.create({title:err.message || 'Could not delete passkey.',type:'error'});
+	        });
+	      });
+	      actionTd.appendChild(del);
+
+		      tr.appendChild(nameTd);
+		      tr.appendChild(createdTd);
+		      tr.appendChild(usedTd);
+		      tr.appendChild(actionTd);
+	      passkeyList.appendChild(tr);
+	    });
+	  }
+
+		  function loadPasskeys(){
+		    fetch('/settings/passkeys', {credentials:'same-origin'})
+		      .then(function(r){ return r.json(); })
+	      .then(function(body){
+	        if(!body.ok) throw new Error(body.error || 'Could not load passkeys.');
+	        renderPasskeys(body.passkeys || []);
+		      })
+		      .catch(function(err){
+		        if(window.Toast) window.Toast.create({title:err.message || 'Could not load passkeys.',type:'error'});
+			      });
+			  }
+
+			  if(passkeyAccountStatusInput){
+			    passkeyAccountStatusInput.addEventListener('change', function(){
+			      var nextValue = passkeyAccountStatusInput.value;
+			      var previousValue = nextValue === 'enabled' ? 'disabled' : 'enabled';
+			      if(passkeyAccountStatusTrigger) passkeyAccountStatusTrigger.disabled = true;
+			      fetch('/settings/passkeys/status', {
+		        method: 'POST',
+		        credentials: 'same-origin',
+		        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken()},
+		        body: JSON.stringify({enabled: nextValue === 'enabled'})
+		      })
+		      .then(function(r){ return r.json().catch(function(){ return {}; }); })
+		      .then(function(body){
+		        if(!body.ok) throw new Error(body.error || 'Could not update passkey status.');
+		        window.Toast.create({title:'Passkey updated',type:'success'});
+		        loadPasskeys();
+			      })
+			      .catch(function(err){
+			        setPasskeySelectValue(previousValue);
+			        if(passkeyAccountStatusTrigger) passkeyAccountStatusTrigger.disabled = false;
+			        window.Toast.create({title:err.message || 'Could not update passkey status.',type:'error'});
+			      });
+			    });
+		  }
+
+		  if(window.PublicKeyCredential){
+		    if(passkeyAddBtn) passkeyAddBtn.hidden = false;
+		  }
+		  loadPasskeys();
 
   function base64urlToBuffer(b64url){
     var b64 = b64url.replace(/-/g,'+').replace(/_/g,'/');
@@ -826,11 +994,11 @@
           }).then(function(r){ return r.json(); });
         });
     })
-    .then(function(result){
-      if(!result.ok) throw new Error(result.error || 'Passkey save failed.');
-      if(passkeyStatus) passkeyStatus.textContent = 'Passkey added';
-      window.location.reload();
-    })
+	    .then(function(result){
+	      if(!result.ok) throw new Error(result.error || 'Passkey save failed.');
+	      window.Toast.create({title:'Passkey added',type:'success'});
+	      loadPasskeys();
+	    })
     .catch(function(err){
       if(err && err.name === 'NotAllowedError') return;
       window.Toast.create({title:'Passkey registration failed: '+(err.message||err),type:'error'});

@@ -133,6 +133,7 @@ class UserPasskey(Model):
     sign_count = IntegerField(default=0)
     aaguid = StringField(max_length=36, nullable=True)
     name = StringField(max_length=100, nullable=True)
+    is_enabled = BooleanField(default=True)
     created_at = DateTimeField(default=_now)
     last_used_at = DateTimeField(nullable=True)
 

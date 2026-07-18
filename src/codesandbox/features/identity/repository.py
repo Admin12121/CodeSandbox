@@ -313,9 +313,12 @@ def delete_session_by_id(session_id: str) -> None:
 
 # ── Passkeys ──────────────────────────────────────────────────────────────────
 
-def get_user_passkeys(user_id: str) -> list[UserPasskey]:
+def get_user_passkeys(user_id: str, *, enabled_only: bool = False) -> list[UserPasskey]:
     try:
-        return UserPasskey.objects.filter(user_id=user_id).order_by("-created_at").all()
+        query = UserPasskey.objects.filter(user_id=user_id)
+        if enabled_only:
+            query = query.filter(is_enabled=True)
+        return query.order_by("-created_at").all()
     except Exception:
         return []
 
@@ -369,6 +372,24 @@ def delete_passkey(passkey_id: str, user_id: str) -> bool:
         pk.delete()
         return True
     return False
+
+
+def set_passkey_enabled(passkey_id: str, user_id: str, enabled: bool) -> bool:
+    pk = find_passkey_by_id(passkey_id)
+    if pk and str(pk.user_id) == str(user_id):
+        pk.is_enabled = enabled
+        pk.save()
+        return True
+    return False
+
+
+def set_user_passkeys_enabled(user_id: str, enabled: bool) -> int:
+    updated = 0
+    for pk in get_user_passkeys(user_id):
+        pk.is_enabled = enabled
+        pk.save()
+        updated += 1
+    return updated
 
 
 def list_users(

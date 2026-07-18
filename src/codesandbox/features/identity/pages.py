@@ -5,6 +5,7 @@ from datetime import datetime, timezone as _tz
 
 from flask import request, session as flask_session
 
+from codesandbox.config import get_settings
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.identity.service import totp_qr_data_uri
 from codesandbox.shared.session import build_nav, format_role_label, get_current_session, require_session
@@ -63,12 +64,24 @@ def two_factor():
         return {"_redirect": "/dashboard"}
     if not flask_session.get("_2fa_pending_user_id"):
         return {"_redirect": "/login"}
+    pending_user_id = str(flask_session.get("_2fa_pending_user_id"))
     method = str(flask_session.get("_2fa_method") or "totp")
+    user = identity_repo.find_user_by_id(pending_user_id)
+    available_methods: list[str] = []
+    if user is not None:
+        if identity_repo.get_user_passkeys(pending_user_id, enabled_only=True):
+            available_methods.append("passkey")
+        if user.two_factor_enabled:
+            available_methods.append("totp")
+        settings = get_settings()
+        if settings.resend_api_key and user.email_verified:
+            available_methods.append("email")
     return {
         "_meta": {"title": "Security Verification — CodeSandbox"},
         "error": request.args.get("error"),
         "info": request.args.get("info"),
         "challenge_method": method,
+        "available_methods": available_methods,
     }
 
 
