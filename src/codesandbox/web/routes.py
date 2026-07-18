@@ -567,7 +567,7 @@ def hub_template(instance: str):
         required = Decimal(str(plan.get(required_key) or "0"))
         plan["minimum_start_amount"] = str(required)
         plan["minimum_start_amount_display"] = str(
-            plan.get(required_display_key) or f"{required:.4f}"
+            plan.get(required_display_key) or f"{required:.2f}"
         )
         plan["can_afford"] = available_balance is None or available_balance >= required
 

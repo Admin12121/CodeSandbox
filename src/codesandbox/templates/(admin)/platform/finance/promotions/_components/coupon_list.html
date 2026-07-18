@@ -19,7 +19,7 @@
             </div>
             <div class="mt-1 text-sm text-foreground">{{ coupon.name }}</div>
             <div class="mt-1 text-xs text-muted-foreground">
-              {{ coupon.discount_type|replace("_", " ")|title }} · {{ coupon.value }}{% if coupon.currency %} {{ coupon.currency }}{% endif %}
+              {{ coupon.discount_type|replace("_", " ")|title }} · {{ coupon.value_display }}{% if coupon.currency %} {{ coupon.currency }}{% endif %}
               · {{ coupon.redemptions }} used{% if coupon.max_redemptions %} / {{ coupon.max_redemptions }}{% endif %}
               {% if coupon.expires_at %} · expires {{ coupon.expires_at.strftime("%d %b %Y") }}{% endif %}
             </div>

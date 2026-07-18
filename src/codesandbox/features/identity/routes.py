@@ -317,10 +317,12 @@ def two_factor_method_action():
     session.pop("_2fa_passkey_challenge", None)
     labels = {
         "passkey": "Use your passkey to continue.",
-        "totp": "Enter your authenticator code.",
         "email": "A security code was sent to your email.",
     }
-    return redirect(f"/two-factor?info={urllib.parse.quote(labels.get(method, 'Verification method updated.'))}", code=303)
+    message = labels.get(method)
+    if message:
+        return redirect(f"/two-factor?info={urllib.parse.quote(message)}", code=303)
+    return redirect("/two-factor", code=303)
 
 
 @web_bp.post("/two-factor/passkey/begin")

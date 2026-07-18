@@ -15,7 +15,7 @@
             <div class="truncate text-sm font-medium text-foreground">{{ credit.entity_label }}</div>
             <div class="mt-1 truncate text-xs text-muted-foreground">{{ credit.reason or "No reason recorded" }}</div>
           </div>
-          <div class="font-mono text-sm">{{ credit.remaining_amount }} / {{ credit.amount }} {{ credit.currency }}</div>
+          <div class="font-mono text-sm">{{ credit.remaining_amount_display }} / {{ credit.amount_display }} {{ credit.currency }}</div>
           <div class="text-xs text-muted-foreground">{{ credit.expires_at.strftime("%d %b %Y") if credit.expires_at else "No expiry" }}</div>
           <div class="md:text-right">{{ badge.badge(credit.status|title, variant=("success" if credit.status == "active" else "outline")) }}</div>
         </div>

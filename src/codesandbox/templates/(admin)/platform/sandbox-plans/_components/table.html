@@ -62,11 +62,11 @@
               {% call table.table_cell(class="border-l text-center text-xs tabular-nums") %}{{ plan.ind_vcpu }}{% endcall %}
               {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ plan.ind_ram_gb }}{% endcall %}
               {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ plan.ind_disk_gb }}{% endcall %}
-              {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ plan.ind_cost_hr }}{% endcall %}
+              {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ plan.ind_cost_hr_display }}{% endcall %}
               {% call table.table_cell(class="border-l text-center text-xs tabular-nums") %}{{ plan.org_vcpu }}{% endcall %}
               {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ plan.org_ram_gb }}{% endcall %}
               {% call table.table_cell(class="text-center text-xs tabular-nums") %}{{ plan.org_disk_gb }}{% endcall %}
-              {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ plan.org_cost_hr }}{% endcall %}
+              {% call table.table_cell(class="text-center text-xs font-mono tabular-nums") %}{{ plan.org_cost_hr_display }}{% endcall %}
               {% if can_manage %}
               {% call table.table_cell(class="border-l") %}
                 <div class="flex justify-end">
@@ -270,7 +270,7 @@
                     {% call table.table_row() %}
                       {% call table.table_cell(class="font-medium text-sm align-middle") %}Cost/hr (£){% endcall %}
                       {% call table.table_cell() %}
-                        <input name="ind_cost_hr" type="text" inputmode="decimal" value="{{ selected_plan.ind_cost_hr }}" placeholder="0.0000"
+                        <input name="ind_cost_hr" type="text" inputmode="decimal" value="{{ selected_plan.ind_cost_hr_display }}" placeholder="0.00"
                           class="h-8 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       {% endcall %}
                     {% endcall %}
@@ -312,7 +312,7 @@
                     {% call table.table_row() %}
                       {% call table.table_cell(class="font-medium text-sm align-middle") %}Cost/hr (£){% endcall %}
                       {% call table.table_cell() %}
-                        <input name="org_cost_hr" type="text" inputmode="decimal" value="{{ selected_plan.org_cost_hr }}" placeholder="0.0000"
+                        <input name="org_cost_hr" type="text" inputmode="decimal" value="{{ selected_plan.org_cost_hr_display }}" placeholder="0.00"
                           class="h-8 w-28 rounded-md border border-input bg-background px-3 py-1 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       {% endcall %}
                     {% endcall %}
@@ -375,11 +375,11 @@
                 {% endcall %}
                 {% call table.table_row() %}
                   {% call table.table_cell(class="font-medium text-sm") %}Individual{% endcall %}
-                  {% call table.table_cell(class="text-sm text-muted-foreground tabular-nums") %}{{ selected_plan.ind_vcpu }}vCPU · {{ selected_plan.ind_ram_gb }}GB RAM · {{ selected_plan.ind_disk_gb }}GB disk · £{{ selected_plan.ind_cost_hr }}/hr{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground tabular-nums") %}{{ selected_plan.ind_vcpu }}vCPU · {{ selected_plan.ind_ram_gb }}GB RAM · {{ selected_plan.ind_disk_gb }}GB disk · £{{ selected_plan.ind_cost_hr_display }}/hr{% endcall %}
                 {% endcall %}
                 {% call table.table_row() %}
                   {% call table.table_cell(class="font-medium text-sm") %}Organization{% endcall %}
-                  {% call table.table_cell(class="text-sm text-muted-foreground tabular-nums") %}{{ selected_plan.org_vcpu }}vCPU · {{ selected_plan.org_ram_gb }}GB RAM · {{ selected_plan.org_disk_gb }}GB disk · £{{ selected_plan.org_cost_hr }}/hr{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground tabular-nums") %}{{ selected_plan.org_vcpu }}vCPU · {{ selected_plan.org_ram_gb }}GB RAM · {{ selected_plan.org_disk_gb }}GB disk · £{{ selected_plan.org_cost_hr_display }}/hr{% endcall %}
                 {% endcall %}
                 {% call table.table_row() %}
                   {% call table.table_cell(class="font-medium text-sm") %}Minimum Billing{% endcall %}

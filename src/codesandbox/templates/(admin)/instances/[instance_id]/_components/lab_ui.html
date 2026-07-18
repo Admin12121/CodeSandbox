@@ -605,7 +605,7 @@
   function updateCost() {
     if (!estimated || !startedAt) return;
     var seconds = Math.max(0, (Date.now() - new Date(startedAt).getTime()) / 1000);
-    estimated.textContent = "£" + (rate * seconds / 3600).toFixed(4);
+    estimated.textContent = "£" + (rate * seconds / 3600).toFixed(2);
   }
   updateCost();
   var costTimer = window.setInterval(updateCost, 1000);

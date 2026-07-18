@@ -25,7 +25,7 @@
             <div class="truncate text-sm font-medium">{{ redemption.coupon_code }}</div>
             <div class="mt-1 truncate text-xs text-muted-foreground">{{ redemption.entity_label }} · {{ redemption.created_at.strftime("%d %b %Y %H:%M") if redemption.created_at else "" }}</div>
           </div>
-          <div class="font-mono text-sm">{{ redemption.redeemed_amount }} {{ redemption.currency }}</div>
+          <div class="font-mono text-sm">{{ redemption.redeemed_amount_display }} {{ redemption.currency }}</div>
         </div>
       {% endfor %}
     </div>

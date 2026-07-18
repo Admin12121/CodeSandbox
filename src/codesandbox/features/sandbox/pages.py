@@ -155,8 +155,10 @@ def platform_sandbox_plans():
     if plan_param == "new":
         selected_plan = {
             "id": "", "name": "", "sort_order": len(plans),
-            "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 10, "ind_cost_hr": "0.0000",
-            "org_vcpu": 2, "org_ram_gb": 2, "org_disk_gb": 20, "org_cost_hr": "0.0000",
+            "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 10, "ind_cost_hr": "0.00",
+            "ind_cost_hr_display": "0.00",
+            "org_vcpu": 2, "org_ram_gb": 2, "org_disk_gb": 20, "org_cost_hr": "0.00",
+            "org_cost_hr_display": "0.00",
             "min_billable_minutes": 1,
             "is_active": True,
         }

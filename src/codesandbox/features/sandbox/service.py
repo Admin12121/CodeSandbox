@@ -81,6 +81,10 @@ def _money(value) -> Decimal:
         return Decimal("0.0000")
 
 
+def _money_display(value) -> str:
+    return f"{_money(value):.2f}"
+
+
 def _minimum_start_amount(effective_plan: EffectivePlan, workspace_type: str) -> Decimal:
     tier = effective_plan.tier(workspace_type)
     rate = _money(tier.get("cost_hr"))
@@ -126,7 +130,7 @@ def _ensure_start_balance(
     if available < required:
         return (
             "Insufficient balance. At least "
-            f"£{required:.4f} is required to start this sandbox."
+            f"£{_money_display(required)} is required to start this sandbox."
         )
     return None
 
@@ -486,13 +490,13 @@ def _instance_billing_snapshot(inst) -> dict:
 
     return {
         "rate_per_hour": str(rate),
-        "rate_per_hour_display": f"{rate:.4f}",
+        "rate_per_hour_display": _money_display(rate),
         "estimated_cost": str(estimated),
-        "estimated_cost_display": f"{estimated:.4f}",
+        "estimated_cost_display": _money_display(estimated),
         "reserved_amount": str(_money(inst.billing_reserved_amount)),
-        "reserved_amount_display": f"{_money(inst.billing_reserved_amount):.4f}",
+        "reserved_amount_display": _money_display(inst.billing_reserved_amount),
         "available_balance": str(available) if available is not None else None,
-        "available_balance_display": f"{available:.4f}" if available is not None else None,
+        "available_balance_display": _money_display(available) if available is not None else None,
         "remaining_seconds": remaining_seconds,
         "low_balance": low_balance,
         "runtime_seconds": elapsed,
@@ -1276,11 +1280,11 @@ def get_live_balance_for_actor(
     return {
         "currency": "GBP",
         "amount": str(amount),
-        "amount_display": f"{amount:.4f}",
+        "amount_display": _money_display(amount),
         "reserved_amount": str(reserved),
-        "reserved_amount_display": f"{reserved:.4f}",
+        "reserved_amount_display": _money_display(reserved),
         "available_amount": str(available),
-        "available_amount_display": f"{available:.4f}",
+        "available_amount_display": _money_display(available),
     }
 
 
@@ -1897,10 +1901,10 @@ def _plan_dict(p) -> dict:
         "sort_order": int(p.sort_order),
         "ind_vcpu": int(p.ind_vcpu), "ind_ram_gb": int(p.ind_ram_gb), "ind_disk_gb": int(p.ind_disk_gb),
         "ind_cost_hr": str(p.ind_cost_hr),
-        "ind_cost_hr_display": f"{_money(p.ind_cost_hr):.4f}",
+        "ind_cost_hr_display": _money_display(p.ind_cost_hr),
         "org_vcpu": int(p.org_vcpu), "org_ram_gb": int(p.org_ram_gb), "org_disk_gb": int(p.org_disk_gb),
         "org_cost_hr": str(p.org_cost_hr),
-        "org_cost_hr_display": f"{_money(p.org_cost_hr):.4f}",
+        "org_cost_hr_display": _money_display(p.org_cost_hr),
         "min_billable_minutes": int(p.min_billable_minutes or 0),
         "is_active": bool(p.is_active),
         "updated_at": p.updated_at,
@@ -1983,8 +1987,8 @@ def _int_or_none(v) -> int | None:
 
 def _resolve_plan_specs(template, global_plan, template_plan) -> dict:
     data = resolve_effective_plan(template, global_plan, template_plan).to_dict()
-    data["ind_cost_hr_display"] = f"{_money(data.get('ind_cost_hr')):.4f}"
-    data["org_cost_hr_display"] = f"{_money(data.get('org_cost_hr')):.4f}"
+    data["ind_cost_hr_display"] = _money_display(data.get("ind_cost_hr"))
+    data["org_cost_hr_display"] = _money_display(data.get("org_cost_hr"))
     reserve_seconds = max(
         _BILLING_RESERVE_SECONDS,
         int(data.get("min_billable_minutes") or 0) * 60,
@@ -1993,7 +1997,7 @@ def _resolve_plan_specs(template, global_plan, template_plan) -> dict:
         rate = _money(data.get(f"{prefix}_cost_hr"))
         required = _money(rate * Decimal(reserve_seconds) / Decimal(3600))
         data[f"{prefix}_minimum_start_amount"] = str(required)
-        data[f"{prefix}_minimum_start_amount_display"] = f"{required:.4f}"
+        data[f"{prefix}_minimum_start_amount_display"] = _money_display(required)
     return data
 
 
@@ -3722,11 +3726,11 @@ def _balance_dict(b) -> dict:
         "entity_type": b.entity_type,
         "entity_id": str(b.entity_id),
         "amount": str(amount),
-        "amount_display": f"{_money(amount):.4f}",
+        "amount_display": _money_display(amount),
         "reserved_amount": str(reserved),
-        "reserved_amount_display": f"{_money(reserved):.4f}",
+        "reserved_amount_display": _money_display(reserved),
         "available_amount": str(available),
-        "available_amount_display": f"{_money(available):.4f}",
+        "available_amount_display": _money_display(available),
         "updated_at": b.updated_at,
     }
 
@@ -3739,6 +3743,7 @@ def _transaction_dict(tx) -> dict:
         "type_label": (tx.type or "").replace("_", " ").title(),
         "amount": str(amount),
         "absolute_amount": str(abs(amount)),
+        "absolute_amount_display": _money_display(abs(amount)),
         "is_credit": amount >= 0,
         "description": tx.description or "",
         "reference": tx.reference or "",

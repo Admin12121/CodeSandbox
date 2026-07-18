@@ -875,7 +875,7 @@ def _delta(current: Decimal, previous: Decimal, currency: str = "GBP") -> dict:
         sign = "+" if pct > 0 else ""
         text = f"{sign}{pct:.2f}% vs previous period"
     return {
-        "amount": f"{amount:.4f}",
+        "amount": f"{amount:.2f}",
         "amount_display": _format_money(amount, currency),
         "percent": None if pct is None else f"{pct:.2f}",
         "text": text,
@@ -884,7 +884,7 @@ def _delta(current: Decimal, previous: Decimal, currency: str = "GBP") -> dict:
 
 
 def _amount(value: Decimal, currency: str = "GBP") -> dict:
-    return {"raw": f"{value:.4f}", "display": _format_money(value, currency)}
+    return {"raw": f"{value:.2f}", "display": _format_money(value, currency)}
 
 
 def _mini_bar_series(values: list[str | Decimal | int | float]) -> list[dict]:
@@ -900,7 +900,7 @@ def _mini_bar_series(values: list[str | Decimal | int | float]) -> list[dict]:
             height = int((abs(value) / max_abs * Decimal("22")).to_integral_value(rounding=ROUND_UP))
             height = max(2, min(22, height))
         bars.append({
-            "value": f"{value:.4f}",
+            "value": f"{value:.2f}",
             "height": height,
             "negative": value < 0,
             "zero": value == 0,
@@ -1074,10 +1074,10 @@ def _timeline(begin: datetime, finish: datetime, stats: dict) -> list[dict]:
     return [
         {
             "label": key,
-            "gross": f"{values['gross']:.4f}",
-            "net": f"{values['net']:.4f}",
-            "compute_cost": f"{values['compute_cost']:.4f}",
-            "refunds": f"{values['refunds']:.4f}",
+            "gross": f"{values['gross']:.2f}",
+            "net": f"{values['net']:.2f}",
+            "compute_cost": f"{values['compute_cost']:.2f}",
+            "refunds": f"{values['refunds']:.2f}",
         }
         for key, values in sorted(buckets.items())
     ]
@@ -1091,7 +1091,7 @@ def _transaction_timeline(begin: datetime, finish: datetime, transactions: list[
         key = (_as_utc(tx.created_at) or tx.created_at).date().isoformat()
         buckets[key] = buckets.get(key, Decimal("0")) + _decimal(tx.amount)
     return [
-        {"label": key, "value": f"{value:.4f}"}
+        {"label": key, "value": f"{value:.2f}"}
         for key, value in sorted(buckets.items())
     ]
 
@@ -1113,11 +1113,11 @@ def _ranked_templates(charges: list[UsageCharge], compute_by_charge: dict[str, d
         result.append({
             "id": row["id"],
             "label": row["label"],
-            "revenue": f"{row['revenue']:.4f}",
+            "revenue": f"{row['revenue']:.2f}",
             "revenue_display": _format_money(row["revenue"]),
-            "compute_cost": f"{row['compute_cost']:.4f}",
+            "compute_cost": f"{row['compute_cost']:.2f}",
             "compute_cost_display": _format_money(row["compute_cost"]),
-            "margin": f"{margin:.4f}",
+            "margin": f"{margin:.2f}",
             "margin_display": _format_money(margin),
             "margin_percent": None if margin_pct is None else f"{margin_pct:.2f}",
             "share": "0" if share is None else f"{share:.2f}",
@@ -1153,9 +1153,9 @@ def _breakdown_rows(charges: list[UsageCharge], compute_by_charge: dict[str, dic
             "label": row["label"],
             "meta": row["meta"],
             "count": row["count"],
-            "revenue": f"{row['revenue']:.4f}",
+            "revenue": f"{row['revenue']:.2f}",
             "revenue_display": _format_money(row["revenue"]),
-            "compute_cost": f"{row['compute_cost']:.4f}",
+            "compute_cost": f"{row['compute_cost']:.2f}",
             "compute_cost_display": _format_money(row["compute_cost"]),
             "margin_display": _format_money(margin),
             "margin_percent": None if margin_pct is None else f"{margin_pct:.2f}",
@@ -1181,7 +1181,7 @@ def _activity_item_from_tx(tx: BalanceTransaction) -> dict:
         "entity_type": tx.entity_type,
         "reference": tx.reference or str(tx.id)[:8],
         "provider": tx.provider or "internal",
-        "amount": f"{amount:.4f}",
+        "amount": f"{amount:.2f}",
         "amount_display": _format_money(amount),
         "is_negative": amount < 0,
         "status": "completed" if tx.type != "failed_payment" else "failed",
@@ -1560,6 +1560,11 @@ def transaction_receipt_dict(tx: BalanceTransaction | None) -> dict | None:
         })
     else:
         receipt["items"] = [{"label": tx.type.replace("_", " ").title(), "quantity": "1", "rate": str(absolute), "amount": str(absolute)}]
+    for key in ("subtotal", "discount", "credit", "refund", "total", "refundable_remaining"):
+        receipt[f"{key}_display"] = f"{_decimal(receipt.get(key)):.2f}"
+    for item in receipt["items"]:
+        item["rate_display"] = f"{_decimal(item.get('rate')):.2f}"
+        item["amount_display"] = f"{_decimal(item.get('amount')):.2f}"
     receipt["total_in_words"] = _amount_in_words(receipt["total"], receipt["currency"])
     return receipt
 
@@ -1633,13 +1638,15 @@ def transaction_document(transaction_id: str | None) -> dict | None:
 
 def coupon_redemption_dict(redemption) -> dict:
     coupon = repository.get_coupon(str(redemption.coupon_id)) if redemption.coupon_id else None
+    redeemed_amount = _decimal(redemption.redeemed_amount)
     return {
         "id": str(redemption.id),
         "coupon_code": coupon.code if coupon else str(redemption.coupon_id),
         "entity_type": redemption.entity_type,
         "entity_id": str(redemption.entity_id),
         "entity_label": _entity_label(redemption.entity_type, str(redemption.entity_id)),
-        "redeemed_amount": str(redemption.redeemed_amount or "0"),
+        "redeemed_amount": str(redeemed_amount),
+        "redeemed_amount_display": f"{redeemed_amount:.2f}",
         "currency": redemption.currency or "GBP",
         "created_at": redemption.created_at,
     }
@@ -1672,7 +1679,7 @@ def _redemption_timeline(redemptions: list, begin: datetime, finish: datetime) -
         bucket["amount"] = _decimal(bucket["amount"]) + _decimal(redemption.redeemed_amount)
         bucket["count"] = int(bucket["count"]) + 1
     return [
-        {"label": key, "net": f"{_decimal(values['amount']):.4f}", "compute_cost": "0", "count": int(values["count"])}
+        {"label": key, "net": f"{_decimal(values['amount']):.2f}", "compute_cost": "0", "count": int(values["count"])}
         for key, values in sorted(buckets.items())
     ]
 
@@ -1738,6 +1745,7 @@ def transaction_dict(tx: BalanceTransaction) -> dict:
         "type": tx.type,
         "amount": str(amount),
         "absolute_amount": str(abs(amount)),
+        "absolute_amount_display": f"{abs(amount):.2f}",
         "provider": tx.provider or "",
         "reference": tx.reference or "",
         "description": tx.description or "",
@@ -1753,6 +1761,7 @@ def coupon_dict(c: Coupon) -> dict:
         "description": c.description or "",
         "discount_type": c.discount_type,
         "value": str(c.value or "0"),
+        "value_display": f"{_decimal(c.value):.2f}",
         "currency": c.currency or "",
         "max_redemptions": c.max_redemptions,
         "per_entity_limit": c.per_entity_limit,
@@ -1769,13 +1778,17 @@ def coupon_dict(c: Coupon) -> dict:
 
 
 def credit_grant_dict(g: CreditGrant) -> dict:
+    amount = _decimal(g.amount)
+    remaining_amount = _decimal(g.remaining_amount)
     return {
         "id": str(g.id),
         "entity_type": g.entity_type,
         "entity_id": str(g.entity_id),
         "entity_label": _entity_label(g.entity_type, str(g.entity_id)),
-        "amount": str(g.amount or "0"),
-        "remaining_amount": str(g.remaining_amount or "0"),
+        "amount": str(amount),
+        "amount_display": f"{amount:.2f}",
+        "remaining_amount": str(remaining_amount),
+        "remaining_amount_display": f"{remaining_amount:.2f}",
         "currency": g.currency or "GBP",
         "reason": g.reason or "",
         "status": g.status,

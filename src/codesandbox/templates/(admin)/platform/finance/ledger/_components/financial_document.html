@@ -79,8 +79,8 @@
               {% call table.table_row(class="border-none") %}
                 {{ table.table_cell(item.label, class="py-4 font-medium") }}
                 {{ table.table_cell(item.quantity, class="py-4 text-right text-neutral-400 print:text-neutral-600") }}
-                {{ table.table_cell(item.rate, class="py-4 text-right text-neutral-400 print:text-neutral-600") }}
-                {{ table.table_cell(item.amount, class="py-4 text-right font-mono") }}
+                {{ table.table_cell(item.rate_display, class="py-4 text-right text-neutral-400 print:text-neutral-600") }}
+                {{ table.table_cell(item.amount_display, class="py-4 text-right font-mono") }}
               {% endcall %}
             {% endfor %}
           {% endcall %}
@@ -90,11 +90,11 @@
       <section class="grid sm:grid-cols-2">
         <div class="border-t border-neutral-800 print:border-neutral-200"></div>
         <div class="border-t border-neutral-800 text-sm sm:border-l print:border-neutral-200">
-          <div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Subtotal</span><span class="font-mono">{{ receipt.subtotal }}</span></div>
-          {% if receipt.discount != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Discount</span><span class="font-mono">-{{ receipt.discount }}</span></div>{% endif %}
-          {% if receipt.credit != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Credit</span><span class="font-mono">-{{ receipt.credit }}</span></div>{% endif %}
-          {% if receipt.refund != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Refund</span><span class="font-mono">{{ receipt.refund }}</span></div>{% endif %}
-          <div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span>Total</span><span class="font-mono text-lg font-semibold">{{ receipt.total }}</span></div>
+          <div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Subtotal</span><span class="font-mono">{{ receipt.subtotal_display }}</span></div>
+          {% if receipt.discount != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Discount</span><span class="font-mono">-{{ receipt.discount_display }}</span></div>{% endif %}
+          {% if receipt.credit != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Credit</span><span class="font-mono">-{{ receipt.credit_display }}</span></div>{% endif %}
+          {% if receipt.refund != "0" %}<div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span class="text-neutral-500">Refund</span><span class="font-mono">{{ receipt.refund_display }}</span></div>{% endif %}
+          <div class="flex justify-between border-b border-neutral-800 px-4 py-3 print:border-neutral-200"><span>Total</span><span class="font-mono text-lg font-semibold">{{ receipt.total_display }}</span></div>
           <div class="px-4 py-3">
             <div class="text-[10px] tracking-wide text-neutral-500">Total (in words)</div>
             <div class="mt-1 text-xs font-medium">{{ receipt.total_in_words }}</div>

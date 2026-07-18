@@ -270,8 +270,8 @@
       <span class="px-1 capitalize">{{ instance.status }}</span>
       <span class="px-1">{{ instance.allocated_vcpu or plan.ind_vcpu }} vCPU</span>
       <span class="px-1">{{ instance.allocated_ram_gb or plan.ind_ram_gb }} GB</span>
-      <span class="px-1">£{{ instance.cost_hr_snapshot }}/hr</span>
-      <span id="sandbox-estimated-cost" class="px-1">£0.0000</span>
+      <span class="px-1">£{{ instance.billing.rate_per_hour_display }}/hr</span>
+      <span id="sandbox-estimated-cost" class="px-1">£0.00</span>
       {% if instance.status in ("running", "provisioning") %}
         <form method="post" action="/instances/{{ instance.id }}/stop" class="inline-flex">
           <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -422,7 +422,7 @@
   function updateCost() {
     if (!estimated || !startedAt) return;
     var seconds = Math.max(0, (Date.now() - new Date(startedAt).getTime()) / 1000);
-    estimated.textContent = "£" + (rate * seconds / 3600).toFixed(4);
+    estimated.textContent = "£" + (rate * seconds / 3600).toFixed(2);
   }
   updateCost();
   var costTimer = window.setInterval(updateCost, 1000);

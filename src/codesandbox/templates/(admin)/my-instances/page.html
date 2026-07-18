@@ -123,8 +123,8 @@
     var cost = card.querySelector("[data-instance-cost]");
     var left = card.querySelector("[data-instance-time-left]");
     var warning = card.querySelector("[data-low-balance]");
-    if (rate) rate.textContent = billing.rate_per_hour_display || "0.0000";
-    if (cost) cost.textContent = billing.estimated_cost_display || "0.0000";
+    if (rate) rate.textContent = billing.rate_per_hour_display || "0.00";
+    if (cost) cost.textContent = billing.estimated_cost_display || "0.00";
     if (left) left.textContent = formatTime(billing.remaining_seconds);
     if (warning) warning.classList.toggle("hidden", !billing.low_balance);
   }

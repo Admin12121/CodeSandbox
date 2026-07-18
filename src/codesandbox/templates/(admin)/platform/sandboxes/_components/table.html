@@ -770,11 +770,11 @@
                   {% call table.table_cell(class="border-l text-center font-mono text-xs") %}{{ gp.ind_vcpu }}{% endcall %}
                   {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.ind_ram_gb }}{% endcall %}
                   {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.ind_disk_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.ind_cost_hr }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.ind_cost_hr_display }}{% endcall %}
                   {% call table.table_cell(class="border-l text-center font-mono text-xs") %}{{ gp.org_vcpu }}{% endcall %}
                   {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.org_ram_gb }}{% endcall %}
                   {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.org_disk_gb }}{% endcall %}
-                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.org_cost_hr }}{% endcall %}
+                  {% call table.table_cell(class="text-center font-mono text-xs") %}{{ gp.org_cost_hr_display }}{% endcall %}
                   {% call table.table_cell(class="border-l text-center") %}
                     <div class="flex justify-center">
                       {{ sw.switch(checked=cfg.is_enabled, attrs={"data-plan-toggle": "", "data-plan-id": gp.id, "data-template-id": tid}) }}

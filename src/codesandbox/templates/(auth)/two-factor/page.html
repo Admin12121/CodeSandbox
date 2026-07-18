@@ -15,15 +15,13 @@
             <span class="text-xl font-semibold tracking-tight">CodeSandbox</span>
           </a>
           <p class="mt-2 text-sm font-medium">Security verification</p>
-          <p class="mt-1 text-xs text-muted-foreground">
-            {% if challenge_method == "passkey" %}
-              Use your passkey to continue.
-            {% elif challenge_method == "email" %}
-              Enter the 6-digit security code sent to your verified email.
-            {% else %}
-              Enter the 6-digit code from your authenticator app.
-            {% endif %}
-          </p>
+	          <p class="mt-1 text-xs text-muted-foreground">
+	            {% if challenge_method == "passkey" %}
+	              Use your passkey to continue.
+	            {% elif challenge_method == "email" %}
+	              Enter the 6-digit security code sent to your verified email.
+	            {% endif %}
+	          </p>
         </div>
 
         {% call card.card_content(class="px-4 py-0") %}
@@ -68,7 +66,7 @@
                       </button>
                     {% endif %}
                   </div>
-                  {% call otp_ui.otp_field(attrs={"data-otp-root": "", "id": "otp-root"}) %}
+	                  {% call otp_ui.otp_field(class="mt-5 justify-center", attrs={"data-otp-root": "", "id": "otp-root"}) %}
                     {{ otp_ui.otp_field_input(attrs={"id": "otp-0", "data-otp-idx": "0", "autofocus": "autofocus"}) }}
                     {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "1"}) }}
                     {{ otp_ui.otp_field_input(attrs={"data-otp-idx": "2"}) }}
@@ -81,7 +79,7 @@
                 {% endcall %}
 
                 {% if error %}{{ field.field_error(error) }}{% endif %}
-                {% if info %}<p class="text-sm font-normal text-emerald-600 dark:text-emerald-500">{{ info }}</p>{% endif %}
+	                {% if info and info != "Enter your authenticator code." %}<p class="text-sm font-normal text-emerald-600 dark:text-emerald-500">{{ info }}</p>{% endif %}
                 <p id="resend-otp-status" class="hidden text-sm font-normal"></p>
 
                 {% call field.field(class="space-y-1") %}
