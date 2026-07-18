@@ -1072,38 +1072,41 @@
     if(el){ el.textContent = msg; el.hidden = false; }
   }
 
-  function render2faQR(uri, fallbackUrl){
-    var canvas = document.getElementById('dlg-2fa-qr-canvas');
-    if(!canvas) return;
-    canvas.innerHTML = '';
-    var dark = document.documentElement.classList.contains('dark');
-    var fg = dark ? '#fafafa' : '#18181b';
-    var bg = dark ? '#09090b' : '#ffffff';
-    if(uri && typeof QRCodeStyling !== 'undefined'){
-      try{
-        var qr = new QRCodeStyling({
-          width:196, height:196, type:'canvas', data:uri,
-          qrOptions:{errorCorrectionLevel:'M'},
-          dotsOptions:{color:fg, type:'rounded'},
-          backgroundOptions:{color:bg},
-          cornersSquareOptions:{type:'extra-rounded', color:fg},
-          cornersDotOptions:{color:fg}
-        });
-        qr.append(canvas);
-        return;
-      }catch(e){}
-    }
-    if(uri && typeof QRCode !== 'undefined'){
-      try{ new QRCode(canvas,{text:uri,width:196,height:196,colorDark:fg,colorLight:bg,correctLevel:QRCode.CorrectLevel.M}); return; }catch(e){}
-    }
-    if(fallbackUrl){
-      var img = document.createElement('img');
-      img.src = fallbackUrl;
-      img.alt = 'QR code';
-      img.style.cssText = 'width:240px;height:240px;border-radius:8px';
-      canvas.appendChild(img);
-      return;
-    }
+	  function render2faQR(uri, fallbackUrl){
+	    var canvas = document.getElementById('dlg-2fa-qr-canvas');
+	    if(!canvas) return;
+	    canvas.innerHTML = '';
+	    if(uri && typeof QRCodeStyling !== 'undefined'){
+	      try{
+	        var qr = new QRCodeStyling({
+	          width:200,
+	          height:200,
+	          type:'svg',
+	          data:uri,
+	          image:'/logo.webp',
+	          margin:6,
+	          qrOptions:{errorCorrectionLevel:'H'},
+	          imageOptions:{hideBackgroundDots:true,imageSize:0.16,margin:4,crossOrigin:'anonymous'},
+	          dotsOptions:{color:'#111827',type:'rounded'},
+	          backgroundOptions:{color:'#ffffff',round:0.08},
+	          cornersSquareOptions:{type:'extra-rounded',color:'#111827'},
+	          cornersDotOptions:{type:'dot',color:'#111827'}
+	        });
+	        qr.append(canvas);
+	        return;
+	      }catch(e){}
+	    }
+	    if(uri && typeof QRCode !== 'undefined'){
+	      try{ new QRCode(canvas,{text:uri,width:200,height:200,colorDark:'#111827',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.H}); return; }catch(e){}
+	    }
+	    if(fallbackUrl){
+	      var img = document.createElement('img');
+	      img.src = fallbackUrl;
+	      img.alt = 'QR code';
+	      img.style.cssText = 'width:200px;height:200px;border-radius:12px';
+	      canvas.appendChild(img);
+	      return;
+	    }
     canvas.textContent = 'QR unavailable';
   }
 

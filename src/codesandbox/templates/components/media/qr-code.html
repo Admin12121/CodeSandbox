@@ -1,5 +1,7 @@
 {% macro qr_box(id, class="", attrs={}) -%}
-<div id="{{ id }}" class="{{ cn('flex size-56 items-center justify-center rounded-2xl overflow-hidden bg-white dark:bg-zinc-950 p-3', class) }}" {{ html_attrs(**attrs) }}></div>
+<div class="{{ cn('relative grid size-56 place-items-center rounded-2xl border border-border/70 bg-background p-2 shadow-sm', class) }}" data-slot="qr-frame" {{ html_attrs(**attrs) }}>
+  <div id="{{ id }}" class="grid size-52 place-items-center overflow-hidden rounded-xl bg-white p-1 shadow-inner ring-1 ring-black/5"></div>
+</div>
 {%- endmacro %}
 
 {% macro qr_assets() -%}
