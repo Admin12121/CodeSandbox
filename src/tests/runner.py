@@ -19,6 +19,11 @@ from urllib.parse import urlparse
 from typing import Callable
 
 if os.name == "nt":
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8")
+
+if os.name == "nt":
     import msvcrt
 else:
     import select
@@ -87,7 +92,7 @@ def _getch() -> str:
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
-_SUITE_MODULES = [
+_INTEGRATION_SUITE_MODULES = [
     ("identity",      "tests.identity.test_auth"),
     ("organizations", "tests.organizations.test_orgs"),
     ("org_rbac",      "tests.organizations.test_rbac"),
@@ -112,7 +117,25 @@ _SUITE_MODULES = [
     ("security_nats_subjects", "tests.fleet.test_nats_subject_grants"),
 ]
 
+_E2E_SUITE_MODULES = [
+    ("user_lifecycle", "tests.e2e.test_user_lifecycle"),
+    ("rbac_lifecycle", "tests.e2e.test_rbac_lifecycle"),
+    ("template_lifecycle", "tests.e2e.test_template_lifecycle"),
+]
+
+# Existing callers use this name for the integration collection.
+_SUITE_MODULES = _INTEGRATION_SUITE_MODULES
+_ALL_SUITE_MODULES = [*_E2E_SUITE_MODULES, *_INTEGRATION_SUITE_MODULES]
+_SUITE_LABELS = {
+    "user_lifecycle": "User lifecycle",
+    "rbac_lifecycle": "RBAC lifecycle",
+    "template_lifecycle": "Template lifecycle",
+}
+
 _DOCKER_NETWORK_REQUIRED_SUITES = {
+    "user_lifecycle",
+    "rbac_lifecycle",
+    "template_lifecycle",
     "identity",
     "organizations",
     "org_rbac",
@@ -131,10 +154,10 @@ _DOCKER_NETWORK_REQUIRED_SUITES = {
 _APP_CONTEXT_REQUIRED_SUITES = set(_DOCKER_NETWORK_REQUIRED_SUITES)
 
 
-def _load_suites() -> dict[str, list]:
+def _load_suites(modules: list[tuple[str, str]] | None = None) -> dict[str, list]:
     result: dict[str, list] = {}
     errors: list[str] = []
-    for suite_name, mod_path in _SUITE_MODULES:
+    for suite_name, mod_path in modules or _SUITE_MODULES:
         try:
             mod = importlib.import_module(mod_path)
             result[suite_name] = getattr(mod, "TESTS", [])
@@ -152,13 +175,13 @@ def _header() -> None:
     print(f"  {_c(_BLD + _CYN, 'CodeSandbox Test Runner')}")
     print()
 
-def _selector(suites: dict[str, list]) -> str | None:
+def _selector(suites: dict[str, list], *, group_label: str) -> str | None:
     counts = [(k, len(v)) for k, v in suites.items()]
     all_count = sum(c for _, c in counts)
     options: list[tuple[str, int]] = [("All", all_count)] + counts
     if not sys.stdin.isatty():
         for index, (name, count) in enumerate(options):
-            print(f"  {index}. {name} [{count} tests]")
+            print(f"  {index}. {_SUITE_LABELS.get(name, name)} [{count} tests]")
         try:
             raw = input("  Select a test suite number: ").strip()
         except EOFError:
@@ -177,16 +200,16 @@ def _selector(suites: dict[str, list]) -> str | None:
     n_opts = len(options)
     _LINES = n_opts + 5
 
-    _name_col = max(len(n) for n, _ in options) + 2
+    _name_col = max(len(_SUITE_LABELS.get(n, n)) for n, _ in options) + 2
 
     def _draw(first: bool = False) -> None:
         if not first:
             sys.stdout.write(f"\033[{_LINES}A\033[J")
-        print(f"  {_c(_BLD, 'Select a test suite:')}")
+        print(f"  {_c(_BLD, f'Select a {group_label} test suite:')}")
         print()
         for i, (name, count) in enumerate(options):
             dot       = _c(_CYN, "●") if i == cursor else _c(_DIM, "○")
-            name_pad  = name.ljust(_name_col)        # pad before coloring
+            name_pad  = _SUITE_LABELS.get(name, name).ljust(_name_col)
             label     = _c(_BLD + _CYN, name_pad) if i == cursor else name_pad
             count_str = _c(_DIM, f"[{count:>3} tests]")
             print(f"  {dot} {label}{count_str}")
@@ -212,6 +235,67 @@ def _selector(suites: dict[str, list]) -> str | None:
             return "all" if cursor == 0 else options[cursor][0]
         elif key in ("q", "\x03", "ESC"):
             sys.stdout.write(f"\033[{_LINES}A\033[J")
+            sys.stdout.flush()
+            return None
+
+
+def _group_selector(suite_groups: dict[str, dict[str, list]]) -> str | None:
+    options = [
+        ("e2e", "E2E", sum(len(tests) for tests in suite_groups["e2e"].values())),
+        (
+            "integration",
+            "Integration tests",
+            sum(len(tests) for tests in suite_groups["integration"].values()),
+        ),
+    ]
+    if not sys.stdin.isatty():
+        for index, (_key, label, count) in enumerate(options):
+            print(f"  {index}. {label} [{count} tests]")
+        try:
+            raw = input("  Select a test type number: ").strip()
+        except EOFError:
+            raw = "0"
+        if raw.lower() in {"q", "quit", "exit"}:
+            return None
+        try:
+            selected_index = int(raw)
+        except ValueError:
+            selected_index = 0
+        if selected_index < 0 or selected_index >= len(options):
+            selected_index = 0
+        return options[selected_index][0]
+
+    cursor = 0
+    lines = len(options) + 4
+
+    def draw(first: bool = False) -> None:
+        if not first:
+            sys.stdout.write(f"\033[{lines}A\033[J")
+        print(f"  {_c(_BLD, 'Select a test type:')}")
+        print()
+        for index, (_key, label, count) in enumerate(options):
+            dot = _c(_CYN, "●") if index == cursor else _c(_DIM, "○")
+            display = _c(_BLD + _CYN, label) if index == cursor else label
+            print(f"  {dot} {display:<24}{_c(_DIM, f'[{count:>3} tests]')}")
+        print()
+        print(f"  {_c(_DIM, '↑↓ navigate   Enter select   q quit')}")
+        sys.stdout.flush()
+
+    draw(first=True)
+    while True:
+        key = _getch()
+        if key == "UP":
+            cursor = (cursor - 1) % len(options)
+            draw()
+        elif key == "DOWN":
+            cursor = (cursor + 1) % len(options)
+            draw()
+        elif key in ("\r", "\n"):
+            sys.stdout.write(f"\033[{lines}A\033[J")
+            sys.stdout.flush()
+            return options[cursor][0]
+        elif key in ("q", "\x03", "ESC"):
+            sys.stdout.write(f"\033[{lines}A\033[J")
             sys.stdout.flush()
             return None
 
@@ -307,7 +391,7 @@ def _skip_one(local_n: int, global_n: int, suite_name: str, test_case, reason: s
         error=reason,
     )
 
-def _print_table(results: list[_Result]) -> None:
+def _print_table(results: list[_Result]) -> int:
     name_col_w = max((len(r.name) for r in results), default=20) + 6
     name_col_w = max(name_col_w, 32)
 
@@ -351,6 +435,7 @@ def _print_table(results: list[_Result]) -> None:
     pcolor = _RED if failed else _DIM
     print(f"  {_c(pcolor, 'failed       ')}{failed}")
     print()
+    return failed
 
 def _service_target_from_url(raw_url: str, default_port: int) -> tuple[str, int] | None:
     try:
@@ -436,32 +521,81 @@ def _boot_app() -> bool:
 
     return ok
 
-def _selected_from_argv_or_env(suites: dict[str, list]) -> str | None:
-    raw = (sys.argv[1].strip() if len(sys.argv) > 1 else "") or os.environ.get("TEST_SUITE", "").strip()
-    if not raw:
+def _selected_from_argv_or_env(
+    suite_groups: dict[str, dict[str, list]],
+) -> tuple[str, str] | None:
+    args = [arg.strip() for arg in sys.argv[1:] if arg.strip()]
+    env_group = os.environ.get("TEST_GROUP", "").strip().lower()
+    env_suite = os.environ.get("TEST_SUITE", "").strip()
+    if not args and not env_group and not env_suite:
         return None
-    if raw.lower() in {"q", "quit", "exit"}:
-        return None
-    if raw.lower() == "all":
-        return "all"
-    if raw not in suites:
-        valid = ", ".join(["all", *suites.keys()])
-        raise SystemExit(f"Unknown test suite {raw!r}. Valid values: {valid}")
-    return raw
 
-def main() -> None:
+    raw_group = ""
+    raw_suite = ""
+    if args and args[0].lower() in suite_groups:
+        raw_group = args[0].lower()
+        raw_suite = args[1] if len(args) > 1 else "all"
+    elif args:
+        raw_suite = args[0]
+    else:
+        raw_group = env_group
+        raw_suite = env_suite or "all"
+
+    if raw_suite.lower() in {"q", "quit", "exit"}:
+        return ("cancel", "cancel")
+    if raw_group:
+        if raw_group not in suite_groups:
+            raise SystemExit("Unknown test type. Valid values: e2e, integration")
+        if raw_suite.lower() == "all":
+            return raw_group, "all"
+        if raw_suite not in suite_groups[raw_group]:
+            valid = ", ".join(["all", *suite_groups[raw_group].keys()])
+            raise SystemExit(
+                f"Unknown {raw_group} test suite {raw_suite!r}. Valid values: {valid}"
+            )
+        return raw_group, raw_suite
+
+    if raw_suite.lower() == "all":
+        return "integration", "all"
+    for group_name, suites in suite_groups.items():
+        if raw_suite in suites:
+            return group_name, raw_suite
+    valid = ", ".join(
+        ["e2e", "integration", "all", *suite_groups["e2e"], *suite_groups["integration"]]
+    )
+    raise SystemExit(f"Unknown test suite {raw_suite!r}. Valid values: {valid}")
+
+def main() -> int:
     _header()
 
     sys.stdout.write(f"  {_c(_DIM, 'Discovering tests...')}")
     sys.stdout.flush()
-    suites = _load_suites()
+    suite_groups = {
+        "e2e": _load_suites(_E2E_SUITE_MODULES),
+        "integration": _load_suites(_INTEGRATION_SUITE_MODULES),
+    }
     sys.stdout.write("\r\033[K")
     sys.stdout.flush()
 
-    selected = _selected_from_argv_or_env(suites) or _selector(suites)
+    explicit = _selected_from_argv_or_env(suite_groups)
+    if explicit == ("cancel", "cancel"):
+        print(f"  {_c(_DIM, 'Cancelled.')}\n")
+        return 0
+    if explicit is None:
+        group_name = _group_selector(suite_groups)
+        if group_name is None:
+            print(f"  {_c(_DIM, 'Cancelled.')}\n")
+            return 0
+        selected = _selector(
+            suite_groups[group_name],
+            group_label="E2E" if group_name == "e2e" else "Integration",
+        )
+    else:
+        group_name, selected = explicit
     if selected is None:
         print(f"  {_c(_DIM, 'Cancelled.')}\n")
-        return
+        return 0
+    suites = suite_groups[group_name]
 
     to_run: list[tuple[str, object]] = []
     if selected == "all":
@@ -474,7 +608,7 @@ def main() -> None:
 
     if not to_run:
         print(f"  {_c(_YLW, 'No tests found for selection.')} ({selected})\n")
-        return
+        return 1
 
     print()
     needs_docker_network = any(suite_name in _DOCKER_NETWORK_REQUIRED_SUITES for suite_name, _tc in to_run)
@@ -493,7 +627,7 @@ def main() -> None:
         if suite_name not in _DOCKER_NETWORK_REQUIRED_SUITES or docker_network_ok
     )
     if needs_app_context and not _boot_app():
-        return
+        return 1
 
     results: list[_Result] = []
     current_cat: str | None = None
@@ -516,8 +650,8 @@ def main() -> None:
             r = _run_one(local_n, global_n, tc)
         results.append(r)
 
-    _print_table(results)
+    return 1 if _print_table(results) else 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
