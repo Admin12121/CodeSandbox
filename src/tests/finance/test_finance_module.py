@@ -60,7 +60,7 @@ def _template():
     return template
 
 
-def _fixture_instance(ctx: TestContext, *, user, cost_hr: str = "1.0000", user_config: dict | None = None):
+def _fixture_instance(ctx: TestContext, *, user, cost_hr: str = "1.00", user_config: dict | None = None):
     from codesandbox.features.sandbox import repository as sandbox_repo
     from codesandbox.features.sandbox.models import BalanceTransaction
     from codesandbox.features.finance.models import UsageCharge
@@ -179,8 +179,8 @@ def test_finance_console_shapes_and_ledger_preview(ctx: TestContext) -> None:
 
     user = _make_user(ctx, "finconsole")
     _id_repo().update_user(str(user.id), email_verified=True)
-    _set_balance(str(user.id), "100.0000")
-    inst = _fixture_instance(ctx, user=user, cost_hr="3.0000")
+    _set_balance(str(user.id), "100.00")
+    inst = _fixture_instance(ctx, user=user, cost_hr="3.00")
     charge, tx, revenue, status = finance_service.create_usage_charge_for_instance(
         str(inst.id),
         runtime_seconds=3600,
@@ -188,13 +188,13 @@ def test_finance_console_shapes_and_ledger_preview(ctx: TestContext) -> None:
         description="console shape test",
     )
     assert charge is not None and tx is not None
-    assert revenue == Decimal("3.0000")
+    assert revenue == Decimal("3.00")
     assert status == "charged"
 
     today = datetime.now(timezone.utc).date().isoformat()
     overview = finance_service.dashboard(period="custom", start=today, end=today)
     assert "health" in overview
-    assert overview["health"]["net_revenue"]["raw"] == "3.0000"
+    assert overview["health"]["net_revenue"]["raw"] == "3.00"
     assert overview["template_contribution"]
     assert overview["recent_activity"]
 
@@ -294,8 +294,8 @@ def test_usage_charge_is_idempotent(ctx: TestContext) -> None:
     from codesandbox.features.sandbox.models import BalanceTransaction
 
     user = _admin_user()
-    _set_balance(str(user.id), "100.0000")
-    inst = _fixture_instance(ctx, user=user, cost_hr="2.0000")
+    _set_balance(str(user.id), "100.00")
+    inst = _fixture_instance(ctx, user=user, cost_hr="2.00")
 
     before = Decimal(str(sandbox_repo.get_balance("user", str(user.id)).amount))
     charge1, tx1, revenue1, status1 = finance_service.create_usage_charge_for_instance(
@@ -305,7 +305,7 @@ def test_usage_charge_is_idempotent(ctx: TestContext) -> None:
         description="finance usage test",
     )
     assert charge1 is not None and tx1 is not None
-    assert revenue1 == Decimal("2.0000")
+    assert revenue1 == Decimal("2.00")
     assert status1 == "charged"
 
     charge2, tx2, revenue2, status2 = finance_service.create_usage_charge_for_instance(
@@ -316,10 +316,10 @@ def test_usage_charge_is_idempotent(ctx: TestContext) -> None:
     )
     assert charge2.id == charge1.id
     assert tx2.id == tx1.id
-    assert revenue2 == Decimal("2.0000")
+    assert revenue2 == Decimal("2.00")
 
     after = Decimal(str(sandbox_repo.get_balance("user", str(user.id)).amount))
-    assert after == before - Decimal("2.0000")
+    assert after == before - Decimal("2.00")
     assert len(UsageCharge.objects.filter(instance_id=str(inst.id)).all()) == 1
     assert len(BalanceTransaction.objects.filter(idempotency_key=f"usage:{inst.id}").all()) == 1
 
@@ -330,7 +330,7 @@ def test_finance_admin_mutations_validate_entity(ctx: TestContext) -> None:
     result, error = finance_service.grant_credit(
         entity_type="user",
         entity_id="missing-user",
-        amount="1.0000",
+        amount="1.00",
         reason="should fail",
         actor_user_id=str(_admin_user().id),
     )
@@ -344,14 +344,14 @@ def test_coupon_limit_scope_and_expiry(ctx: TestContext) -> None:
 
     user = _make_user(ctx, "fincoupon")
     _id_repo().update_user(str(user.id), email_verified=True)
-    _set_balance(str(user.id), "100.0000")
+    _set_balance(str(user.id), "100.00")
     admin_id = str(_admin_user().id)
 
     coupon, error = finance_service.create_coupon(
         code=unique("save"),
         name="Scoped save",
         discount_type="fixed",
-        value="1.0000",
+        value="1.00",
         max_redemptions=None,
         per_entity_limit="1",
         applies_to_user_id=str(user.id),
@@ -375,7 +375,7 @@ def test_coupon_limit_scope_and_expiry(ctx: TestContext) -> None:
 
     ctx.defer(cleanup_coupon)
 
-    first = _fixture_instance(ctx, user=user, cost_hr="2.0000", user_config={"coupon_code": coupon["code"]})
+    first = _fixture_instance(ctx, user=user, cost_hr="2.00", user_config={"coupon_code": coupon["code"]})
     charge1, _tx1, revenue1, _status1 = finance_service.create_usage_charge_for_instance(
         str(first.id),
         runtime_seconds=3600,
@@ -383,10 +383,10 @@ def test_coupon_limit_scope_and_expiry(ctx: TestContext) -> None:
         description="coupon first use",
     )
     assert charge1 is not None
-    assert Decimal(str(charge1.discount_amount)) == Decimal("1.0000")
-    assert revenue1 == Decimal("1.0000")
+    assert Decimal(str(charge1.discount_amount)) == Decimal("1.00")
+    assert revenue1 == Decimal("1.00")
 
-    second = _fixture_instance(ctx, user=user, cost_hr="2.0000", user_config={"coupon_code": coupon["code"]})
+    second = _fixture_instance(ctx, user=user, cost_hr="2.00", user_config={"coupon_code": coupon["code"]})
     charge2, _tx2, revenue2, _status2 = finance_service.create_usage_charge_for_instance(
         str(second.id),
         runtime_seconds=3600,
@@ -395,13 +395,13 @@ def test_coupon_limit_scope_and_expiry(ctx: TestContext) -> None:
     )
     assert charge2 is not None
     assert Decimal(str(charge2.discount_amount)) == Decimal("0")
-    assert revenue2 == Decimal("2.0000")
+    assert revenue2 == Decimal("2.00")
 
     expired, error = finance_service.create_coupon(
         code=unique("old"),
         name="Expired",
         discount_type="fixed",
-        value="1.0000",
+        value="1.00",
         expires_at=(datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat(),
         actor_user_id=admin_id,
     )
@@ -422,7 +422,7 @@ def test_coupon_limit_scope_and_expiry(ctx: TestContext) -> None:
                 pass
 
     ctx.defer(cleanup_expired)
-    third = _fixture_instance(ctx, user=user, cost_hr="2.0000", user_config={"coupon_code": expired["code"]})
+    third = _fixture_instance(ctx, user=user, cost_hr="2.00", user_config={"coupon_code": expired["code"]})
     charge3, _tx3, revenue3, _status3 = finance_service.create_usage_charge_for_instance(
         str(third.id),
         runtime_seconds=3600,
@@ -431,7 +431,7 @@ def test_coupon_limit_scope_and_expiry(ctx: TestContext) -> None:
     )
     assert charge3 is not None
     assert Decimal(str(charge3.discount_amount)) == Decimal("0")
-    assert revenue3 == Decimal("2.0000")
+    assert revenue3 == Decimal("2.00")
 
 
 def test_refunds_and_invoice_totals(ctx: TestContext) -> None:
@@ -440,8 +440,8 @@ def test_refunds_and_invoice_totals(ctx: TestContext) -> None:
 
     user = _make_user(ctx, "finrefund")
     _id_repo().update_user(str(user.id), email_verified=True)
-    _set_balance(str(user.id), "100.0000")
-    inst = _fixture_instance(ctx, user=user, cost_hr="4.0000")
+    _set_balance(str(user.id), "100.00")
+    inst = _fixture_instance(ctx, user=user, cost_hr="4.00")
 
     charge, _tx, revenue, _status = finance_service.create_usage_charge_for_instance(
         str(inst.id),
@@ -450,21 +450,21 @@ def test_refunds_and_invoice_totals(ctx: TestContext) -> None:
         description="refund and invoice test",
     )
     assert charge is not None
-    assert revenue == Decimal("4.0000")
+    assert revenue == Decimal("4.00")
 
     refunded, error = finance_service.refund_usage_charge(
         charge_id=str(charge.id),
-        amount="1.0000",
+        amount="1.00",
         reason="partial",
         actor_user_id=str(_admin_user().id),
     )
     assert error is None, error
     assert refunded is not None
-    assert Decimal(str(refunded["refunded_amount"])) == Decimal("1.0000")
+    assert Decimal(str(refunded["refunded_amount"])) == Decimal("1.00")
 
     over_refund, error = finance_service.refund_usage_charge(
         charge_id=str(charge.id),
-        amount="4.0000",
+        amount="4.00",
         reason="too much",
         actor_user_id=str(_admin_user().id),
     )
@@ -473,7 +473,7 @@ def test_refunds_and_invoice_totals(ctx: TestContext) -> None:
 
     refunded, error = finance_service.refund_usage_charge(
         charge_id=str(charge.id),
-        amount="3.0000",
+        amount="3.00",
         reason="rest",
         actor_user_id=str(_admin_user().id),
     )
@@ -493,9 +493,9 @@ def test_refunds_and_invoice_totals(ctx: TestContext) -> None:
     assert error is None, error
     assert invoice is not None
     ctx.defer(lambda iid=invoice["id"]: Invoice.objects.filter(id=iid).first() and Invoice.objects.filter(id=iid).first().delete())
-    assert Decimal(str(invoice["subtotal"])) == Decimal("4.0000")
-    assert Decimal(str(invoice["refund_total"])) == Decimal("4.0000")
-    assert Decimal(str(invoice["total"])) == Decimal("0.0000")
+    assert Decimal(str(invoice["subtotal"])) == Decimal("4.00")
+    assert Decimal(str(invoice["refund_total"])) == Decimal("4.00")
+    assert Decimal(str(invoice["total"])) == Decimal("0.00")
 
 
 def test_credit_grant_creates_ledger_transaction(ctx: TestContext) -> None:
@@ -505,12 +505,12 @@ def test_credit_grant_creates_ledger_transaction(ctx: TestContext) -> None:
 
     user = _make_user(ctx, "fincredit")
     _id_repo().update_user(str(user.id), email_verified=True)
-    _set_balance(str(user.id), "0.0000")
+    _set_balance(str(user.id), "0.00")
 
     grant, error = finance_service.grant_credit(
         entity_type="user",
         entity_id=str(user.id),
-        amount="7.5000",
+        amount="7.50",
         reason="test grant",
         actor_user_id=str(_admin_user().id),
     )
@@ -519,9 +519,9 @@ def test_credit_grant_creates_ledger_transaction(ctx: TestContext) -> None:
     ctx.defer(lambda gid=grant["id"]: CreditGrant.objects.filter(id=gid).first() and CreditGrant.objects.filter(id=gid).first().delete())
 
     balance = sandbox_repo.get_balance("user", str(user.id))
-    assert Decimal(str(balance.amount)) == Decimal("7.5000")
+    assert Decimal(str(balance.amount)) == Decimal("7.50")
     txs = sandbox_repo.list_transactions("user", str(user.id), limit=10)
-    assert any(tx.type == "credit_grant" and Decimal(str(tx.amount)) == Decimal("7.5000") for tx in txs)
+    assert any(tx.type == "credit_grant" and Decimal(str(tx.amount)) == Decimal("7.50") for tx in txs)
 
 
 def test_csv_export_neutralizes_formula_injection(ctx: TestContext) -> None:

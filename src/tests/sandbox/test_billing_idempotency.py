@@ -36,23 +36,23 @@ def test_charge_instance_balance_is_idempotent(ctx: TestContext) -> None:
     admin, instance = _fixture_instance(ctx)
 
     balance = sandbox_repository.get_or_create_balance("user", str(admin.id))
-    balance.amount = Decimal("100.0000")
+    balance.amount = Decimal("100.00")
     balance.updated_at = balance.updated_at
     balance.save()
     starting_amount = Decimal(str(sandbox_repository.get_balance("user", str(admin.id)).amount))
 
     tx1, charged1, status1 = sandbox_repository.charge_instance_balance(
-        str(instance.id), Decimal("5.0000"), "usage test"
+        str(instance.id), Decimal("5.00"), "usage test"
     )
     assert tx1 is not None
-    assert charged1 == Decimal("5.0000")
+    assert charged1 == Decimal("5.00")
 
     after_first = Decimal(str(sandbox_repository.get_balance("user", str(admin.id)).amount))
-    assert after_first == starting_amount - Decimal("5.0000")
+    assert after_first == starting_amount - Decimal("5.00")
 
     # Simulate a retried finalization callback for the exact same instance.
     tx2, charged2, status2 = sandbox_repository.charge_instance_balance(
-        str(instance.id), Decimal("5.0000"), "usage test retry"
+        str(instance.id), Decimal("5.00"), "usage test retry"
     )
     assert tx2 is not None
     assert tx2.id == tx1.id  # same row returned, not a new charge

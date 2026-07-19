@@ -25,7 +25,7 @@ from . import repository
 from .models import Coupon, CreditGrant, FinanceAdjustment, UsageCharge
 
 
-MONEY = Decimal("0.0001")
+MONEY = Decimal("0.01")
 
 
 def _now() -> datetime:
@@ -87,7 +87,7 @@ def _int_to_words(n: int) -> str:
 
 
 def _amount_in_words(value, currency: str = "GBP") -> str:
-    amount = abs(_decimal(value))
+    amount = Decimal(f"{abs(_decimal(value)):.2f}")
     whole = int(amount)
     cents = int((amount - whole) * 100)
     words = _int_to_words(whole).capitalize()

@@ -75,10 +75,10 @@ def _parse_decimal(value: str) -> Decimal | None:
 def _money(value) -> Decimal:
     try:
         return max(Decimal("0"), Decimal(str(value or "0"))).quantize(
-            Decimal("0.0001"), rounding=ROUND_UP
+            Decimal("0.01"), rounding=ROUND_UP
         )
     except (InvalidOperation, ValueError, TypeError):
-        return Decimal("0.0000")
+        return Decimal("0.00")
 
 
 def _money_display(value) -> str:
@@ -89,7 +89,7 @@ def _minimum_start_amount(effective_plan: EffectivePlan, workspace_type: str) ->
     tier = effective_plan.tier(workspace_type)
     rate = _money(tier.get("cost_hr"))
     if rate <= 0:
-        return Decimal("0.0000")
+        return Decimal("0.00")
     seconds = max(
         _BILLING_RESERVE_SECONDS,
         int(effective_plan.min_billable_minutes or 0) * 60,
@@ -2795,7 +2795,7 @@ def start_instance(
         Decimal(str(runtime_policy["cost_hr"]))
         * Decimal(billing_reserve_sec)
         / Decimal(3600)
-    ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+    ).quantize(Decimal("0.01"), rounding=ROUND_UP)
     now = datetime.now(timezone.utc)
     reserve_worker_capacity(
         worker_id,
@@ -3415,7 +3415,7 @@ def handle_worker_callback(
                 Decimal(str(inst.cost_hr_snapshot or "0"))
                 * Decimal(reserve_seconds)
                 / Decimal(3600)
-            ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+            ).quantize(Decimal("0.01"), rounding=ROUND_UP)
             if not repository.reserve_instance_balance(instance_id, desired):
                 repository.transition_instance_status(
                     instance_id,

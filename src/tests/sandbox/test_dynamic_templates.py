@@ -44,8 +44,8 @@ def _plan() -> SimpleNamespace:
     return SimpleNamespace(
         id="basic",
         name="Basic",
-        ind_vcpu=1, ind_ram_gb=1, ind_disk_gb=10, ind_cost_hr=Decimal("0.1000"),
-        org_vcpu=2, org_ram_gb=2, org_disk_gb=20, org_cost_hr=Decimal("0.1500"),
+        ind_vcpu=1, ind_ram_gb=1, ind_disk_gb=10, ind_cost_hr=Decimal("0.10"),
+        org_vcpu=2, org_ram_gb=2, org_disk_gb=20, org_cost_hr=Decimal("0.15"),
         min_billable_minutes=1,
         allowed_network_modes='["disabled","restricted"]',
         is_active=True,

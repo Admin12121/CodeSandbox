@@ -44,11 +44,11 @@ def _plan(**overrides):
         "ind_vcpu": 1,
         "ind_ram_gb": 1,
         "ind_disk_gb": 10,
-        "ind_cost_hr": Decimal("0.1000"),
+        "ind_cost_hr": Decimal("0.10"),
         "org_vcpu": 2,
         "org_ram_gb": 2,
         "org_disk_gb": 20,
-        "org_cost_hr": Decimal("0.1500"),
+        "org_cost_hr": Decimal("0.15"),
         "min_billable_minutes": 1,
         "allowed_network_modes": '["disabled","restricted"]',
         "is_active": True,
@@ -88,11 +88,11 @@ def test_effective_plan_uses_global_plan_resources_only(ctx: TestContext) -> Non
             ind_vcpu=3,
             ind_ram_gb=4,
             ind_disk_gb=30,
-            ind_cost_hr=Decimal("0.2500"),
+            ind_cost_hr=Decimal("0.25"),
             org_vcpu=6,
             org_ram_gb=8,
             org_disk_gb=60,
-            org_cost_hr=Decimal("0.4000"),
+            org_cost_hr=Decimal("0.40"),
             max_timeout_hr=6,
             network_mode="restricted",
             min_billable_minutes=5,
@@ -105,11 +105,11 @@ def test_effective_plan_uses_global_plan_resources_only(ctx: TestContext) -> Non
     assert effective.ind_vcpu == 1
     assert effective.ind_ram_gb == 1
     assert effective.ind_disk_gb == 10
-    assert effective.ind_cost_hr == Decimal("0.1000")
+    assert effective.ind_cost_hr == Decimal("0.10")
     assert effective.org_vcpu == 2
     assert effective.org_ram_gb == 2
     assert effective.org_disk_gb == 20
-    assert effective.org_cost_hr == Decimal("0.1500")
+    assert effective.org_cost_hr == Decimal("0.15")
     assert effective.max_timeout_hr == 2
     assert effective.network_mode == "restricted"
     assert effective.min_billable_minutes == 1

@@ -520,11 +520,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -925,11 +925,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -1023,11 +1023,11 @@
         },
         "reserved_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -1293,11 +1293,11 @@
         },
         "redeemed_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -1498,11 +1498,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -1810,11 +1810,11 @@
         },
         "remaining_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -1931,11 +1931,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -2838,11 +2838,11 @@
         },
         "value": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -2961,11 +2961,11 @@
         },
         "credit_total": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3011,11 +3011,11 @@
         },
         "discount_total": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3229,11 +3229,11 @@
         },
         "refund_total": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3279,11 +3279,11 @@
         },
         "subtotal": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3305,11 +3305,11 @@
         },
         "total": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -7979,11 +7979,11 @@
         },
         "billing_reserved_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -8029,11 +8029,11 @@
         },
         "charged_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -8079,11 +8079,11 @@
         },
         "cost_hr_snapshot": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -9049,11 +9049,11 @@
         },
         "ind_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 10,
@@ -9219,11 +9219,11 @@
         },
         "org_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 10,
@@ -9496,11 +9496,11 @@
         },
         "ind_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 10,
@@ -9690,11 +9690,11 @@
         },
         "org_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 10,
@@ -11408,11 +11408,11 @@
         },
         "charge_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -11482,11 +11482,11 @@
         },
         "credit_amount_gbp": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -12225,11 +12225,11 @@
         },
         "cost_hr_snapshot": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12299,11 +12299,11 @@
         },
         "credit_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12349,11 +12349,11 @@
         },
         "discount_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12423,11 +12423,11 @@
         },
         "final_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12449,11 +12449,11 @@
         },
         "gross_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12689,11 +12689,11 @@
         },
         "refunded_amount": {
           "auto_increment": false,
-          "decimal_places": 4,
+          "decimal_places": 2,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 4,
+            "decimal_places": 2,
             "default": "0.00",
             "index": false,
             "max_digits": 12,

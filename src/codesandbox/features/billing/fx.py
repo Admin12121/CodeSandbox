@@ -135,4 +135,4 @@ def npr_to_gbp(amount_npr: Decimal) -> Decimal:
     rate = get_gbp_npr_rate()
     if rate <= 0:
         raise RuntimeError("Invalid GBP/NPR rate")
-    return (amount_npr / rate).quantize(Decimal("0.0001"))
+    return (amount_npr / rate).quantize(Decimal("0.01"))

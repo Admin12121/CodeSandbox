@@ -98,13 +98,13 @@ class SandboxPlan(Model):
     ind_vcpu = IntegerField(default=1)
     ind_ram_gb = IntegerField(default=1)
     ind_disk_gb = IntegerField(default=10)
-    ind_cost_hr = DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.00"))
+    ind_cost_hr = DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
 
     # Org tier
     org_vcpu = IntegerField(default=2)
     org_ram_gb = IntegerField(default=2)
     org_disk_gb = IntegerField(default=20)
-    org_cost_hr = DecimalField(max_digits=10, decimal_places=4, default=Decimal("0.00"))
+    org_cost_hr = DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
 
     min_billable_minutes = IntegerField(default=1)
     allowed_network_modes = TextField(default='["disabled","restricted"]')
@@ -157,11 +157,11 @@ class SandboxInstance(Model):
     allocated_ram_gb = IntegerField(nullable=True)
     allocated_disk_gb = IntegerField(nullable=True)
     effective_network_mode = StringField(max_length=40, nullable=True)
-    cost_hr_snapshot = DecimalField(max_digits=12, decimal_places=4, nullable=True)
+    cost_hr_snapshot = DecimalField(max_digits=12, decimal_places=2, nullable=True)
     billing_currency = StringField(max_length=3, default="GBP")
     billing_status = StringField(max_length=20, default="unbilled")
-    charged_amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
-    billing_reserved_amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
+    charged_amount = DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    billing_reserved_amount = DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     min_billable_sec = IntegerField(default=0)
 
     # Timing + billing
@@ -236,8 +236,8 @@ class Balance(Model):
     id = StringField(primary_key=True, max_length=36)
     entity_type = StringField(max_length=10)  # user|org
     entity_id = StringField(max_length=36)
-    amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
-    reserved_amount = DecimalField(max_digits=12, decimal_places=4, default=Decimal("0.00"))
+    amount = DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    reserved_amount = DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
     updated_at = DateTimeField(nullable=True)
 
     class Meta:
@@ -250,7 +250,7 @@ class BalanceTransaction(Model):
     entity_type = StringField(max_length=10)  # user|org
     entity_id = StringField(max_length=36)
     type = StringField(max_length=30)          # topup|usage_charge|refund|adjustment|failed_payment
-    amount = DecimalField(max_digits=12, decimal_places=4)
+    amount = DecimalField(max_digits=12, decimal_places=2)
     instance_id = ForeignKey(to=SandboxInstance, on_delete="SET NULL", nullable=True)
     topup_intent_id = ForeignKey(to="TopupIntent", on_delete="SET NULL", nullable=True)
     provider = StringField(max_length=30, nullable=True)
@@ -283,8 +283,8 @@ class TopupIntent(Model):
     # amount so the ledger entry and the receipt agree with what the user
     # was actually charged.
     charge_currency = StringField(max_length=3)   # GBP|NPR
-    charge_amount = DecimalField(max_digits=12, decimal_places=4)
-    credit_amount_gbp = DecimalField(max_digits=12, decimal_places=4, nullable=True)
+    charge_amount = DecimalField(max_digits=12, decimal_places=2)
+    credit_amount_gbp = DecimalField(max_digits=12, decimal_places=2, nullable=True)
     fx_rate = DecimalField(max_digits=12, decimal_places=6, nullable=True)
     external_ref = StringField(max_length=120, unique=True)  # Stripe session id | eSewa transaction_uuid
     idempotency_key = StringField(max_length=255, nullable=True, unique=True)
@@ -343,13 +343,13 @@ class SandboxTemplatePlan(Model):
     ind_vcpu = IntegerField(nullable=True)
     ind_ram_gb = IntegerField(nullable=True)
     ind_disk_gb = IntegerField(nullable=True)
-    ind_cost_hr = DecimalField(max_digits=10, decimal_places=4, nullable=True)
+    ind_cost_hr = DecimalField(max_digits=10, decimal_places=2, nullable=True)
 
     # Deprecated legacy override columns.
     org_vcpu = IntegerField(nullable=True)
     org_ram_gb = IntegerField(nullable=True)
     org_disk_gb = IntegerField(nullable=True)
-    org_cost_hr = DecimalField(max_digits=10, decimal_places=4, nullable=True)
+    org_cost_hr = DecimalField(max_digits=10, decimal_places=2, nullable=True)
 
     max_timeout_hr = IntegerField(nullable=True)
     network_mode = StringField(max_length=40, nullable=True)
