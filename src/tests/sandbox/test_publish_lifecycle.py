@@ -135,7 +135,7 @@ def test_config_tab_change_to_unrelated_field_does_not_force_retest(ctx: TestCon
     template = _fixture_template(ctx)
     sandbox_repository.update_template(str(template.id), last_test_status="passed", status="active")
 
-    new_config = json.dumps({"runtime.json": json.dumps({"required_args": ["--safe"]})})
+    new_config = json.dumps({"runtime.json": json.dumps({"notes": "operator note"})})
     save_template_config(str(template.id), new_config)
 
     refreshed = sandbox_repository.get_template(str(template.id))

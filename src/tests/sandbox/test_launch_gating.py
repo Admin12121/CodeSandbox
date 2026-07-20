@@ -133,7 +133,7 @@ def test_desktop_gui_publish_requires_gui_config(ctx: TestContext) -> None:
     from codesandbox.features.sandbox.service import validate_ui_mode_config
 
     error = validate_ui_mode_config(
-        runtime_class="container",
+        runtime_class="microvm",
         allowed_ui_modes=["desktop_gui"],
         default_ui_mode="desktop_gui",
         default_command="",
@@ -143,7 +143,7 @@ def test_desktop_gui_publish_requires_gui_config(ctx: TestContext) -> None:
     assert error is not None and "gui" in error.lower()
 
     ok = validate_ui_mode_config(
-        runtime_class="container",
+        runtime_class="microvm",
         allowed_ui_modes=["desktop_gui"],
         default_ui_mode="desktop_gui",
         default_command="",
@@ -157,7 +157,7 @@ def test_android_ui_publish_requires_android_emulator_runtime_class(ctx: TestCon
     from codesandbox.features.sandbox.service import validate_ui_mode_config
 
     error = validate_ui_mode_config(
-        runtime_class="container",
+        runtime_class="fullvm",
         allowed_ui_modes=["android_ui"],
         default_ui_mode="android_ui",
         default_command="",

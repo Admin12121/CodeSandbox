@@ -77,13 +77,23 @@ def test_reserve_and_release_capacity(ctx: TestContext) -> None:
         total_vcpu=4, total_ram_gb=8, total_disk_gb=50,
     )
 
-    service.reserve_worker_capacity(worker_id, vcpu=2, ram_gb=4)
+    service.reserve_worker_capacity(worker_id, vcpu=2, ram_gb=4, disk_gb=10)
     node = repository.get_worker_node(worker_id)
-    assert node.used_vcpu == 2 and node.used_ram_gb == 4 and node.running_instances == 1
+    assert (
+        node.used_vcpu == 2
+        and node.used_ram_gb == 4
+        and node.used_disk_gb == 10
+        and node.running_instances == 1
+    )
 
-    service.release_worker_capacity(worker_id, vcpu=2, ram_gb=4)
+    service.release_worker_capacity(worker_id, vcpu=2, ram_gb=4, disk_gb=10)
     node = repository.get_worker_node(worker_id)
-    assert node.used_vcpu == 0 and node.used_ram_gb == 0 and node.running_instances == 0
+    assert (
+        node.used_vcpu == 0
+        and node.used_ram_gb == 0
+        and node.used_disk_gb == 0
+        and node.running_instances == 0
+    )
 
 
 def test_stale_worker_marked_offline(ctx: TestContext) -> None:
@@ -114,12 +124,13 @@ def test_worker_instance_runtime_upsert(ctx: TestContext) -> None:
     from codesandbox.features.identity.models import User
     from codesandbox.features.sandbox import repository as sandbox_repository
     from codesandbox.features.worker import repository
+    from seeds.sandbox_templates import GOD_TEAR_SLUG
 
     # WorkerInstanceRuntime.instance_id is a real FK — needs a real
     # SandboxInstance row, so reuse the seeded admin user/template rather
     # than standing up a whole new template just for this.
     admin = User.objects.filter(email="admin@codesandbox.dev").first()
-    template = sandbox_repository.get_template_by_slug("reverse-decompile")
+    template = sandbox_repository.get_template_by_slug(GOD_TEAR_SLUG)
     assert admin is not None and template is not None, "expected seed.py fixtures to exist"
 
     instance = sandbox_repository.create_instance(

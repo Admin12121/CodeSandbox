@@ -2503,7 +2503,11 @@ def get_instance_ui_context(
                 for choice in _ui_workflow_choices(graph, current_node, instance, evidence)
             }
             requested = ui_workflow_node_by_id(graph, requested_node_id)
-            if requested is not None and str(requested.get("id")) in permitted_targets:
+            requested_id = str((requested or {}).get("id") or "")
+            start_node_id = str((start_node or {}).get("id") or "")
+            if requested is not None and (
+                requested_id in permitted_targets or requested_id == start_node_id
+            ):
                 ui_workflow_node = requested
         if ui_workflow_node and str(ui_workflow_node.get("id")) != str(persisted_node_id or ""):
             state = dict(persisted_config.get("_ui_state") or {})

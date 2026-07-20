@@ -520,11 +520,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -925,11 +925,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -1023,11 +1023,11 @@
         },
         "reserved_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -1293,11 +1293,11 @@
         },
         "redeemed_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -1498,11 +1498,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -1810,11 +1810,11 @@
         },
         "remaining_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -1931,11 +1931,11 @@
       "columns": {
         "amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -2838,11 +2838,11 @@
         },
         "value": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -2961,11 +2961,11 @@
         },
         "credit_total": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3011,11 +3011,11 @@
         },
         "discount_total": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3229,11 +3229,11 @@
         },
         "refund_total": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3279,11 +3279,11 @@
         },
         "subtotal": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3305,11 +3305,11 @@
         },
         "total": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -3354,6 +3354,30 @@
     },
     "instance_requests": {
       "columns": {
+        "allocation_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": 36,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": true,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "allocation_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
         "created_at": {
           "auto_increment": false,
           "decimal_places": null,
@@ -3913,6 +3937,13 @@
             "instance_id"
           ],
           "name": "idx_instance_requests_instance_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "allocation_id"
+          ],
+          "name": "idx_instance_requests_allocation_id",
           "unique": false
         }
       ],
@@ -5319,6 +5350,517 @@
       ],
       "model": "OrganizationRole",
       "name": "organization_roles"
+    },
+    "organization_sandbox_allocations": {
+      "columns": {
+        "access_scope": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "pool",
+          "field": {
+            "auto_increment": false,
+            "default": "pool",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "access_scope",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "assigned_to_user_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "org_sandbox_allocations",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "org_sandbox_allocations",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "assigned_to_user_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "created_by_user_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "created_org_sandbox_allocations",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": true,
+            "on_delete": "SET NULL",
+            "primary_key": false,
+            "related_name": "created_org_sandbox_allocations",
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "UUIDField",
+              "unique": false
+            },
+            "to": "User",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_by_user_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "max_session_minutes": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "max_session_minutes",
+          "nullable": true,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "max_starts_per_member": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "max_starts_per_member",
+          "nullable": true,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "org_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "org_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "plan_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 40,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 40,
+          "name": "plan_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "status": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "active",
+          "field": {
+            "auto_increment": false,
+            "default": "active",
+            "index": false,
+            "max_length": 20,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "template_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "RESTRICT",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxTemplate",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "RESTRICT",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "SandboxTemplate",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "template_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "updated_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "updated_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "org_id",
+          "name": "fk_organization_sandbox_allocations_org_id",
+          "on_delete": "CASCADE",
+          "to_column": "id",
+          "to_table": "organizations"
+        },
+        {
+          "column": "template_id",
+          "name": "fk_organization_sandbox_allocations_template_id",
+          "on_delete": "RESTRICT",
+          "to_column": "id",
+          "to_table": "sandbox_templates"
+        },
+        {
+          "column": "assigned_to_user_id",
+          "name": "fk_organization_sandbox_allocations_assigned_to_user_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        },
+        {
+          "column": "created_by_user_id",
+          "name": "fk_organization_sandbox_allocations_created_by_user_id",
+          "on_delete": "SET NULL",
+          "to_column": "id",
+          "to_table": "users"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "org_id"
+          ],
+          "name": "idx_organization_sandbox_allocations_org_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "template_id"
+          ],
+          "name": "idx_organization_sandbox_allocations_template_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "assigned_to_user_id"
+          ],
+          "name": "idx_organization_sandbox_allocations_assigned_to_user_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "created_by_user_id"
+          ],
+          "name": "idx_organization_sandbox_allocations_created_by_user_id",
+          "unique": false
+        },
+        {
+          "columns": [
+            "org_id",
+            "access_scope",
+            "status"
+          ],
+          "name": "idx_org_sandbox_allocations_org_scope",
+          "unique": false
+        },
+        {
+          "columns": [
+            "assigned_to_user_id",
+            "status"
+          ],
+          "name": "idx_org_sandbox_allocations_assignee",
+          "unique": false
+        }
+      ],
+      "model": "OrganizationSandboxAllocation",
+      "name": "organization_sandbox_allocations"
     },
     "organizations": {
       "columns": {
@@ -7728,6 +8270,30 @@
           "type": "IntegerField",
           "unique": false
         },
+        "allocation_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": 36,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": true,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "allocation_id",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
         "artifact_prefix": {
           "auto_increment": false,
           "decimal_places": null,
@@ -7979,11 +8545,11 @@
         },
         "billing_reserved_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -8029,11 +8595,11 @@
         },
         "charged_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -8079,11 +8645,11 @@
         },
         "cost_hr_snapshot": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -8184,6 +8750,30 @@
           "nullable": true,
           "primary_key": false,
           "type": "ForeignKey",
+          "unique": false
+        },
+        "deleted_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "deleted_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
           "unique": false
         },
         "effective_network_mode": {
@@ -8974,6 +9564,13 @@
         },
         {
           "columns": [
+            "allocation_id"
+          ],
+          "name": "idx_sandbox_instances_allocation_id",
+          "unique": false
+        },
+        {
+          "columns": [
             "created_by_user_id"
           ],
           "name": "idx_sandbox_instances_created_by_user_id",
@@ -9049,11 +9646,11 @@
         },
         "ind_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 10,
@@ -9219,11 +9816,11 @@
         },
         "org_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 10,
@@ -9496,11 +10093,11 @@
         },
         "ind_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 10,
@@ -9690,11 +10287,11 @@
         },
         "org_cost_hr": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 10,
@@ -10251,10 +10848,10 @@
         "input_mount_path": {
           "auto_increment": false,
           "decimal_places": null,
-          "default": "/input",
+          "default": "",
           "field": {
             "auto_increment": false,
-            "default": "/input",
+            "default": "",
             "index": false,
             "max_length": 255,
             "nullable": false,
@@ -10515,10 +11112,10 @@
         "output_mount_path": {
           "auto_increment": false,
           "decimal_places": null,
-          "default": "/output",
+          "default": "",
           "field": {
             "auto_increment": false,
-            "default": "/output",
+            "default": "",
             "index": false,
             "max_length": 255,
             "nullable": false,
@@ -11408,11 +12005,11 @@
         },
         "charge_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -11482,11 +12079,11 @@
         },
         "credit_amount_gbp": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": null,
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": null,
             "index": false,
             "max_digits": 12,
@@ -12225,11 +12822,11 @@
         },
         "cost_hr_snapshot": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12299,11 +12896,11 @@
         },
         "credit_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12349,11 +12946,11 @@
         },
         "discount_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12423,11 +13020,11 @@
         },
         "final_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12449,11 +13046,11 @@
         },
         "gross_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -12689,11 +13286,11 @@
         },
         "refunded_amount": {
           "auto_increment": false,
-          "decimal_places": 2,
+          "decimal_places": 4,
           "default": "0.00",
           "field": {
             "auto_increment": false,
-            "decimal_places": 2,
+            "decimal_places": 4,
             "default": "0.00",
             "index": false,
             "max_digits": 12,
@@ -13296,6 +13893,54 @@
     },
     "users": {
       "columns": {
+        "auth_failure_streak": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": 0,
+          "field": {
+            "auto_increment": false,
+            "default": 0,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "auth_failure_streak",
+          "nullable": false,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "auth_locked_until": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "auth_locked_until",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
         "avatar_url": {
           "auto_increment": false,
           "decimal_places": null,
@@ -13462,6 +14107,54 @@
           "nullable": true,
           "primary_key": false,
           "type": "DateTimeField",
+          "unique": false
+        },
+        "last_login_ip": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 45,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 45,
+          "name": "last_login_ip",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "last_login_ua_hash": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 64,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 64,
+          "name": "last_login_ua_hash",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
           "unique": false
         },
         "name": {
@@ -14561,6 +15254,30 @@
           "nullable": true,
           "primary_key": false,
           "type": "DateTimeField",
+          "unique": false
+        },
+        "used_disk_gb": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": 0,
+          "field": {
+            "auto_increment": false,
+            "default": 0,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "used_disk_gb",
+          "nullable": false,
+          "primary_key": false,
+          "type": "IntegerField",
           "unique": false
         },
         "used_ram_gb": {

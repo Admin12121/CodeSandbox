@@ -54,8 +54,9 @@ def _admin_user():
 
 def _template():
     from codesandbox.features.sandbox import repository as sandbox_repo
+    from seeds.sandbox_templates import GOD_TEAR_SLUG
 
-    template = sandbox_repo.get_template_by_slug("reverse-decompile")
+    template = sandbox_repo.get_template_by_slug(GOD_TEAR_SLUG)
     assert template is not None, "expected seed.py fixtures to exist"
     return template
 

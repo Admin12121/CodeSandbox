@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import socket
 import sys
@@ -147,11 +148,14 @@ _DOCKER_NETWORK_REQUIRED_SUITES = {
     "sandbox_test_launch",
     "sandbox_ui_workflow",
     "finance",
+    "worker",
     "worker_routing",
     "worker_registry",
 }
 
 _APP_CONTEXT_REQUIRED_SUITES = set(_DOCKER_NETWORK_REQUIRED_SUITES)
+_RESULT_JSON_FLAG = "--result-json"
+_RESULT_JSON_MARKER = "__CODESANDBOX_TEST_REPORT__="
 
 
 def _load_suites(modules: list[tuple[str, str]] | None = None) -> dict[str, list]:
@@ -566,6 +570,13 @@ def _selected_from_argv_or_env(
     raise SystemExit(f"Unknown test suite {raw_suite!r}. Valid values: {valid}")
 
 def main() -> int:
+    result_json = _RESULT_JSON_FLAG in sys.argv[1:]
+    if result_json:
+        sys.argv = [
+            sys.argv[0],
+            *(arg for arg in sys.argv[1:] if arg != _RESULT_JSON_FLAG),
+        ]
+
     _header()
 
     sys.stdout.write(f"  {_c(_DIM, 'Discovering tests...')}")
@@ -650,7 +661,22 @@ def main() -> int:
             r = _run_one(local_n, global_n, tc)
         results.append(r)
 
-    return 1 if _print_table(results) else 0
+    failed = _print_table(results)
+    if result_json:
+        payload = [
+            {
+                "global_n": result.global_n,
+                "local_n": result.local_n,
+                "name": result.name,
+                "category": result.category,
+                "passed": result.passed,
+                "skipped": result.skipped,
+                "error": result.error,
+            }
+            for result in results
+        ]
+        print(_RESULT_JSON_MARKER + json.dumps(payload, ensure_ascii=True))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

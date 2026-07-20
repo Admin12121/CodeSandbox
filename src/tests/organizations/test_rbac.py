@@ -311,6 +311,9 @@ def test_permission_isolation_between_members(ctx: TestContext) -> None:
 
     ma = _org().get_member(str(org.id), str(member_a.id))
     mb = _org().get_member(str(org.id), str(member_b.id))
+    # add_member assigns the default member role. Remove it from member A so
+    # this test compares two disjoint role assignments.
+    _org().remove_role_from_member(str(ma.id), str(member_role.id))
     _org().assign_role_to_member(str(ma.id), str(admin_role.id))
     _org().assign_role_to_member(str(mb.id), str(member_role.id))
 

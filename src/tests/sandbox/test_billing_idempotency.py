@@ -8,9 +8,10 @@ from tests._context import TestCase, TestContext, unique
 def _fixture_instance(ctx: TestContext):
     from codesandbox.features.identity.models import User
     from codesandbox.features.sandbox import repository as sandbox_repository
+    from seeds.sandbox_templates import GOD_TEAR_SLUG
 
     admin = User.objects.filter(email="admin@codesandbox.dev").first()
-    template = sandbox_repository.get_template_by_slug("reverse-decompile")
+    template = sandbox_repository.get_template_by_slug(GOD_TEAR_SLUG)
     assert admin is not None and template is not None, "expected seed.py fixtures to exist"
 
     instance = sandbox_repository.create_instance(

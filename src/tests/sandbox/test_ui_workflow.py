@@ -61,7 +61,7 @@ def _fixture_instance(ctx: TestContext, template, admin, **overrides):
     from codesandbox.features.sandbox import repository as sandbox_repository
 
     kwargs = dict(
-        template_id=str(template.id), plan_id="basic", workspace_type="user",
+        template_id=str(template.id), plan_id="basic", workspace_type="personal",
         workspace_user_id=str(admin.id), workspace_org_id=None, created_by_user_id=str(admin.id),
         billing_entity="user", billed_user_id=str(admin.id), billed_org_id=None,
     )
