@@ -35,6 +35,10 @@ class TestCase:
     fn: Callable[[TestContext], None]
 
 
+class SkipTest(RuntimeError):
+    """Mark a test as skipped without failing the suite."""
+
+
 _flask_app = None
 _flask_ctx = None
 

@@ -164,6 +164,7 @@ def platform_organizations():
     user = session.user
     if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.organizations.read"):
         return {"_redirect": "/dashboard"}
+    can_edit = has_platform_permission(user, "platform.organizations.edit")
     nav = build_nav("/platform/organizations", user)
 
     search = request.args.get("search", "").strip()
@@ -186,11 +187,20 @@ def platform_organizations():
             "id": None, "name": "", "slug": "", "description": "",
             "logo_url": "", "website": "", "industry": "", "size": "",
             "location": "", "contact_email": "", "status": "active", "member_count": 0,
+            "owner": None, "owner_id": "", "owner_state": "none",
         }
     elif org_param:
         from codesandbox.features.organizations.repository import get_member_count, get_organization
         _org = get_organization(org_param)
         if _org:
+            owner_id = getattr(_org, "owner_id", None) or (
+                str(_org.created_by.id) if getattr(_org, "created_by", None) else ""
+            )
+            owner_row = identity_repo.find_user_by_id(str(owner_id)) if owner_id else None
+            owner = owner_row if owner_row and owner_row.deleted_at is None else None
+            owner_state = "ok" if owner else (
+                "deleted" if owner_row else ("missing" if owner_id else "none")
+            )
             selected_org = {
                 "id": _org.id,
                 "name": _org.name,
@@ -204,6 +214,15 @@ def platform_organizations():
                 "contact_email": _org.contact_email or "",
                 "status": _org.status,
                 "member_count": get_member_count(_org.id),
+                "owner_id": str(owner_id) if owner_id else "",
+                "owner": {
+                    "id": str(owner.id),
+                    "name": owner.name,
+                    "email": owner.email,
+                    "status": owner.status,
+                    "avatar_url": getattr(owner, "avatar_url", None) or "",
+                } if owner else None,
+                "owner_state": owner_state,
             }
 
     return {
@@ -222,6 +241,7 @@ def platform_organizations():
         "status_filter": status,
         "selected_org": selected_org,
         "error": request.args.get("error"),
+        "can_edit": can_edit,
     }
 
 

@@ -65,7 +65,6 @@
                 <div class="flex min-w-0 items-center gap-3">
                   {{ role_dot(role.color) }}
                   <span class="truncate font-medium">{{ role.name | capitalize }}</span>
-                  {% if role.is_system %}<span class="ml-1 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">system</span>{% endif %}
                 </div>
               {% endcall %}
               {% call table.table_cell() %}
@@ -77,13 +76,11 @@
               {% if can_manage_roles %}
                 {% call table.table_cell() %}
                   <div class="flex justify-end">
-                    {% if not role.is_system %}
-                      {% call dlg.dialog_trigger(target="#del-org-role-" ~ role.id,
-                        class="relative inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring sm:size-5",
-                        attrs={"aria-label": "Delete " ~ role.name}) %}
-                        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                      {% endcall %}
-                    {% endif %}
+                    {% call dlg.dialog_trigger(target="#del-org-role-" ~ role.id,
+                      class="relative inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring sm:size-5",
+                      attrs={"aria-label": "Delete " ~ role.name}) %}
+                      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    {% endcall %}
                   </div>
                 {% endcall %}
               {% endif %}
@@ -96,15 +93,13 @@
 
   {% if can_manage_roles %}
     {% for role in visible_roles %}
-      {% if not role.is_system %}
-        {{ del_dlg.delete_dialog(
-          id="del-org-role-" ~ role.id,
-          name=role.name,
-          description='Deleting "' ~ role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
-          action="/my/organizations/" ~ slug ~ "/roles/" ~ role.id ~ "/delete",
-          submit_label="Delete role"
-        ) }}
-      {% endif %}
+      {{ del_dlg.delete_dialog(
+        id="del-org-role-" ~ role.id,
+        name=role.name,
+        description='Deleting "' ~ role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
+        action="/my/organizations/" ~ slug ~ "/roles/" ~ role.id ~ "/delete",
+        submit_label="Delete role"
+      ) }}
     {% endfor %}
   {% endif %}
 
@@ -305,7 +300,7 @@
           {% if can_manage_roles %}
             <div class="flex items-center gap-3">
               {% call button.button(type="submit") %}{{ "Create role" if is_create else "Save changes" }}{% endcall %}
-              {% if not is_create and not selected_role.is_system %}
+              {% if not is_create %}
                 {% call dlg.dialog_trigger(target="#del-org-role-editor-" ~ role_id,
                   class="relative inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-transparent bg-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-destructive outline-none transition-shadow hover:bg-destructive/8 focus-visible:ring-2 focus-visible:ring-ring sm:h-8") %}
                   Delete role
@@ -471,7 +466,7 @@
   </div>
 </div>
 
-{% if can_manage_roles and not is_create and not selected_role.is_system %}
+{% if can_manage_roles and not is_create %}
   {{ del_dlg.delete_dialog(
     id="del-org-role-editor-" ~ role_id,
     name=selected_role.name,

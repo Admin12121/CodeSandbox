@@ -1,0 +1,622 @@
+﻿{% macro organization_workspaces() %}
+                {# â”€â”€ Organization workspaces split panel (was "Multi project
+                support") â”€â”€ #}
+                <div class="overflow-hidden">
+                    <div
+                        class="landing-platform-animation px-4 py-10 md:px-8 md:py-16"
+                        data-platform-animation
+                    >
+                        <div
+                            class="landing-platform-connector"
+                            aria-hidden="true"
+                        >
+                            <span
+                                class="landing-connector-node landing-node-left"
+                                ><i></i
+                            ></span>
+                            <span
+                                class="landing-connector-node landing-node-center"
+                                ><i></i
+                            ></span>
+                            <span
+                                class="landing-connector-node landing-node-right"
+                                ><i></i
+                            ></span>
+
+                            <div
+                                class="landing-beam-slot landing-beam-slot-left"
+                            >
+                                <svg
+                                    class="landing-connector-beam"
+                                    data-delay="0"
+                                    viewBox="0 0 600 80"
+                                    fill="none"
+                                    preserveAspectRatio="none"
+                                >
+                                    <defs>
+                                        <linearGradient
+                                            id="landing-beam-color-a"
+                                            x1="0%"
+                                            y1="0%"
+                                            x2="100%"
+                                            y2="0%"
+                                        >
+                                            <stop
+                                                offset="0%"
+                                                stop-color="transparent"
+                                            />
+                                            <stop
+                                                offset="30%"
+                                                stop-color="#6366f1"
+                                            />
+                                            <stop
+                                                offset="50%"
+                                                stop-color="#6366f1"
+                                            />
+                                            <stop
+                                                offset="70%"
+                                                stop-color="#6366f1"
+                                            />
+                                            <stop
+                                                offset="100%"
+                                                stop-color="transparent"
+                                            />
+                                        </linearGradient>
+                                        <filter
+                                            id="landing-beam-glow-a"
+                                            x="-50%"
+                                            y="-50%"
+                                            width="200%"
+                                            height="200%"
+                                        >
+                                            <feGaussianBlur
+                                                stdDeviation="4"
+                                                result="coloredBlur"
+                                            />
+                                            <feMerge>
+                                                <feMergeNode in="coloredBlur" />
+                                                <feMergeNode
+                                                    in="SourceGraphic"
+                                                />
+                                            </feMerge>
+                                        </filter>
+                                        <linearGradient
+                                            id="landing-beam-mask-gradient-a"
+                                            gradientUnits="userSpaceOnUse"
+                                            x1="0"
+                                            y1="0"
+                                            x2="600"
+                                            y2="0"
+                                        >
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-25%"
+                                                stop-color="black"
+                                            />
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-20%"
+                                                stop-color="white"
+                                            />
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-10%"
+                                                stop-color="white"
+                                            />
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-5%"
+                                                stop-color="black"
+                                            />
+                                        </linearGradient>
+                                        <mask id="landing-beam-mask-a">
+                                            <path
+                                                d="M 0 40 L 100 40 L 200 15 L 400 15 L 500 40 L 600 40"
+                                                stroke="url(#landing-beam-mask-gradient-a)"
+                                                stroke-width="6"
+                                                stroke-linecap="round"
+                                                fill="none"
+                                            />
+                                        </mask>
+                                    </defs>
+                                    <path
+                                        class="landing-connector-path"
+                                        d="M 0 40 L 100 40 L 200 15 L 400 15 L 500 40 L 600 40"
+                                        stroke-width="2"
+                                        stroke-dasharray="1 6"
+                                        stroke-linecap="round"
+                                    />
+                                    <g filter="url(#landing-beam-glow-a)">
+                                        <path
+                                            d="M 0 40 L 100 40 L 200 15 L 400 15 L 500 40 L 600 40"
+                                            stroke="url(#landing-beam-color-a)"
+                                            stroke-width="3"
+                                            stroke-linecap="round"
+                                            stroke-dasharray="1 6"
+                                            fill="none"
+                                            mask="url(#landing-beam-mask-a)"
+                                        />
+                                    </g>
+                                </svg>
+                            </div>
+
+                            <div
+                                class="landing-beam-slot landing-beam-slot-right"
+                            >
+                                <svg
+                                    class="landing-connector-beam"
+                                    data-delay="1.4"
+                                    viewBox="0 0 600 80"
+                                    fill="none"
+                                    preserveAspectRatio="none"
+                                >
+                                    <defs>
+                                        <linearGradient
+                                            id="landing-beam-color-b"
+                                            x1="0%"
+                                            y1="0%"
+                                            x2="100%"
+                                            y2="0%"
+                                        >
+                                            <stop
+                                                offset="0%"
+                                                stop-color="transparent"
+                                            />
+                                            <stop
+                                                offset="30%"
+                                                stop-color="#6366f1"
+                                            />
+                                            <stop
+                                                offset="50%"
+                                                stop-color="#6366f1"
+                                            />
+                                            <stop
+                                                offset="70%"
+                                                stop-color="#6366f1"
+                                            />
+                                            <stop
+                                                offset="100%"
+                                                stop-color="transparent"
+                                            />
+                                        </linearGradient>
+                                        <filter
+                                            id="landing-beam-glow-b"
+                                            x="-50%"
+                                            y="-50%"
+                                            width="200%"
+                                            height="200%"
+                                        >
+                                            <feGaussianBlur
+                                                stdDeviation="4"
+                                                result="coloredBlur"
+                                            />
+                                            <feMerge>
+                                                <feMergeNode in="coloredBlur" />
+                                                <feMergeNode
+                                                    in="SourceGraphic"
+                                                />
+                                            </feMerge>
+                                        </filter>
+                                        <linearGradient
+                                            id="landing-beam-mask-gradient-b"
+                                            gradientUnits="userSpaceOnUse"
+                                            x1="0"
+                                            y1="0"
+                                            x2="600"
+                                            y2="0"
+                                        >
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-25%"
+                                                stop-color="black"
+                                            />
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-20%"
+                                                stop-color="white"
+                                            />
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-10%"
+                                                stop-color="white"
+                                            />
+                                            <stop
+                                                class="landing-beam-stop"
+                                                offset="-5%"
+                                                stop-color="black"
+                                            />
+                                        </linearGradient>
+                                        <mask id="landing-beam-mask-b">
+                                            <path
+                                                d="M 0 40 L 100 40 L 200 15 L 400 15 L 500 40 L 600 40"
+                                                stroke="url(#landing-beam-mask-gradient-b)"
+                                                stroke-width="6"
+                                                stroke-linecap="round"
+                                                fill="none"
+                                            />
+                                        </mask>
+                                    </defs>
+                                    <path
+                                        class="landing-connector-path"
+                                        d="M 0 40 L 100 40 L 200 15 L 400 15 L 500 40 L 600 40"
+                                        stroke-width="2"
+                                        stroke-dasharray="1 6"
+                                        stroke-linecap="round"
+                                    />
+                                    <g filter="url(#landing-beam-glow-b)">
+                                        <path
+                                            d="M 0 40 L 100 40 L 200 15 L 400 15 L 500 40 L 600 40"
+                                            stroke="url(#landing-beam-color-b)"
+                                            stroke-width="3"
+                                            stroke-linecap="round"
+                                            stroke-dasharray="1 6"
+                                            fill="none"
+                                            mask="url(#landing-beam-mask-b)"
+                                        />
+                                    </g>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <div class="landing-device-grid">
+                            <article
+                                class="landing-device-card"
+                                tabindex="0"
+                                data-device="phone"
+                            >
+                                <div class="landing-phone-device">
+                                    <div
+                                        class="landing-phone-buttons landing-phone-buttons-left"
+                                    >
+                                        <i></i><i></i><i></i>
+                                    </div>
+                                    <div
+                                        class="landing-phone-buttons landing-phone-buttons-right"
+                                    >
+                                        <i></i>
+                                    </div>
+                                    <div
+                                        class="landing-device-shell landing-phone-shell"
+                                    >
+                                        <div
+                                            class="landing-device-screen landing-phone-screen"
+                                        >
+                                            <div class="landing-screen-content">
+                                                <img
+                                                    src="/deploy-agents-screen.webp"
+                                                    alt="Application dashboard"
+                                                    class="absolute object-contain left-[-25%] transform translate-x-[50%] translate-y-[50%]"
+                                                    style="top: -25%;"
+                                                />
+                                                <div
+                                                    class="landing-island-wrap"
+                                                >
+                                                    <div
+                                                        class="landing-dynamic-island"
+                                                        data-idle-width="28"
+                                                        data-loading-width="16"
+                                                        data-done-width="40"
+                                                    >
+                                                        <div
+                                                            class="landing-island-state landing-island-idle"
+                                                        >
+                                                            <span
+                                                                class="landing-camera"
+                                                            ></span
+                                                            ><span
+                                                                class="landing-sensor"
+                                                            ></span>
+                                                        </div>
+                                                        <div
+                                                            class="landing-island-state landing-island-loading"
+                                                        >
+                                                            <span
+                                                                class="landing-loading-dots"
+                                                                ><i></i><i></i
+                                                                ><i></i
+                                                            ></span>
+                                                        </div>
+                                                        <div
+                                                            class="landing-island-state landing-island-done"
+                                                        >
+                                                            <span
+                                                                >Connected</span
+                                                            >
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <span class="landing-phone-homebar"></span>
+                                </div>
+                            </article>
+
+                            <article
+                                class="landing-device-card"
+                                tabindex="0"
+                                data-device="laptop"
+                            >
+                                <div class="landing-laptop-device">
+                                    <div class="landing-laptop-lid">
+                                        <div
+                                            class="landing-device-screen landing-laptop-screen"
+                                        >
+                                            <div
+                                                class="landing-screen-content landing-laptop-screen-content"
+                                            >
+                                                <img
+                                                    src="/deploy-agents-screen.webp"
+                                                    alt="Application dashboard"
+                                                    class="absolute object-contain left-[-25%] transform translate-x-[50%]"
+                                                />
+                                                <div
+                                                    class="landing-island-wrap"
+                                                >
+                                                    <div
+                                                        class="landing-dynamic-island"
+                                                        data-idle-width="28"
+                                                        data-loading-width="16"
+                                                        data-done-width="48"
+                                                    >
+                                                        <div
+                                                            class="landing-island-state landing-island-idle"
+                                                        >
+                                                            <span
+                                                                class="landing-camera"
+                                                            ></span
+                                                            ><span
+                                                                class="landing-sensor"
+                                                            ></span>
+                                                        </div>
+                                                        <div
+                                                            class="landing-island-state landing-island-loading"
+                                                        >
+                                                            <span
+                                                                class="landing-loading-dots"
+                                                                ><i></i><i></i
+                                                                ><i></i
+                                                            ></span>
+                                                        </div>
+                                                        <div
+                                                            class="landing-island-state landing-island-done landing-mac-done"
+                                                        >
+                                                            <span
+                                                                >Airpods
+                                                                Connected</span
+                                                            ><b
+                                                                class="landing-battery"
+                                                                ><i></i
+                                                            ></b>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="landing-laptop-base">
+                                        <span></span>
+                                    </div>
+                                </div>
+                            </article>
+
+                            <article
+                                class="landing-device-card"
+                                tabindex="0"
+                                data-device="tablet"
+                            >
+                                <div class="landing-tablet-device">
+                                    <div
+                                        class="landing-tablet-buttons landing-tablet-buttons-side"
+                                    >
+                                        <i></i><i></i>
+                                    </div>
+                                    <div
+                                        class="landing-tablet-buttons landing-tablet-buttons-top"
+                                    >
+                                        <i></i>
+                                    </div>
+                                    <div
+                                        class="landing-device-shell landing-tablet-shell"
+                                    >
+                                        <div
+                                            class="landing-device-screen landing-tablet-screen"
+                                        >
+                                            <div class="landing-screen-content">
+                                                <img
+                                                    src="/deploy-agents-screen.webp"
+                                                    alt="Application dashboard"
+                                                    class="absolute object-contain left-[-25%] transform translate-x-[50%]"
+                                                />
+                                                <div
+                                                    class="landing-island-wrap"
+                                                >
+                                                    <div
+                                                        class="landing-dynamic-island"
+                                                        data-idle-width="32"
+                                                        data-loading-width="18"
+                                                        data-done-width="44"
+                                                    >
+                                                        <div
+                                                            class="landing-island-state landing-island-idle"
+                                                        >
+                                                            <span
+                                                                class="landing-camera"
+                                                            ></span
+                                                            ><span
+                                                                class="landing-sensor"
+                                                            ></span>
+                                                        </div>
+                                                        <div
+                                                            class="landing-island-state landing-island-loading"
+                                                        >
+                                                            <span
+                                                                class="landing-loading-dots"
+                                                                ><i></i><i></i
+                                                                ><i></i
+                                                            ></span>
+                                                        </div>
+                                                        <div
+                                                            class="landing-island-state landing-island-done"
+                                                        >
+                                                            <span
+                                                                >Connected</span
+                                                            >
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </article>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="my-10 mt-0 border border-stone-200 dark:border-stone-800"
+                >
+                    <div class="flex flex-col">
+                        <div
+                            class="hidden md:grid md:grid-cols-2 gap-px bg-stone-200 dark:bg-stone-800 [&>*:first-child]:order-last"
+                        >
+                            <div
+                                class="relative w-full h-full md:h-100 overflow-hidden bg-gradient-to-br from-stone-100 to-stone-200 dark:from-stone-900 dark:to-stone-950"
+                            >
+                                <div
+                                    class="relative z-10 w-full h-full flex items-center justify-center p-6"
+                                >
+                                    <div
+                                        class="bg-white dark:bg-stone-900 rounded-lg overflow-hidden flex flex-col w-full max-w-sm shadow-lg border border-stone-200 dark:border-stone-800"
+                                    >
+                                        <div
+                                            class="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 px-3 py-2.5 border-b border-stone-200 dark:border-stone-700"
+                                        >
+                                            <span
+                                                class="size-3 rounded-full bg-stone-300 dark:bg-stone-600"
+                                            ></span>
+                                            <span
+                                                class="size-3 rounded-full bg-stone-300 dark:bg-stone-600"
+                                            ></span>
+                                            <span
+                                                class="size-3 rounded-full bg-stone-300 dark:bg-stone-600"
+                                            ></span>
+                                            <span
+                                                class="ml-2 text-stone-500 dark:text-stone-400 text-xs font-mono"
+                                                >acme-labs Â· workspace</span
+                                            >
+                                        </div>
+                                        <div class="flex flex-col gap-3 p-4">
+                                            <div
+                                                class="flex items-center justify-between px-3 py-2 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-950"
+                                            >
+                                                <span
+                                                    class="text-stone-800 dark:text-stone-100 text-sm font-medium"
+                                                    >Balance</span
+                                                >
+                                                <span
+                                                    class="text-stone-800 dark:text-stone-100 text-sm font-mono"
+                                                    >Â£128.40</span
+                                                >
+                                            </div>
+                                            <div class="flex flex-col gap-1">
+                                                <div
+                                                    class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-stone-50 dark:hover:bg-stone-950"
+                                                >
+                                                    <div
+                                                        class="flex items-center gap-2 min-w-0"
+                                                    >
+                                                        <span
+                                                            class="flex size-6 shrink-0 items-center justify-center rounded-full bg-stone-200 dark:bg-stone-700 text-[10px] font-mono font-semibold text-stone-700 dark:text-stone-200"
+                                                            >SK</span
+                                                        >
+                                                        <span
+                                                            class="text-sm text-stone-700 dark:text-stone-300 truncate"
+                                                            >Sujal Â·
+                                                            coding-ide</span
+                                                        >
+                                                    </div>
+                                                    <span
+                                                        class="size-2 rounded-full bg-emerald-500 shrink-0"
+                                                    ></span>
+                                                </div>
+                                                <div
+                                                    class="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-stone-50 dark:hover:bg-stone-950"
+                                                >
+                                                    <div
+                                                        class="flex items-center gap-2 min-w-0"
+                                                    >
+                                                        <span
+                                                            class="flex size-6 shrink-0 items-center justify-center rounded-full bg-stone-200 dark:bg-stone-700 text-[10px] font-mono font-semibold text-stone-700 dark:text-stone-200"
+                                                            >AP</span
+                                                        >
+                                                        <span
+                                                            class="text-sm text-stone-700 dark:text-stone-300 truncate"
+                                                            >Anita Â·
+                                                            desktop-gui</span
+                                                        >
+                                                    </div>
+                                                    <span
+                                                        class="size-2 rounded-full bg-emerald-500 shrink-0"
+                                                    ></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div
+                                class="bg-stone-50 dark:bg-stone-950 flex flex-col justify-between px-4 gap-6 py-6 md:px-6"
+                            >
+                                <p
+                                    class="text-indigo-500 dark:text-indigo-400 font-medium text-sm uppercase font-mono leading-4"
+                                >
+                                    #02 - Organization workspaces
+                                </p>
+                                <div class="flex flex-col gap-4 md:gap-6">
+                                    <h2
+                                        class="text-[32px] md:text-[40px] leading-[1.2] -tracking-[0.02em] text-stone-900 dark:text-stone-50"
+                                    >
+                                        One balance, every teammate's sandbox.
+                                    </h2>
+                                    <p
+                                        class="text-stone-500 dark:text-stone-400 text-base md:text-xl leading-7"
+                                    >
+                                        Fund a shared workspace as the owner â€”
+                                        members launch instances against it, and
+                                        every charge lands on one auditable
+                                        ledger.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="md:hidden">
+                            <div
+                                class="bg-stone-50 dark:bg-stone-950 flex flex-col justify-between px-4 gap-6 py-6"
+                            >
+                                <p
+                                    class="text-indigo-500 dark:text-indigo-400 font-medium text-sm uppercase font-mono leading-4"
+                                >
+                                    Organization workspaces
+                                </p>
+                                <div class="flex flex-col gap-4">
+                                    <h2
+                                        class="text-[32px] leading-[1.2] text-stone-900 dark:text-stone-50"
+                                    >
+                                        One balance, every teammate's sandbox.
+                                    </h2>
+                                    <p
+                                        class="text-stone-500 dark:text-stone-400 text-base leading-7"
+                                    >
+                                        Fund a shared workspace as the owner â€”
+                                        members launch instances against it, and
+                                        every charge lands on one auditable
+                                        ledger.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+{% endmacro %}

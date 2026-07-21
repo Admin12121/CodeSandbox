@@ -429,6 +429,15 @@ def delete_user_organization(slug: str, user_id: str) -> tuple[bool, str]:
     return True, org_name
 
 
+def delete_platform_organization(org_id: str) -> tuple[bool, str]:
+    org = repository.get_organization(org_id)
+    if org is None:
+        return False, "Organization not found."
+    org_name = org.name
+    repository.delete_organization(org.id)
+    return True, org_name
+
+
 def transfer_org_ownership(slug: str, requesting_user_id: str, new_owner_id: str) -> tuple[bool, str]:
     org = repository.get_organization_by_slug(slug)
     if org is None:
@@ -532,14 +541,6 @@ def delete_org_custom_role(
     # Rule 8: role must belong to this org
     if str(role.org_id) != str(org.id):
         return False, "Role not found."
-
-    # Rule 6: cannot delete system role
-    if role.is_system:
-        return False, "System roles cannot be deleted."
-
-    # Rule 2: cannot delete role >= own highest position
-    if not repository.can_actor_manage_role(org.id, requesting_user_id, role_id):
-        return False, "You cannot delete a role equal to or higher than your own position."
 
     repository.delete_org_role(role_id)
     return True, ""

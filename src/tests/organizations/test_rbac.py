@@ -51,6 +51,7 @@ def _make_user(ctx: TestContext, prefix: str = "u") -> object:
 
 def _make_org(ctx: TestContext, owner) -> object:
     org = _org().create_organization(name=unique("Org"), created_by=str(owner.id))
+    _org().seed_org_roles(str(org.id))
     ctx.defer(lambda oid=str(org.id): _org().delete_organization(oid))
     return org
 

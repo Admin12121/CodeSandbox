@@ -524,6 +524,9 @@ def github_authorize():
 
 @web_bp.get("/auth/github/callback")
 def github_callback():
+    if "_github_connect_state" in session:
+        return _github_connect_callback()
+
     returned_state = request.args.get("state", "")
     expected_state = session.pop("_oauth_state", None)
     next_path = session.pop("_oauth_next", "/dashboard")
@@ -546,6 +549,24 @@ def github_callback():
 
 
 # ── Google OAuth ──────────────────────────────────────────────────────────────
+
+def _github_connect_callback():
+    from codesandbox.shared.session import require_session
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    returned_state = request.args.get("state", "")
+    expected_state = session.pop("_github_connect_state", None)
+    if not expected_state or not secrets.compare_digest(returned_state, expected_state):
+        return redirect("/settings?tab=security&error=Invalid+OAuth+state.+Please+try+again.", code=303)
+    code = request.args.get("code", "")
+    if not code:
+        return redirect("/settings?tab=security&error=GitHub+authorization+cancelled", code=303)
+    result = link_github_account(user_id=cs.user.id, code=code)
+    if not result.ok:
+        return redirect(f"/settings?tab=security&error={urllib.parse.quote(result.message)}", code=303)
+    return redirect("/settings?tab=security&info=GitHub+account+connected.", code=303)
+
 
 @web_bp.get("/auth/google")
 def google_authorize():
@@ -656,33 +677,14 @@ def github_connect_authorize():
     if not settings.github_client_id:
         return redirect("/settings?tab=security&error=GitHub+OAuth+not+configured", code=303)
     state = secrets.token_urlsafe(16)
-    session["_connect_state"] = state
+    session["_github_connect_state"] = state
     params = urllib.parse.urlencode({
         "client_id": settings.github_client_id,
-        "redirect_uri": f"{settings.app_url}/auth/github/connect/callback",
+        "redirect_uri": f"{settings.app_url}/auth/github/callback",
         "scope": "user:email",
         "state": state,
     })
     return redirect(f"https://github.com/login/oauth/authorize?{params}", code=302)
-
-
-@web_bp.get("/auth/github/connect/callback")
-def github_connect_callback():
-    from codesandbox.shared.session import require_session
-    cs, redir = require_session()
-    if redir:
-        return redirect(redir.url, code=303)
-    returned_state = request.args.get("state", "")
-    expected_state = session.pop("_connect_state", None)
-    if not expected_state or not secrets.compare_digest(returned_state, expected_state):
-        return redirect("/settings?tab=security&error=Invalid+OAuth+state.+Please+try+again.", code=303)
-    code = request.args.get("code", "")
-    if not code:
-        return redirect("/settings?tab=security&error=GitHub+authorization+cancelled", code=303)
-    result = link_github_account(user_id=cs.user.id, code=code)
-    if not result.ok:
-        return redirect(f"/settings?tab=security&error={urllib.parse.quote(result.message)}", code=303)
-    return redirect("/settings?tab=security&info=GitHub+account+connected.", code=303)
 
 
 @web_bp.post("/settings/profile")

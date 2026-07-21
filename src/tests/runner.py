@@ -109,6 +109,9 @@ _INTEGRATION_SUITE_MODULES = [
     ("sandbox_ui_workflow", "tests.sandbox.test_ui_workflow"),
     ("workflow",      "tests.workflow.test_workflow_graph"),
     ("finance",       "tests.finance.test_finance_module"),
+    ("browser",       "tests.fleet.test_browser_surface"),
+    ("dependency_audit", "tests.fleet.test_dependency_audit"),
+    ("load",          "tests.fleet.test_concurrency"),
     ("worker",        "tests.fleet.test_migrations"),
     ("worker_routing", "tests.fleet.test_multi_worker_routing"),
     ("worker_registry", "tests.fleet.test_registry"),
@@ -131,6 +134,9 @@ _SUITE_LABELS = {
     "user_lifecycle": "User lifecycle",
     "rbac_lifecycle": "RBAC lifecycle",
     "template_lifecycle": "Template lifecycle",
+    "browser": "Browser navigation and CSP",
+    "dependency_audit": "Dependency vulnerability audit",
+    "load": "Load and concurrency",
 }
 
 _DOCKER_NETWORK_REQUIRED_SUITES = {
@@ -148,6 +154,7 @@ _DOCKER_NETWORK_REQUIRED_SUITES = {
     "sandbox_test_launch",
     "sandbox_ui_workflow",
     "finance",
+    "browser",
     "worker",
     "worker_routing",
     "worker_registry",
@@ -317,7 +324,7 @@ class _Result:
 
 
 def _run_one(local_n: int, global_n: int, test_case) -> _Result:
-    from tests._context import TestContext
+    from tests._context import SkipTest, TestContext
 
     name     = test_case.name
     name_pad = (name[:_NAME_W - 1] + "…") if len(name) >= _NAME_W else name
@@ -342,9 +349,13 @@ def _run_one(local_n: int, global_n: int, test_case) -> _Result:
     ctx = TestContext()
     passed = False
     error: str | None = None
+    skipped = False
     try:
         test_case.fn(ctx)
         passed = True
+    except SkipTest as exc:
+        skipped = True
+        error = str(exc) or "skipped"
     except Exception as exc:
         error = str(exc) or type(exc).__name__
     finally:
@@ -355,6 +366,9 @@ def _run_one(local_n: int, global_n: int, test_case) -> _Result:
     if passed:
         bar_str = _bar(100, _GRN)
         mark    = _c(_GRN, "✔ pass  ")
+    elif skipped:
+        bar_str = _bar(100, _YLW)
+        mark    = _c(_YLW, "skip  ")
     else:
         bar_str = _bar(100, _RED)
         mark    = _c(_RED, "✗ fail  ")
@@ -373,7 +387,7 @@ def _run_one(local_n: int, global_n: int, test_case) -> _Result:
         name=test_case.name,
         category=test_case.category,
         passed=passed,
-        skipped=False,
+        skipped=skipped,
         error=error,
     )
 

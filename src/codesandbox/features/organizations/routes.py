@@ -23,6 +23,7 @@ from .service import (
     batch_invite_to_org,
     create_org_custom_role,
     create_user_organization,
+    delete_platform_organization,
     delete_org_custom_role,
     delete_user_organization,
     get_org_invite_link_data,
@@ -114,6 +115,22 @@ def platform_upload_org_logo_action(org_id: str):
         return jsonify({"ok": False, "error": "Invalid file. Use PNG, JPG, or WebP under 2 MB."}), 400
     update_organization(org_id, logo_url=logo_url)
     return jsonify({"ok": True, "logo_url": logo_url, "url": logo_url, "media_key": f"org:{org_id}", "entity_id": org_id})
+
+
+@web_bp.post("/platform/organizations/<org_id>/delete")
+@platform_perm("platform.organizations.edit")
+def platform_delete_org_action(org_id: str):
+    ok, result = delete_platform_organization(org_id)
+    if not ok:
+        return redirect(
+            f"/platform/organizations?org={org_id}&error={urllib.parse.quote(result)}",
+            code=303,
+        )
+    message = f'Organization "{result}" has been permanently deleted.'
+    return redirect(
+        f"/platform/organizations?info={urllib.parse.quote(message)}",
+        code=303,
+    )
 
 
 # ── User-facing: create & join ────────────────────────────────────────────────

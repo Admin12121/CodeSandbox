@@ -1,0 +1,319 @@
+﻿{% macro intro() %}
+                <div
+                    class="flex flex-col items-center gap-10 pt-20 lg:pt-30 pb-10 md:pb-20 text-center"
+                >
+                    <div class="flex flex-col gap-4">
+                        <h1
+                            class="text-[40px] lg:text-[72px] leading-[1.1] font-semibold tracking-tight text-stone-900 dark:text-stone-50"
+                            style="
+                                font-family:
+                                    &quot;cooperLtBT&quot;,
+                                    &quot;cooperLtBT Fallback&quot;, serif;
+                            "
+                        >
+                            Sandboxes for <em>builders</em> who
+                            <br class="hidden md:inline" />ship with
+                            <em>speed</em>
+                        </h1>
+                        <h2
+                            class="text-stone-500 dark:text-stone-400 text-base md:text-xl max-w-3xl leading-[30px] mx-auto"
+                        >
+                            Terminal, IDE, desktop &amp; background runtimes in
+                            one platform.<br class="hidden md:inline" />
+                            Priced by runtime, not seats.
+                        </h2>
+                    </div>
+                </div>
+
+                <div
+                    class="relative w-full min-h-80 md:min-h-[38.75rem] flex items-center justify-center overflow-hidden"
+                >
+                    <img
+                        alt="animated input background"
+                        class="absolute inset-0 w-full h-full object-cover"
+                        decoding="async"
+                        src="/pixel-mountain-lake.png"
+                        style="
+                            position: absolute;
+                            height: 100%;
+                            width: 100%;
+                            inset: 0px;
+                            color: transparent;
+                        "
+                    />
+                    <div
+                        class="relative z-10 flex flex-col items-center gap-16 w-full max-w-126 md:max-w-[65rem] px-4"
+                    >
+                        <div
+                            class="relative w-full flex flex-col border-2 border-stone-800 rounded-2xl bg-stone-950 shadow-2xl overflow-hidden"
+                        >
+                            <div
+                                class="flex items-center gap-1.5 px-2 py-1 border-b border-stone-800"
+                            >
+                                <span
+                                    class="size-2.5 rounded-full bg-stone-700"
+                                ></span>
+                                <span
+                                    class="size-2.5 rounded-full bg-stone-700"
+                                ></span>
+                                <span
+                                    class="size-2.5 rounded-full bg-stone-700"
+                                ></span>
+                                <span
+                                    class="ml-3 text-stone-500 text-xs font-mono"
+                                    >sandbox â€” /workspace</span
+                                >
+                            </div>
+                            <div class="bg-stone-950">
+                                <img
+                                    src="/home.webp"
+                                    alt="CodeSandbox workspace hub"
+                                    loading="eager"
+                                    decoding="async"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="mb-10 border-x border-stone-200 dark:border-stone-800"
+                >
+                    <ul
+                        class="grid grid-cols-1 sm:grid-cols-3 sm:border-b border-t border-stone-200 dark:border-stone-800"
+                    >
+                        <li
+                            class="flex flex-col border-b border-stone-200 dark:border-stone-800 sm:border-b-0 [&:not(:last-child)]:sm:border-r"
+                        >
+                            <div
+                                class="flex flex-col gap-2 px-4 sm:px-6 py-6 flex-1 bg-white dark:bg-stone-900"
+                            >
+                                <p
+                                    class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono"
+                                >
+                                    Templates
+                                </p>
+                                <p
+                                    class="text-stone-500 dark:text-stone-400 font-normal text-base leading-[22px]"
+                                >
+                                    Curated environments â€” coding IDEs,
+                                    background jobs, desktop GUIs â€” published
+                                    with the right image and resources.
+                                </p>
+                            </div>
+                            <ul
+                                class="grid grid-cols-1 border-t border-stone-200 dark:border-stone-800"
+                            >
+                                <li>
+                                    <a
+                                        class="flex items-center text-stone-500 justify-between gap-4 px-6 py-3 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors duration-100"
+                                        href="/hub"
+                                    >
+                                        <p
+                                            class="text-stone-800 dark:text-stone-100 font-medium text-xs font-mono uppercase"
+                                        >
+                                            Browse the Hub
+                                        </p>
+                                        <svg
+                                            fill="none"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            width="14"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                        >
+                                            <path
+                                                d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692"
+                                                stroke="currentColor"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="1.5"
+                                            ></path>
+                                        </svg>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                        <li
+                            class="flex flex-col border-b border-stone-200 dark:border-stone-800 sm:border-b-0 [&:not(:last-child)]:sm:border-r"
+                        >
+                            <div
+                                class="flex flex-col gap-2 px-4 sm:px-6 py-6 flex-1 bg-white dark:bg-stone-900"
+                            >
+                                <p
+                                    class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono"
+                                >
+                                    Terminal &amp; IDE
+                                </p>
+                                <p
+                                    class="text-stone-500 dark:text-stone-400 font-normal text-base leading-[22px]"
+                                >
+                                    A real shell and a file-backed CodeMirror
+                                    editor over your instance's own isolated
+                                    workspace.
+                                </p>
+                            </div>
+                            <ul
+                                class="grid grid-cols-1 border-t border-stone-200 dark:border-stone-800"
+                            >
+                                <li>
+                                    <a
+                                        class="flex items-center text-stone-500 justify-between gap-4 px-6 py-3 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors duration-100"
+                                        href="/login?mode=signup"
+                                    >
+                                        <p
+                                            class="text-stone-800 dark:text-stone-100 font-medium text-xs font-mono uppercase"
+                                        >
+                                            Try it free
+                                        </p>
+                                        <svg
+                                            fill="none"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            width="14"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                        >
+                                            <path
+                                                d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692"
+                                                stroke="currentColor"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="1.5"
+                                            ></path>
+                                        </svg>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                        <li
+                            class="flex flex-col border-b border-stone-200 dark:border-stone-800 sm:border-b-0 [&:not(:last-child)]:sm:border-r"
+                        >
+                            <div
+                                class="flex flex-col gap-2 px-4 sm:px-6 py-6 flex-1 bg-white dark:bg-stone-900"
+                            >
+                                <p
+                                    class="text-stone-800 dark:text-stone-100 font-medium text-base font-mono"
+                                >
+                                    Workflows
+                                </p>
+                                <p
+                                    class="text-stone-500 dark:text-stone-400 font-normal text-base leading-[22px]"
+                                >
+                                    Chain interfaces into guided flows â€” start
+                                    in a background run, continue in a terminal,
+                                    finish on a custom page.
+                                </p>
+                            </div>
+                            <ul
+                                class="grid grid-cols-1 border-t border-stone-200 dark:border-stone-800"
+                            >
+                                <li>
+                                    <a
+                                        class="flex items-center text-stone-500 justify-between gap-4 px-6 py-3 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors duration-100"
+                                        href="/login"
+                                    >
+                                        <p
+                                            class="text-stone-800 dark:text-stone-100 font-medium text-xs font-mono uppercase"
+                                        >
+                                            See it in action
+                                        </p>
+                                        <svg
+                                            fill="none"
+                                            height="14"
+                                            viewBox="0 0 24 24"
+                                            width="14"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                        >
+                                            <path
+                                                d="M6.84444 17.4476L17.1564 7.13566M17.1564 7.13566V17.0352M17.1564 7.13566H7.25692"
+                                                stroke="currentColor"
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="1.5"
+                                            ></path>
+                                        </svg>
+                                    </a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+
+                <div
+                    class="my-10 md:my-20 border-x border-stone-200 dark:border-stone-800"
+                >
+                    <div
+                        class="md:border-b border-t border-b-0 border-stone-200 dark:border-stone-800"
+                    >
+                        <div
+                            class="grid grid-cols-2 md:grid-cols-4 border-b border-stone-200 dark:border-stone-800"
+                        >
+                            <div
+                                class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r"
+                            >
+                                <p
+                                    class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center"
+                                >
+                                    5
+                                </p>
+                                <p
+                                    class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center"
+                                >
+                                    Runtime classes, one launcher
+                                </p>
+                            </div>
+                            <div
+                                class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r"
+                            >
+                                <p
+                                    class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center"
+                                >
+                                    &lt;10s
+                                </p>
+                                <p
+                                    class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center"
+                                >
+                                    From click to live terminal
+                                </p>
+                            </div>
+                            <div
+                                class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r"
+                            >
+                                <p
+                                    class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center"
+                                >
+                                    1s
+                                </p>
+                                <p
+                                    class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center"
+                                >
+                                    Metering granularity â€” pay for what runs
+                                </p>
+                            </div>
+                            <div
+                                class="flex flex-col justify-center gap-2 px-4 sm:px-6 py-6 border-stone-200 dark:border-stone-800 odd:border-r [&:nth-child(-n+2)]:border-b md:[&:nth-child(-n+2)]:border-b-0 md:[&:nth-child(-n+3)]:border-r"
+                            >
+                                <p
+                                    class="text-stone-800 dark:text-stone-100 font-normal text-2xl font-mono text-center"
+                                >
+                                    2
+                                </p>
+                                <p
+                                    class="text-stone-500 dark:text-stone-400 font-normal text-sm leading-5 text-center"
+                                >
+                                    Payment gateways â€” eSewa &amp; card
+                                </p>
+                            </div>
+                        </div>
+                        <div
+                            class="flex justify-center items-center p-6 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800"
+                        >
+                            <p
+                                class="text-stone-800 dark:text-stone-100 font-medium text-sm font-mono uppercase leading-5 text-center"
+                            >
+                                Every instance isolated, audited, and billed on
+                                a transparent ledger
+                            </p>
+                        </div>
+                    </div>
+                </div>
+{% endmacro %}

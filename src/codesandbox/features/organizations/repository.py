@@ -69,6 +69,13 @@ def create_organization(
     description: str | None = None,
     created_by: str | None = None,
 ) -> Organization:
+    if not created_by:
+        raise ValueError("Organization owner is required.")
+    from codesandbox.features.identity import repository as identity_repo
+    owner = identity_repo.find_user_by_id(str(created_by))
+    if owner is None or owner.deleted_at is not None:
+        raise ValueError("Organization owner must be an active user.")
+
     base_slug = _slugify(name)
     counter = 1
     slug = base_slug
@@ -92,13 +99,8 @@ def create_organization(
             if attempt == 4:
                 raise
             continue
-    seed_org_roles(org.id)
     if created_by:
         add_member(org_id=org.id, user_id=created_by)
-    # A newly-created organization must be usable immediately. The global
-    # seed may have run long before this row existed, so apply the registered
-    # sandbox permissions to its default roles now instead of waiting for an
-    # unrelated Roles page visit or application restart.
     ensure_org_permissions_seeded()
     return org
 
@@ -128,9 +130,6 @@ def add_member(org_id: str, user_id: str) -> OrganizationMember:
         user_id=user_id,
     )
     member.save()
-    member_role = OrganizationRole.objects.filter(org_id=org_id, name="member").first()
-    if member_role:
-        assign_role_to_member(member.id, member_role.id)
     return member
 
 
@@ -193,8 +192,9 @@ def seed_org_roles(org_id: str) -> None:
                 position=position,
             )
             role.save()
-        elif existing.position == 0:
-            existing.position = position
+        elif existing.position == 0 or existing.is_system:
+            existing.position = position if existing.position == 0 else existing.position
+            existing.is_system = False
             existing.save()
 
 
@@ -294,12 +294,10 @@ def update_org_role(
 
 
 def delete_org_role(role_id: str) -> bool:
-    """Delete a role. Returns False if is_system=True or not found (rule 6)."""
+    """Delete a role. Returns False if not found."""
     try:
         role = OrganizationRole.objects.get(id=role_id)
     except Exception:
-        return False
-    if role.is_system:
         return False
     for rp in OrganizationRolePermission.objects.filter(role_id=role_id).all():
         rp.delete()
@@ -421,45 +419,6 @@ def ensure_org_permissions_seeded() -> None:
             row.label = label
             row.group = group
             row.save()
-
-    admin_defaults = {
-        "sandbox.allocations.prepare",
-        "sandbox.allocations.manage",
-        "sandbox.allocations.view_all",
-        "sandbox.instances.use_pool",
-        "sandbox.instances.use_assigned",
-        "sandbox.instances.stop_own",
-        "sandbox.requests.submit",
-        "sandbox.requests.review",
-        "sandbox.billing.view",
-        "sandbox.billing.topup",
-    }
-    member_defaults = {
-        "sandbox.instances.use_pool",
-        "sandbox.instances.use_assigned",
-        "sandbox.instances.stop_own",
-        "sandbox.requests.submit",
-    }
-
-    for org in Organization.objects.all():
-        seed_org_roles(str(org.id))
-        roles = {role.name: role for role in list_org_roles(str(org.id))}
-        for role_name, keys in (("admin", admin_defaults), ("member", member_defaults)):
-            role = roles.get(role_name)
-            if role is None:
-                continue
-            for key in keys:
-                set_org_role_permission(str(role.id), key, True)
-
-        member_role = roles.get("member")
-        if member_role is not None:
-            for member in list_members(str(org.id)):
-                if is_org_owner(str(org.id), str(member.user_id)):
-                    continue
-                existing = OrganizationMemberRole.objects.filter(member_id=member.id).all()
-                if not existing:
-                    assign_role_to_member(str(member.id), str(member_role.id))
-
 
 def get_all_org_permissions() -> list[OrganizationPermission]:
     return OrganizationPermission.objects.filter().all()

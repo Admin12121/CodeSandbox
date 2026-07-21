@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets as _secrets
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 
 from tests._context import TestCase, TestContext, unique
@@ -278,6 +279,86 @@ def test_session_single_signal_change_tolerated(ctx: TestContext) -> None:
         assert get_current_session() is not None
 
 
+def test_github_oauth_connect_uses_registered_callback(ctx: TestContext) -> None:
+    from flask import current_app, g
+    from codesandbox.config import get_settings
+
+    settings = get_settings()
+    original_client_id = settings.github_client_id
+    original_app_url = settings.app_url
+    settings.github_client_id = "test-github-client"
+    settings.app_url = "http://localhost"
+    ctx.defer(lambda: setattr(settings, "github_client_id", original_client_id))
+    ctx.defer(lambda: setattr(settings, "app_url", original_app_url))
+
+    user = _make_user(ctx, "ghconnect")
+    _repo().update_user(str(user.id), email_verified=True)
+    token = _svc().create_session_for_user(
+        str(user.id), ip_address="127.0.0.1", user_agent="OAuthTest/1"
+    )
+    assert token
+
+    client = current_app.test_client()
+    cookie_name = current_app.config.get("CS_AUTH_COOKIE", "cs_session")
+    try:
+        client.set_cookie(cookie_name, token)
+    except TypeError:
+        client.set_cookie("localhost", cookie_name, token)
+    if hasattr(g, "_cs_session"):
+        delattr(g, "_cs_session")
+
+    response = client.get("/auth/github/connect", follow_redirects=False)
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    parsed = urllib.parse.urlparse(location)
+    params = urllib.parse.parse_qs(parsed.query)
+    assert params["redirect_uri"] == ["http://localhost/auth/github/callback"]
+
+    with client.session_transaction() as flask_session:
+        assert "_github_connect_state" in flask_session
+        assert "_connect_state" not in flask_session
+
+
+def test_github_shared_callback_dispatches_connect_flow(ctx: TestContext) -> None:
+    from flask import current_app, g
+    from codesandbox.config import get_settings
+
+    settings = get_settings()
+    original_client_id = settings.github_client_id
+    original_app_url = settings.app_url
+    settings.github_client_id = "test-github-client"
+    settings.app_url = "http://localhost"
+    ctx.defer(lambda: setattr(settings, "github_client_id", original_client_id))
+    ctx.defer(lambda: setattr(settings, "app_url", original_app_url))
+
+    user = _make_user(ctx, "ghcb")
+    _repo().update_user(str(user.id), email_verified=True)
+    token = _svc().create_session_for_user(
+        str(user.id), ip_address="127.0.0.1", user_agent="OAuthTest/1"
+    )
+    assert token
+
+    client = current_app.test_client()
+    cookie_name = current_app.config.get("CS_AUTH_COOKIE", "cs_session")
+    try:
+        client.set_cookie(cookie_name, token)
+    except TypeError:
+        client.set_cookie("localhost", cookie_name, token)
+    with client.session_transaction() as flask_session:
+        flask_session["_github_connect_state"] = "connect-state"
+    if hasattr(g, "_cs_session"):
+        delattr(g, "_cs_session")
+
+    response = client.get(
+        "/auth/github/callback?state=connect-state",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["Location"] == (
+        "/settings?tab=security&error=GitHub+authorization+cancelled"
+    )
+
+
 TESTS: list[TestCase] = [
     TestCase("signup duplicate email",          "identity", test_signup_duplicate_email),
     TestCase("signup short password",           "identity", test_signup_short_password),
@@ -293,4 +374,6 @@ TESTS: list[TestCase] = [
     TestCase("adaptive account lockout",        "identity", test_adaptive_account_lockout),
     TestCase("session anomaly replay blocked",  "identity", test_session_anomaly_replay_blocked),
     TestCase("single session signal tolerated", "identity", test_session_single_signal_change_tolerated),
+    TestCase("GitHub connect uses registered callback", "identity", test_github_oauth_connect_uses_registered_callback),
+    TestCase("GitHub shared callback dispatches connect", "identity", test_github_shared_callback_dispatches_connect_flow),
 ]

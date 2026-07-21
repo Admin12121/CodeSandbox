@@ -392,18 +392,17 @@
 
 {# Command palette (Ctrl+J / Search) #}
 {% import "components/ui/command.html" as cmd_ui %}
-<div id="cs-cmd" class="hidden fixed inset-0 z-[300] bg-black/30 backdrop-blur-sm" aria-hidden="true" role="dialog" aria-label="Command palette">
-  <div class="flex min-h-full items-start justify-center px-4 pt-[10vh]">
+<div id="cs-cmd" class="hidden fixed inset-0 z-[300]" aria-hidden="true" role="dialog" aria-label="Command palette">
+  {{ cmd_ui.command_dialog_backdrop(class="z-[300]") }}
+  {% call cmd_ui.command_dialog_viewport(class="z-[301]") %}
     {% call cmd_ui.command_dialog_popup(class="max-w-xl") %}
       {% call cmd_ui.command() %}
-        <div class="flex items-center gap-2 border-b px-3" data-slot="command-input-wrapper">
-          <svg class="size-4 shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input id="cs-cmd-input" type="text" placeholder="Search CodeSandbox…" autocomplete="off"
-            class="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground" role="combobox" aria-expanded="true" aria-controls="cs-cmd-list">
-          {{ kbd.kbd("Esc") }}
-        </div>
+        {{ cmd_ui.command_input(
+          placeholder="Search for apps and commands...",
+          attrs={"id": "cs-cmd-input", "role": "combobox", "aria-expanded": "true", "aria-controls": "cs-cmd-list"}
+        ) }}
         {% call cmd_ui.command_panel() %}
-          <div id="cs-cmd-empty" class="hidden py-6 text-center text-sm text-muted-foreground">No results found.</div>
+          {{ cmd_ui.command_empty(class="hidden", attrs={"id": "cs-cmd-empty"}) }}
           {% call cmd_ui.command_list(attrs={"id": "cs-cmd-list", "role": "listbox"}) %}
             {% for section in nav['sections'] %}
               <div data-cmd-section>
@@ -412,12 +411,14 @@
                   {% call cmd_ui.command_collection() %}
                     {% for item in section['items'] %}
                       {% if not item.get('separator') %}
-                      <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
-                        class="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground aria-selected:bg-accent aria-selected:text-accent-foreground"
-                        role="option">
+                      {% call cmd_ui.command_item(
+                        value=item['label'],
+                        href=item['href'],
+                        attrs={"data-cmd-item": item['label'], "role": "option"}
+                      ) %}
                         {{ nav_icon(item['href']) }}
                         <span class="flex-1 truncate">{{ item['label'] }}</span>
-                      </a>
+                      {% endcall %}
                       {% endif %}
                     {% endfor %}
                   {% endcall %}
@@ -432,12 +433,14 @@
                   {{ cmd_ui.command_group_label(text="Actions") }}
                   {% call cmd_ui.command_collection() %}
                     {% for item in secondary_items %}
-                      <a href="{{ item['href'] }}" data-cmd-item="{{ item['label'] }}"
-                        class="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground aria-selected:bg-accent aria-selected:text-accent-foreground"
-                        role="option">
+                      {% call cmd_ui.command_item(
+                        value=item['label'],
+                        href=item['href'],
+                        attrs={"data-cmd-item": item['label'], "role": "option"}
+                      ) %}
                         {{ nav_icon(item['href']) }}
                         <span class="flex-1 truncate">{{ item['label'] }}</span>
-                      </a>
+                      {% endcall %}
                     {% endfor %}
                   {% endcall %}
                 {% endcall %}
@@ -448,11 +451,20 @@
         {% call cmd_ui.command_footer() %}
           <div class="flex items-center gap-4">
             <div class="flex items-center gap-2">
-              {% call kbd.kbd_group() %}{{ kbd.kbd("↑") }}{{ kbd.kbd("↓") }}{% endcall %}
+              {% call kbd.kbd_group() %}
+                {% call kbd.kbd() %}
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
+                {% endcall %}
+                {% call kbd.kbd() %}
+                  <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                {% endcall %}
+              {% endcall %}
               <span>Navigate</span>
             </div>
             <div class="flex items-center gap-2">
-              {{ kbd.kbd("↵") }}
+              {% call kbd.kbd() %}
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 10-4 4 4 4"/><path d="M20 4v7a3 3 0 0 1-3 3H5"/></svg>
+              {% endcall %}
               <span>Open</span>
             </div>
           </div>
@@ -463,7 +475,7 @@
         {% endcall %}
       {% endcall %}
     {% endcall %}
-  </div>
+  {% endcall %}
 </div>
 
 {# Include UI runtime (tabs, dialogs, etc.) for all admin pages #}

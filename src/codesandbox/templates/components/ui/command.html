@@ -1,18 +1,196 @@
 {% include "components/ui/_runtime.html" %}
-{% macro command_dialog(open=false, class="", attrs={}) -%}<dialog class="{{ cn('m-auto w-full max-w-xl rounded-xl border bg-popover p-0 text-popover-foreground shadow-xl backdrop:bg-black/50', class) }}" data-slot="command-dialog" data-state="{{ 'open' if open else 'closed' }}" {% if open %}open{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</dialog>{%- endmacro %}
-{% macro command_dialog_trigger(text="", target="", class="", attrs={}) -%}<button type="button" class="{{ cn('', class) }}" data-slot="command-dialog-trigger" {% if target %}data-target="{{ target }}" aria-controls="{{ target.lstrip('#') }}"{% endif %} aria-expanded="false" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</button>{%- endmacro %}
-{% macro command_dialog_backdrop(class="", attrs={}) -%}<div class="{{ cn('fixed inset-0 z-50 bg-black/50', class) }}" data-slot="command-dialog-backdrop" {{ html_attrs(**attrs) }}></div>{%- endmacro %}
-{% macro command_dialog_viewport(class="", attrs={}) -%}<div class="{{ cn('fixed inset-0 z-50 grid place-items-start justify-center p-4 pt-[12vh]', class) }}" data-slot="command-dialog-viewport" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro command_dialog_popup(class="", attrs={}) -%}<div class="{{ cn('w-full overflow-hidden rounded-2xl border bg-popover text-popover-foreground shadow-lg flex flex-col', class) }}" data-slot="command-dialog-popup" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro command(class="", attrs={}) -%}<div class="{{ cn('flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground', class) }}" data-slot="command" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro command_input(name="", placeholder="Type a command or search...", value="", class="", attrs={}) -%}<div class="flex items-center border-b px-3" data-slot="command-input-wrapper"><input class="{{ cn('flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50', class) }}" data-slot="command-input" {% if name %}name="{{ name }}"{% endif %} value="{{ value }}" placeholder="{{ placeholder }}" {{ html_attrs(**attrs) }}></div>{%- endmacro %}
-{% macro command_list(class="", attrs={}) -%}<div class="{{ cn('max-h-[320px] overflow-y-auto overflow-x-hidden scroll-py-2 p-2', class) }}" data-slot="command-list" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro command_empty(text="No results found.", class="", attrs={}) -%}<div class="{{ cn('py-6 text-center text-sm text-muted-foreground', class) }}" data-slot="command-empty" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</div>{%- endmacro %}
-{% macro command_panel(class="", attrs={}) -%}<div class="{{ cn('min-h-0 flex-1', class) }}" data-slot="command-panel" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro command_group(class="", attrs={}) -%}<div class="{{ cn('overflow-hidden p-1 text-foreground', class) }}" data-slot="command-group" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro command_group_label(text="", class="", attrs={}) -%}<div class="{{ cn('px-2 py-1.5 text-xs font-medium text-muted-foreground', class) }}" data-slot="command-group-label" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</div>{%- endmacro %}
-{% macro command_collection(class="", attrs={}) -%}<div class="{{ cn('', class) }}" data-slot="command-collection" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
-{% macro command_item(value="", disabled=false, class="", attrs={}) -%}<div class="{{ cn('relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-accent aria-selected:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 hover:bg-accent hover:text-accent-foreground', class) }}" data-slot="command-item" {% if value %}data-value="{{ value }}"{% endif %} {% if disabled %}data-disabled{% endif %} {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ value }}{% endif %}</div>{%- endmacro %}
-{% macro command_separator(class="", attrs={}) -%}<div class="{{ cn('my-2 h-px bg-border', class) }}" data-slot="command-separator" {{ html_attrs(**attrs) }}></div>{%- endmacro %}
-{% macro command_shortcut(text="", class="", attrs={}) -%}<span class="{{ cn('ms-auto text-xs tracking-widest text-muted-foreground', class) }}" data-slot="command-shortcut" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}</span>{%- endmacro %}
-{% macro command_footer(class="", attrs={}) -%}<div class="{{ cn('flex items-center justify-between gap-2 border-t px-5 py-3 text-xs text-muted-foreground', class) }}" data-slot="command-footer" {{ html_attrs(**attrs) }}>{% if caller is defined %}{{ caller() }}{% endif %}</div>{%- endmacro %}
+
+{% macro command_dialog(open=false, class="", attrs={}) -%}
+<dialog
+  class="{{ cn('m-0 size-auto max-h-none max-w-none overflow-visible border-0 bg-transparent p-0 text-popover-foreground backdrop:bg-transparent', class) }}"
+  data-slot="command-dialog"
+  data-state="{{ 'open' if open else 'closed' }}"
+  {% if open %}open{% endif %}
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</dialog>
+{%- endmacro %}
+
+{% macro command_dialog_trigger(text="", target="", class="", attrs={}) -%}
+<button
+  type="button"
+  class="{{ cn('', class) }}"
+  data-slot="command-dialog-trigger"
+  {% if target %}data-target="{{ target }}" aria-controls="{{ target.lstrip('#') }}"{% endif %}
+  aria-expanded="false"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
+</button>
+{%- endmacro %}
+
+{% macro command_dialog_backdrop(class="", attrs={}) -%}
+<div
+  class="{{ cn('fixed inset-0 z-50 bg-black/32 backdrop-blur-sm transition-all duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0', class) }}"
+  data-slot="command-dialog-backdrop"
+  {{ html_attrs(**attrs) }}
+></div>
+{%- endmacro %}
+
+{% macro command_dialog_viewport(class="", attrs={}) -%}
+<div
+  class="{{ cn('fixed inset-0 z-50 flex flex-col items-center px-4 py-[max(--spacing(4),4vh)] sm:py-[10vh]', class) }}"
+  data-slot="command-dialog-viewport"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_dialog_popup(class="", attrs={}) -%}
+<div
+  class="{{ cn('relative row-start-2 flex max-h-105 min-h-0 w-full min-w-0 max-w-xl -translate-y-[calc(1.25rem*var(--nested-dialogs,0))] scale-[calc(1-0.1*var(--nested-dialogs,0))] flex-col rounded-2xl border bg-popover not-dark:bg-clip-padding text-popover-foreground opacity-[calc(1-0.1*var(--nested-dialogs,0))] shadow-lg/5 outline-none transition-[scale,opacity,translate] duration-200 ease-in-out will-change-transform before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:bg-muted/72 before:shadow-[0_1px_--theme(--color-black/4%)] data-nested:data-ending-style:translate-y-8 data-nested:data-starting-style:translate-y-8 data-nested-dialog-open:origin-top data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-1 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]', class) }}"
+  data-slot="command-dialog-popup"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command(class="", attrs={}) -%}
+<div
+  class="{{ cn('relative flex h-full w-full flex-col overflow-hidden rounded-[inherit] bg-transparent text-popover-foreground', class) }}"
+  data-slot="command"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_input(name="", placeholder="Type a command or search...", value="", class="", wrapper_class="", attrs={}) -%}
+<div class="{{ cn('px-2.5 py-1.5', wrapper_class) }}" data-slot="command-input-wrapper">
+  <div class="relative flex items-center rounded-lg border border-transparent bg-transparent text-base text-foreground shadow-none ring-ring/24 transition-shadow before:hidden has-focus-visible:ring-0 sm:text-sm">
+    <span class="pointer-events-none absolute left-3 inline-flex size-4 items-center justify-center text-muted-foreground" aria-hidden="true">
+      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    </span>
+    <input
+      class="{{ cn('h-9.5 w-full min-w-0 rounded-[inherit] border-0 bg-transparent py-0 pe-3 ps-9 text-sm leading-9.5 outline-none shadow-none placeholder:text-muted-foreground/72 disabled:cursor-not-allowed disabled:opacity-50 sm:h-8.5 sm:leading-8.5', class) }}"
+      data-slot="command-input"
+      type="text"
+      autocomplete="off"
+      {% if name %}name="{{ name }}"{% endif %}
+      value="{{ value }}"
+      placeholder="{{ placeholder }}"
+      {{ html_attrs(**attrs) }}
+    >
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro command_panel(class="", attrs={}) -%}
+<div
+  class="{{ cn('relative -mx-px not-has-[+[data-slot=command-footer]]:-mb-px min-h-0 flex-1 rounded-t-xl not-has-[+[data-slot=command-footer]]:rounded-b-2xl border border-b-0 bg-popover bg-clip-padding shadow-xs/5 [clip-path:inset(0_1px)] not-has-[+[data-slot=command-footer]]:[clip-path:inset(0_1px_1px_1px_round_0_0_calc(var(--radius-2xl)-1px)_calc(var(--radius-2xl)-1px))] before:pointer-events-none before:absolute before:inset-0 before:rounded-t-[calc(var(--radius-xl)-1px)] **:data-[slot=scroll-area-scrollbar]:mt-2', class) }}"
+  data-slot="command-panel"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_empty(text="No results found.", class="", attrs={}) -%}
+<div
+  class="{{ cn('not-empty:py-6 text-center text-sm text-muted-foreground', class) }}"
+  data-slot="command-empty"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_list(class="", attrs={}) -%}
+<div
+  class="{{ cn('max-h-[320px] overflow-y-auto overflow-x-hidden not-empty:scroll-py-2 not-empty:p-2', class) }}"
+  data-slot="command-list"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_group(class="", attrs={}) -%}
+<div class="{{ cn('', class) }}" data-slot="command-group" {{ html_attrs(**attrs) }}>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_group_label(text="", class="", attrs={}) -%}
+<div
+  class="{{ cn('px-2 py-1.5 text-xs font-medium text-muted-foreground', class) }}"
+  data-slot="command-group-label"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_collection(class="", attrs={}) -%}
+<div class="{{ cn('', class) }}" data-slot="command-collection" {{ html_attrs(**attrs) }}>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_item(value="", href="", disabled=false, class="", attrs={}) -%}
+{% set base_class = cn('relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none aria-selected:bg-accent aria-selected:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50 hover:bg-accent hover:text-accent-foreground', class) %}
+{% if href %}
+<a
+  class="{{ base_class }}"
+  data-slot="command-item"
+  {% if value %}data-value="{{ value }}"{% endif %}
+  href="{{ href }}"
+  {% if disabled %}data-disabled aria-disabled="true"{% endif %}
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% else %}{{ value }}{% endif %}
+</a>
+{% else %}
+<div
+  class="{{ base_class }}"
+  data-slot="command-item"
+  {% if value %}data-value="{{ value }}"{% endif %}
+  {% if disabled %}data-disabled aria-disabled="true"{% endif %}
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% else %}{{ value }}{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro command_separator(class="", attrs={}) -%}
+<div
+  class="{{ cn('my-2 h-px bg-border', class) }}"
+  data-slot="command-separator"
+  {{ html_attrs(**attrs) }}
+></div>
+{%- endmacro %}
+
+{% macro command_shortcut(text="", class="", attrs={}) -%}
+<kbd
+  class="{{ cn('ms-auto font-sans text-xs font-medium tracking-widest text-muted-foreground/72', class) }}"
+  data-slot="command-shortcut"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
+</kbd>
+{%- endmacro %}
+
+{% macro command_footer(class="", attrs={}) -%}
+<div
+  class="{{ cn('flex items-center justify-between gap-2 rounded-b-[calc(var(--radius-2xl)-1px)] border-t px-5 py-3 text-xs text-muted-foreground', class) }}"
+  data-slot="command-footer"
+  {{ html_attrs(**attrs) }}
+>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro command_status(text="", class="", attrs={}) -%}
+<div class="{{ cn('sr-only', class) }}" data-slot="command-status" role="status" {{ html_attrs(**attrs) }}>
+  {% if caller is defined %}{{ caller() }}{% else %}{{ text }}{% endif %}
+</div>
+{%- endmacro %}

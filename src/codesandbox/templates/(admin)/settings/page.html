@@ -1072,13 +1072,38 @@
     if(el){ el.textContent = msg; el.hidden = false; }
   }
 
-	  function render2faQR(uri, fallbackUrl){
+	  function loadQrScript(src, globalName, callback){
+	    if(window[globalName]){
+	      callback();
+	      return;
+	    }
+	    var existing = document.querySelector('script[src="' + src + '"]');
+	    if(existing){
+	      var done = false;
+	      var finish = function(){
+	        if(done) return;
+	        done = true;
+	        callback();
+	      };
+	      existing.addEventListener('load', finish, {once:true});
+	      existing.addEventListener('error', finish, {once:true});
+	      setTimeout(finish, 80);
+	      return;
+	    }
+	    var script = document.createElement('script');
+	    script.src = src;
+	    script.addEventListener('load', callback, {once:true});
+	    script.addEventListener('error', callback, {once:true});
+	    document.head.appendChild(script);
+	  }
+
+	  function render2faQR(uri, fallbackUrl, retried){
 	    var canvas = document.getElementById('dlg-2fa-qr-canvas');
 	    if(!canvas) return;
 	    canvas.innerHTML = '';
-	    if(uri && typeof QRCodeStyling !== 'undefined'){
+	    if(uri && window.QRCodeStyling){
 	      try{
-	        var qr = new QRCodeStyling({
+	        var qr = new window.QRCodeStyling({
 	          width:200,
 	          height:200,
 	          type:'svg',
@@ -1096,8 +1121,22 @@
 	        return;
 	      }catch(e){}
 	    }
-	    if(uri && typeof QRCode !== 'undefined'){
-	      try{ new QRCode(canvas,{text:uri,width:200,height:200,colorDark:'#111827',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.H}); return; }catch(e){}
+	    if(uri && !retried){
+	      loadQrScript('/qr-code-styling.js', 'QRCodeStyling', function(){
+	        render2faQR(uri, fallbackUrl, true);
+	      });
+	      return;
+	    }
+	    if(uri && window.QRCode){
+	      try{ new window.QRCode(canvas,{text:uri,width:200,height:200,colorDark:'#111827',colorLight:'#ffffff',correctLevel:window.QRCode.CorrectLevel.H}); return; }catch(e){}
+	    }
+	    if(uri && !window.QRCode){
+	      loadQrScript('/qrcode.min.js', 'QRCode', function(){
+	        if(window.QRCode){
+	          render2faQR(uri, fallbackUrl, true);
+	        }
+	      });
+	      return;
 	    }
 	    if(fallbackUrl){
 	      var img = document.createElement('img');

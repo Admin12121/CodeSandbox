@@ -1,0 +1,39 @@
+﻿{% macro navigation() %}
+    <div
+        class="sticky top-0 w-full backdrop-blur-lg z-50 flex justify-center bg-stone-50/80 dark:bg-stone-950/80"
+    >
+        <div class="max-w-6xl w-full">
+            <div
+                class="flex items-center justify-between h-14 w-full gap-2 py-1 px-4 lg:px-6"
+            >
+                <a
+                    aria-label="Go to home"
+                    class="w-fit hover:opacity-70 py-2 m-0 flex items-center gap-2.5"
+                    href="/"
+                >
+                    <img
+                        src="/logo.webp"
+                        alt=""
+                        class="size-10 object-contain"
+                    />
+                    <span
+                        class="font-semibold text-base tracking-tight text-stone-800 dark:text-stone-100"
+                        >CodeSandbox</span
+                    >
+                </a>
+                <div class="flex gap-2 lg:gap-4 justify-end w-max">
+                    <a
+                        class="cursor-pointer box-border inline-flex items-center justify-center font-semibold font-mono uppercase border transition-all ease-in duration-75 whitespace-nowrap text-center select-none gap-x-2 active:scale-95 text-sm leading-5 rounded-xl px-4 py-1.5 h-8 bg-white border-stone-200 hover:bg-stone-100 hover:border-stone-300 text-stone-800 dark:bg-stone-900 dark:border-stone-700 dark:text-stone-100 dark:hover:bg-stone-800"
+                        href="/login"
+                        >Log in</a
+                    >
+                    <a
+                        class="cursor-pointer box-border inline-flex items-center justify-center font-semibold font-mono uppercase border transition-all ease-in duration-75 whitespace-nowrap text-center select-none gap-x-2 active:scale-95 text-sm leading-5 rounded-xl px-4 py-1.5 h-8 text-stone-50 bg-stone-900 border-stone-900 hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:border-stone-100 dark:hover:bg-stone-300"
+                        href="/login?mode=signup"
+                        >Sign up</a
+                    >
+                </div>
+            </div>
+        </div>
+    </div>
+{% endmacro %}

@@ -6,6 +6,7 @@
 {% import "components/ui/select.html" as sel %}
 {% import "components/ui/input.html" as input %}
 {% import "components/ui/table-pagination.html" as tp %}
+{% import "components/ui/delete-dialog.html" as del_dlg %}
 {% import "components/media/avatar.html" as media_avatar %}
 {% import "components/media/upload.html" as media_upload %}
 
@@ -126,7 +127,7 @@
 {% endmacro %}
 
 {# ═══ EDITOR VIEW ═══ #}
-{% macro org_editor(selected_org, organizations, error) %}
+{% macro org_editor(selected_org, organizations, error, can_edit=false) %}
 {% set is_create = selected_org.id is none %}
 {% set oid = selected_org.id %}
 <div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
@@ -398,6 +399,31 @@
                   {% call table.table_cell() %}{% endcall %}
                 {% endcall %}
 
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Owner{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    {% if selected_org.owner %}
+                      <a href="/platform/users/{{ selected_org.owner.email }}" class="inline-flex min-w-0 items-center gap-2 hover:underline">
+                        {{ media_avatar.image_avatar(selected_org.owner.name, selected_org.owner.avatar_url, size="xs", class="font-semibold", bind_key="user:" ~ selected_org.owner.id) }}
+                        <span class="truncate text-foreground">{{ selected_org.owner.name }}</span>
+                        <span class="truncate text-muted-foreground">{{ selected_org.owner.email }}</span>
+                      </a>
+                    {% elif selected_org.owner_id %}
+                      <span class="inline-flex min-w-0 items-center gap-2">
+                        {% if selected_org.owner_state == "deleted" %}
+                          {{ badge.badge("Deleted owner", variant="destructive") }}
+                        {% else %}
+                          {{ badge.badge("Missing owner", variant="destructive") }}
+                        {% endif %}
+                        <span class="truncate font-mono text-xs">{{ selected_org.owner_id }}</span>
+                      </span>
+                    {% else %}
+                      <span>&mdash;</span>
+                    {% endif %}
+                  {% endcall %}
+                  {% call table.table_cell() %}{% endcall %}
+                {% endcall %}
+
               {% endcall %}
             {% endcall %}
           {% endcall %}
@@ -436,7 +462,7 @@
                   {% endcall %}
                   {% call table.table_cell(class="align-middle text-right") %}
                     <form method="post" action="/platform/organizations/{{ oid }}/update-status" data-cs-autosubmit>
-  {{ csrf_input() }}
+                      {{ csrf_input() }}
                       <select name="status" class="h-8 w-48 rounded-lg border border-input bg-background px-2.5 py-1 text-sm text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         {% for opt in org_status_options %}
                           <option value="{{ opt.value }}" {% if opt.value == selected_org.status %}selected{% endif %}>{{ opt.label }}</option>
@@ -448,6 +474,30 @@
               {% endcall %}
             {% endcall %}
           {% endcall %}
+
+          {% if can_edit %}
+            {% call frame.frame() %}
+              <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                  <div class="text-sm font-medium text-destructive">Delete organization</div>
+                  <div class="mt-0.5 text-xs text-muted-foreground">
+                    {% if selected_org.owner_state in ("missing", "deleted") %}
+                      This organization has no valid owner.
+                    {% endif %}
+                    Permanently delete <strong>{{ selected_org.name }}</strong>, members, roles, invitations, and associated organization data. This cannot be undone.
+                  </div>
+                </div>
+                {% call del_dlg.delete_dialog_trigger("delete-platform-org-" ~ oid) %}
+                  {% call button.button(type="button", variant="destructive", size="sm", attrs={
+                    "data-dialog-trigger": "",
+                    "data-target": "#delete-platform-org-" ~ oid,
+                    "aria-controls": "delete-platform-org-" ~ oid,
+                    "aria-expanded": "false"
+                  }) %}Delete organization{% endcall %}
+                {% endcall %}
+              </div>
+            {% endcall %}
+          {% endif %}
 
           {% app_script "platform-org-editor" %}
           (function(){
@@ -526,6 +576,15 @@
   </div>
 
 </div>
+{% if (not is_create) and can_edit %}
+  {{ del_dlg.delete_dialog(
+    id="delete-platform-org-" ~ oid,
+    name=selected_org.name,
+    description='This will permanently delete the "' ~ selected_org.name ~ '" organization, remove all members, roles, invitations, and associated organization data.',
+    action="/platform/organizations/" ~ oid ~ "/delete",
+    submit_label="Delete organization"
+  ) }}
+{% endif %}
 {% endmacro %}
 
 {% macro _org_edit_actions() %}

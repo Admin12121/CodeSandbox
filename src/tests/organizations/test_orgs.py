@@ -70,13 +70,23 @@ def test_create_organization(ctx: TestContext) -> None:
     assert str(org.owner_id) == str(user.id)
 
 
-"""Every new org must have at least admin and member system roles seeded."""
-def test_create_org_seeds_roles(ctx: TestContext) -> None:
+"""New orgs start with no roles; roles are user-managed."""
+def test_create_org_starts_without_roles(ctx: TestContext) -> None:
     user = _make_user(ctx, "seedown")
     org  = _make_org(ctx, user)
     role_names = [r.name for r in _org().list_org_roles(str(org.id))]
-    assert "admin"  in role_names, f"Expected 'admin' role, got {role_names}"
-    assert "member" in role_names, f"Expected 'member' role, got {role_names}"
+    assert role_names == [], f"Expected no default roles, got {role_names}"
+
+
+"""Creating an org with a missing owner is rejected."""
+def test_create_organization_requires_existing_owner(ctx: TestContext) -> None:
+    missing_owner_id = str(uuid.uuid4())
+    try:
+        _org().create_organization(name=unique("OrphanOrg"), created_by=missing_owner_id)
+    except ValueError as exc:
+        assert "owner" in str(exc).lower()
+    else:
+        raise AssertionError("Organization creation must reject a missing owner")
 
 
 """A member can be removed; the record must be fully gone afterwards."""
@@ -114,12 +124,14 @@ def test_transfer_ownership_not_owner(ctx: TestContext) -> None:
     assert not ok, "Non-owner must not transfer ownership"
 
 
-"""delete_org_role must refuse roles with is_system=True."""
-def test_delete_system_org_role_blocked(ctx: TestContext) -> None:
-    from codesandbox.features.organizations.models import OrganizationRole
+"""delete_org_role deletes even legacy roles still marked is_system=True."""
+def test_delete_system_org_role_allowed(ctx: TestContext) -> None:
+    from codesandbox.features.organizations.models import OrganizationMemberRole, OrganizationRole
 
     user = _make_user(ctx, "sysrl")
     org  = _make_org(ctx, user)
+    member = _make_user(ctx, "sysmem")
+    m = _org().add_member(str(org.id), str(member.id))
     role = OrganizationRole(
         id=str(uuid.uuid4()),
         org_id=str(org.id),
@@ -129,16 +141,39 @@ def test_delete_system_org_role_blocked(ctx: TestContext) -> None:
         position=99,
     )
     role.save()
-
-    def _force_delete():
-        role.is_system = False
-        role.save()
-        _org().delete_org_role(str(role.id))
-
-    ctx.defer(_force_delete)
+    OrganizationMemberRole(
+        id=str(uuid.uuid4()),
+        member_id=str(m.id),
+        role_id=str(role.id),
+    ).save()
 
     ok = _org().delete_org_role(str(role.id))
-    assert not ok, "System roles must not be deletable"
+    assert ok, "Any org role should be deletable"
+    assert OrganizationRole.objects.filter(id=str(role.id)).first() is None
+    assert OrganizationMemberRole.objects.filter(role_id=str(role.id)).first() is None
+
+
+"""A member with role-management permission can delete any role position."""
+def test_delete_org_role_ignores_hierarchy(ctx: TestContext) -> None:
+    from codesandbox.features.organizations.service import delete_org_custom_role
+
+    owner = _make_user(ctx, "delhi_o")
+    actor = _make_user(ctx, "delhi_a")
+    org = _make_org(ctx, owner)
+    _org().seed_org_roles(str(org.id))
+    _org().add_member(str(org.id), str(actor.id))
+
+    roles = _org().list_org_roles(str(org.id))
+    admin_role = next(r for r in roles if r.name == "admin")
+    member_role = next(r for r in roles if r.name == "member")
+    _org().set_org_role_permission(str(member_role.id), "org.roles.manage", enabled=True)
+    actor_member = _org().get_member(str(org.id), str(actor.id))
+    _org().assign_role_to_member(str(actor_member.id), str(member_role.id))
+
+    ok, msg = delete_org_custom_role(org.slug, str(admin_role.id), str(actor.id))
+    assert ok, msg
+    from codesandbox.features.organizations.models import OrganizationRole
+    assert OrganizationRole.objects.filter(id=str(admin_role.id)).first() is None
 
 
 """Deleted org is no longer retrievable."""
@@ -175,7 +210,7 @@ def test_idor_cross_org_member_remove(ctx: TestContext) -> None:
     assert _org().get_member(str(org_a.id), str(victim.id)) is not None, "Victim must still be in org_a"
 
 
-"""IDOR: owner of Org B cannot delete a custom role that belongs to Org A."""
+"""IDOR: owner of Org B cannot delete a role that belongs to Org A."""
 def test_idor_cross_org_role_delete(ctx: TestContext) -> None:
     from codesandbox.features.organizations.models import OrganizationRole
     from codesandbox.features.organizations.service import delete_org_custom_role
@@ -186,7 +221,7 @@ def test_idor_cross_org_role_delete(ctx: TestContext) -> None:
     org_a = _make_org(ctx, owner_a)
     org_b = _make_org(ctx, owner_b)
 
-    # Create a custom (non-system) role in org_a
+    # Create a role in org_a
     role_a = OrganizationRole(
         id=str(uuid.uuid4()),
         org_id=str(org_a.id),
@@ -213,6 +248,7 @@ def test_self_assign_higher_position_blocked(ctx: TestContext) -> None:
     owner = _make_user(ctx, "sahpb_o")
     actor = _make_user(ctx, "sahpb_a")
     org   = _make_org(ctx, owner)
+    _org().seed_org_roles(str(org.id))
     _org().add_member(str(org.id), str(actor.id))
 
     roles       = _org().list_org_roles(str(org.id))
@@ -260,6 +296,7 @@ def test_non_member_role_assign_rejected(ctx: TestContext) -> None:
     outsider = _make_user(ctx, "nmrar_x")
     victim   = _make_user(ctx, "nmrar_v")
     org      = _make_org(ctx, owner)
+    _org().seed_org_roles(str(org.id))
 
     _org().add_member(str(org.id), str(victim.id))
     m     = _org().get_member(str(org.id), str(victim.id))
@@ -272,11 +309,13 @@ def test_non_member_role_assign_rejected(ctx: TestContext) -> None:
 
 TESTS: list[TestCase] = [
     TestCase("create organization",              "organizations", test_create_organization),
-    TestCase("create org seeds roles",           "organizations", test_create_org_seeds_roles),
+    TestCase("create org starts without roles",  "organizations", test_create_org_starts_without_roles),
+    TestCase("create organization requires owner", "organizations", test_create_organization_requires_existing_owner),
     TestCase("remove member",                    "organizations", test_remove_member),
     TestCase("transfer ownership success",       "organizations", test_transfer_ownership_success),
     TestCase("transfer ownership not owner",     "organizations", test_transfer_ownership_not_owner),
-    TestCase("delete system org role blocked",   "organizations", test_delete_system_org_role_blocked),
+    TestCase("delete system org role allowed",   "organizations", test_delete_system_org_role_allowed),
+    TestCase("delete org role ignores hierarchy", "organizations", test_delete_org_role_ignores_hierarchy),
     TestCase("delete organization",              "organizations", test_delete_organization),
     TestCase("IDOR cross-org member remove",     "organizations", test_idor_cross_org_member_remove),
     TestCase("IDOR cross-org role delete",       "organizations", test_idor_cross_org_role_delete),

@@ -1,0 +1,828 @@
+﻿{% macro styles() %}
+<link rel="stylesheet" href="/footer-ascii-hands.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.3.25/dist/lenis.css" />
+<script defer src="/footer-ascii-hands.js"></script>
+<style>
+    .landing-platform-animation {
+        --landing-brand: #6366f1;
+        --landing-neutral-50: #fafafa;
+        --landing-neutral-100: #f5f5f5;
+        --landing-neutral-200: #e5e5e5;
+        --landing-neutral-300: #d4d4d4;
+        --landing-neutral-400: #a1a1a1;
+        --landing-neutral-500: #737373;
+        --landing-neutral-900: #171717;
+    }
+    .dark .landing-platform-animation {
+        --landing-neutral-50: #0c0a09;
+        --landing-neutral-100: #1c1917;
+        --landing-neutral-200: #292524;
+        --landing-neutral-300: #44403c;
+        --landing-neutral-400: #78716c;
+        --landing-neutral-500: #a8a29e;
+        --landing-neutral-900: #fafaf9;
+    }
+    .landing-platform-connector {
+        display: none;
+    }
+    .landing-device-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        align-items: center;
+        gap: 40px;
+        width: 100%;
+        padding: 16px 0;
+        overflow: hidden;
+    }
+    .landing-device-card {
+        display: flex;
+        min-width: 240px;
+        flex-direction: column;
+        align-items: center;
+        outline: none;
+    }
+    .landing-device-card:focus-visible {
+        border-radius: 16px;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+    }
+    .landing-device-shell {
+        padding: 4px;
+        background: var(--landing-neutral-200);
+        box-shadow:
+            0 1px 2px rgba(0, 0, 0, 0.05),
+            0 0 0 1px rgba(0, 0, 0, 0.05);
+    }
+    .landing-device-screen {
+        position: relative;
+        width: 100%;
+        overflow: hidden;
+        background: var(--landing-neutral-50);
+    }
+    .landing-screen-content {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        filter: blur(8px);
+        transition:
+            opacity 0.3s ease-out 0.2s,
+            filter 0.3s ease-out 0.2s;
+    }
+    .landing-screen-content img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-position: center;
+    }
+    .landing-device-card:hover .landing-screen-content,
+    .landing-device-card:focus-within .landing-screen-content,
+    .landing-device-card.is-active .landing-screen-content {
+        opacity: 1;
+        filter: blur(0);
+    }
+    .landing-island-wrap {
+        position: absolute;
+        z-index: 10;
+        top: 0;
+        right: 0;
+        left: 0;
+        display: flex;
+        justify-content: center;
+        padding-top: 6px;
+    }
+    .landing-dynamic-island {
+        position: relative;
+        width: 28px;
+        height: 10px;
+        overflow: hidden;
+        border-radius: 5px;
+        background: #000;
+        transition:
+            width 0.42s cubic-bezier(0.22, 1.12, 0.36, 1),
+            border-radius 0.42s cubic-bezier(0.22, 1.12, 0.36, 1);
+    }
+    .landing-island-state {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    .landing-island-state.is-visible {
+        opacity: 1;
+    }
+    .landing-island-idle {
+        gap: 2px;
+    }
+    .landing-camera {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: #404040;
+    }
+    .landing-sensor {
+        width: 2px;
+        height: 2px;
+        border-radius: 50%;
+        background: #525252;
+    }
+    .landing-loading-dots {
+        display: flex;
+        align-items: center;
+        gap: 1px;
+    }
+    .landing-loading-dots i {
+        width: 2px;
+        height: 2px;
+        border-radius: 50%;
+        background: #fff;
+        animation: landing-loading-dot 0.6s ease-in-out infinite;
+    }
+    .landing-loading-dots i:nth-child(2) {
+        animation-delay: 0.1s;
+    }
+    .landing-loading-dots i:nth-child(3) {
+        animation-delay: 0.2s;
+    }
+    @keyframes landing-loading-dot {
+        0%,
+        100% {
+            opacity: 0.3;
+        }
+        50% {
+            opacity: 1;
+        }
+    }
+    .landing-island-done span {
+        color: #fff;
+        font-size: 3px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    .landing-mac-done {
+        gap: 2px;
+    }
+    .landing-battery {
+        display: flex;
+        width: 8px;
+        height: 4px;
+        align-items: center;
+        margin-left: 1px;
+        border: 1px solid #00c758;
+        border-radius: 1px;
+    }
+    .landing-battery i {
+        width: 85%;
+        height: 100%;
+        background: #00c758;
+    }
+    .landing-phone-device {
+        position: relative;
+        width: 96px;
+        margin: 0 auto;
+    }
+    .landing-phone-shell {
+        border-radius: 20px;
+    }
+    .landing-phone-screen {
+        height: 160px;
+        border-radius: 16px;
+    }
+    .landing-phone-buttons {
+        position: absolute;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .landing-phone-buttons-left {
+        top: 40px;
+        left: -2px;
+    }
+    .landing-phone-buttons-left i {
+        width: 2px;
+        border-radius: 2px 0 0 2px;
+        background: var(--landing-neutral-300);
+    }
+    .landing-phone-buttons-left i:nth-child(1) {
+        height: 10px;
+    }
+    .landing-phone-buttons-left i:nth-child(2),
+    .landing-phone-buttons-left i:nth-child(3) {
+        height: 16px;
+    }
+    .landing-phone-buttons-right {
+        top: 56px;
+        right: -2px;
+    }
+    .landing-phone-buttons-right i {
+        width: 2px;
+        height: 24px;
+        border-radius: 0 2px 2px 0;
+        background: var(--landing-neutral-300);
+    }
+    .landing-phone-homebar {
+        position: absolute;
+        right: 0;
+        bottom: 6px;
+        left: 0;
+        width: 32px;
+        height: 2px;
+        margin: auto;
+        border-radius: 999px;
+        background: var(--landing-neutral-400);
+    }
+    .landing-laptop-device {
+        width: 320px;
+        margin: 0 auto;
+        perspective: 1200px;
+    }
+    .landing-laptop-lid {
+        width: 90%;
+        height: 176px;
+        margin: 0 auto;
+        padding: 6px;
+        border-radius: 8px 8px 0 0;
+        background: var(--landing-neutral-200);
+        box-shadow:
+            0 1px 2px rgba(0, 0, 0, 0.05),
+            0 0 0 1px rgba(0, 0, 0, 0.05);
+        transform: rotateX(-60deg);
+        transform-origin: bottom;
+        transition: transform 0.98s cubic-bezier(0.901, 0.016, 0, 1.032);
+    }
+    .landing-laptop-screen {
+        height: 100%;
+        border-radius: 4px 8px 2px 2px;
+    }
+    .landing-laptop-screen-content {
+        transition-delay: 0.5s;
+    }
+    .landing-device-card:hover .landing-laptop-lid,
+    .landing-device-card:focus-within .landing-laptop-lid,
+    .landing-device-card.is-active .landing-laptop-lid {
+        transform: rotateX(20deg);
+    }
+    .landing-laptop-base {
+        position: relative;
+        width: 100%;
+        height: 14px;
+        border-radius: 6px 6px 24px 24px;
+        background: linear-gradient(
+            to bottom,
+            var(--landing-neutral-200),
+            var(--landing-neutral-300)
+        );
+        box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.05);
+    }
+    .landing-laptop-base span {
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 0;
+        width: 48px;
+        height: 6px;
+        margin: auto;
+        border-radius: 0 0 2px 2px;
+        background: var(--landing-neutral-400);
+    }
+    .landing-tablet-device {
+        position: relative;
+        width: 224px;
+        margin: 0 auto;
+    }
+    .landing-tablet-shell {
+        border-radius: 16px;
+    }
+    .landing-tablet-screen {
+        height: 144px;
+        border-radius: 12px;
+    }
+    .landing-tablet-buttons {
+        position: absolute;
+        z-index: 2;
+        display: flex;
+    }
+    .landing-tablet-buttons-side {
+        top: 24px;
+        right: -2px;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .landing-tablet-buttons-side i {
+        width: 2px;
+        height: 20px;
+        border-radius: 0 2px 2px 0;
+        background: var(--landing-neutral-300);
+    }
+    .landing-tablet-buttons-top {
+        top: -2px;
+        right: 40px;
+    }
+    .landing-tablet-buttons-top i {
+        width: 24px;
+        height: 2px;
+        border-radius: 2px 2px 0 0;
+        background: var(--landing-neutral-300);
+    }
+    @media (min-width: 768px) {
+        .landing-device-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            align-items: end;
+            padding: 40px 0;
+        }
+    }
+    @media (min-width: 1024px) {
+        .landing-platform-connector {
+            position: relative;
+            display: flex;
+            width: 100%;
+            height: 48px;
+            align-items: center;
+            margin: 0 auto 32px;
+        }
+        .landing-connector-node {
+            position: absolute;
+            z-index: 2;
+            top: 50%;
+            display: flex;
+            width: 16px;
+            height: 16px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: var(--landing-neutral-200);
+            transform: translate(-50%, -50%);
+        }
+        .landing-connector-node i {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--landing-brand);
+        }
+        .landing-node-left {
+            left: calc(100% / 6);
+        }
+        .landing-node-center {
+            left: 50%;
+        }
+        .landing-node-right {
+            left: calc(500% / 6);
+        }
+        .landing-beam-slot {
+            position: absolute;
+            top: 50%;
+            width: calc(200% / 6);
+            height: 48px;
+            transform: translateY(-50%);
+        }
+        .landing-beam-slot-left {
+            left: calc(100% / 6);
+        }
+        .landing-beam-slot-right {
+            left: calc(300% / 6);
+        }
+        .landing-connector-beam {
+            width: 100%;
+            height: 48px;
+            overflow: visible;
+        }
+        .landing-connector-path {
+            stroke: var(--landing-neutral-300);
+        }
+    }
+    @media (max-width: 767px) {
+        .landing-laptop-device {
+            width: min(320px, calc(100vw - 48px));
+        }
+    }
+    [data-runtime-tabs] [data-runtime-panel] > p {
+        display: none;
+    }
+    .exact-card {
+        cursor: default;
+        outline: none !important;
+    }
+    .exact-card:focus,
+    .exact-card:focus-visible {
+        outline: none !important;
+        box-shadow:
+            inset 0 1px rgba(255, 255, 255, 0.025),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.025) !important;
+    }
+    .api-card [data-api-laptop-y] {
+        transform: translateY(-50px);
+        transition: transform 0.4s cubic-bezier(0, 0.4, 0.2, 1);
+        will-change: transform;
+    }
+    .api-card.is-active [data-api-laptop-y] {
+        transform: translateY(-30px);
+    }
+    .api-card [data-api-screen] {
+        transform: rotateX(-75deg) translateX(-50%) !important;
+        background: var(--screen-on-color) !important;
+        transition:
+            transform 1s cubic-bezier(0.4, 0, 0.2, 1),
+            background 0.5s ease;
+        will-change: transform;
+    }
+    .api-card.is-active [data-api-screen] {
+        transform: rotateX(20deg) translateX(-50%) !important;
+        background: var(--screen-off-color) !important;
+    }
+    .api-card [data-api-screen-light] {
+        transform: rotateX(90deg);
+        opacity: 1;
+        transition:
+            transform 2s cubic-bezier(0, 0.4, 0.2, 1) 0.4s,
+            opacity 2s cubic-bezier(0, 0.4, 0.2, 1) 0.4s;
+    }
+    .api-card.is-active [data-api-screen-light] {
+        transform: rotateX(0deg);
+        opacity: 0;
+        transition-duration: 1s;
+        transition-delay: 0s;
+    }
+    .api-card [data-api-user] {
+        opacity: 0 !important;
+        transition: opacity 0.25s cubic-bezier(0, 0.4, 0.2, 1);
+    }
+    .api-card.is-active [data-api-user] {
+        opacity: 1 !important;
+        transition: opacity 0.7s cubic-bezier(0, 0.4, 0.2, 1) 0.45s;
+    }
+    .api-card [data-api-progress] {
+        width: 0;
+        transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .api-card.is-active [data-api-progress] {
+        width: 0.95rem;
+        transition: width 2.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .api-card [data-api-spinner] {
+        transform: rotate(0);
+        transition: transform 0.5s cubic-bezier(0, 0.4, 0.2, 1);
+    }
+    .api-card.is-active [data-api-spinner] {
+        animation: exact-spin 2s linear infinite;
+    }
+    @keyframes exact-spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+    .exact-meteor-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+    .exact-meteor-path {
+        fill: none;
+        stroke-width: 1.25;
+        stroke-linecap: round;
+        path-length: 1;
+        stroke-dasharray: 0.055 0.945;
+        stroke-dashoffset: 1;
+        opacity: 0;
+        filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.75));
+    }
+    .is-active .exact-meteor-path {
+        opacity: 1;
+        animation: exact-meteor var(--repeat, 2s) linear infinite;
+        animation-delay: var(--delay, 0ms);
+    }
+    .exact-meteor-path.reverse {
+        animation-direction: reverse;
+    }
+    @keyframes exact-meteor {
+        to {
+            stroke-dashoffset: 0;
+        }
+    }
+    .api-card [id^="rectangleContainer"] rect,
+    .api-card [id^="circleContainer"] circle {
+        transition:
+            fill 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+            fill-opacity 0.38s cubic-bezier(0.4, 0, 0.2, 1),
+            filter 0.38s ease;
+    }
+    .api-card [id^="rectangleContainer"] rect.is-led-on,
+    .api-card [id^="circleContainer"] circle.is-led-on {
+        fill: #6366f1 !important;
+        fill-opacity: 1 !important;
+        filter: drop-shadow(0 0 3px rgba(99, 102, 241, 0.72));
+    }
+    .api-card [id^="rectangleContainer"] rect.is-led-dim,
+    .api-card [id^="circleContainer"] circle.is-led-dim {
+        fill: #6366f1 !important;
+        fill-opacity: 0.28 !important;
+        filter: drop-shadow(0 0 2px rgba(99, 102, 241, 0.28));
+    }
+    .api-card.is-active [data-api-screen]::before {
+        opacity: 0 !important;
+        transition-duration: 0.5s !important;
+    }
+    .api-card.is-active [data-api-screen] > .absolute.inset-0.z-30 {
+        opacity: 1 !important;
+        transition-duration: 1s !important;
+    }
+    .api-card.is-active [data-api-spinner] + span {
+        color: #fff !important;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .landing-platform-animation *,
+        .landing-platform-animation *::before,
+        .landing-platform-animation *::after {
+            animation-duration: 0.001ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.001ms !important;
+        }
+        .landing-screen-content {
+            opacity: 1;
+            filter: none;
+        }
+        .landing-laptop-lid {
+            transform: rotateX(0deg);
+        }
+    }
+</style>
+{% endmacro %}
+
+{% macro scripts() %}
+<script defer src="https://cdn.jsdelivr.net/npm/lenis@1.3.25/dist/lenis.min.js"></script>
+{% app_script "landing-lenis-smooth-scroll" %}
+(function(){
+    var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion || window.__landingLenis) {
+        return;
+    }
+
+    function init() {
+        if (window.__landingLenis || typeof window.Lenis !== "function") {
+            return;
+        }
+        window.__landingLenis = new window.Lenis({
+            autoRaf: true,
+            anchors: true,
+            lerp: 0.075,
+            autoToggle: true,
+            stopInertiaOnNavigate: true
+        });
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init, { once: true });
+    } else {
+        init();
+    }
+})();
+{% end_app_script %}
+{% app_script "landing-runtime-tabs" %} (function(){ var root =
+document.querySelector('[data-runtime-tabs]'); if(!root) return; var tabs =
+root.querySelectorAll('[data-runtime-tab]'); var panels =
+root.querySelectorAll('[data-runtime-panel]'); tabs.forEach(function(tab){
+tab.addEventListener('click', function(){ tabs.forEach(function(t){
+t.removeAttribute('aria-current'); t.classList.remove('bg-stone-50',
+'dark:bg-stone-950'); t.classList.add('bg-white', 'dark:bg-stone-900'); });
+tab.setAttribute('aria-current', 'true'); tab.classList.remove('bg-white',
+'dark:bg-stone-900'); tab.classList.add('bg-stone-50', 'dark:bg-stone-950'); var
+key = tab.getAttribute('data-runtime-tab'); panels.forEach(function(panel){ var
+active = panel.getAttribute('data-runtime-panel') === key;
+panel.classList.toggle('opacity-100', active);
+panel.classList.toggle('translate-y-0', active);
+panel.classList.toggle('pointer-events-auto', active);
+panel.classList.toggle('opacity-0', !active);
+panel.classList.toggle('translate-y-2', !active);
+panel.classList.toggle('pointer-events-none', !active); }); }); }); })(); {%
+end_app_script %} {% app_script "landing-platform-animation" %} (function(){
+function sleep(ms) { return new Promise(function(resolve){ setTimeout(resolve,
+ms); }); } function setState(island, stateName) {
+island.querySelectorAll(".landing-island-state").forEach(function(state){
+state.classList.toggle("is-visible", state.classList.contains("landing-island-"
++ stateName)); }); } function setupDeviceCard(card) { if
+(card.dataset.platformDeviceReady === "true") return;
+card.dataset.platformDeviceReady = "true"; var island =
+card.querySelector(".landing-dynamic-island"); if (!island) return; var
+idleWidth = Number(island.dataset.idleWidth || 28); var loadingWidth =
+Number(island.dataset.loadingWidth || 16); var doneWidth =
+Number(island.dataset.doneWidth || 40); var sequence = 0; var touchTimer = null;
+function reset() { sequence += 1; island.style.width = idleWidth + "px";
+setState(island, "idle"); card.classList.remove("is-active"); } function start()
+{ var current = ++sequence; card.classList.add("is-active"); setState(island,
+"none"); sleep(100).then(function(){ if (current !== sequence) return;
+island.style.width = loadingWidth + "px"; setState(island, "loading"); return
+sleep(1000); }).then(function(){ if (current !== sequence) return;
+setState(island, "none"); island.style.width = doneWidth + "px"; return
+sleep(100); }).then(function(){ if (current !== sequence) return;
+setState(island, "done"); }); } setState(island, "idle");
+card.addEventListener("pointerenter", function(event){ if (event.pointerType !==
+"touch") start(); }); card.addEventListener("pointerleave", function(event){ if
+(event.pointerType !== "touch") reset(); }); card.addEventListener("focusin",
+start); card.addEventListener("focusout", reset); card.addEventListener("click",
+function(){ if (!window.matchMedia("(pointer: coarse)").matches) return;
+clearTimeout(touchTimer); start(); touchTimer = setTimeout(reset, 2500); }); }
+function animateConnectorBeams(root) { if (root.dataset.platformBeamReady ===
+"true") return; root.dataset.platformBeamReady = "true"; var reduce =
+window.matchMedia("(prefers-reduced-motion: reduce)").matches; var beams =
+Array.prototype.slice.call(root.querySelectorAll(".landing-connector-beam")).map(function(svg){
+return { delay: Number(svg.dataset.delay || 0), stops:
+Array.prototype.slice.call(svg.querySelectorAll(".landing-beam-stop")), }; });
+if (!beams.length || reduce) return; var starts = [-25, -20, -10, -5]; var ends
+= [100, 105, 115, 120]; function frame(time) { if
+(!document.documentElement.contains(root)) return; var seconds = time / 1000;
+beams.forEach(function(beam){ var local = (seconds - beam.delay) % 3; if (local
+< 0) local += 3; var progress = local < 2 ? local / 2 : 1;
+beam.stops.forEach(function(stop, index){ var offset = starts[index] +
+(ends[index] - starts[index]) * progress; stop.setAttribute("offset", offset +
+"%"); }); }); requestAnimationFrame(frame); } requestAnimationFrame(frame); }
+function initLandingPlatformAnimation() {
+document.querySelectorAll("[data-platform-animation]").forEach(function(root){
+root.querySelectorAll(".landing-device-card").forEach(setupDeviceCard);
+animateConnectorBeams(root); }); } initLandingPlatformAnimation();
+window.addEventListener("app-router:patch", initLandingPlatformAnimation); })();
+{% end_app_script %}
+{% app_script "landing-api-card" %}
+(function(){
+    var hoverable = window.matchMedia("(hover:hover) and (pointer:fine)").matches;
+    var pathsApi = [
+        ["M161 27.2506L43.1043 27.2506L31.6449 27.2506L0 27.2506", 200, 2000, true],
+        ["M289 23.5L349.401 23.5C352.085 23.5 354.59 22.1543 356.071 19.9166L366.555 4.08336C368.037 1.84567 370.542 0.499992 373.225 0.499992L394.599 0.49999", 750, 2000, false],
+        ["M289 27.5L334.757 27.5C337.408 27.5 339.887 28.8132 341.376 31.0065L352.23 46.9935C353.719 49.1868 356.198 50.5 358.848 50.5L393.599 50.5", 800, 2000, false],
+        ["M289 31.5L321.643 31.5C324.278 31.5 326.745 32.798 328.237 34.9703L363.999 87.0297C365.491 89.202 367.957 90.5 370.593 90.5L375 90.5", 850, 2000, false]
+    ];
+    var state = new WeakMap();
+
+    function classHas(el, value) {
+        return ((el && el.getAttribute && el.getAttribute("class")) || "").split(/\s+/).indexOf(value) !== -1;
+    }
+
+    function findByStyle(root, value) {
+        var needle = value.replace(/\s+/g, "");
+        return Array.prototype.slice.call(root.querySelectorAll("[style]")).find(function(el) {
+            return (el.getAttribute("style") || "").replace(/\s+/g, "").indexOf(needle) !== -1;
+        });
+    }
+
+    function svgFor(path, delay, repeat, reverse, viewBox) {
+        var id = "landingApiGradient" + Math.random().toString(36).slice(2);
+        return '<svg class="exact-meteor-svg" viewBox="' + viewBox + '" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6366f1" stop-opacity="0"/><stop offset=".45" stop-color="#6366f1" stop-opacity=".9"/><stop offset="1" stop-color="white"/></linearGradient></defs><path class="exact-meteor-path' + (reverse ? " reverse" : "") + '" style="--delay:' + delay + 'ms;--repeat:' + repeat + 'ms;stroke:url(#' + id + ')" pathLength="1" d="' + path + '"/></svg>';
+    }
+
+    function setupApi(card) {
+        var stage = card.querySelector(".absolute.top-0.left-1\\/2.h-\\[140px\\]") ||
+            Array.prototype.slice.call(card.querySelectorAll("div")).find(function(el) {
+                return classHas(el, "absolute") && classHas(el, "top-0") && classHas(el, "left-1/2") && classHas(el, "h-[140px]");
+            });
+        if (stage) {
+            Array.prototype.slice.call(stage.children).filter(function(el) {
+                return el.tagName === "DIV" && classHas(el, "pointer-events-none") && classHas(el, "absolute") && classHas(el, "z-2");
+            }).forEach(function(el, index) {
+                if (pathsApi[index]) {
+                    el.innerHTML = svgFor(pathsApi[index][0], pathsApi[index][1], pathsApi[index][2], pathsApi[index][3], "0 0 410 91");
+                }
+            });
+        }
+
+        var screen = findByStyle(card, "rotateX(-75deg)");
+        if (screen) {
+            screen.dataset.apiScreen = "";
+            if (screen.firstElementChild) {
+                screen.firstElementChild.dataset.apiScreenLight = "";
+            }
+            var user = findByStyle(screen, "opacity:0");
+            if (user) {
+                user.dataset.apiUser = "";
+                var progress = user.querySelector(".will-change-\\[width\\]");
+                if (progress) {
+                    progress.dataset.apiProgress = "";
+                }
+            }
+        }
+
+        var laptopAnchor = card.querySelector(".absolute.bottom-0.z-100") ||
+            Array.prototype.slice.call(card.querySelectorAll("div")).find(function(el) {
+                return classHas(el, "absolute") && classHas(el, "bottom-0") && classHas(el, "z-100");
+            });
+        if (laptopAnchor && laptopAnchor.firstElementChild) {
+            laptopAnchor.firstElementChild.dataset.apiLaptopY = "";
+        }
+
+        var auth = card.querySelector(".absolute.top-1\\/2.left-1\\/2.z-10") ||
+            Array.prototype.slice.call(card.querySelectorAll("div")).find(function(el) {
+                return classHas(el, "absolute") && classHas(el, "top-1/2") && classHas(el, "left-1/2") && classHas(el, "z-10") && el.textContent.indexOf("Authenticating") !== -1;
+            });
+        var spinner = auth && auth.querySelector(".shrink-0");
+        if (spinner) {
+            spinner.dataset.apiSpinner = "";
+        }
+
+        card._rackGroups = [
+            { rects: Array.prototype.slice.call(card.querySelectorAll("#rectangleContainer rect")), dots: Array.prototype.slice.call(card.querySelectorAll("#circleContainer circle")) },
+            { rects: Array.prototype.slice.call(card.querySelectorAll("#rectangleContainer_3 rect")), dots: Array.prototype.slice.call(card.querySelectorAll("#circleContainer_3 circle")) },
+            { rects: Array.prototype.slice.call(card.querySelectorAll("#rectangleContainer_2 rect")), dots: Array.prototype.slice.call(card.querySelectorAll("#circleContainer_2 circle")) }
+        ];
+    }
+
+    function clearRack(card) {
+        (card._rackGroups || []).forEach(function(group) {
+            group.rects.concat(group.dots).forEach(function(el) {
+                el.classList.remove("is-led-on", "is-led-dim");
+            });
+        });
+    }
+
+    function setClasses(items, on, dim) {
+        items.forEach(function(el, index) {
+            el.classList.toggle("is-led-on", on.indexOf(index) !== -1);
+            el.classList.toggle("is-led-dim", on.indexOf(index) === -1 && dim.indexOf(index) !== -1);
+        });
+    }
+
+    function paintRackReference(card) {
+        var groups = card._rackGroups || [];
+        if (groups[0]) {
+            setClasses(groups[0].rects, [1, 2, 7], [3, 6]);
+            setClasses(groups[0].dots, [4], [7, 10, 15, 20]);
+        }
+        if (groups[1]) {
+            setClasses(groups[1].rects, [1, 2, 3, 6, 7, 8], [0, 4, 5, 9]);
+            setClasses(groups[1].dots, [2, 9, 16, 23], [5, 12, 19, 28]);
+        }
+        if (groups[2]) {
+            setClasses(groups[2].rects, [], [1, 2, 3, 6, 7, 8]);
+            setClasses(groups[2].dots, [], [3, 8, 13, 18, 24, 29]);
+        }
+    }
+
+    function randomRackBlink(card) {
+        (card._rackGroups || []).forEach(function(group, row) {
+            group.rects.forEach(function(el) {
+                if (Math.random() < (row === 1 ? 0.18 : 0.08)) {
+                    el.classList.toggle("is-led-on");
+                    if (el.classList.contains("is-led-on")) {
+                        el.classList.remove("is-led-dim");
+                    }
+                }
+            });
+            group.dots.forEach(function(el) {
+                if (Math.random() < 0.035) {
+                    el.classList.toggle("is-led-on");
+                    if (el.classList.contains("is-led-on")) {
+                        el.classList.remove("is-led-dim");
+                    }
+                }
+            });
+        });
+    }
+
+    function activate(card, on) {
+        var old = state.get(card);
+        card.classList.toggle("is-active", on);
+        if (old) {
+            old.timeouts.forEach(clearTimeout);
+            old.intervals.forEach(clearInterval);
+            state.delete(card);
+        }
+        if (!on) {
+            clearRack(card);
+            return;
+        }
+        var timeouts = [];
+        var intervals = [];
+        paintRackReference(card);
+        timeouts.push(setTimeout(function() {
+            intervals.push(setInterval(function() {
+                randomRackBlink(card);
+            }, 420));
+        }, 1600));
+        state.set(card, { timeouts: timeouts, intervals: intervals });
+    }
+
+    function init(root) {
+        (root || document).querySelectorAll(".api-card.exact-card").forEach(function(card) {
+            if (card.dataset.landingApiReady === "true") {
+                return;
+            }
+            card.dataset.landingApiReady = "true";
+            setupApi(card);
+            if (hoverable) {
+                card.addEventListener("mouseenter", function() { activate(card, true); });
+                card.addEventListener("mouseleave", function() { activate(card, false); });
+            } else {
+                card.addEventListener("click", function() { activate(card, !card.classList.contains("is-active")); });
+            }
+        });
+    }
+
+    init(document);
+    document.addEventListener("app-router:patch", function(event) {
+        init(event.target || document);
+    });
+})();
+{% end_app_script %}
+{% endmacro %}

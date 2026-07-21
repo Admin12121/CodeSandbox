@@ -63,6 +63,22 @@ def _make_user(ctx: TestContext, prefix: str):
     return user
 
 
+def _grant_org_permissions(org_id: str, user_id: str, permissions: list[str]) -> None:
+    org_repo = _org_repo()
+    org_repo.ensure_org_permissions_seeded()
+    role = org_repo.create_org_role(
+        org_id=org_id,
+        name=unique("sandbox-access"),
+        color="#6366f1",
+        position=10,
+    )
+    for permission in permissions:
+        assert org_repo.set_org_role_permission(str(role.id), permission, True)
+    member = org_repo.get_member(org_id, user_id)
+    assert member is not None
+    assert org_repo.assign_role_to_member(str(member.id), str(role.id))
+
+
 def _fixture(ctx: TestContext):
     from codesandbox.features.sandbox.models import (
         InstanceRequest,
@@ -76,7 +92,15 @@ def _fixture(ctx: TestContext):
     org = _org_repo().create_organization(name=unique("Allocation Org"), created_by=str(owner.id))
     ctx.defer(lambda oid=str(org.id): _org_repo().delete_organization(oid))
     _org_repo().add_member(str(org.id), str(member.id))
-    _org_repo().ensure_org_permissions_seeded()
+    _grant_org_permissions(
+        str(org.id),
+        str(member.id),
+        [
+            "sandbox.instances.use_pool",
+            "sandbox.instances.use_assigned",
+            "sandbox.requests.submit",
+        ],
+    )
 
     repo = _sandbox_repo()
     plan_id = unique("org-plan")[:40]
@@ -154,7 +178,7 @@ def _fixture(ctx: TestContext):
     return owner, member, org, template, plan
 
 
-def test_default_member_permissions_are_least_privilege(ctx: TestContext) -> None:
+def test_configured_member_permissions_are_least_privilege(ctx: TestContext) -> None:
     owner, member, org, _template, _plan = _fixture(ctx)
     permissions = set(_org_repo().get_member_permissions(str(org.id), str(member.id)))
     assert "sandbox.instances.use_pool" in permissions
@@ -266,7 +290,15 @@ def test_pool_member_cannot_open_another_members_live_instance(ctx: TestContext)
     owner, member, org, template, plan = _fixture(ctx)
     other_member = _make_user(ctx, "orgalloc_other")
     _org_repo().add_member(str(org.id), str(other_member.id))
-    _org_repo().ensure_org_permissions_seeded()
+    _grant_org_permissions(
+        str(org.id),
+        str(other_member.id),
+        [
+            "sandbox.instances.use_pool",
+            "sandbox.instances.use_assigned",
+            "sandbox.requests.submit",
+        ],
+    )
 
     rows, error = _sandbox_service().create_org_allocations(
         org_id=str(org.id),
@@ -308,7 +340,7 @@ def test_direct_org_runtime_creation_is_disabled(ctx: TestContext) -> None:
 
 
 TESTS: list[TestCase] = [
-    TestCase("org member sandbox permissions", "org_sandbox", test_default_member_permissions_are_least_privilege),
+    TestCase("configured org member sandbox permissions", "org_sandbox", test_configured_member_permissions_are_least_privilege),
     TestCase("org allocation prepare is idle", "org_sandbox", test_prepare_allocation_never_starts_or_bills_runtime),
     TestCase("org claim billing isolation", "org_sandbox", test_claimed_allocation_uses_only_org_billing_scope),
     TestCase("org request approval allocation", "org_sandbox", test_request_approval_creates_dedicated_allocation_not_runtime),

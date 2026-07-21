@@ -5,6 +5,7 @@
     selected_org=selected_org,
     organizations=organizations,
     error=error if error is defined else none,
+    can_edit=can_edit if can_edit is defined else false,
   ) }}
 {% else %}
   {{ orgs_tbl.organizations_table(
