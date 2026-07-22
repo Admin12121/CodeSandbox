@@ -154,8 +154,10 @@
                 <select data-edit hidden data-edit-input
                   class="h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <option value="user" {% if tu.platform_role == "user" %}selected{% endif %}>User</option>
-                  <option value="system_staff" {% if tu.platform_role == "system_staff" %}selected{% endif %}>App Staff</option>
-                  <option value="system_admin" {% if tu.platform_role == "system_admin" %}selected{% endif %}>System Admin</option>
+                  <option value="system_staff" {% if tu.platform_role == "system_staff" %}selected{% endif %}>Application Staff</option>
+                  {% if tu.platform_role == "system_admin" %}
+                  <option value="system_admin" selected>Application Owner</option>
+                  {% endif %}
                 </select>
                 {% endif %}
               {% endcall %}

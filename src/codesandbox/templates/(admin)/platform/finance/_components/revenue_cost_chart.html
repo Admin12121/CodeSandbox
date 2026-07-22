@@ -117,6 +117,14 @@
     }
     return String(value || '').toUpperCase();
   }
+  function hasValue(row){
+    return row && (
+      number(row.net) !== 0 ||
+      number(row.compute_cost) !== 0 ||
+      number(row.gross) !== 0 ||
+      number(row.refunds) !== 0
+    );
+  }
   function weekdayLabel(value){
     var parsed = parseDate(value);
     if(!Number.isNaN(parsed.getTime())) {
@@ -211,15 +219,34 @@
     var targetColumns = Math.floor((plotWidth + cellGap) / (cellSize + cellGap));
     return Math.max(1, Math.min(180, targetColumns));
   }
-  // Real data columns first, then faint placeholder columns padding out the
-  // full plot width — so the pixel grid always fills the panel edge-to-edge
-  // exactly like the no-data state, however few (or many) buckets exist.
+  // Keep the faint pixel matrix edge-to-edge while spreading sparse real
+  // buckets across proportional slots instead of pinning them to the left.
+  function nearestEmptySlot(slots, preferred){
+    if(!slots[preferred] || !slots[preferred].row) return preferred;
+    for(var radius = 1; radius < slots.length; radius++){
+      var right = preferred + radius;
+      if(right < slots.length && (!slots[right] || !slots[right].row)) return right;
+      var left = preferred - radius;
+      if(left >= 0 && (!slots[left] || !slots[left].row)) return left;
+    }
+    return preferred;
+  }
   function paddedRows(sourceRows){
-    var result = sourceRows.map(function(row, index){
-      return { row: row, sourceIndex: index };
-    });
     var target = targetColumnCount();
-    while(result.length < target) result.push({ row: null, sourceIndex: result.length });
+    if(sourceRows.length >= target){
+      return sourceRows.map(function(row, index){
+        return { row: row, sourceIndex: index };
+      });
+    }
+    var result = [];
+    for(var i = 0; i < target; i++) result.push({ row: null, sourceIndex: i });
+    sourceRows.forEach(function(row, index){
+      var preferred = sourceRows.length === 1
+        ? Math.floor((target - 1) / 2)
+        : Math.round(index * (target - 1) / (sourceRows.length - 1));
+      var slot = nearestEmptySlot(result, preferred);
+      result[slot] = { row: row, sourceIndex: index };
+    });
     return result;
   }
   function blankRows(){
@@ -231,6 +258,7 @@
   function axisText(row, sourceIndex){
     if(activePeriod === 'week' || activePeriod === '7d') return weekdayLabel(row.label);
     if(activePeriod === 'year') return sourceIndex === 0 ? monthYearLabel(row.label) : monthLabel(row.label);
+    if(hasValue(row)) return dayMonthLabel(row.label);
 
     var monthlyInterval = Math.max(1, Math.ceil(rows.length / 6));
     if(sourceIndex === 0 || sourceIndex === rows.length - 1 || sourceIndex % monthlyInterval === 0) {
@@ -277,6 +305,7 @@
     }
     tick.textContent = tickText;
     tick.style.justifySelf = 'center';
+    tick.style.whiteSpace = 'nowrap';
     xAxis.appendChild(tick);
     previousSourceIndex = sourceIndex;
 

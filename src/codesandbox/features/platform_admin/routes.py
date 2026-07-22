@@ -43,15 +43,19 @@ def _roles_redirect(
 
 
 def _guard_user_mutation(cs, user_id: str, new_platform_role: str | None = None) -> str | None:
-    """Business-rule guard: blocks staff from modifying admins or self-promoting."""
+    """Business-rule guard: application ownership transfers only from Settings."""
     from codesandbox.features.identity import repository as id_repo
-    if cs.user.platform_role == "system_admin":
-        return None
     target = id_repo.find_user_by_id(user_id)
     if target and target.platform_role == "system_admin":
-        return "Staff cannot modify system admin accounts."
+        if new_platform_role and new_platform_role != "system_admin":
+            return "Transfer application ownership before changing the current owner."
+        if cs.user.platform_role != "system_admin":
+            return "Staff cannot modify the application owner account."
     if new_platform_role == "system_admin":
-        return "Staff cannot promote users to system admin."
+        if not target or target.platform_role != "system_admin":
+            return "Use Settings to transfer application ownership."
+    if cs.user.platform_role == "system_admin":
+        return None
     return None
 
 
@@ -142,7 +146,7 @@ def platform_update_user_field_action(user_id: str):
             if target:
                 _settings = get_settings()
                 if field == "platform_role":
-                    _labels = {"user": "User", "system_staff": "Platform Staff", "system_admin": "Platform Admin"}
+                    _labels = {"user": "User", "system_staff": "Application Staff", "system_admin": "Application Owner"}
                     mailer.send_platform_role_changed(
                         to=target.email,
                         name=target.name,

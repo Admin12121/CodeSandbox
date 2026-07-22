@@ -253,7 +253,7 @@ def platform_staff():
     user = session.user
     if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.staff.read"):
         return {"_redirect": "/dashboard"}
-    is_super_admin = user.platform_role == "system_admin"
+    is_application_owner = user.platform_role == "system_admin"
     nav = build_nav("/platform/staff", user)
     staff = get_platform_staff()
     rbac = get_platform_rbac()
@@ -266,7 +266,8 @@ def platform_staff():
     if member_param == "new":
         selected_member = {
             "id": None, "name": "", "email": "", "phone": "",
-            "status": "active", "role_ids": [], "roles": [],
+            "platform_role": "system_staff", "role_label": format_role_label("system_staff"),
+            "is_application_owner": False, "status": "active", "role_ids": [], "roles": [],
         }
     elif member_param:
         selected_member = next((m for m in staff if str(m["id"]) == member_param), None)
@@ -304,7 +305,7 @@ def platform_staff():
         "total": total_staff,
         "total_pages": total_pages_staff,
         "error": request.args.get("error"),
-        "is_super_admin": is_super_admin,
+        "is_application_owner": is_application_owner,
     }
 
 

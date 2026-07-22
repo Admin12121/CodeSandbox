@@ -80,16 +80,74 @@ def test_set_role_permissions(ctx: TestContext) -> None:
     assert str(assigned[0].id) == str(all_perms[0].id)
 
 
-"""platform_role='system_admin' grants every seeded permission — no gaps."""
-def test_system_admin_all_permissions(ctx: TestContext) -> None:
+"""platform_role='system_admin' marks the application owner and grants every permission."""
+def test_application_owner_all_permissions(ctx: TestContext) -> None:
     user = _make_user(ctx, "sysadm")
     _id_repo().update_user(str(user.id), platform_role="system_admin")
     _seed()
     all_perms = _pa().list_permissions()
     keys = _pa().get_user_permission_keys(str(user.id))
     assert len(keys) == len(all_perms), (
-        f"system_admin should get all {len(all_perms)} permissions, got {len(keys)}"
+        f"application owner should get all {len(all_perms)} permissions, got {len(keys)}"
     )
+
+
+"""seed_default_roles removes legacy built-in role rows instead of recreating them."""
+def test_seed_removes_legacy_default_roles(ctx: TestContext) -> None:
+    _pa().seed_default_roles()
+    admin = _pa().create_role(name="system_admin", color="#ef4444", is_system=True)
+    staff = _pa().create_role(name="system_staff", color="#f59e0b", is_system=True)
+    custom = _pa().create_role(name=unique("mutable_system"), is_system=True)
+    ctx.defer(lambda rid=str(admin.id): _pa().delete_role(rid))
+    ctx.defer(lambda rid=str(staff.id): _pa().delete_role(rid))
+    ctx.defer(lambda rid=str(custom.id): _pa().delete_role(rid))
+
+    _pa().seed_default_roles()
+
+    assert _pa().get_role(str(admin.id)) is None
+    assert _pa().get_role(str(staff.id)) is None
+    custom_after = _pa().get_role(str(custom.id))
+    assert custom_after is not None
+    assert custom_after.is_system is False
+
+
+"""Application ownership transfer moves the owner flag and permission bypass."""
+def test_transfer_application_ownership(ctx: TestContext) -> None:
+    from codesandbox.features.identity.models import User
+    from codesandbox.features.platform_admin import service
+
+    previous_owner_ids = [
+        str(u.id)
+        for u in User.objects.filter(platform_role="system_admin", deleted_at__isnull=True).all()
+    ]
+    ctx.defer(lambda ids=previous_owner_ids: [
+        _id_repo().update_user(uid, platform_role="system_admin")
+        for uid in ids
+        if _id_repo().find_user_by_id(uid)
+    ])
+
+    owner = _make_user(ctx, "appowner")
+    target = _make_user(ctx, "newowner")
+    _id_repo().update_user(str(owner.id), platform_role="system_admin")
+    _id_repo().update_user(str(target.id), platform_role="user")
+    _seed()
+
+    err = service.transfer_application_ownership(str(owner.id), str(target.id))
+    assert err is None
+
+    owner_after = _id_repo().find_user_by_id(str(owner.id))
+    target_after = _id_repo().find_user_by_id(str(target.id))
+    assert owner_after is not None and owner_after.platform_role == "system_staff"
+    assert target_after is not None and target_after.platform_role == "system_admin"
+    all_keys = {p.key for p in _pa().list_permissions()}
+    assert _pa().get_user_permission_keys(str(target.id)) == all_keys
+    assert _pa().get_user_permission_keys(str(owner.id)) == set()
+
+    staff_rows = service.get_platform_staff()
+    target_row = next((row for row in staff_rows if str(row["id"]) == str(target.id)), None)
+    assert target_row is not None
+    assert target_row["is_application_owner"] is True
+    assert target_row["role_label"] == "Application Owner"
 
 
 """A user with a custom role receives only the keys assigned to that role."""
@@ -239,7 +297,9 @@ def test_staff_cannot_manage_equal_platform_member(ctx: TestContext) -> None:
 TESTS: list[TestCase] = [
     TestCase("create platform role",                  "platform_admin", test_create_platform_role),
     TestCase("set role permissions",                  "platform_admin", test_set_role_permissions),
-    TestCase("system admin all permissions",          "platform_admin", test_system_admin_all_permissions),
+    TestCase("application owner all permissions",     "platform_admin", test_application_owner_all_permissions),
+    TestCase("seed removes legacy default roles",     "platform_admin", test_seed_removes_legacy_default_roles),
+    TestCase("transfer application ownership",        "platform_admin", test_transfer_application_ownership),
     TestCase("custom role assigned keys",             "platform_admin", test_custom_role_assigned_keys),
     TestCase("delete role",                           "platform_admin", test_delete_role),
     TestCase("seed removes orphaned perms",           "platform_admin", test_seed_removes_orphaned_permissions),

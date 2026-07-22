@@ -39,14 +39,18 @@
       </div>
     {% endcall %}
     {% call frame.frame_panel(class="overflow-hidden") %}
-      <div class="flex min-h-28 items-end gap-[3px] overflow-x-auto pb-1" aria-label="Status heatmap">
+      <div
+        class="grid min-h-28 items-end gap-[3px] pb-1"
+        style="grid-template-columns: repeat({{ cells|length if cells else 1 }}, minmax(0, 1fr));"
+        aria-label="Status heatmap"
+      >
         {% for cell in cells %}
           {% set color = "bg-muted/70" %}
           {% if cell.value == 1 %}{% set color = "bg-rose-500" %}{% endif %}
           {% if cell.value == 2 %}{% set color = "bg-amber-400" %}{% endif %}
           {% if cell.value == 3 %}{% set color = "bg-emerald-500" %}{% endif %}
           <span
-            class="block h-16 w-2 shrink-0 rounded-sm {{ color }} opacity-90 transition-opacity hover:opacity-70"
+            class="block h-16 w-full min-w-0 rounded-sm {{ color }} opacity-90 transition-opacity hover:opacity-70"
             title="{{ cell.date }} · {{ cell.label }} · {{ cell.count }} event{{ '' if cell.count == 1 else 's' }}"
             aria-label="{{ cell.date }}: {{ cell.label }}"
           ></span>

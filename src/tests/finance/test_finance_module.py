@@ -177,6 +177,8 @@ def test_finance_console_route_contract(ctx: TestContext) -> None:
 
 def test_finance_console_shapes_and_ledger_preview(ctx: TestContext) -> None:
     from codesandbox.features.finance import service as finance_service
+    from codesandbox.features.sandbox import repository as sandbox_repo
+    from codesandbox.features.sandbox.models import BalanceTransaction
 
     user = _make_user(ctx, "finconsole")
     _id_repo().update_user(str(user.id), email_verified=True)
@@ -192,24 +194,103 @@ def test_finance_console_shapes_and_ledger_preview(ctx: TestContext) -> None:
     assert revenue == Decimal("3.00")
     assert status == "charged"
 
-    today = datetime.now(timezone.utc).date().isoformat()
-    overview = finance_service.dashboard(period="custom", start=today, end=today)
+    isolated_offset = int(str(user.id).replace("-", "")[:8], 16) % 5000
+    isolated_at = datetime(2080, 1, 1, 12, 0, tzinfo=timezone.utc) + timedelta(days=isolated_offset)
+    charge.created_at = isolated_at
+    charge.save()
+    tx.created_at = isolated_at
+    tx.save()
+
+    topup_tx = sandbox_repo.add_balance_transaction(
+        entity_type="user",
+        entity_id=str(user.id),
+        tx_type="topup",
+        amount=Decimal("50.00"),
+        provider="stripe",
+        reference="test-topup",
+        description="test top-up",
+    )
+    topup_tx.created_at = isolated_at + timedelta(minutes=1)
+    topup_tx.save()
+
+    grant, error = finance_service.grant_credit(
+        entity_type="user",
+        entity_id=str(user.id),
+        amount="7.50",
+        reason="test grant",
+        actor_user_id=str(_admin_user().id),
+    )
+    assert error is None, error
+    assert grant is not None
+    grant_tx = BalanceTransaction.objects.filter(id=grant["balance_transaction_id"]).first()
+    assert grant_tx is not None
+    grant_tx.created_at = isolated_at + timedelta(minutes=2)
+    grant_tx.save()
+
+    isolated_day = isolated_at.date().isoformat()
+    overview = finance_service.dashboard(period="custom", start=isolated_day, end=isolated_day)
     assert "health" in overview
     assert overview["health"]["net_revenue"]["raw"] == "3.00"
+    assert overview["health"]["net_revenue"]["credits_used"]["raw"] == "0.00"
+    assert overview["health"]["cash_liability"]["topups"]["raw"] == "50.00"
+    assert overview["health"]["cash_liability"]["credit_issued"]["raw"] == "7.50"
+    assert Decimal(overview["health"]["cash_liability"]["credit_outstanding"]["raw"]) >= Decimal("7.50")
+    assert overview["health"]["margin_compute"]["credit_issued"]["raw"] == "7.50"
+    assert Decimal(overview["health"]["margin_compute"]["credit_outstanding"]["raw"]) >= Decimal("7.50")
     assert overview["template_contribution"]
     assert overview["recent_activity"]
+    usage_activity = next(row for row in overview["recent_activity"] if row["id"] == str(tx.id))
+    assert usage_activity["amount"] == "3.00"
+    assert usage_activity["is_negative"] is False
+    assert usage_activity["platform_impact"] == "revenue"
+    assert usage_activity["wallet_amount"] == "-3.00"
 
-    report = finance_service.revenue_console(period="custom", start=today, end=today, page=1, page_size=1)
-    assert report["summary"][2]["label"] == "Net revenue"
+    topup_activity = next(row for row in overview["recent_activity"] if row["id"] == str(topup_tx.id))
+    assert topup_activity["amount"] == "-50.00"
+    assert topup_activity["is_negative"] is True
+    assert topup_activity["platform_impact"] == "liability"
+    assert topup_activity["wallet_amount"] == "50.00"
+
+    grant_activity = next(row for row in overview["recent_activity"] if row["id"] == str(grant_tx.id))
+    assert grant_activity["amount"] == "-7.50"
+    assert grant_activity["is_negative"] is True
+    assert grant_activity["platform_impact"] == "credit cost"
+    assert grant_activity["wallet_amount"] == "7.50"
+
+    month_start_dt = isolated_at.replace(day=1)
+    month_end_dt = (month_start_dt.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    month_start = month_start_dt.date().isoformat()
+    month_end = month_end_dt.date().isoformat()
+    range_overview = finance_service.dashboard(period="custom", start=month_start, end=month_end)
+    range_labels = [row["label"] for row in range_overview["revenue_cost_timeline"]]
+    assert range_labels[0] == month_start
+    assert isolated_day in range_labels
+    assert range_labels[-1] == month_end
+
+    report = finance_service.revenue_console(period="custom", start=isolated_day, end=isolated_day, page=1, page_size=1)
+    assert [item["label"] for item in report["summary"]] == ["Net Usage Revenue", "Realized Margin", "Credit Exposure"]
+    assert report["summary"][0]["raw"] == "3.00"
+    assert report["summary"][0]["footer_value"] == "£3.00"
+    assert report["summary"][2]["raw"] == "7.50"
+    assert report["summary"][2]["footer_label"] == "Outstanding funded balance"
     assert report["usage_charges"]["total"] >= 1
     assert len(report["usage_charges"]["rows"]) == 1
     assert report["usage_charges"]["rows"][0]["template_name"]
 
-    ledger = finance_service.ledger_console(page=1, page_size=10)
+    ledger = finance_service.ledger_console(start=isolated_day, end=isolated_day, page=1, page_size=10)
     assert ledger["selected_tx_id"] == ""
     assert ledger["selected_receipt"] is None
+    usage_ledger_row = next(row for row in ledger["rows"] if row["id"] == str(tx.id))
+    assert usage_ledger_row["amount"] == "3.00"
+    assert usage_ledger_row["is_negative"] is False
+    topup_ledger_row = next(row for row in ledger["rows"] if row["id"] == str(topup_tx.id))
+    assert topup_ledger_row["amount"] == "-50.00"
+    assert topup_ledger_row["is_negative"] is True
+    grant_ledger_row = next(row for row in ledger["rows"] if row["id"] == str(grant_tx.id))
+    assert grant_ledger_row["amount"] == "-7.50"
+    assert grant_ledger_row["is_negative"] is True
 
-    selected = finance_service.ledger_console(selected_id=str(tx.id), page=1, page_size=10)
+    selected = finance_service.ledger_console(selected_id=str(tx.id), start=isolated_day, end=isolated_day, page=1, page_size=10)
     assert selected["selected_tx_id"] == str(tx.id)
     assert selected["selected_receipt"]["title"] == "Usage Invoice"
 

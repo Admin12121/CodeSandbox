@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.identity.models import User
+from codesandbox.shared.session import format_role_label
 
 from . import repository
 
@@ -56,6 +57,38 @@ def update_platform_user(
     return identity_repo.update_user(user_id, **updates)
 
 
+def get_application_owner() -> dict | None:
+    owner = repository.get_application_owner()
+    if not owner:
+        return None
+    return {
+        "id": str(owner.id),
+        "name": owner.name,
+        "email": owner.email,
+        "avatar_url": getattr(owner, "avatar_url", None) or "",
+        "status": owner.status,
+    }
+
+
+def get_application_owner_transfer_candidates(current_owner_id: str) -> list[dict]:
+    return [
+        {
+            "id": str(u.id),
+            "name": u.name,
+            "email": u.email,
+            "platform_role": u.platform_role,
+        }
+        for u in repository.list_application_owner_candidates(current_owner_id)
+    ]
+
+
+def transfer_application_ownership(current_owner_id: str, new_owner_id: str) -> str | None:
+    new_owner_id = (new_owner_id or "").strip()
+    if not new_owner_id:
+        return "Choose a new application owner."
+    return repository.transfer_application_ownership(current_owner_id, new_owner_id)
+
+
 # Sidebar nav items mapped to the permission key that reveals them —
 # used by the role editor's "Sidebar" tab.
 SIDEBAR_NAV_MATRIX = [
@@ -74,6 +107,10 @@ SIDEBAR_NAV_MATRIX = [
 
 def _format_role_name(name: str) -> str:
     return name.replace("_", " ").replace("-", " ").title()
+
+
+def _is_reserved_platform_role_name(name: str) -> bool:
+    return name.strip().lower() in {"system_admin", "system_staff"}
 
 
 def get_platform_rbac() -> dict:
@@ -128,6 +165,8 @@ def create_platform_role(
     name = (name or "").strip()
     if not name:
         return None, "Role name is required."
+    if _is_reserved_platform_role_name(name):
+        return None, "That role name is reserved for application ownership and staff status."
     if repository.get_role_by_name(name):
         return None, f"A role named “{name}” already exists."
     role = repository.create_role(name=name, color=color or "#6366f1", description=description)
@@ -151,6 +190,8 @@ def update_platform_role(
         name = name.strip()
         if not name:
             return "Role name is required."
+        if _is_reserved_platform_role_name(name):
+            return "That role name is reserved for application ownership and staff status."
         existing = repository.get_role_by_name(name)
         if existing and existing.id != role.id:
             return f"A role named “{name}” already exists."
@@ -271,6 +312,8 @@ def get_platform_staff() -> list[dict]:
             "email": u.email,
             "phone": u.phone or "",
             "platform_role": u.platform_role,
+            "role_label": format_role_label(u.platform_role),
+            "is_application_owner": u.platform_role == "system_admin",
             "status": u.status,
             "role_ids": [r.id for r in assigned],
             "roles": [

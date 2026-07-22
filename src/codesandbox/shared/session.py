@@ -189,8 +189,8 @@ def build_nav(current_path: str, user: User, active_workspace: dict | None = Non
 
 def format_role_label(role: str) -> str:
     mapping = {
-        "system_admin": "System Admin",
-        "system_staff": "App Staff",
+        "system_admin": "Application Owner",
+        "system_staff": "Application Staff",
         "user": "User",
     }
     return mapping.get(role, role.replace("_", " ").title())

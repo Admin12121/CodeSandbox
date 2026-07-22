@@ -196,19 +196,55 @@ def seed_default_permissions() -> None:
 
 
 def seed_default_roles() -> None:
-    # Fix any pre-existing locked roles so they become fully editable
-    for role in PlatformRole.objects.filter(is_system=True).all():
-        role.is_system = False
-        role.save()
-
-    admin = get_role_by_name("system_admin")
-    if not admin:
-        admin = create_role(name="system_admin", color="#ef4444", description="Full platform access")
-    staff = get_role_by_name("system_staff")
-    if not staff:
-        staff = create_role(name="system_staff", color="#f59e0b", description="Platform staff access")
-    defaults = [(admin, 100), (staff, 50)]
-    for role, position in defaults:
-        if _role_position(role) == 0:
-            role.position = str(position)
+    # Application ownership and platform-staff status live on User.platform_role.
+    # These legacy role rows duplicated that authority and made built-in roles
+    # look non-deletable in the RBAC editor, so seed now only cleans them up.
+    legacy_role_ids = {"system_admin", "system_staff"}
+    for role in PlatformRole.objects.all():
+        if role.name in legacy_role_ids:
+            role.delete()
+            continue
+        if role.is_system:
+            role.is_system = False
             role.save()
+
+
+def get_application_owner() -> User | None:
+    owners = [
+        u for u in User.objects.filter(platform_role="system_admin", deleted_at__isnull=True).all()
+        if u.status == "active"
+    ]
+    if not owners:
+        owners = User.objects.filter(platform_role="system_admin", deleted_at__isnull=True).all()
+    owners.sort(key=lambda u: u.created_at)
+    return owners[0] if owners else None
+
+
+def list_application_owner_candidates(current_owner_id: str) -> list[User]:
+    users = [
+        u for u in User.objects.filter(deleted_at__isnull=True).all()
+        if str(u.id) != str(current_owner_id) and u.status == "active"
+    ]
+    users.sort(key=lambda u: (u.name.lower(), u.email.lower()))
+    return users
+
+
+def transfer_application_ownership(current_owner_id: str, new_owner_id: str) -> str | None:
+    current_owner = find_user_by_id(current_owner_id)
+    if not current_owner or current_owner.platform_role != "system_admin":
+        return "Only the current application owner can transfer ownership."
+    new_owner = find_user_by_id(new_owner_id)
+    if not new_owner or new_owner.deleted_at is not None:
+        return "New owner not found."
+    if new_owner.status != "active":
+        return "New owner must be an active user."
+    if str(new_owner.id) == str(current_owner.id):
+        return "Choose a different user as the new owner."
+
+    for owner in User.objects.filter(platform_role="system_admin", deleted_at__isnull=True).all():
+        if str(owner.id) != str(new_owner.id):
+            owner.platform_role = "system_staff"
+            owner.save()
+    new_owner.platform_role = "system_admin"
+    new_owner.save()
+    return None

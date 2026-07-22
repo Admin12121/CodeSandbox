@@ -126,6 +126,13 @@ def settings():
     sess_total_pages = max(1, math.ceil(sess_total / sess_page_size))
     sess_page = min(sess_page, sess_total_pages)
     paged_sessions = sessions_data[(sess_page - 1) * sess_page_size : sess_page * sess_page_size]
+    from codesandbox.features.platform_admin import service as platform_service
+    application_owner = platform_service.get_application_owner()
+    is_application_owner = bool(application_owner and application_owner["id"] == str(user.id))
+    owner_transfer_candidates = (
+        platform_service.get_application_owner_transfer_candidates(str(user.id))
+        if is_application_owner else []
+    )
 
     return {
         "_meta": {"title": "Settings — CodeSandbox"},
@@ -149,6 +156,9 @@ def settings():
         "sessions_page_size": sess_page_size,
         "sessions_total_pages": sess_total_pages,
         "current_session_id": current_session_id,
+        "application_owner": application_owner,
+        "is_application_owner": is_application_owner,
+        "owner_transfer_candidates": owner_transfer_candidates,
         "settings_user": {
             "id": str(user.id),
             "name": user.name,

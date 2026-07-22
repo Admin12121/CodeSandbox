@@ -11,8 +11,8 @@
   {% set role_options = [
     {"value": "all", "label": "All roles"},
     {"value": "user", "label": "User"},
-    {"value": "system_staff", "label": "App Staff"},
-    {"value": "system_admin", "label": "System Admin"},
+    {"value": "system_staff", "label": "Application Staff"},
+    {"value": "system_admin", "label": "Application Owner"},
   ] %}
   {% set status_options = [
     {"value": "all", "label": "All status"},
@@ -93,7 +93,7 @@
                   </a>
                 {% endcall %}
                 {% call table.table_cell(class="text-sm text-muted-foreground") %}
-                  {{ u.platform_role.replace('_', ' ').title() if u.platform_role else 'User' }}
+                  {% if u.platform_role == "system_admin" %}Application Owner{% elif u.platform_role == "system_staff" %}Application Staff{% else %}User{% endif %}
                 {% endcall %}
                 {% call table.table_cell() %}
                   <div class="flex flex-wrap gap-1">

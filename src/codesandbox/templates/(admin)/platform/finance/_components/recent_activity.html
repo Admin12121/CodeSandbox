@@ -20,8 +20,8 @@
             <div class="mt-1 truncate text-xs text-muted-foreground">{{ item.reference }} · {{ item.created_label }}</div>
           </div>
           <div class="text-right">
-            <div class="font-mono text-sm tabular-nums {{ 'text-rose-500' if item.is_negative else 'text-emerald-500' }}">{{ item.amount_display }}</div>
-            <div class="mt-1 text-[10px] uppercase text-muted-foreground">{{ item.status }}</div>
+            <div class="font-mono text-sm tabular-nums {{ 'text-rose-500' if item.is_negative else ('text-muted-foreground' if item.platform_amount == '0.00' else 'text-emerald-500') }}">{{ item.amount_display }}</div>
+            <div class="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{{ item.platform_impact }}</div>
           </div>
         </div>
       {% endfor %}

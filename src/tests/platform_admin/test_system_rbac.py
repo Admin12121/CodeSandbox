@@ -183,15 +183,15 @@ def test_revoke_role_from_user_removes_permissions(ctx: TestContext) -> None:
     )
 
 
-"""User with platform_role='system_admin' receives every seeded permission."""
-def test_system_admin_field_grants_all_permissions(ctx: TestContext) -> None:
+"""Application owner receives every seeded permission."""
+def test_application_owner_field_grants_all_permissions(ctx: TestContext) -> None:
     _seed()
     user = _make_user(ctx, "safg")
     _id_repo().update_user(str(user.id), platform_role="system_admin")
     all_perms = _pa().list_permissions()
     keys = _pa().get_user_permission_keys(str(user.id))
     missing = [p.key for p in all_perms if p.key not in keys]
-    assert not missing, f"system_admin missing: {missing}"
+    assert not missing, f"application owner missing: {missing}"
 
 
 """A regular user with one assigned permission gets exactly that one — no escalation."""
@@ -220,6 +220,6 @@ TESTS: list[TestCase] = [
     TestCase("multiple roles — exact union no extra",  "system_rbac", test_multiple_roles_union_no_extra),
     TestCase("revoke perm from role — loses access",   "system_rbac", test_revoke_permission_from_role_removes_access),
     TestCase("revoke role from user — loses perms",    "system_rbac", test_revoke_role_from_user_removes_permissions),
-    TestCase("system_admin field grants all perms",    "system_rbac", test_system_admin_field_grants_all_permissions),
+    TestCase("application owner grants all perms",    "system_rbac", test_application_owner_field_grants_all_permissions),
     TestCase("non-admin cannot exceed role perms",     "system_rbac", test_non_admin_cannot_exceed_role_perms),
 ]

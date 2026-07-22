@@ -747,6 +747,21 @@ def settings_update_email_action():
     return jsonify({"ok": True})
 
 
+@web_bp.post("/settings/application-owner/transfer")
+def settings_transfer_application_owner_action():
+    from codesandbox.features.platform_admin.service import transfer_application_ownership
+    from codesandbox.shared.session import require_session
+
+    cs, redir = require_session()
+    if redir:
+        return redirect(redir.url, code=303)
+    target_user_id = request.form.get("target_user_id", "").strip()
+    error = transfer_application_ownership(str(cs.user.id), target_user_id)
+    if error:
+        return redirect(f"/settings?tab=profile&error={urllib.parse.quote(error)}", code=303)
+    return redirect("/settings?tab=profile&info=Application+ownership+transferred.", code=303)
+
+
 @web_bp.post("/settings/upload-avatar")
 def settings_upload_avatar_action():
     from flask import jsonify

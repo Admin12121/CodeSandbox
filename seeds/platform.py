@@ -14,17 +14,15 @@ def seed_platform_admin() -> str:
         update_user,
     )
     from codesandbox.features.platform_admin.repository import (
-        assign_role_to_user,
-        get_role_by_name,
         seed_default_permissions,
         seed_default_roles,
     )
 
-    print("Seeding default permissions…")
+    print("Seeding default permissions...")
     seed_default_permissions()
     print("  done")
 
-    print("Seeding default roles…")
+    print("Cleaning legacy default roles...")
     seed_default_roles()
     print("  done")
 
@@ -38,13 +36,10 @@ def seed_platform_admin() -> str:
             name="Platform Admin",
             password_hash=generate_password_hash(ADMIN_PASSWORD),
         )
-        update_user(user.id, platform_role="system_admin", email_verified=True)
         print(f"  Created user {user.id}")
 
-    admin_role = get_role_by_name("system_admin")
-    if admin_role:
-        assign_role_to_user(user.id, admin_role.id)
-        print("  Assigned system_admin role")
+    update_user(user.id, platform_role="system_admin", email_verified=True)
+    print("  Application owner set")
 
     return str(user.id)
 
@@ -55,4 +50,3 @@ def print_seed_credentials() -> None:
     print(f"  Login: {ADMIN_EMAIL}")
     print(f"  Password: {ADMIN_PASSWORD}")
     print("  (change this password immediately!)")
-

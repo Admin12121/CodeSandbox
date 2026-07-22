@@ -46,7 +46,7 @@
             {{ mini_metric_footer(
                 "Gross usage",
                 health.net_revenue.gross.display,
-                "Refunds " ~ health.net_revenue.refunds.display ~ " · Discounts " ~ health.net_revenue.discounts.display
+                "Refunds " ~ health.net_revenue.refunds.display ~ " · Discounts/credits used " ~ health.net_revenue.discounts.display
             ) }}
         {% endcall %}
     {% endcall %}
@@ -62,7 +62,7 @@
                 <div class="min-w-0">
                     <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Cash and Balance Liability</div>
                     <div class="mt-3 text-7xl tracking-tight text-foreground">{{ health.cash_liability.topups.display }}</div>
-                    <p class="mt-1 text-xs text-muted-foreground">Top-ups are cash received, not revenue.</p>
+                    <p class="mt-1 text-xs text-muted-foreground">Top-ups are cash; credit grants are funded balance.</p>
                 </div>
                 <div class="w-28 shrink-0 pb-1 sm:w-36">
                     {{ mini_bars(health.cash_liability.bars) }}
@@ -71,9 +71,9 @@
         {% endcall %}
         {% call frame.frame_footer(class="py-2") %}
             {{ mini_metric_footer(
-                "Balance movement",
-                health.cash_liability.movement.display,
-                "Liability " ~ health.cash_liability.liability.display ~ " · Users " ~ health.cash_liability.user_balance.display ~ " · Orgs " ~ health.cash_liability.org_balance.display
+                "Credit issued",
+                health.cash_liability.credit_issued.display,
+                "Outstanding " ~ health.cash_liability.credit_outstanding.display ~ " · Liability " ~ health.cash_liability.liability.display
             ) }}
         {% endcall %}
     {% endcall %}
@@ -84,7 +84,7 @@
                 <div class="min-w-0">
                     <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Margin and Compute</div>
                     <div class="mt-3 text-7xl tracking-tight text-foreground">{{ health.margin_compute.profit.display }}</div>
-                    <p class="mt-1 text-xs text-muted-foreground">Estimated profit after compute cost{% if health.margin_compute.margin_percent is not none %} · {{ health.margin_compute.margin_percent }}% margin{% endif %}</p>
+                    <p class="mt-1 text-xs text-muted-foreground">Realized profit after compute cost{% if health.margin_compute.margin_percent is not none %} · {{ health.margin_compute.margin_percent }}% margin{% endif %}</p>
                 </div>
                 <div class="w-28 shrink-0 pb-1 sm:w-36">
                     {{ mini_bars(health.margin_compute.bars) }}
@@ -95,7 +95,7 @@
             {{ mini_metric_footer(
                 "Compute cost",
                 health.margin_compute.compute_cost.display,
-                "Revenue " ~ health.margin_compute.revenue.display ~ " · " ~ health.margin_compute.runtime_hours ~ " runtime hours"
+                "Revenue " ~ health.margin_compute.revenue.display ~ " · Credit exposure " ~ health.margin_compute.credit_outstanding.display
             ) }}
         {% endcall %}
     {% endcall %}

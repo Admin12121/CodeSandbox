@@ -39,7 +39,10 @@
               <div class="max-w-60 truncate text-sm">{{ row.reference or row.id[:8] }}</div>
               {% if row.description %}<div class="mt-1 max-w-60 truncate text-[10px] text-muted-foreground">{{ row.description }}</div>{% endif %}
             {% endcall %}
-            {{ table.table_cell(row.amount_display, class="text-right font-mono tabular-nums " ~ ("text-rose-500" if row.is_negative else "text-emerald-500")) }}
+            {% call table.table_cell(class="text-right") %}
+              <div class="font-mono tabular-nums {{ 'text-rose-500' if row.is_negative else ('text-muted-foreground' if row.platform_amount == '0.00' else 'text-emerald-500') }}">{{ row.amount_display }}</div>
+              <div class="mt-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{{ row.platform_impact }}</div>
+            {% endcall %}
             {{ table.table_cell(row.provider or "internal") }}
             {% call table.table_cell(class="text-right") %}
               {{ badge.badge(row.status|title, variant=("error" if row.status == "failed" else "success")) }}
