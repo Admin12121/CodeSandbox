@@ -13,5 +13,10 @@ db.*
 
 # Runtime-uploaded local media
 src/codesandbox/templates/public/orgs/
+src/codesandbox/templates/public/thumbnails/
+
+# MinIO object storage data (bind-mounted from ./storage into the minio container)
+storage/*
+!storage/.gitkeep
 
 docs/notes/*

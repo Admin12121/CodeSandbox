@@ -38,8 +38,8 @@
 
 .fs-row:hover,
 .fs-row-active {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 .editor-tab .tab-close,
@@ -57,8 +57,8 @@
 
 .editor-tab.active-tab,
 .terminal-tab.active-terminal {
-  background: hsl(var(--accent));
-  color: hsl(var(--accent-foreground));
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 </style>
 
@@ -122,7 +122,7 @@
   </div>
 </div>
 
-<div id="sandbox-ui" class="h-full">
+<div id="sandbox-ui" class="h-full" data-instance-id="{{ instance.id }}" data-instance-status="{{ instance.status }}">
 
   {% call resizable.resizable_panel_group(orientation="horizontal", class="rounded-xl") %}
 
@@ -139,36 +139,15 @@
               <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">←</button>
               <button class="flex h-full w-8 items-center justify-center border-r text-muted-foreground hover:bg-accent hover:text-accent-foreground">→</button>
 
-              <div data-editor-tabs class="flex h-full items-center">
-                <button data-tab="sample.py" class="editor-tab hidden h-full items-center gap-2 border-r px-4 text-xs">
-                  <span>sample.py</span>
-                  <span class="tab-close rounded p-0.5 hover:bg-background/60">{{ icons.icon("x") }}</span>
-                </button>
-              </div>
+              <div data-editor-tabs class="flex h-full items-center"></div>
             </div>
-
-            <button data-new-editor class="flex h-full items-center border-l px-2 text-muted-foreground hover:text-accent-foreground">
-              {{ icons.icon("plus") }}
-            </button>
           </div>
 
           <div class="flex h-8 shrink-0 items-center justify-between border-b px-3 text-xs text-muted-foreground">
             <span id="current-file-title"></span>
-            <button class="hover:text-accent-foreground">{{ icons.icon("search") }}</button>
           </div>
 
-          <div data-editor-panes class="min-h-0 flex-1 overflow-auto bg-background font-mono text-xs">
-            <div data-editor-file="sample.py" class="editor-pane hidden">
-              <div class="flex border-b bg-muted/20">
-                <div class="w-16 select-none border-r px-2 py-1 text-right text-muted-foreground">1</div>
-                <pre class="px-5 py-1"><code>print("hello from /home/admin12121/Download/sample.py")</code></pre>
-              </div>
-              <div class="flex">
-                <div class="w-16 select-none border-r px-2 py-1 text-right text-muted-foreground">2</div>
-                <pre class="px-5 py-1"><code></code></pre>
-              </div>
-            </div>
-          </div>
+          <div data-editor-panes class="min-h-0 flex-1 overflow-auto bg-background font-mono text-xs"></div>
         {% endcall %}
 
         {{ resizable.resizable_handle(with_handle=true, orientation="horizontal") }}
@@ -249,6 +228,40 @@
           </div>
         </div>
 
+        <div data-right-pane="metrics" class="right-pane hidden p-4">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="text-sm font-semibold">Metrics</h2>
+            <span id="runtime-metric-state" class="text-xs text-muted-foreground">Connecting</span>
+          </div>
+          <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+            <div class="border-b pb-2"><dt class="text-muted-foreground">CPU</dt><dd id="runtime-cpu" class="mt-1 font-mono text-sm">0%</dd></div>
+            <div class="border-b pb-2"><dt class="text-muted-foreground">Memory</dt><dd id="runtime-memory" class="mt-1 font-mono text-sm">0 MB</dd></div>
+            <div class="border-b pb-2"><dt class="text-muted-foreground">Network RX</dt><dd id="runtime-rx" class="mt-1 font-mono text-sm">0 KB</dd></div>
+            <div class="border-b pb-2"><dt class="text-muted-foreground">Network TX</dt><dd id="runtime-tx" class="mt-1 font-mono text-sm">0 KB</dd></div>
+            <div class="border-b pb-2"><dt class="text-muted-foreground">Block Read</dt><dd id="runtime-block-read" class="mt-1 font-mono text-sm">0 MB</dd></div>
+            <div class="border-b pb-2"><dt class="text-muted-foreground">Block Write</dt><dd id="runtime-block-write" class="mt-1 font-mono text-sm">0 MB</dd></div>
+          </dl>
+        </div>
+
+        <div data-right-pane="artifacts" class="right-pane hidden p-4">
+          <h2 class="mb-3 text-sm font-semibold">Artifacts</h2>
+          <div id="runtime-artifact-list">
+          {% if artifacts %}
+            <div class="divide-y border-y">
+              {% for artifact in artifacts %}
+                <a href="/artifacts/{{ artifact.id }}/download" class="flex items-center gap-3 py-2.5 text-xs hover:text-foreground">
+                  {{ icons.icon("archive", "text-muted-foreground") }}
+                  <span class="min-w-0 flex-1 truncate">{{ artifact.name }}</span>
+                  <span class="shrink-0 text-muted-foreground">{{ (artifact.size_bytes / 1024) | round(1) }} KB</span>
+                </a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="border-y py-8 text-center text-xs text-muted-foreground">No artifacts yet.</div>
+          {% endif %}
+          </div>
+        </div>
+
       </div>
     {% endcall %}
 
@@ -259,6 +272,19 @@
       <button data-toggle-panel="left" class="status-btn active-status rounded px-1 hover:text-accent-foreground">
         {{ icons.icon("panel-left") }}
       </button>
+      <span class="px-1 capitalize">{{ instance.status }}</span>
+      <span class="px-1">{{ instance.allocated_vcpu or plan.ind_vcpu }} vCPU</span>
+      <span class="px-1">{{ instance.allocated_ram_gb or plan.ind_ram_gb }} GB</span>
+      <span class="px-1">£{{ instance.cost_hr_snapshot }}/hr</span>
+      <span id="sandbox-estimated-cost" class="px-1">£0.0000</span>
+      {% if instance.status in ("running", "provisioning") %}
+        <form method="post" action="/instances/{{ instance.id }}/stop" class="inline-flex">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" title="Stop sandbox" aria-label="Stop sandbox" class="status-btn rounded px-1 text-destructive hover:bg-destructive/10">
+            <svg class="size-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+          </button>
+        </form>
+      {% endif %}
     </div>
 
     <div class="flex h-full items-center gap-1">
@@ -280,6 +306,18 @@
 
       <button data-toggle-right="ai" class="status-btn rounded px-1 hover:text-accent-foreground">
         {{ icons.icon("spark") }}
+      </button>
+
+      {{ sep.separator(orientation="vertical") }}
+
+      <button data-toggle-right="metrics" title="Metrics" class="status-btn rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("activity") }}
+      </button>
+
+      {{ sep.separator(orientation="vertical") }}
+
+      <button data-toggle-right="artifacts" title="Artifacts" class="status-btn rounded px-1 hover:text-accent-foreground">
+        {{ icons.icon("archive") }}
       </button>
     </div>
   </div>
@@ -330,5 +368,100 @@
       if(raf) cancelAnimationFrame(raf);
     }, FADE);
   }, DISMISS);
+})();
+{% end_app_script %}
+
+{% app_script "sandbox-runtime-detail" %}
+(function () {
+  var root = document.getElementById("sandbox-ui");
+  if (!root || root.dataset.runtimeDetailBound) return;
+  root.dataset.runtimeDetailBound = "1";
+  var instanceId = {{ instance.id | tojson }};
+  var status = {{ instance.status | tojson }};
+  var startedAt = {{ (instance.started_at.isoformat() if instance.started_at else none) | tojson }};
+  var rate = parseFloat({{ instance.cost_hr_snapshot | tojson }}) || 0;
+  var estimated = document.getElementById("sandbox-estimated-cost");
+  function updateCost() {
+    if (!estimated || !startedAt) return;
+    var seconds = Math.max(0, (Date.now() - new Date(startedAt).getTime()) / 1000);
+    estimated.textContent = "£" + (rate * seconds / 3600).toFixed(4);
+  }
+  updateCost();
+  var costTimer = window.setInterval(updateCost, 1000);
+
+  function setText(id, value) {
+    var element = document.getElementById(id);
+    if (element) element.textContent = value;
+  }
+  function bytes(value) {
+    return ((Number(value) || 0) / 1024 / 1024).toFixed(1) + " MB";
+  }
+  function refreshArtifacts() {
+    fetch("/instances/" + encodeURIComponent(instanceId) + "/artifacts")
+      .then(function (response) { return response.json(); })
+      .then(function (body) {
+        if (!body.ok) return;
+        var list = document.getElementById("runtime-artifact-list");
+        if (!list) return;
+        list.textContent = "";
+        if (!body.artifacts.length) {
+          var empty = document.createElement("div");
+          empty.className = "border-y py-8 text-center text-xs text-muted-foreground";
+          empty.textContent = "No artifacts yet.";
+          list.appendChild(empty);
+          return;
+        }
+        var rows = document.createElement("div");
+        rows.className = "divide-y border-y";
+        body.artifacts.forEach(function (artifact) {
+          var link = document.createElement("a");
+          link.href = "/artifacts/" + encodeURIComponent(artifact.id) + "/download";
+          link.className = "flex items-center gap-3 py-2.5 text-xs hover:text-foreground";
+          var name = document.createElement("span");
+          name.className = "min-w-0 flex-1 truncate";
+          name.textContent = artifact.name;
+          var size = document.createElement("span");
+          size.className = "shrink-0 text-muted-foreground";
+          size.textContent = (Number(artifact.size_bytes || 0) / 1024).toFixed(1) + " KB";
+          link.appendChild(name);
+          link.appendChild(size);
+          rows.appendChild(link);
+        });
+        list.appendChild(rows);
+      });
+  }
+  if (status === "running") {
+    fetch("/instances/" + encodeURIComponent(instanceId) + "/monitor-token?purpose=monitor")
+      .then(function (response) { if (!response.ok) throw new Error(); return response.json(); })
+      .then(function (body) {
+        var protocol = location.protocol === "https:" ? "wss:" : "ws:";
+        var socket = new WebSocket(protocol + "//" + location.host + "/ws/sandbox/" + encodeURIComponent(instanceId) + "/monitor?token=" + encodeURIComponent(body.token));
+        root._metricsSocket = socket;
+        socket.onopen = function () { setText("runtime-metric-state", "Live"); };
+        socket.onclose = function () { setText("runtime-metric-state", "Disconnected"); };
+        socket.onmessage = function (event) {
+          var data;
+          try { data = JSON.parse(event.data); } catch (_) { return; }
+          if (data.type === "event" && data.event === "artifact_ready") {
+            refreshArtifacts();
+            return;
+          }
+          if (data.type !== "metrics") return;
+          setText("runtime-cpu", (Number(data.cpu_pct) || 0).toFixed(1) + "%");
+          setText("runtime-memory", (Number(data.mem_mb) || 0).toFixed(1) + " MB");
+          setText("runtime-rx", (Number(data.net_rx_kb) || 0).toFixed(1) + " KB");
+          setText("runtime-tx", (Number(data.net_tx_kb) || 0).toFixed(1) + " KB");
+          setText("runtime-block-read", bytes(data.block_read_bytes));
+          setText("runtime-block-write", bytes(data.block_write_bytes));
+        };
+      })
+      .catch(function () { setText("runtime-metric-state", "Unavailable"); });
+  } else {
+    setText("runtime-metric-state", status);
+  }
+  window.addEventListener("beforeunload", function () {
+    window.clearInterval(costTimer);
+    if (root._metricsSocket) root._metricsSocket.close();
+  }, { once: true });
 })();
 {% end_app_script %}

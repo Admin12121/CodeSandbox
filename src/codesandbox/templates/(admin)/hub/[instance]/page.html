@@ -2,32 +2,40 @@
 {% import "components/ui/table.html" as table %}
 {% import "components/ui/button.html" as button %}
 
-{% set i = instance %}
-
-{% set plans = [
-  {"id": "basic",    "name": "Basic",          "default": true,  "vcpu": 1, "ram": "1 GB",  "disk": "10 GB SSD", "cost_hr": "0.03"},
-  {"id": "general",  "name": "General Purpose", "default": false, "vcpu": 2, "ram": "4 GB",  "disk": "15 GB SSD", "cost_hr": "0.06"},
-  {"id": "optimized","name": "Optimized",       "default": false, "vcpu": 4, "ram": "8 GB",  "disk": "20 GB SSD", "cost_hr": "0.09"},
-  {"id": "premium",  "name": "Premium",         "default": false, "vcpu": 6, "ram": "12 GB", "disk": "30 GB SSD", "cost_hr": "0.13"},
-] %}
+{% set tmpl = template %}
 
 <div class="grid gap-4 p-2 max-w-[1200px] mx-auto">
 
-  {# Page header #}
+  {% if error is defined and error %}
+  <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+    <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    {{ error }}
+  </div>
+  {% endif %}
+
   <div class="flex min-w-0 items-center gap-3">
     <h1 class="truncate text-2xl font-bold tracking-tight">Start Project</h1>
   </div>
 
-  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_14rem_minmax(20rem,26rem)] mt-[100px] relative" data-plan-selector data-instance="{{ i.slug }}">
+  <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_14rem_minmax(20rem,26rem)] mt-[100px] relative"
+       data-plan-selector data-instance="{{ tmpl.slug }}">
 
     <div class="flex items-start gap-4 flex-col">
       <span class="flex items-center gap-4">
-        <img src="{{ i.img }}" alt="{{ i.title }}" class="size-14 shrink-0 rounded-2xl object-cover outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700"/>
+        {% if tmpl.icon_path %}
+          <img src="{{ tmpl.icon_path }}" alt="{{ tmpl.name }}"
+               class="size-14 shrink-0 rounded-2xl object-cover outline-1 outline-offset-2 outline-neutral-300/50 transition-colors hover:outline-neutral-300 dark:outline-neutral-800/50 dark:hover:outline-neutral-700"/>
+        {% else %}
+          <div class="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground outline-1 outline-offset-2 outline-neutral-300/50 dark:outline-neutral-800/50">
+            <svg viewBox="0 0 256 256" class="size-8"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+          </div>
+        {% endif %}
         <div class="min-w-0 pt-1">
-          <h2 class="text-lg font-semibold">{{ i.title }}</h2>
+          <h2 class="text-lg font-semibold">{{ tmpl.name }}</h2>
+          <p class="text-xs text-muted-foreground capitalize">{{ tmpl.runtime_class | replace("_", " ") }} · {{ tmpl.sandbox_type | replace("_", " ") }}</p>
         </div>
       </span>
-      <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{{ i.description }}</p>
+      <p class="mt-1 text-sm leading-relaxed text-muted-foreground">{{ tmpl.description }}</p>
 
       {# Plan selector #}
       {% call frame.frame(class="w-full") %}
@@ -35,26 +43,34 @@
           {% call frame.frame_title() %}Plan{% endcall %}
         {% endcall %}
 
-        {% call table.table(variant="card") %}
-        {% call table.table_body() %}
+        {% if plans %}
+          {% call table.table(variant="card") %}
+          {% call table.table_body() %}
             {% for plan in plans %}
-            {% call table.table_row(
-                selected=plan.default,
+              {% set specs_vcpu = plan.org_vcpu if is_org else plan.ind_vcpu %}
+              {% set specs_ram  = (plan.org_ram_gb if is_org else plan.ind_ram_gb) | string ~ " GB" %}
+              {% set specs_disk = (plan.org_disk_gb if is_org else plan.ind_disk_gb) | string ~ " GB SSD" %}
+              {% set specs_cost = "£" ~ (plan.org_cost_hr if is_org else plan.ind_cost_hr) ~ "/hr" %}
+              {% call table.table_row(
+                selected=loop.first,
                 class="cursor-pointer select-none",
                 attrs={
-                "data-plan-row": plan.id,
-                "data-vcpu": plan.vcpu ~ " vCPU",
-                "data-ram": plan.ram,
-                "data-disk": plan.disk,
-                "data-cost": "$" ~ plan.cost_hr ~ "/hr",
+                  "data-plan-row": plan.id,
+                  "data-vcpu": specs_vcpu | string ~ " vCPU",
+                  "data-ram":  specs_ram,
+                  "data-disk": specs_disk,
+                  "data-cost": specs_cost,
                 }
-            ) %}
-                {{ table.table_cell(plan.name ~ (" (default)" if plan.default else ""), class="font-medium") }}
-                {{ table.table_cell(plan.vcpu ~ " vCPU · " ~ plan.ram ~ " · " ~ plan.disk, class="text-right text-muted-foreground text-xs") }}
-            {% endcall %}
+              ) %}
+                {{ table.table_cell(plan.name, class="font-medium") }}
+                {{ table.table_cell(specs_vcpu | string ~ " vCPU · " ~ specs_ram ~ " · " ~ specs_disk, class="text-right text-muted-foreground text-xs") }}
+              {% endcall %}
             {% endfor %}
-        {% endcall %}
-        {% endcall %}
+          {% endcall %}
+          {% endcall %}
+        {% else %}
+          <p class="px-3 py-4 text-sm text-muted-foreground">No active plans available.</p>
+        {% endif %}
 
       {% endcall %}
     </div>
@@ -65,35 +81,69 @@
       {% call frame.frame() %}
         {% call table.table(variant="card") %}
         {% call table.table_header() %}
-            {% call table.table_row() %}
-                {{ table.table_head("Summary") }}
+          {% call table.table_row() %}
+            {{ table.table_head("Summary") }}
             {% call table.table_head(class="flex justify-end items-center") %}
-                {% call button.button(variant="default", attrs={"data-start-btn": ""}) %}
-                Start
-                {% endcall %}
+              {% if can_start %}
+                <form id="start-form" method="post" enctype="multipart/form-data" action="/hub/{{ tmpl.slug }}/start">
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="plan_id" id="start-plan-id" value="">
+                  {% call button.button(variant="default", attrs={"type": "submit", "id": "action-btn"}) %}Start{% endcall %}
+                </form>
+              {% else %}
+                <form id="request-form" method="post" action="/hub/{{ tmpl.slug }}/request">
+                  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="plan_id" id="start-plan-id" value="">
+                  {% call button.button(variant="outline", attrs={"type": "submit", "id": "action-btn"}) %}Request{% endcall %}
+                </form>
+              {% endif %}
             {% endcall %}
-            {% endcall %}
+          {% endcall %}
         {% endcall %}
         {% call table.table_body() %}
-            {% call table.table_row() %}
-                {{ table.table_cell("vCPU", class="text-muted-foreground") }}
-                {{ table.table_cell(i.vcpu ~ " vCPU", class="text-right font-medium", attrs={"data-summary-cell": "vcpu"}) }}
-            {% endcall %}
-            {% call table.table_row() %}
-                {{ table.table_cell("RAM", class="text-muted-foreground") }}
-                {{ table.table_cell(i.ram_gb ~ " GB", class="text-right font-medium", attrs={"data-summary-cell": "ram"}) }}
-            {% endcall %}
-            {% call table.table_row() %}
-                {{ table.table_cell("Disk", class="text-muted-foreground") }}
-                {{ table.table_cell(i.disk_gb ~ " GB SSD", class="text-right font-medium", attrs={"data-summary-cell": "disk"}) }}
-            {% endcall %}
-            {% call table.table_row(class="border-0") %}
-                {{ table.table_cell("Total", class="text-muted-foreground") }}
-                {{ table.table_cell("$0.03/hr", class="text-right font-semibold", attrs={"data-summary-cell": "total"}) }}
-            {% endcall %}
+          {% call table.table_row() %}
+            {{ table.table_cell("vCPU", class="text-muted-foreground") }}
+            {{ table.table_cell("—", class="text-right font-medium", attrs={"data-summary-cell": "vcpu"}) }}
+          {% endcall %}
+          {% call table.table_row() %}
+            {{ table.table_cell("RAM", class="text-muted-foreground") }}
+            {{ table.table_cell("—", class="text-right font-medium", attrs={"data-summary-cell": "ram"}) }}
+          {% endcall %}
+          {% call table.table_row() %}
+            {{ table.table_cell("Disk", class="text-muted-foreground") }}
+            {{ table.table_cell("—", class="text-right font-medium", attrs={"data-summary-cell": "disk"}) }}
+          {% endcall %}
+          {% call table.table_row() %}
+            {{ table.table_cell("Cost", class="text-muted-foreground") }}
+            {{ table.table_cell("—", class="text-right font-semibold", attrs={"data-summary-cell": "total"}) }}
+          {% endcall %}
+          {% if user_balance is not none %}
+          {% call table.table_row(class="border-0") %}
+            {{ table.table_cell("Balance", class="text-muted-foreground") }}
+            {{ table.table_cell("£" ~ user_balance, class="text-right font-medium " ~ ("text-destructive" if user_balance | float <= 0 else "")) }}
+          {% endcall %}
+          {% endif %}
         {% endcall %}
         {% endcall %}
       {% endcall %}
+
+      {% if can_start and (tmpl.input_required or tmpl.sandbox_type == "reverse_engineering") %}
+        <div class="mt-3 border-t pt-3">
+          <label for="sandbox-input" class="mb-1.5 block text-xs font-medium text-muted-foreground">Input file</label>
+          <input id="sandbox-input" type="file" name="input_file" form="start-form"
+                 {% if tmpl.input_required %}required{% endif %}
+                 class="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-foreground hover:file:bg-accent">
+        </div>
+      {% endif %}
+
+      {% if not can_start %}
+        <div class="mt-3 rounded-lg border bg-card p-3">
+          <label for="request-note" class="text-xs font-medium text-muted-foreground">Note (optional)</label>
+          <textarea id="request-note" name="note" form="request-form"
+            class="mt-1.5 w-full resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring placeholder:text-muted-foreground"
+            rows="3" placeholder="Why do you need this sandbox?"></textarea>
+        </div>
+      {% endif %}
     </div>
 
   </div>
@@ -104,16 +154,10 @@
   'use strict';
 
   var VIOLET_BG = 'rgba(97, 95, 255, 0.5)';
-  var VIOLET_BG_DARK = 'rgba(97, 95, 255, 0.5)';
-
-  function isDark(){
-    return document.documentElement.classList.contains('dark');
-  }
 
   function applyViolet(row){
-    var bg = isDark() ? VIOLET_BG_DARK : VIOLET_BG;
     row.querySelectorAll('td').forEach(function(td){
-      td.style.setProperty('background-color', bg);
+      td.style.setProperty('background-color', VIOLET_BG);
     });
   }
 
@@ -124,16 +168,12 @@
   }
 
   function updateSummary(scope, row){
-    var vcpu = row.dataset.vcpu;
-    var ram  = row.dataset.ram;
-    var disk = row.dataset.disk;
-    var cost = row.dataset.cost;
     scope.querySelectorAll('[data-summary-cell]').forEach(function(cell){
       var key = cell.dataset.summaryCell;
-      if(key === 'vcpu'  && vcpu) cell.textContent = vcpu;
-      if(key === 'ram'   && ram)  cell.textContent = ram;
-      if(key === 'disk'  && disk) cell.textContent = disk;
-      if(key === 'total' && cost) cell.textContent = cost;
+      if (key === 'vcpu'  && row.dataset.vcpu)  cell.textContent = row.dataset.vcpu;
+      if (key === 'ram'   && row.dataset.ram)   cell.textContent = row.dataset.ram;
+      if (key === 'disk'  && row.dataset.disk)  cell.textContent = row.dataset.disk;
+      if (key === 'total' && row.dataset.cost)  cell.textContent = row.dataset.cost;
     });
   }
 
@@ -144,17 +184,20 @@
       var startBtn = scope.querySelector('[data-start-btn]');
 
       function setStartTarget(planId){
-        if(startBtn) startBtn.onclick = function(){
+        if (startBtn) startBtn.onclick = function(){
           window.location.href = '/hub/' + instance + '/' + planId;
         };
+        var planInput = document.getElementById('start-plan-id');
+        if (planInput) planInput.value = planId;
       }
 
       rows.forEach(function(row){
-        if(row._planSelectorInit) return;
+        if (row._planSelectorInit) return;
         row._planSelectorInit = true;
 
-        if(row.dataset.state === 'selected'){
+        if (row.dataset.state === 'selected'){
           applyViolet(row);
+          updateSummary(scope, row);
           setStartTarget(row.dataset.planRow);
         }
 
@@ -170,9 +213,8 @@
         });
       });
 
-      // Sync summary to default selection on init
       var defaultRow = scope.querySelector('[data-plan-row][data-state="selected"]');
-      if(defaultRow) updateSummary(scope, defaultRow);
+      if (defaultRow) updateSummary(scope, defaultRow);
     });
   }
 

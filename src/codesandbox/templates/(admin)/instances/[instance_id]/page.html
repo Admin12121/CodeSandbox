@@ -1,0 +1,79 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/badge.html" as badge %}
+
+<div class="mx-auto grid max-w-5xl gap-4 p-6">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h1 class="truncate text-xl font-semibold">{{ instance.template_name }}</h1>
+      <p class="mt-1 font-mono text-xs text-muted-foreground">{{ instance.id }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      {% if instance.status == "idle" %}
+        <form method="post" action="/instances/{{ instance.id }}/start">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          {% call button.button(type="submit", size="sm") %}Start{% endcall %}
+        </form>
+      {% elif instance.status in ("provisioning", "running") %}
+        {% if instance.status == "running" %}
+          <a href="/hub/{{ instance.template_slug }}/{{ instance.plan_id }}">{% call button.button(size="sm", variant="outline") %}Open{% endcall %}</a>
+        {% endif %}
+        <form method="post" action="/instances/{{ instance.id }}/stop">
+          <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+          {% call button.button(type="submit", size="sm", variant="destructive") %}Stop{% endcall %}
+        </form>
+      {% else %}
+        <a href="/hub/{{ instance.template_slug }}">{% call button.button(size="sm") %}New Sandbox{% endcall %}</a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if error %}
+    <div class="border-y border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{{ error }}</div>
+  {% endif %}
+
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Runtime") }}
+          {{ table.table_head("") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% call table.table_row() %}{{ table.table_cell("Status", class="font-medium") }}{% call table.table_cell() %}{{ badge.badge(instance.status | capitalize, variant=("outline" if instance.status == "running" else "secondary")) }}{% endcall %}{% endcall %}
+        {% call table.table_row() %}{{ table.table_cell("Template / Plan", class="font-medium") }}{{ table.table_cell(instance.template_name ~ " / " ~ instance.plan_id, class="text-muted-foreground") }}{% endcall %}
+        {% call table.table_row() %}{{ table.table_cell("Provider", class="font-medium") }}{{ table.table_cell((instance.runtime_provider or "-") ~ (" / " ~ instance.runtime_id if instance.runtime_id else ""), class="break-all font-mono text-xs text-muted-foreground") }}{% endcall %}
+        {% call table.table_row() %}{{ table.table_cell("Resources", class="font-medium") }}{{ table.table_cell((instance.allocated_vcpu or 0) ~ " vCPU, " ~ (instance.allocated_ram_gb or 0) ~ " GB RAM, " ~ (instance.allocated_disk_gb or 0) ~ " GB disk", class="text-muted-foreground") }}{% endcall %}
+        {% call table.table_row() %}{{ table.table_cell("Network", class="font-medium") }}{{ table.table_cell(instance.effective_network_mode or "-", class="capitalize text-muted-foreground") }}{% endcall %}
+        {% call table.table_row() %}{{ table.table_cell("Runtime", class="font-medium") }}{{ table.table_cell(instance.total_runtime_sec ~ " seconds", class="text-muted-foreground") }}{% endcall %}
+        {% call table.table_row() %}{{ table.table_cell("Billing", class="font-medium") }}{{ table.table_cell("£" ~ instance.cost_hr_snapshot ~ "/hr, charged £" ~ instance.charged_amount ~ " (" ~ instance.billing_status ~ ")", class="text-muted-foreground") }}{% endcall %}
+        {% if instance.exit_reason %}{% call table.table_row() %}{{ table.table_cell("Exit", class="font-medium") }}{{ table.table_cell(instance.exit_reason, class="text-muted-foreground") }}{% endcall %}{% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Artifacts") }}
+          {{ table.table_head("Size", class="w-32 text-right") }}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if artifacts %}
+          {% for artifact in artifacts %}
+            {% call table.table_row() %}
+              {% call table.table_cell() %}<a class="font-medium hover:underline" href="/artifacts/{{ artifact.id }}/download">{{ artifact.name }}</a>{% endcall %}
+              {{ table.table_cell(((artifact.size_bytes / 1024) | round(1)) ~ " KB", class="text-right text-muted-foreground") }}
+            {% endcall %}
+          {% endfor %}
+        {% else %}
+          {% call table.table_row() %}{{ table.table_cell("No artifacts collected.", class="h-24 text-center text-muted-foreground", attrs={"colspan": "2"}) }}{% endcall %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+</div>

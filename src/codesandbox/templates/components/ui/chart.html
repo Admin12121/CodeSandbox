@@ -1,0 +1,397 @@
+{#
+  chart.html — Config-driven Chart.js macros (Jinja2 port of shadcn/ui chart)
+
+  CSS custom properties (add to :root / .dark in your global CSS):
+    --chart-1 … --chart-5
+
+  Macro API
+  ─────────────────────────────────────────────────────────────────────────
+  chart_style(chart_id, config)
+    Injects <style> that maps config colours → CSS vars on [data-chart=id].
+
+  chart_container(chart_id, config, class="", caller=…)
+    Wraps children; injects ChartStyle; exposes CSS colour vars.
+    Use with {% call %}.
+
+  line_chart(chart_id, config, class="", height="200")
+    Self-contained line chart (loads Chart.js lazily, singleton).
+
+  area_chart(chart_id, config, class="", height="200")
+    Same but fills below the line (fill:"origin").
+
+  bar_chart(chart_id, config, class="", height="200")
+    Vertical bar chart.
+
+  Config shape (mirrors shadcn ChartConfig):
+    {
+      "key": {
+        "label": "My series",
+        "color": "#hex"               ← single colour
+        -- OR --
+        "theme": {"light": "#…", "dark": "#…"}   ← theme-aware
+      },
+      ...
+    }
+
+  Each key maps to one dataset; the data is injected via JS after init:
+    window.csCharts["chart-id"].addPoint("key", value)
+    window.csCharts["chart-id"].reset()
+
+  Lazy init: charts inside a container that starts hidden (e.g. a tab pane
+  toggled with the `hidden` class) must NOT be created while display:none —
+  Chart.js reads a 0×0 size at creation time and never recovers, even after
+  the container becomes visible. Either:
+    - leave the container visible at creation time (default), or
+    - call window.csInitChart("chart-id") yourself the first time the
+      container becomes visible (chart creation is deferred automatically
+      when the canvas's offsetParent is null at script-execution time).
+#}
+
+{# ── ChartStyle ─────────────────────────────────────────────────────────── #}
+{% macro chart_style(chart_id, config) %}
+{% set ns = namespace(light_rules=[], dark_rules=[]) %}
+{% for key, cfg in config.items() %}
+  {% if cfg.get("color") %}
+    {% set _ = ns.light_rules.append("  --color-" ~ key ~ ": " ~ cfg.color ~ ";") %}
+    {% set _ = ns.dark_rules.append("  --color-" ~ key ~ ": " ~ cfg.color ~ ";") %}
+  {% elif cfg.get("theme") %}
+    {% if cfg.theme.get("light") %}
+      {% set _ = ns.light_rules.append("  --color-" ~ key ~ ": " ~ cfg.theme.light ~ ";") %}
+    {% endif %}
+    {% if cfg.theme.get("dark") %}
+      {% set _ = ns.dark_rules.append("  --color-" ~ key ~ ": " ~ cfg.theme.dark ~ ";") %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{% if ns.light_rules %}
+<style>
+[data-chart="{{ chart_id }}"] {
+{{ ns.light_rules | join("\n") }}
+}
+.dark [data-chart="{{ chart_id }}"] {
+{{ ns.dark_rules | join("\n") }}
+}
+</style>
+{% endif %}
+{% endmacro %}
+
+
+{# ── ChartContainer ─────────────────────────────────────────────────────── #}
+{% macro chart_container(chart_id, config, class="") %}
+<div data-slot="chart" data-chart="{{ chart_id }}"
+  class="flex justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground {{ class }}">
+  {{ chart_style(chart_id, config) }}
+  {{ caller() }}
+</div>
+{% endmacro %}
+
+
+{# ── Internal: shared canvas + seed data + Chart.js loader ─────────────── #}
+{% macro _chart_canvas(chart_id, config, chart_type, height, fill) %}
+{% set ds_list = [] %}
+{% for key, cfg in config.items() %}
+  {% set color_ref = "var(--color-" ~ key ~ ", " ~ (cfg.get("color") or "#888") ~ ")" %}
+  {% set ds = {
+    "key": key,
+    "label": cfg.get("label", key),
+    "borderColor": color_ref,
+    "fillColor": cfg.get("fill_color", ""),
+    "backgroundColor": ("rgba(0,0,0,0.08)" if not fill else ""),
+    "fill": (fill if fill else false),
+    "tension": 0.35,
+    "pointRadius": 0,
+    "pointHoverRadius": 4,
+    "borderWidth": 2,
+    "data": [],
+  } %}
+  {% set _ = ds_list.append(ds) %}
+{% endfor %}
+<div data-slot="chart" data-chart="{{ chart_id }}"
+  class="relative w-full" style="height:{{ height }}px">
+  {{ chart_style(chart_id, config) }}
+  <canvas id="{{ chart_id }}-canvas" style="width:100%;height:100%"></canvas>
+  <script type="application/json" id="{{ chart_id }}-seed">{{ ds_list | tojson }}</script>
+</div>
+{% app_script "chart-" ~ chart_id %}
+(function(){
+  function initChart() {
+    var canvas = document.getElementById('{{ chart_id }}-canvas');
+    var seedEl = document.getElementById('{{ chart_id }}-seed');
+    if (!canvas || !seedEl || !window.Chart) return;
+
+    var seeds = JSON.parse(seedEl.textContent);
+    var isDark = document.documentElement.classList.contains('dark');
+    var gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+    var tickColor = isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
+
+    var datasets = seeds.map(function(s) {
+      var bg = s.backgroundColor;
+      if ('{{ fill }}' === 'origin') {
+        var fillClr = s.fillColor;
+        if (!fillClr) {
+          // Try to resolve CSS var from the chart container element
+          var chartEl = canvas.closest('[data-chart]');
+          if (chartEl && s.borderColor.indexOf('var(--color-') === 0) {
+            var varKey = s.borderColor.match(/--color-([^,)]+)/);
+            if (varKey) {
+              var resolved = getComputedStyle(chartEl).getPropertyValue('--color-' + varKey[1]).trim();
+              fillClr = resolved ? resolved.replace(')', ', 0.15)').replace('oklch(', 'oklch(') : '';
+            }
+          }
+          if (!fillClr) fillClr = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+        }
+        bg = (function(clr) {
+          return function(ctx) {
+            var chart = ctx.chart;
+            var gradient = chart.ctx.createLinearGradient(0, 0, 0, chart.height);
+            try { gradient.addColorStop(0, clr); } catch(e) { gradient.addColorStop(0, 'rgba(99,102,241,0.2)'); }
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            return gradient;
+          };
+        })(fillClr);
+      }
+      return {
+        label: s.label,
+        borderColor: s.borderColor,
+        backgroundColor: bg,
+        fill: s.fill,
+        tension: s.tension,
+        pointRadius: s.pointRadius,
+        pointHoverRadius: s.pointHoverRadius,
+        borderWidth: s.borderWidth,
+        data: [],
+        _key: s.key,
+      };
+    });
+
+    var chart = new window.Chart(canvas, {
+      type: '{{ chart_type }}',
+      data: { labels: [], datasets: datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 0 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: datasets.length > 1, position: 'bottom',
+            labels: { color: tickColor, boxWidth: 10, padding: 10, font: { size: 11 } } },
+          tooltip: {
+            backgroundColor: isDark ? '#18181b' : '#fff',
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+            borderWidth: 1,
+            titleColor: isDark ? '#e4e4e7' : '#09090b',
+            bodyColor: tickColor,
+            padding: 10,
+            cornerRadius: 8,
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 6 },
+          },
+          y: {
+            grid: { color: gridColor },
+            ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5 },
+            beginAtZero: true,
+          },
+        },
+      },
+    });
+
+    // Fixed-duration sliding window (real-time strip chart): the labels/data
+    // arrays are always kept at exactly `windowState.maxPoints` entries, padded
+    // with null placeholders up front. Without this, Chart.js's category scale
+    // spaces whatever points exist evenly across the full width — so a chart
+    // that has only been running 3s looks "spread out", and as more points
+    // arrive the same fixed width holds more of them, visually squeezing
+    // existing points together ("compacting") until the buffer finally fills.
+    // Keeping the slot count constant from the first tick removes that effect.
+    var windowState = { maxPoints: 60 };
+    var keyIndex = {};
+    datasets.forEach(function(ds, i) { keyIndex[ds._key] = i; });
+
+    function padToWindow() {
+      while (chart.data.labels.length < windowState.maxPoints) {
+        chart.data.labels.unshift('');
+        chart.data.datasets.forEach(function(ds) { ds.data.unshift(null); });
+      }
+      while (chart.data.labels.length > windowState.maxPoints) {
+        chart.data.labels.shift();
+        chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
+      }
+    }
+    padToWindow();
+
+    if (!window.csCharts) window.csCharts = {};
+    window.csCharts['{{ chart_id }}'] = {
+      addPoint: function(key, value, label) {
+        var idx = keyIndex[key];
+        if (idx === undefined) return;
+        var lbl = label || new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        if (chart.data.datasets[idx].data.length === 0 ||
+            chart.data.labels[chart.data.labels.length - 1] !== lbl) {
+          chart.data.labels.push(lbl);
+          datasets.forEach(function(_, j) {
+            if (j !== idx) chart.data.datasets[j].data.push(null);
+          });
+        }
+        chart.data.datasets[idx].data.push(value);
+        if (chart.data.labels.length > windowState.maxPoints) {
+          chart.data.labels.shift();
+          chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
+        }
+        chart.update('none');
+      },
+      addMulti: function(kvMap, label) {
+        var lbl = label || new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        chart.data.labels.push(lbl);
+        datasets.forEach(function(ds) {
+          var val = kvMap.hasOwnProperty(ds._key) ? kvMap[ds._key] : null;
+          ds.data.push(val);
+        });
+        if (chart.data.labels.length > windowState.maxPoints) {
+          chart.data.labels.shift();
+          chart.data.datasets.forEach(function(ds) { ds.data.shift(); });
+        }
+        chart.update('none');
+      },
+      reset: function() {
+        chart.data.labels = [];
+        chart.data.datasets.forEach(function(ds) { ds.data = []; });
+        padToWindow();
+        chart.update('none');
+      },
+      setWindow: function(seconds) {
+        windowState.maxPoints = seconds;
+        padToWindow();
+        chart.update('none');
+      },
+      raw: chart,
+    };
+
+    new MutationObserver(function() {
+      var dark = document.documentElement.classList.contains('dark');
+      var gc = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+      var tc = dark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)';
+      chart.options.scales.x.grid.color = gc;
+      chart.options.scales.y.grid.color = gc;
+      chart.options.scales.x.ticks.color = tc;
+      chart.options.scales.y.ticks.color = tc;
+      chart.options.plugins.legend.labels.color = tc;
+      chart.update('none');
+    }).observe(document.documentElement, { attributeFilter: ['class'] });
+  }
+
+  function loadChartJs(cb) {
+    if (window.Chart) { cb(); return; }
+    if (window._csChartJsLoading) {
+      window._csChartJsCallbacks = window._csChartJsCallbacks || [];
+      window._csChartJsCallbacks.push(cb);
+      return;
+    }
+    window._csChartJsLoading = true;
+    // Monaco's loader.js installs a global AMD `define`/`require` on this
+    // page (Config IDE). Chart.js's UMD bundle detects that and registers
+    // itself as an AMD module through it instead of attaching to
+    // `window.Chart` — the script loads and runs fine (200, onload fires)
+    // but window.Chart stays undefined forever. Hiding `define` while the
+    // script executes forces the plain browser-global attachment path.
+    var savedDefine = window.define;
+    var savedRequire = window.require;
+    window.define = undefined;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js';
+    s.onload = function() {
+      window.define = savedDefine;
+      window.require = savedRequire;
+      cb();
+      (window._csChartJsCallbacks || []).forEach(function(fn){ fn(); });
+      window._csChartJsCallbacks = [];
+    };
+    s.onerror = function() {
+      window.define = savedDefine;
+      window.require = savedRequire;
+      window._csChartJsLoading = false;
+    };
+    document.head.appendChild(s);
+  }
+
+  // Register this chart's init rather than running it unconditionally: a
+  // canvas created while its container is display:none gets measured at 0×0
+  // by Chart.js and never recovers, even once shown later. If it's already
+  // visible right now, initialize immediately (default/back-compat path);
+  // otherwise the caller must invoke window.csInitChart(chart_id) once the
+  // container actually becomes visible.
+  window._csChartInit = window._csChartInit || {};
+  window._csChartInit['{{ chart_id }}'] = function() { loadChartJs(initChart); };
+  if (!window.csInitChart) {
+    window.csInitChart = function(id) {
+      var fn = window._csChartInit && window._csChartInit[id];
+      if (fn) { window._csChartInit[id] = null; fn(); }
+    };
+  }
+
+  var _canvasEl = document.getElementById('{{ chart_id }}-canvas');
+  if (_canvasEl && _canvasEl.offsetParent !== null) {
+    window.csInitChart('{{ chart_id }}');
+  }
+})();
+{% end_app_script %}
+{% endmacro %}
+
+
+{# ── Public chart macros ─────────────────────────────────────────────────── #}
+
+{% macro line_chart(chart_id, config, class="", height=200) %}
+<div class="{{ class }}">
+  {{ _chart_canvas(chart_id, config, "line", height, false) }}
+</div>
+{% endmacro %}
+
+{% macro area_chart(chart_id, config, class="", height=200) %}
+<div class="{{ class }}">
+  {{ _chart_canvas(chart_id, config, "line", height, "origin") }}
+</div>
+{% endmacro %}
+
+{% macro bar_chart(chart_id, config, class="", height=200) %}
+<div class="{{ class }}">
+  {{ _chart_canvas(chart_id, config, "bar", height, false) }}
+</div>
+{% endmacro %}
+
+
+{# ── ChartTooltipContent equivalent (static HTML, for custom rendering) ─── #}
+{% macro chart_tooltip(items, label="") %}
+<div class="grid min-w-32 items-start gap-1.5 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
+  {% if label %}
+    <div class="font-medium">{{ label }}</div>
+  {% endif %}
+  <div class="grid gap-1.5">
+    {% for item in items %}
+      <div class="flex w-full items-center gap-2">
+        <div class="size-2 shrink-0 rounded-[2px]" style="background:{{ item.color }}"></div>
+        <div class="flex flex-1 justify-between items-center leading-none">
+          <span class="text-muted-foreground">{{ item.label }}</span>
+          <span class="font-mono font-medium text-foreground tabular-nums">{{ item.value }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+
+{# ── ChartLegendContent equivalent ─────────────────────────────────────── #}
+{% macro chart_legend(config, vertical_align="bottom") %}
+<div class="flex items-center justify-center gap-4 {{ 'pb-3' if vertical_align == 'top' else 'pt-3' }}">
+  {% for key, cfg in config.items() %}
+    {% set color = cfg.get("color") or "var(--chart-1)" %}
+    <div class="flex items-center gap-1.5 text-xs">
+      <div class="size-2 shrink-0 rounded-[2px]" style="background:{{ color }}"></div>
+      <span class="text-muted-foreground">{{ cfg.get("label", key) }}</span>
+    </div>
+  {% endfor %}
+</div>
+{% endmacro %}

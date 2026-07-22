@@ -155,3 +155,31 @@ def test_relations_follow_the_queryset_database(tmp_path):
 
     assert entry.author.username == "report"
     assert report_author.entries.count() == 1
+
+
+def test_model_meta_composite_indexes_are_registered():
+    class IndexedRecord(Model):
+        scope = StringField(max_length=20)
+        external_id = StringField(max_length=40)
+
+        class Meta:
+            table_name = "indexed_records"
+            unique_together = [("scope", "external_id")]
+            indexes = [
+                {
+                    "name": "idx_indexed_records_scope_external_id",
+                    "fields": ["scope", "external_id"],
+                    "unique": False,
+                }
+            ]
+
+    assert (
+        "uidx_indexed_records_scope_external_id",
+        ["scope", "external_id"],
+        True,
+    ) in IndexedRecord._meta.indexes
+    assert (
+        "idx_indexed_records_scope_external_id",
+        ["scope", "external_id"],
+        False,
+    ) in IndexedRecord._meta.indexes

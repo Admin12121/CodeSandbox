@@ -6,6 +6,7 @@ from flask import request
 
 from codesandbox.features.identity import repository as identity_repo
 from codesandbox.features.organizations.service import get_platform_organizations
+from codesandbox.features.platform_admin import repository as platform_admin_repo
 from codesandbox.features.platform_admin.service import (
     get_platform_rbac,
     get_platform_staff,
@@ -161,6 +162,8 @@ def platform_organizations():
     if redirect:
         return redirect
     user = session.user
+    if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.organizations.read"):
+        return {"_redirect": "/dashboard"}
     nav = build_nav("/platform/organizations", user)
 
     search = request.args.get("search", "").strip()
@@ -286,11 +289,14 @@ def platform_staff():
 
 @router.page("/platform/roles")
 def platform_roles():
-    session, redirect = require_platform_role("system_admin")
+    session, redirect = require_platform_role("system_admin", "system_staff")
     if redirect:
         return redirect
     user = session.user
+    if user.platform_role == "system_staff" and not has_platform_permission(user, "platform.roles.read"):
+        return {"_redirect": "/dashboard"}
     nav = build_nav("/platform/roles", user)
+    platform_admin_repo.seed_default_permissions()
     rbac = get_platform_rbac()
     staff = get_platform_staff()
 

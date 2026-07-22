@@ -26,20 +26,43 @@ services:
         uv run nexorm makemigrations
         uv run nexorm migrate
         uv run python seed.py
-        exec uv run flask run --host 0.0.0.0 --port 5000 --debug
+        exec uv run uvicorn codesandbox.asgi:app --host 0.0.0.0 --port 5000 --reload
     volumes:
       - .:/app
     environment:
       UV_PROJECT_ENVIRONMENT: /opt/codesandbox/.venv
+      # The image already has a complete venv (Dockerfile.dev installs the
+      # full project, not just deps, at build time with real network
+      # access). Without this, `uv run`'s startup sync check treats the
+      # bind-mounted src/ (a different inode/mtime set than what was in the
+      # build context) as reason to reinstall the editable local packages —
+      # which then needs network the running container doesn't have. This
+      # makes uv trust the image's venv as-is; re-run `docker compose build
+      # app` after any pyproject.toml/uv.lock change instead.
+      UV_NO_SYNC: "1"
       DATABASE_URL: mysql://codesandbox:codesandbox@mysql:3306/codesandbox
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: minioadmin
       S3_SECRET_KEY: minioadmin
       S3_BUCKET: codesandbox
-      SECRET_KEY: dev-secret-change-in-production
+      S3_ARTIFACT_BUCKET: codesandbox-artifacts
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:-dev-sandbox-job-signing-key-change-me}
+      CONTROL_PLANE_INTERNAL_URL: http://app:5000
       SESSION_COOKIE_NAME: cs_session
       SESSION_TTL_HOURS: "24"
+      WORKER_CALLBACK_TOKEN_TTL_SECONDS: "900"
+      # Public, browser-facing base URL — used only for user-visible links
+      # (email verification, OAuth redirect_uri, org invites, Stripe/eSewa
+      # return URLs). Never the internal container hostname: every one of
+      # its call sites builds a URL the user's own browser must reach.
+      # Container-to-container calls (e.g. the worker's callback) use their
+      # own CONTROL_PLANE_URL, not this.
+      APP_URL: http://localhost
+      NATS_URL: nats://nats:4222
+      # Dev only — enables Jinja2 template auto-reload (see app.py). Do NOT set in prod.
+      FLASK_DEBUG: "1"
     depends_on:
       mysql:
         condition: service_healthy
@@ -47,6 +70,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      nats:
+        condition: service_started
     restart: unless-stopped
 
   # ── MySQL ──────────────────────────────────────────────────────────────────
@@ -58,8 +83,6 @@ services:
       MYSQL_DATABASE: codesandbox
       MYSQL_USER: codesandbox
       MYSQL_PASSWORD: codesandbox
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -73,8 +96,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: codesandbox-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -82,6 +103,64 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # ── Mock sandbox worker ───────────────────────────────────────────────────
+  worker:
+    build:
+      context: ./worker
+    container_name: codesandbox-worker
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CONTROL_PLANE_URL: http://app:5000
+      NATS_URL: nats://nats:4222
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_ARTIFACT_BUCKET: codesandbox-artifacts
+      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:-dev-sandbox-job-signing-key-change-me}
+      SANDBOX_ALLOWED_IMAGES: ${SANDBOX_ALLOWED_IMAGES:-docker.io/admin12121/decompile:stable,ubuntu:22.04,busybox:1.36}
+      SANDBOX_REQUIRE_IMAGE_ALLOWLIST: ${SANDBOX_REQUIRE_IMAGE_ALLOWLIST:-false}
+      SANDBOX_VOLUME_INIT_IMAGE: busybox:1.36
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  reconciler:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      network: host
+    command: ["uv", "run", "python", "-u", "-m", "codesandbox.reconciler"]
+    volumes:
+      - .:/app
+    environment:
+      UV_PROJECT_ENVIRONMENT: /opt/codesandbox/.venv
+      UV_NO_SYNC: "1"
+      DATABASE_URL: mysql://codesandbox:codesandbox@mysql:3306/codesandbox
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
+      SANDBOX_JOB_SIGNING_KEY: ${SANDBOX_JOB_SIGNING_KEY:-dev-sandbox-job-signing-key-change-me}
+      CONTROL_PLANE_INTERNAL_URL: http://app:5000
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── NATS messaging ─────────────────────────────────────────────────────────
+  nats:
+    image: nats:2-alpine
+    container_name: codesandbox-nats
+    command: ["-js"]
     restart: unless-stopped
 
   # ── MinIO object storage ───────────────────────────────────────────────────
@@ -92,11 +171,8 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console  →  http://localhost:9001
     volumes:
-      - minio_data:/data
+      - ./storage:/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -107,4 +183,3 @@ services:
 volumes:
   mysql_data:
   redis_data:
-  minio_data:

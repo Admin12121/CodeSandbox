@@ -62,11 +62,15 @@
           <p class="mt-1 text-xs text-muted-foreground">Open Google Authenticator, Authy, 1Password, or another TOTP app and scan the QR code.</p>
         </div>
 
-        {# QR code via Google Charts or show raw URI #}
         <div class="flex justify-center">
           <div class="rounded-lg border bg-white p-3">
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data={{ uri | urlencode }}"
-                 alt="TOTP QR Code" class="size-44" width="180" height="180">
+            {% if qr_url %}
+              <img src="{{ qr_url }}" alt="TOTP QR Code" class="size-44" width="180" height="180">
+            {% else %}
+              <div class="flex size-44 items-center justify-center text-center text-xs text-neutral-500">
+                QR generation failed. Enter the setup key manually.
+              </div>
+            {% endif %}
           </div>
         </div>
 

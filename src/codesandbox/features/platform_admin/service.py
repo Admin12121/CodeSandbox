@@ -100,7 +100,7 @@ def get_platform_rbac() -> dict:
                 for m in members
             ],
         })
-    role_data.sort(key=lambda r: (r["position"], r["display_name"]))
+    role_data.sort(key=lambda r: (-r["position"], r["display_name"]))
     perm_groups: dict[str, list[dict]] = {}
     for p in permissions:
         if p.group not in perm_groups:
@@ -137,10 +137,13 @@ def update_platform_role(
     name: str | None = None,
     color: str | None = None,
     description: str | None = None,
+    actor_user_id: str | None = None,
 ) -> str | None:
     role = repository.get_role(role_id)
     if not role:
         return "Role not found."
+    if actor_user_id and not repository.can_actor_manage_role(actor_user_id, role_id):
+        return "You cannot edit a role equal to or higher than your own position."
     if name is not None:
         name = name.strip()
         if not name:
@@ -157,10 +160,12 @@ def update_platform_role(
     return None
 
 
-def duplicate_platform_role(role_id: str) -> tuple[str | None, str | None]:
+def duplicate_platform_role(role_id: str, actor_user_id: str | None = None) -> tuple[str | None, str | None]:
     source = repository.get_role(role_id)
     if not source:
         return None, "Role not found."
+    if actor_user_id and not repository.can_actor_manage_role(actor_user_id, role_id):
+        return None, "You cannot duplicate a role equal to or higher than your own position."
     base = f"{source.name}_copy"
     name = base
     n = 2
@@ -177,16 +182,20 @@ def duplicate_platform_role(role_id: str) -> tuple[str | None, str | None]:
     return role.id, None
 
 
-def delete_platform_role(role_id: str) -> str | None:
+def delete_platform_role(role_id: str, actor_user_id: str | None = None) -> str | None:
+    if actor_user_id and not repository.can_actor_manage_role(actor_user_id, role_id):
+        return "You cannot delete a role equal to or higher than your own position."
     if not repository.delete_role(role_id):
         return "Role not found."
     return None
 
 
-def toggle_role_permission(role_id: str, permission_key: str, enabled: bool) -> str | None:
+def toggle_role_permission(role_id: str, permission_key: str, enabled: bool, actor_user_id: str | None = None) -> str | None:
     role = repository.get_role(role_id)
     if not role:
         return "Role not found."
+    if actor_user_id and not repository.can_actor_manage_role(actor_user_id, role_id):
+        return "You cannot manage permissions for a role equal to or higher than your own position."
     perms = {p.key: p for p in repository.list_permissions()}
     target = perms.get(permission_key)
     if not target:
@@ -207,12 +216,40 @@ def add_role_member(role_id: str, user_id: str, granted_by: str | None = None) -
     user = identity_repo.find_user_by_id(user_id)
     if not user:
         return "User not found."
+    if granted_by and not repository.can_actor_manage_role(granted_by, role_id):
+        return "You cannot assign a role equal to or higher than your own position."
+    if granted_by and not repository.can_actor_manage_user(granted_by, user_id):
+        return "You cannot manage a staff member equal to or higher than your own position."
     repository.assign_role_to_user(user_id, role_id, granted_by=granted_by)
     return None
 
 
-def remove_role_member(role_id: str, user_id: str) -> None:
+def remove_role_member(role_id: str, user_id: str, actor_user_id: str | None = None) -> str | None:
+    if actor_user_id and not repository.can_actor_manage_role(actor_user_id, role_id):
+        return "You cannot remove a role equal to or higher than your own position."
+    if actor_user_id and not repository.can_actor_manage_user(actor_user_id, user_id):
+        return "You cannot manage a staff member equal to or higher than your own position."
     repository.remove_role_from_user(user_id, role_id)
+    return None
+
+
+def reorder_platform_roles(role_ids: list[str], actor_user_id: str) -> str | None:
+    roles = {str(r.id): r for r in repository.list_roles()}
+    ordered_ids = [str(rid) for rid in role_ids if str(rid) in roles]
+    if len(ordered_ids) != len(role_ids) or not ordered_ids:
+        return "Role order contains an unknown role."
+    for role_id in ordered_ids:
+        if not repository.can_actor_manage_role(actor_user_id, role_id):
+            return "You cannot reorder a role equal to or higher than your own position."
+    positions = []
+    for role_id in ordered_ids:
+        try:
+            positions.append(int(roles[role_id].position or "0"))
+        except (TypeError, ValueError):
+            positions.append(0)
+    for role_id, position in zip(ordered_ids, sorted(positions, reverse=True)):
+        repository.update_role_position(role_id, position)
+    return None
 
 
 def get_platform_staff() -> list[dict]:
@@ -282,6 +319,8 @@ def save_staff_member(
         user = identity_repo.find_user_by_id(member_id)
         if not user:
             return None, "Staff member not found."
+        if granted_by and not repository.can_actor_manage_user(granted_by, member_id):
+            return None, "You cannot manage a staff member equal to or higher than your own position."
         identity_repo.update_user(member_id, name=name, phone=(phone or None))
     else:
         if not email:
@@ -308,6 +347,10 @@ def save_staff_member(
 
     valid_role_ids = {r.id for r in repository.list_roles()}
     wanted = {rid for rid in role_ids if rid in valid_role_ids}
+    if granted_by:
+        for rid in wanted:
+            if not repository.can_actor_manage_role(granted_by, rid):
+                return None, "You cannot assign a role equal to or higher than your own position."
     current = {r.id for r in repository.get_user_platform_roles(member_id)}
     for rid in wanted - current:
         repository.assign_role_to_user(member_id, rid, granted_by=granted_by)

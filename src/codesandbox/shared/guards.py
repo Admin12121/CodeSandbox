@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import wraps
+import urllib.parse
 
 from flask import abort, jsonify, redirect, request
 
@@ -42,6 +43,23 @@ def no_staff(f):
             return _forbidden("Platform staff cannot access this page.")
         return f(*args, **kwargs)
     return wrapper
+
+
+def verified_email(action: str = "continuing"):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            cs = get_current_session()
+            if not cs:
+                return _unauth()
+            if not cs.user.email_verified:
+                message = f"Verify your email before {action}."
+                if request.is_json:
+                    return jsonify({"ok": False, "error": message}), 403
+                return redirect(f"/settings?tab=security&error={urllib.parse.quote(message)}")
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 # ── Guard 3: platform staff/admin + permission keys ───────────────────────────
@@ -112,6 +130,8 @@ def org_perm(*keys: str):
                 abort(404)
             if not get_member(org.id, str(cs.user.id)):
                 return _forbidden("You are not a member of this organization.")
+            if org.status != "active" and not set(keys).issubset({"org.settings.edit"}):
+                return _forbidden("This organization is not active.")
             if not is_org_owner(org.id, str(cs.user.id)):
                 for key in keys:
                     if not has_org_permission(org.id, cs.user, key):

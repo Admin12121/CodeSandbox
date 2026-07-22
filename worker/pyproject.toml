@@ -1,0 +1,11 @@
+[project]
+name = "codesandbox-worker"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.34",
+    "docker>=7.1",
+    "nats-py>=2.7",
+    "redis>=5.0",
+    "requests>=2.31",
+]

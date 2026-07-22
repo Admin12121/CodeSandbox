@@ -1,9 +1,34 @@
 from __future__ import annotations
 
+import json
+import os
 import re
-from decimal import Decimal, InvalidOperation
+import uuid as _uuid
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_UP
+
+from itsdangerous import URLSafeTimedSerializer
+
+from codesandbox.config import get_settings
+from codesandbox.shared.storage import (
+    delete_private_object,
+    upload_private_filestorage,
+)
 
 from . import repository
+from .runtime.policy import (
+    EffectivePlan,
+    PolicyBuilder,
+    RuntimePolicyError,
+    normalize_network_mode,
+    resolve_effective_plan,
+)
+from .runtime.scheduler import get_runtime_driver
+from .runtime.drivers.base import UnsupportedRuntimeError
+from .runtime.artifacts import safe_artifact_name
+from .runtime.metrics import runtime_seconds
+
+_WORKER_CALLBACK_SALT = "sandbox.worker-callback"
 
 
 def _slugify(name: str) -> str:
@@ -19,13 +44,52 @@ def _parse_decimal(value: str) -> Decimal | None:
         return None
 
 
+def _runtime_fields_changed(existing_t, values: dict) -> bool:
+    return any(getattr(existing_t, key, None) != value for key, value in values.items())
+
+
+def _image_allowed(image: str) -> bool:
+    settings = get_settings()
+    if not settings.sandbox_allowed_images:
+        return not settings.sandbox_require_image_allowlist
+    return image in settings.sandbox_allowed_images
+
+
 # ── SandboxTemplate ───────────────────────────────────────────────────────────
 
 SANDBOX_TYPES = ("interactive", "malware", "reverse_engineering", "android", "ctf")
-RUNTIME_CLASSES = ("container", "microvm", "fullvm", "android_emulator")
-INTERFACE_MODES = ("terminal", "full_ui", "background", "android_ui")
-NETWORK_MODES = ("disabled", "isolated", "fake_internet", "controlled_proxy", "allowlist")
+RUNTIME_CLASSES = (
+    "container",
+    "tool_job",
+    "microvm",
+    "firecracker_microvm",
+    "fullvm",
+    "qemu_vm",
+    "android_emulator",
+)
+INTERFACE_MODES = ("terminal", "editor", "full_ui", "background", "android_ui", "gui")
+NETWORK_MODES = (
+    "disabled",
+    "restricted",
+    "full_internet",
+    "isolated",
+    "fake_internet",
+    "controlled_proxy",
+    "allowlist",
+)
 TEMPLATE_STATUSES = ("active", "maintenance", "disabled")
+
+
+def make_worker_callback_token(job_id: str, instance_id: str, action: str) -> str:
+    """Create a short-lived bearer token scoped to one worker job."""
+    return URLSafeTimedSerializer(
+        get_settings().secret_key,
+        salt=_WORKER_CALLBACK_SALT,
+    ).dumps({
+        "job_id": job_id,
+        "instance_id": instance_id,
+        "action": action,
+    })
 
 
 def get_platform_templates(
@@ -43,6 +107,286 @@ def get_template_detail(template_id: str) -> dict | None:
     return _template_dict(t) if t else None
 
 
+def get_hub_templates() -> list[dict]:
+    templates, _ = repository.list_templates(status="active", page=1, page_size=200)
+    return [_template_dict(t) for t in templates]
+
+
+def get_hub_template_by_slug(slug: str) -> dict | None:
+    t = repository.get_template_by_slug(slug)
+    if t is None or t.status != "active":
+        return None
+    return _template_dict(t)
+
+
+def get_hub_plans() -> list[dict]:
+    return [p for p in get_platform_plans() if p["is_active"]]
+
+
+# ── SandboxInstance ───────────────────────────────────────────────────────────
+
+def _instance_dict(inst, template_cache: dict | None = None) -> dict:
+    tid = str(inst.template_id)
+    t = (template_cache or {}).get(tid) or repository.get_template(tid)
+    return {
+        "id": str(inst.id),
+        "template_id": tid,
+        "template_name": t.name if t else "Unknown",
+        "template_slug": t.slug if t else "",
+        "template_icon": t.icon_path or "" if t else "",
+        "plan_id": inst.plan_id,
+        "workspace_type": inst.workspace_type,
+        "workspace_user_id": str(inst.workspace_user_id) if inst.workspace_user_id else None,
+        "workspace_org_id": str(inst.workspace_org_id) if inst.workspace_org_id else None,
+        "assigned_to_user_id": str(inst.assigned_to_user_id) if inst.assigned_to_user_id else None,
+        "status": inst.status,
+        "billing_entity": inst.billing_entity,
+        "runtime_provider": inst.runtime_provider,
+        "runtime_id": inst.runtime_id,
+        "runtime_node_id": inst.runtime_node_id,
+        "workspace_volume_id": inst.workspace_volume_id,
+        "allocated_vcpu": inst.allocated_vcpu,
+        "allocated_ram_gb": inst.allocated_ram_gb,
+        "allocated_disk_gb": inst.allocated_disk_gb,
+        "effective_network_mode": inst.effective_network_mode,
+        "cost_hr_snapshot": str(inst.cost_hr_snapshot or "0"),
+        "billing_currency": inst.billing_currency or "GBP",
+        "billing_status": inst.billing_status or "unbilled",
+        "charged_amount": str(inst.charged_amount or "0"),
+        "total_runtime_sec": int(inst.total_runtime_sec or 0),
+        "last_heartbeat_at": inst.last_heartbeat_at,
+        "exit_code": inst.exit_code,
+        "exit_reason": inst.exit_reason or "",
+        "created_at": inst.created_at,
+        "started_at": inst.started_at,
+        "stopped_at": inst.stopped_at,
+    }
+
+
+def _template_cache_for(items) -> dict:
+    """Build a {template_id: SandboxTemplate} cache to avoid N+1 queries."""
+    if not items:
+        return {}
+    ids = list({str(i.template_id) for i in items})
+    return {str(t.id): t for t in repository.get_templates_by_ids(ids)}
+
+
+def create_personal_instance(
+    user_id: str,
+    template_slug: str,
+    plan_id: str,
+) -> tuple[dict | None, str | None]:
+    from codesandbox.features.identity.models import User
+
+    actor = User.objects.filter(id=user_id).first()
+    if actor is None or actor.status != "active":
+        return None, "Authenticated user is not active."
+    t = repository.get_template_by_slug(template_slug)
+    if not t or t.status != "active":
+        return None, "Template not found or inactive."
+    _, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error:
+        return None, plan_error
+    inst = repository.create_instance(
+        template_id=str(t.id),
+        plan_id=plan_id,
+        workspace_type="personal",
+        workspace_user_id=user_id,
+        created_by_user_id=user_id,
+        billing_entity="user",
+        billed_user_id=user_id,
+    )
+    return _instance_dict(inst), None
+
+
+def create_org_instance(
+    org_id: str,
+    creator_user_id: str,
+    template_slug: str,
+    plan_id: str,
+    assigned_to_user_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    from codesandbox.features.organizations import repository as org_repo
+    from codesandbox.features.identity.models import User
+
+    actor = User.objects.filter(id=creator_user_id).first()
+    if actor is None or actor.status != "active":
+        return None, "Authenticated user is not active."
+    org = org_repo.get_organization(org_id)
+    if org is None or org.status != "active":
+        return None, "Organization is not active."
+    if org_repo.get_member(org_id, creator_user_id) is None:
+        return None, "You are not a member of this organization."
+    permissions = org_repo.get_member_permissions(org_id, creator_user_id)
+    if not org_repo.is_org_owner(org_id, creator_user_id) and "sandbox.instances.create" not in permissions:
+        return None, "You do not have permission to create organization instances."
+    if assigned_to_user_id and org_repo.get_member(org_id, assigned_to_user_id) is None:
+        return None, "Assigned user is not a member of this organization."
+    t = repository.get_template_by_slug(template_slug)
+    if not t or t.status != "active":
+        return None, "Template not found or inactive."
+    _, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error:
+        return None, plan_error
+    inst = repository.create_instance(
+        template_id=str(t.id),
+        plan_id=plan_id,
+        workspace_type="org",
+        workspace_org_id=org_id,
+        assigned_to_user_id=assigned_to_user_id,
+        created_by_user_id=creator_user_id,
+        billing_entity="org",
+        billed_org_id=org_id,
+    )
+    return _instance_dict(inst), None
+
+
+def get_user_instances(user_id: str) -> list[dict]:
+    instances = repository.list_instances_for_user(user_id)
+    cache = _template_cache_for(instances)
+    return [_instance_dict(i, cache) for i in instances]
+
+
+def get_org_instances(org_id: str) -> list[dict]:
+    instances = repository.list_instances_for_org(org_id)
+    cache = _template_cache_for(instances)
+    return [_instance_dict(i, cache) for i in instances]
+
+
+def get_user_assigned_instances(user_id: str, org_id: str) -> list[dict]:
+    instances = repository.list_instances_assigned_to_user_in_org(user_id, org_id)
+    cache = _template_cache_for(instances)
+    return [_instance_dict(i, cache) for i in instances]
+
+
+def get_active_hub_instance(
+    template_id: str,
+    plan_id: str,
+    *,
+    user_id: str,
+    org_id: str | None = None,
+) -> dict | None:
+    """The instance the /hub/<template>/<plan> IDE page should attach to, if any."""
+    inst = repository.find_hub_instance(template_id, plan_id, user_id=user_id, org_id=org_id)
+    return _instance_dict(inst) if inst else None
+
+
+# ── InstanceRequest ───────────────────────────────────────────────────────────
+
+def _request_dict(req, template_cache: dict | None = None) -> dict:
+    tid = str(req.template_id)
+    t = (template_cache or {}).get(tid) or repository.get_template(tid)
+    return {
+        "id": str(req.id),
+        "org_id": str(req.org_id),
+        "requested_by": str(req.requested_by),
+        "template_id": str(req.template_id),
+        "template_name": t.name if t else "Unknown",
+        "template_slug": t.slug if t else "",
+        "plan_id": req.plan_id,
+        "note": req.note or "",
+        "status": req.status,
+        "reviewed_by": str(req.reviewed_by) if req.reviewed_by else None,
+        "reviewed_at": req.reviewed_at,
+        "review_note": req.review_note or "",
+        "instance_id": str(req.instance_id) if req.instance_id else None,
+        "created_at": req.created_at,
+    }
+
+
+def submit_instance_request(
+    org_id: str,
+    user_id: str,
+    template_slug: str,
+    plan_id: str,
+    note: str | None = None,
+) -> tuple[dict | None, str | None]:
+    from codesandbox.features.organizations import repository as org_repo
+    org = org_repo.get_organization(org_id)
+    if org is None or org.status != "active":
+        return None, "Organization is not active."
+    if org_repo.get_member(org_id, user_id) is None:
+        return None, "You are not a member of this organization."
+    t = repository.get_template_by_slug(template_slug)
+    if not t or t.status != "active":
+        return None, "Template not found or inactive."
+    _, plan_error = get_effective_plan(str(t.id), plan_id)
+    if plan_error:
+        return None, plan_error
+    req = repository.create_instance_request(
+        org_id=org_id,
+        requested_by=user_id,
+        template_id=str(t.id),
+        plan_id=plan_id,
+        note=note,
+    )
+    return _request_dict(req), None
+
+
+def review_instance_request(
+    request_id: str,
+    org_id: str,
+    reviewer_id: str,
+    action: str,
+    review_note: str | None = None,
+) -> tuple[dict | None, str | None]:
+    from datetime import datetime, timezone
+    from codesandbox.features.organizations import repository as org_repo
+
+    if not org_repo.is_org_owner(org_id, reviewer_id) and "sandbox.requests.review" not in org_repo.get_member_permissions(org_id, reviewer_id):
+        return None, "You do not have permission to review sandbox requests."
+    req = repository.get_instance_request(request_id)
+    if not req:
+        return None, "Request not found."
+    if str(req.org_id) != org_id:
+        return None, "Request not found in this organization."
+    if req.status != "pending":
+        return None, "Request already reviewed."
+    if action not in ("approved", "denied"):
+        return None, "Invalid action."
+
+    instance_id = None
+    if action == "approved":
+        org = org_repo.get_organization(str(req.org_id))
+        if org is None or org.status != "active":
+            return None, "Organization is not active."
+        tmpl = repository.get_template(str(req.template_id))
+        if not tmpl:
+            return None, "Template no longer exists; cannot approve."
+        inst, err = create_org_instance(
+            org_id=str(req.org_id),
+            creator_user_id=reviewer_id,
+            template_slug=tmpl.slug,
+            plan_id=req.plan_id,
+            assigned_to_user_id=str(req.requested_by),
+        )
+        if err:
+            return None, err
+        instance_id = inst["id"]
+
+    req = repository.update_instance_request(
+        request_id,
+        status=action,
+        reviewed_by=reviewer_id,
+        reviewed_at=datetime.now(timezone.utc),
+        review_note=review_note,
+        instance_id=instance_id,
+    )
+    return _request_dict(req), None
+
+
+def get_org_requests(org_id: str, status: str | None = None) -> list[dict]:
+    reqs = repository.list_requests_for_org(org_id, status)
+    cache = _template_cache_for(reqs)
+    return [_request_dict(r, cache) for r in reqs]
+
+
+def get_user_requests_in_org(user_id: str, org_id: str) -> list[dict]:
+    reqs = repository.list_requests_by_user_in_org(user_id, org_id)
+    cache = _template_cache_for(reqs)
+    return [_request_dict(r, cache) for r in reqs]
+
+
 def _template_dict(t) -> dict:
     return {
         "id": str(t.id),
@@ -51,13 +395,26 @@ def _template_dict(t) -> dict:
         "description": t.description or "",
         "icon_path": t.icon_path or "",
         "docker_image": t.docker_image,
+        "default_command": t.default_command or "",
+        "working_dir": t.working_dir or "/workspace",
+        "input_mount_path": t.input_mount_path or "/input",
+        "output_mount_path": t.output_mount_path or "/output",
+        "artifact_paths": t.artifact_paths or "",
+        "input_required": bool(t.input_required),
+        "max_upload_mb": int(t.max_upload_mb or 50),
         "sandbox_type": t.sandbox_type,
         "runtime_class": t.runtime_class,
         "interface_mode": t.interface_mode,
         "network_mode": t.network_mode,
         "allow_root": bool(t.allow_root),
+        "read_only_root": bool(t.read_only_root),
+        "run_as_user": t.run_as_user or "",
+        "pids_limit": int(t.pids_limit or 256),
+        "allow_full_internet": bool(t.allow_full_internet),
         "max_timeout_hr": int(t.max_timeout_hr),
         "status": t.status,
+        "last_test_status": t.last_test_status or "untested",
+        "last_tested_at": t.last_tested_at,
         "type_config": t.type_config or "",
         "created_at": t.created_at,
         "updated_at": t.updated_at,
@@ -80,49 +437,143 @@ def save_template(
     network_mode: str = "disabled",
     allow_root: bool = False,
     max_timeout_hr: int = 2,
+    default_command: str = "",
+    working_dir: str = "/workspace",
+    input_mount_path: str = "/input",
+    output_mount_path: str = "/output",
+    artifact_paths: str | list[str] = "",
+    input_required: bool = False,
+    max_upload_mb: int = 50,
+    read_only_root: bool = True,
+    run_as_user: str = "",
+    pids_limit: int = 256,
+    allow_full_internet: bool = False,
 ) -> tuple[dict | None, str | None]:
     name = name.strip()
     if not name:
         return None, "Name is required."
-    slug = (slug.strip() or _slugify(name))
     if sandbox_type not in SANDBOX_TYPES:
         return None, "Invalid sandbox type."
-    if not docker_image.strip():
+    docker_image = docker_image.strip()
+    if not docker_image:
         return None, "Docker image is required."
+    if not _image_allowed(docker_image):
+        return None, "Docker image is not in the configured runtime allowlist."
     runtime_class = runtime_class if runtime_class in RUNTIME_CLASSES else "container"
-    interface_mode = interface_mode if interface_mode in INTERFACE_MODES else "terminal"
-    network_mode = network_mode if network_mode in NETWORK_MODES else "disabled"
+    _modes = [m.strip() for m in interface_mode.split(",") if m.strip() in INTERFACE_MODES]
+    interface_mode = ",".join(_modes) if _modes else "terminal"
+    network_mode = normalize_network_mode(
+        network_mode if network_mode in NETWORK_MODES else "disabled"
+    )
+    if network_mode == "full_internet" and not allow_full_internet:
+        return None, "Enable full internet explicitly before selecting that network mode."
+    if sandbox_type in {"malware", "reverse_engineering"} and network_mode == "full_internet":
+        return None, "Full internet is disabled for malware and reverse-engineering templates."
     max_timeout_hr = max(1, min(72, int(max_timeout_hr or 2)))
+    max_upload_mb = max(1, min(1024, int(max_upload_mb or 50)))
+    pids_limit = max(32, min(4096, int(pids_limit or 256)))
+    default_command = default_command.strip()
+    if (slug == "reverse-decompile" or (not slug and _slugify(name) == "reverse-decompile")) and default_command and "--no-ai" not in default_command:
+        return None, "Reverse decompile must use --no-ai."
+    mounts = [working_dir.strip(), input_mount_path.strip(), output_mount_path.strip()]
+    if any(not path.startswith("/") for path in mounts) or len(set(mounts)) != 3:
+        return None, "Workspace, input, and output mounts must be distinct absolute paths."
+    if isinstance(artifact_paths, str):
+        raw_artifacts = artifact_paths.strip()
+        try:
+            artifact_values = json.loads(raw_artifacts) if raw_artifacts else [output_mount_path]
+        except ValueError:
+            artifact_values = [line.strip() for line in raw_artifacts.splitlines() if line.strip()]
+    else:
+        artifact_values = artifact_paths
+    if not isinstance(artifact_values, list) or any(
+        not str(path).startswith("/") for path in artifact_values
+    ):
+        return None, "Artifact paths must be absolute container paths."
+    artifact_paths_json = json.dumps(
+        [str(path) for path in artifact_values], separators=(",", ":")
+    )
+
+    runtime_values = dict(
+        docker_image=docker_image,
+        default_command=default_command or None,
+        working_dir=working_dir.strip(),
+        input_mount_path=input_mount_path.strip(),
+        output_mount_path=output_mount_path.strip(),
+        artifact_paths=artifact_paths_json,
+        input_required=bool(input_required),
+        max_upload_mb=max_upload_mb,
+        sandbox_type=sandbox_type,
+        runtime_class=runtime_class,
+        interface_mode=interface_mode,
+        network_mode=network_mode,
+        allow_root=allow_root,
+        read_only_root=read_only_root,
+        run_as_user=run_as_user.strip() or None,
+        pids_limit=pids_limit,
+        allow_full_internet=allow_full_internet,
+        max_timeout_hr=max_timeout_hr,
+    )
 
     if template_id:
-        t = repository.update_template(
-            template_id,
+        existing_t = repository.get_template(template_id)
+        if existing_t is None:
+            return None, "Template not found."
+        slug = existing_t.slug if existing_t else (slug.strip() or _slugify(name))
+
+        update_kwargs = dict(
             name=name, slug=slug, description=description or None,
-            icon_path=icon_path or None, docker_image=docker_image.strip(),
-            sandbox_type=sandbox_type, runtime_class=runtime_class,
-            interface_mode=interface_mode, network_mode=network_mode,
-            allow_root=allow_root, max_timeout_hr=max_timeout_hr,
+            icon_path=icon_path or None,
             type_config=type_config.strip() or None,
+            **runtime_values,
         )
+
+        if _runtime_fields_changed(existing_t, runtime_values):
+            # A Runtime-affecting edit invalidates any prior test pass. If the
+            # template was live, take it out of rotation until it's retested.
+            update_kwargs["last_test_status"] = "untested"
+            update_kwargs["last_tested_at"] = None
+            if existing_t.status == "active":
+                update_kwargs["status"] = "maintenance"
+
+        t = repository.update_template(template_id, **update_kwargs)
     else:
+        slug = slug.strip() or _slugify(name)
         existing = repository.get_template_by_slug(slug)
         if existing:
             return None, f"Slug '{slug}' is already taken."
         t = repository.create_template(
             name=name, slug=slug, description=description or None,
-            icon_path=icon_path or None, docker_image=docker_image.strip(),
-            sandbox_type=sandbox_type, runtime_class=runtime_class,
-            interface_mode=interface_mode, network_mode=network_mode,
-            allow_root=allow_root, max_timeout_hr=max_timeout_hr,
+            icon_path=icon_path or None,
             type_config=type_config.strip() or None,
             created_by_id=created_by_id,
+            **runtime_values,
         )
+    repository.log_instance_event(
+        None,
+        "template.runtime_updated",
+        actor=f"user:{created_by_id}" if created_by_id else "system",
+        detail=json.dumps({
+            "runtime_class": runtime_class,
+            "network_mode": network_mode,
+            "allow_full_internet": allow_full_internet,
+        }),
+        template_id=str(t.id),
+    )
     return _template_dict(t), None
 
 
 def set_template_status(template_id: str, status: str) -> str | None:
     if status not in TEMPLATE_STATUSES:
         return "Invalid status."
+    if status == "active":
+        if not get_template_plans_for_hub(template_id):
+            return "Cannot activate: no plans available for this template. Enable at least one plan in the Plans tab first."
+        t = repository.get_template(template_id)
+        if t is None:
+            return "Template not found."
+        if (t.last_test_status or "untested") != "passed":
+            return "Cannot activate: run a successful Test Launch first."
     repository.update_template(template_id, status=status)
     return None
 
@@ -142,6 +593,12 @@ def get_platform_plans() -> list[dict]:
 
 
 def _plan_dict(p) -> dict:
+    try:
+        allowed_network_modes = json.loads(
+            p.allowed_network_modes or '["disabled","restricted"]'
+        )
+    except (TypeError, ValueError):
+        allowed_network_modes = ["disabled", "restricted"]
     return {
         "id": p.id,
         "name": p.name,
@@ -150,6 +607,9 @@ def _plan_dict(p) -> dict:
         "ind_cost_hr": str(p.ind_cost_hr),
         "org_vcpu": int(p.org_vcpu), "org_ram_gb": int(p.org_ram_gb), "org_disk_gb": int(p.org_disk_gb),
         "org_cost_hr": str(p.org_cost_hr),
+        "min_billable_minutes": int(p.min_billable_minutes or 0),
+        "allowed_network_modes": p.allowed_network_modes or '["disabled","restricted"]',
+        "allowed_network_mode_values": allowed_network_modes,
         "is_active": bool(p.is_active),
         "updated_at": p.updated_at,
     }
@@ -158,10 +618,11 @@ def _plan_dict(p) -> dict:
 def save_plan(
     plan_id: str,
     name: str,
-    sort_order: int,
     ind_vcpu: int, ind_ram_gb: int, ind_disk_gb: int, ind_cost_hr: str,
     org_vcpu: int, org_ram_gb: int, org_disk_gb: int, org_cost_hr: str,
     updated_by_id: str | None,
+    min_billable_minutes: int = 1,
+    allowed_network_modes: list[str] | str | None = None,
 ) -> tuple[dict | None, str | None]:
     name = name.strip()
     if not name:
@@ -174,21 +635,43 @@ def save_plan(
     org_cost = _parse_decimal(org_cost_hr)
     if ind_cost is None or org_cost is None:
         return None, "Invalid cost per hour value."
+    min_billable_minutes = max(0, min(1440, int(min_billable_minutes or 0)))
+    if isinstance(allowed_network_modes, str):
+        try:
+            allowed_values = json.loads(allowed_network_modes)
+        except ValueError:
+            allowed_values = allowed_network_modes.split(",")
+    else:
+        allowed_values = allowed_network_modes or ["disabled", "restricted"]
+    allowed_values = list(
+        dict.fromkeys(normalize_network_mode(value) for value in allowed_values)
+    )
+    if not allowed_values or any(
+        value not in {"disabled", "restricted", "full_internet"}
+        for value in allowed_values
+    ):
+        return None, "Select at least one valid network mode."
+    allowed_network_json = json.dumps(allowed_values, separators=(",", ":"))
 
     existing = repository.get_plan(plan_id)
     if existing:
         p = repository.update_plan(
             plan_id,
-            name=name, sort_order=sort_order,
+            name=name,
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
             org_vcpu=org_vcpu, org_ram_gb=org_ram_gb, org_disk_gb=org_disk_gb, org_cost_hr=org_cost,
+            min_billable_minutes=min_billable_minutes,
+            allowed_network_modes=allowed_network_json,
             updated_by=updated_by_id,
         )
     else:
+        sort_order = len(repository.list_plans())
         p = repository.create_plan(
             plan_id=plan_id, name=name, sort_order=sort_order,
             ind_vcpu=ind_vcpu, ind_ram_gb=ind_ram_gb, ind_disk_gb=ind_disk_gb, ind_cost_hr=ind_cost,
             org_vcpu=org_vcpu, org_ram_gb=org_ram_gb, org_disk_gb=org_disk_gb, org_cost_hr=org_cost,
+            min_billable_minutes=min_billable_minutes,
+            allowed_network_modes=allowed_network_json,
             updated_by_id=updated_by_id,
         )
     return _plan_dict(p), None
@@ -196,3 +679,838 @@ def save_plan(
 
 def toggle_plan_active(plan_id: str, is_active: bool) -> None:
     repository.update_plan(plan_id, is_active=is_active)
+
+
+# ── SandboxTemplatePlan ───────────────────────────────────────────────────────
+
+def _int_or_none(v) -> int | None:
+    s = str(v).strip() if v is not None else ""
+    if not s:
+        return None
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return None
+
+
+def _resolve_plan_specs(template, global_plan, template_plan) -> dict:
+    return resolve_effective_plan(template, global_plan, template_plan).to_dict()
+
+
+def get_effective_plan(
+    template_id: str,
+    plan_id: str,
+    *,
+    require_active: bool = True,
+) -> tuple[EffectivePlan | None, str | None]:
+    template = repository.get_template(template_id)
+    if template is None:
+        return None, "Template not found."
+    plan = repository.get_plan(plan_id)
+    if plan is None or (require_active and not plan.is_active):
+        return None, "Plan not found or inactive."
+    template_plan = repository.get_template_plan(template_id, plan_id)
+    if template_plan is not None and not template_plan.is_enabled:
+        return None, "This plan is disabled for the selected template."
+    try:
+        return resolve_effective_plan(template, plan, template_plan), None
+    except RuntimePolicyError as exc:
+        return None, str(exc)
+
+
+def get_template_plans_for_hub(template_id: str) -> list[dict]:
+    """Active global plans merged with template-level overrides, in sort order."""
+    template = repository.get_template(template_id)
+    if template is None:
+        return []
+    global_plans = [p for p in repository.list_plans() if p.is_active]
+    tp_rows = repository.list_template_plans(template_id)
+    tp_by_plan = {str(tp.plan_id): tp for tp in tp_rows}
+    result = []
+    for gp in global_plans:
+        tp = tp_by_plan.get(str(gp.id))
+        if tp is not None and not tp.is_enabled:
+            continue
+        try:
+            result.append(_resolve_plan_specs(template, gp, tp))
+        except RuntimePolicyError:
+            continue
+    return result
+
+
+def get_template_plan_configs(template_id: str) -> list[dict]:
+    """All global plans + their template overrides, for the admin Plans tab."""
+    global_plans = get_platform_plans()
+    tp_rows = repository.list_template_plans(template_id)
+    tp_by_plan = {str(tp.plan_id): tp for tp in tp_rows}
+    result = []
+    for gp in global_plans:
+        tp = tp_by_plan.get(gp["id"])
+        result.append({
+            "global": gp,
+            "is_enabled": bool(tp.is_enabled) if tp is not None else True,
+            "ind_vcpu": int(tp.ind_vcpu) if (tp is not None and tp.ind_vcpu is not None) else None,
+            "ind_ram_gb": int(tp.ind_ram_gb) if (tp is not None and tp.ind_ram_gb is not None) else None,
+            "ind_disk_gb": int(tp.ind_disk_gb) if (tp is not None and tp.ind_disk_gb is not None) else None,
+            "ind_cost_hr": str(tp.ind_cost_hr) if (tp is not None and tp.ind_cost_hr is not None) else None,
+            "org_vcpu": int(tp.org_vcpu) if (tp is not None and tp.org_vcpu is not None) else None,
+            "org_ram_gb": int(tp.org_ram_gb) if (tp is not None and tp.org_ram_gb is not None) else None,
+            "org_disk_gb": int(tp.org_disk_gb) if (tp is not None and tp.org_disk_gb is not None) else None,
+            "org_cost_hr": str(tp.org_cost_hr) if (tp is not None and tp.org_cost_hr is not None) else None,
+            "max_timeout_hr": int(tp.max_timeout_hr) if (tp is not None and tp.max_timeout_hr is not None) else None,
+            "network_mode": tp.network_mode if tp is not None else None,
+            "min_billable_minutes": int(tp.min_billable_minutes) if (tp is not None and tp.min_billable_minutes is not None) else None,
+            "full_internet_enabled": bool(tp.full_internet_enabled) if (tp is not None and tp.full_internet_enabled is not None) else None,
+        })
+    return result
+
+
+def toggle_template_plan_enabled(template_id: str, plan_id: str, is_enabled: bool) -> str | None:
+    """Flip whether a global plan is available on this template. Returns an
+    error message, or None on success. Only touches is_enabled — any existing
+    per-template overrides (ind_vcpu, etc.) are left untouched."""
+    if not repository.get_plan(plan_id):
+        return "Plan not found."
+    repository.upsert_template_plan(template_id=template_id, plan_id=plan_id, is_enabled=is_enabled)
+    return None
+
+
+def save_template_plan_configs(template_id: str, plan_data: list[dict]) -> str | None:
+    """Upsert per-template plan overrides from the admin Plans tab."""
+    template = repository.get_template(template_id)
+    if template is None:
+        return "Template not found."
+    normalized_rows: list[dict] = []
+    for row in plan_data:
+        plan_id = str(row.get("plan_id", "")).strip()
+        if not plan_id or not repository.get_plan(plan_id):
+            return "A selected plan no longer exists."
+        normalized = {
+            "plan_id": plan_id,
+            "is_enabled": bool(row.get("is_enabled", True)),
+            "ind_vcpu": _int_or_none(row.get("ind_vcpu")),
+            "ind_ram_gb": _int_or_none(row.get("ind_ram_gb")),
+            "ind_disk_gb": _int_or_none(row.get("ind_disk_gb")),
+            "ind_cost_hr": _parse_decimal(str(row["ind_cost_hr"]).strip()) if row.get("ind_cost_hr") else None,
+            "org_vcpu": _int_or_none(row.get("org_vcpu")),
+            "org_ram_gb": _int_or_none(row.get("org_ram_gb")),
+            "org_disk_gb": _int_or_none(row.get("org_disk_gb")),
+            "org_cost_hr": _parse_decimal(str(row["org_cost_hr"]).strip()) if row.get("org_cost_hr") else None,
+            "max_timeout_hr": _int_or_none(row.get("max_timeout_hr")),
+            "network_mode": normalize_network_mode(row.get("network_mode")) if row.get("network_mode") else None,
+            "min_billable_minutes": _int_or_none(row.get("min_billable_minutes")),
+            "full_internet_enabled": row.get("full_internet_enabled"),
+        }
+        if any(
+            row.get(field) not in (None, "") and normalized[field] is None
+            for field in ("ind_cost_hr", "org_cost_hr")
+        ):
+            return "Cost overrides must be valid decimal values."
+        if normalized["full_internet_enabled"] not in (None, True, False):
+            return "Invalid full internet override."
+        resource_fields = (
+            "ind_vcpu", "ind_ram_gb", "ind_disk_gb",
+            "org_vcpu", "org_ram_gb", "org_disk_gb",
+        )
+        if any(normalized[field] is not None and normalized[field] <= 0 for field in resource_fields):
+            return "Resource overrides must be positive values."
+        if any(
+            normalized[field] is not None and normalized[field] < 0
+            for field in ("ind_cost_hr", "org_cost_hr")
+        ):
+            return "Cost overrides cannot be negative."
+        if normalized["max_timeout_hr"] is not None and not 1 <= normalized["max_timeout_hr"] <= 72:
+            return "Timeout overrides must be between 1 and 72 hours."
+        if normalized["min_billable_minutes"] is not None and not 0 <= normalized["min_billable_minutes"] <= 1440:
+            return "Minimum billing must be between 0 and 1440 minutes."
+        if normalized["network_mode"] not in {None, "disabled", "restricted", "full_internet"}:
+            return "Invalid network override."
+        requests_internet = (
+            normalized["network_mode"] == "full_internet"
+            or normalized["full_internet_enabled"] is True
+        )
+        if requests_internet and (
+            not template.allow_full_internet
+            or template.sandbox_type in {"malware", "reverse_engineering"}
+        ):
+            return "Full internet is not permitted for this template."
+        normalized_rows.append(normalized)
+    repository.save_template_plan_overrides(template_id, normalized_rows)
+    return None
+
+
+# ── Instance lifecycle (Phase 5) ──────────────────────────────────────────────
+
+_policy_builder = PolicyBuilder()
+
+
+def can_manage_instance(inst, actor_user_id: str | None) -> bool:
+    """Owner, assignee, org managers (sandbox.instances.create), and platform staff may act on an instance."""
+    if not actor_user_id:
+        return False
+
+    from codesandbox.features.identity.models import User
+    from codesandbox.shared.permissions import has_org_permission, is_platform_staff
+
+    if inst.workspace_user_id and str(inst.workspace_user_id) == actor_user_id:
+        return True
+    if inst.workspace_type == "org" and inst.assigned_to_user_id and str(inst.assigned_to_user_id) == actor_user_id:
+        return True
+
+    user = User.objects.filter(id=actor_user_id).first()
+    if user is None:
+        return False
+    if is_platform_staff(user):
+        return True
+    if inst.workspace_type == "org" and inst.workspace_org_id:
+        return has_org_permission(str(inst.workspace_org_id), user, "sandbox.instances.create")
+    return False
+
+
+def can_view_instance(instance_id: str, actor_user_id: str | None) -> bool:
+    inst = repository.get_instance(instance_id)
+    if inst is None or not actor_user_id:
+        return False
+
+    from codesandbox.features.identity.models import User
+    from codesandbox.shared.permissions import has_org_permission, is_platform_staff
+
+    if inst.workspace_user_id and str(inst.workspace_user_id) == actor_user_id:
+        return True
+    if inst.workspace_type == "org" and inst.assigned_to_user_id and str(inst.assigned_to_user_id) == actor_user_id:
+        return True
+    user = User.objects.filter(id=actor_user_id).first()
+    if user is None:
+        return False
+    if is_platform_staff(user):
+        return True
+    if inst.workspace_type == "org" and inst.workspace_org_id:
+        from codesandbox.features.organizations import repository as org_repo
+        org_id = str(inst.workspace_org_id)
+        org = org_repo.get_organization(org_id)
+        if org is None or org.status != "active":
+            return False
+        return (
+            has_org_permission(org_id, user, "sandbox.instances.view_all")
+            or has_org_permission(org_id, user, "sandbox.instances.create")
+        )
+    return False
+
+
+def get_instance_for_view(
+    instance_id: str,
+    actor_user_id: str | None,
+) -> tuple[dict | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to view this instance."
+    inst = repository.get_instance(instance_id)
+    return (_instance_dict(inst), None) if inst else (None, "Instance not found.")
+
+
+def can_open_instance_channel(
+    instance_id: str,
+    actor_user_id: str | None,
+    purpose: str,
+) -> bool:
+    if not can_view_instance(instance_id, actor_user_id):
+        return False
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return False
+    if purpose in {"terminal", "fs"}:
+        return inst.status == "running" and bool(inst.runtime_id)
+    return purpose == "monitor"
+
+
+def upload_instance_input(
+    instance_id: str,
+    actor_user_id: str | None,
+    file_storage,
+) -> tuple[dict | None, str | None]:
+    """Store a start-time input without ever writing it to the web host."""
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to upload to this instance."
+    if inst.status != "idle":
+        return None, "Inputs can only be uploaded before the instance starts."
+
+    template = repository.get_template(str(inst.template_id))
+    if template is None:
+        return None, "Template not found."
+    configured_mb = int(template.max_upload_mb or 50)
+    max_upload_bytes = min(
+        configured_mb * 1024 * 1024,
+        get_settings().sandbox_max_upload_bytes,
+    )
+    uploaded = upload_private_filestorage(
+        file_storage,
+        prefix=f"sandboxes/{instance_id}/inputs",
+        max_bytes=max_upload_bytes,
+    )
+    if uploaded is None:
+        return None, f"Select a non-empty file no larger than {max_upload_bytes // (1024 * 1024)} MB."
+
+    try:
+        item = repository.create_instance_input(
+            instance_id=instance_id,
+            name=uploaded["name"],
+            storage_key=uploaded["storage_key"],
+            size_bytes=uploaded["size_bytes"],
+            checksum=uploaded["checksum"],
+        )
+    except Exception:
+        delete_private_object(uploaded["storage_key"])
+        raise
+
+    repository.log_instance_event(
+        instance_id,
+        "input.uploaded",
+        actor=f"user:{actor_user_id}",
+        detail=json.dumps({
+            "name": item.name,
+            "size_bytes": int(item.size_bytes),
+            "checksum": item.checksum,
+        }),
+    )
+    return {
+        "id": str(item.id),
+        "name": item.name,
+        "size_bytes": int(item.size_bytes),
+        "checksum": item.checksum,
+        "created_at": item.created_at,
+    }, None
+
+
+def get_instance_artifacts_for_view(
+    instance_id: str,
+    actor_user_id: str | None,
+) -> tuple[list[dict] | None, str | None]:
+    if not can_view_instance(instance_id, actor_user_id):
+        return None, "You do not have permission to view this instance."
+    return [
+        {
+            "id": str(item.id),
+            "name": item.name,
+            "artifact_type": item.artifact_type,
+            "size_bytes": int(item.size_bytes),
+            "checksum": item.checksum,
+            "created_at": item.created_at,
+        }
+        for item in repository.list_instance_artifacts(instance_id)
+    ], None
+
+
+def get_artifact_for_download(
+    artifact_id: str,
+    actor_user_id: str | None,
+):
+    artifact = repository.get_artifact(artifact_id)
+    if artifact is None:
+        return None, "Artifact not found."
+    if not can_view_instance(str(artifact.instance_id), actor_user_id):
+        return None, "You do not have permission to download this artifact."
+    return artifact, None
+
+
+# Admin test launches are a no-billing preview run — they don't need a real
+# SandboxPlan to exist, so a minimal fixed resource envelope stands in for one.
+_TEST_PLAN = {
+    "id": "__test__", "name": "Test",
+    "ind_vcpu": 1, "ind_ram_gb": 1, "ind_disk_gb": 5, "ind_cost_hr": "0",
+    "org_vcpu": 1, "org_ram_gb": 1, "org_disk_gb": 5, "org_cost_hr": "0",
+    "min_billable_minutes": 0,
+    "allowed_network_modes": '["disabled","restricted","full_internet"]',
+    "is_active": True,
+}
+
+
+def start_instance(
+    instance_id: str,
+    actor_user_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """Build runtime policy, enqueue start job, transition idle→provisioning."""
+    from .queue import enqueue_job
+
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to start this instance."
+    if inst.status != "idle":
+        return None, f"Cannot start an instance in '{inst.status}' state."
+    if inst.workspace_type == "org" and inst.workspace_org_id:
+        from codesandbox.features.organizations import repository as org_repo
+        org = org_repo.get_organization(str(inst.workspace_org_id))
+        if org is None or org.status != "active":
+            return None, "Organization is not active."
+
+    t = repository.get_template(str(inst.template_id))
+    if not t:
+        return None, "Template no longer exists."
+    if inst.workspace_type != "test" and t.status != "active":
+        return None, "Template is not active."
+    if not _image_allowed(t.docker_image):
+        return None, "Docker image is not in the configured runtime allowlist."
+
+    if inst.workspace_type == "test":
+        try:
+            effective_plan = resolve_effective_plan(t, _TEST_PLAN, None)
+        except RuntimePolicyError as exc:
+            return None, str(exc)
+    else:
+        effective_plan, plan_error = get_effective_plan(str(t.id), inst.plan_id)
+        if plan_error or effective_plan is None:
+            return None, plan_error or "Plan is unavailable."
+
+    workspace_type = inst.workspace_type or "personal"
+    template_dict = _template_dict(t)
+    try:
+        user_config = json.loads(inst.user_config) if inst.user_config else None
+        runtime_policy = _policy_builder.build(
+            template_dict,
+            effective_plan,
+            workspace_type,
+            user_config,
+        )
+        runtime_policy = get_runtime_driver(runtime_policy["runtime_class"]).prepare(
+            _instance_dict(inst), runtime_policy
+        )
+    except (RuntimePolicyError, UnsupportedRuntimeError, ValueError, TypeError) as exc:
+        return None, str(exc)
+
+    inputs = repository.list_instance_inputs(instance_id)
+    if runtime_policy.get("input_required") and not inputs:
+        return None, "This sandbox requires an input file before it can start."
+    runtime_policy["inputs"] = [
+        {
+            "name": item.name,
+            "storage_key": item.storage_key,
+            "size_bytes": int(item.size_bytes),
+            "checksum": item.checksum,
+        }
+        for item in inputs
+    ]
+    artifact_prefix = f"sandboxes/{instance_id}/artifacts"
+    runtime_policy["artifact_prefix"] = artifact_prefix
+
+    actor = f"user:{actor_user_id}" if actor_user_id else "system"
+    settings = get_settings()
+    callback_url = settings.control_plane_internal_url + "/internal/worker/callback"
+    job_id = str(_uuid.uuid4())
+    callback_token = make_worker_callback_token(job_id, instance_id, "start")
+
+    job_payload = {
+        "job_id": job_id,
+        "action": "start",
+        "instance_id": instance_id,
+        "runtime_policy": runtime_policy,
+        "callback_url": callback_url,
+        "callback_token": callback_token,
+    }
+
+    tier = effective_plan.tier(workspace_type)
+    minimum_required = (
+        Decimal(str(tier["cost_hr"]))
+        * Decimal(int(runtime_policy["min_billable_sec"]))
+        / Decimal(3600)
+    ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+    now = datetime.now(timezone.utc)
+    inst, begin_error = repository.begin_instance_start(
+        instance_id,
+        actor=actor,
+        worker_job_id=job_id,
+        runtime_policy=json.dumps(runtime_policy, separators=(",", ":")),
+        runtime_provider=str(runtime_policy["runtime_provider"]),
+        artifact_prefix=artifact_prefix,
+        allocated_vcpu=int(tier["vcpu"]),
+        allocated_ram_gb=int(tier["ram_gb"]),
+        allocated_disk_gb=int(tier["disk_gb"]),
+        effective_network_mode=str(runtime_policy["network_mode"]),
+        cost_hr_snapshot=Decimal(str(tier["cost_hr"])),
+        billing_currency=str(runtime_policy["currency"]),
+        min_billable_sec=int(runtime_policy["min_billable_sec"]),
+        expires_at=now + timedelta(seconds=int(runtime_policy["max_timeout_sec"])),
+        minimum_required=minimum_required,
+    )
+    if begin_error or inst is None:
+        return None, begin_error or "Could not start instance."
+    try:
+        enqueue_job(job_payload)
+    except Exception:
+        repository.release_instance_reservation(instance_id)
+        repository.transition_instance_status(
+            instance_id,
+            new_status="failed",
+            actor="system",
+            expected_statuses=("provisioning",),
+            exit_reason="queue_unavailable",
+            billing_status="not_charged",
+            charged_amount=Decimal("0"),
+        )
+        return None, "Runtime queue is unavailable. Try again shortly."
+    return _instance_dict(inst), None
+
+
+def stop_instance(
+    instance_id: str,
+    actor_user_id: str | None = None,
+) -> tuple[dict | None, str | None]:
+    """Enqueue stop job, transition running→stopping."""
+    from .queue import enqueue_job
+
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return None, "Instance not found."
+    if not can_manage_instance(inst, actor_user_id):
+        return None, "You do not have permission to stop this instance."
+    if inst.status not in ("running", "provisioning"):
+        return None, f"Cannot stop an instance in '{inst.status}' state."
+
+    actor = f"user:{actor_user_id}" if actor_user_id else "system"
+    callback_url = get_settings().control_plane_internal_url + "/internal/worker/callback"
+    job_id = str(_uuid.uuid4())
+    callback_token = make_worker_callback_token(job_id, instance_id, "stop")
+
+    transitioned = repository.transition_instance_status(
+        instance_id,
+        new_status="stopping",
+        actor=actor,
+        expected_statuses=("running", "provisioning"),
+        worker_job_id=job_id,
+    )
+    if transitioned is None:
+        return None, "Instance state changed before it could be stopped."
+    try:
+        enqueue_job({
+            "job_id": job_id,
+            "action": "stop",
+            "instance_id": instance_id,
+            "reason": "user_stop",
+            "runtime_id": transitioned.runtime_id,
+            "runtime_provider": transitioned.runtime_provider,
+            "workspace_volume_id": transitioned.workspace_volume_id,
+            "runtime_policy": json.loads(transitioned.runtime_policy or "{}"),
+            "callback_url": callback_url,
+            "callback_token": callback_token,
+        })
+    except Exception:
+        repository.log_instance_event(
+            instance_id,
+            "stop.queue_failed",
+            actor="system",
+            detail=json.dumps({"job_id": job_id}),
+        )
+        return None, "Runtime queue is unavailable. Reconciliation will retry cleanup."
+    return _instance_dict(transitioned), None
+
+
+def _mark_template_test_result(inst, status: str) -> None:
+    """If this instance was a Test Launch, record the pass/fail outcome on its template."""
+    if inst.workspace_type != "test":
+        return
+    repository.update_template(
+        str(inst.template_id),
+        last_test_status=status,
+        last_tested_at=datetime.now(timezone.utc),
+    )
+
+
+def _safe_int(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _charge_completed_instance(inst) -> None:
+    runtime_sec = max(int(inst.total_runtime_sec or 0), int(inst.min_billable_sec or 0))
+    amount = (
+        Decimal(str(inst.cost_hr_snapshot or "0"))
+        * Decimal(runtime_sec)
+        / Decimal(3600)
+    ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+    tx, charged, status = repository.charge_instance_balance(
+        str(inst.id),
+        amount,
+        f"Sandbox usage ({runtime_sec}s at {inst.billing_currency or 'GBP'} {inst.cost_hr_snapshot or 0}/hr)",
+    )
+    if tx is not None:
+        repository.log_instance_event(
+            str(inst.id),
+            "usage_charged",
+            actor="system",
+            detail=json.dumps({
+                "due": str(amount),
+                "charged": str(charged),
+                "billing_status": status,
+            }),
+        )
+
+
+def handle_worker_callback(
+    instance_id: str,
+    job_id: str,
+    event: str,
+    data: dict | None = None,
+) -> tuple[dict, str | None]:
+    """Process an authenticated worker event and return worker directives."""
+    inst = repository.get_instance(instance_id)
+    if inst is None:
+        return {}, "Instance not found."
+    if str(inst.worker_job_id or "") != job_id:
+        return {}, "Callback job does not match the active worker job."
+
+    data = data or {}
+    now = datetime.now(timezone.utc)
+    detail = json.dumps(data) if data else None
+    response: dict = {}
+
+    if event == "started":
+        runtime_id = str(data.get("runtime_id") or "").strip()
+        if not runtime_id:
+            return {}, "Worker did not provide a runtime ID."
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status="running",
+            actor="worker",
+            expected_statuses=("provisioning", "running"),
+            started_at=inst.started_at or now,
+            last_heartbeat_at=now,
+            runtime_provider=str(data.get("runtime_provider") or inst.runtime_provider or "docker"),
+            runtime_id=runtime_id,
+            runtime_node_id=str(data.get("runtime_node_id") or "") or None,
+            worker_id=str(data.get("worker_id") or "") or None,
+            workspace_volume_id=str(data.get("workspace_volume_id") or "") or None,
+        )
+        if updated is None:
+            return {}, f"Cannot accept started event in '{inst.status}' state."
+        repository.log_instance_event(instance_id, "started", actor="worker", detail=detail)
+        _mark_template_test_result(inst, "passed")
+
+    elif event == "heartbeat":
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status=inst.status,
+            actor="worker",
+            expected_statuses=("provisioning", "running", "stopping", "cleanup"),
+            last_heartbeat_at=now,
+            runtime_id=str(data.get("runtime_id") or inst.runtime_id or "") or None,
+            runtime_node_id=str(data.get("runtime_node_id") or inst.runtime_node_id or "") or None,
+            worker_id=str(data.get("worker_id") or inst.worker_id or "") or None,
+        )
+        if updated is None:
+            return {}, f"Cannot accept heartbeat in '{inst.status}' state."
+        if inst.status == "running" and inst.billing_entity != "test":
+            elapsed = runtime_seconds(inst.started_at, now)
+            reserve_seconds = max(int(inst.min_billable_sec or 0), elapsed + 60)
+            desired = (
+                Decimal(str(inst.cost_hr_snapshot or "0"))
+                * Decimal(reserve_seconds)
+                / Decimal(3600)
+            ).quantize(Decimal("0.0001"), rounding=ROUND_UP)
+            if not repository.reserve_instance_balance(instance_id, desired):
+                repository.transition_instance_status(
+                    instance_id,
+                    new_status="stopping",
+                    actor="system",
+                    expected_statuses=("running",),
+                    exit_reason="insufficient_balance",
+                )
+                response["command"] = "stop"
+                response["reason"] = "insufficient_balance"
+
+    elif event == "cleanup_started":
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status="cleanup",
+            actor="worker",
+            expected_statuses=("provisioning", "running", "stopping", "failed", "expired", "killed", "cleanup"),
+            cleanup_started_at=now,
+            last_heartbeat_at=now,
+        )
+        if updated is None:
+            return {}, f"Cannot begin cleanup in '{inst.status}' state."
+        repository.log_instance_event(instance_id, "cleanup_started", actor="worker", detail=detail)
+
+    elif event in {"stopped", "expired", "killed"}:
+        current = repository.get_instance(instance_id)
+        if current and current.status not in {"cleanup", "stopping"}:
+            repository.transition_instance_status(
+                instance_id,
+                new_status="cleanup",
+                actor="worker",
+                expected_statuses=("provisioning", "running", "failed", "expired", "killed"),
+                cleanup_started_at=now,
+            )
+        current = repository.get_instance(instance_id)
+        final_status = "expired" if event == "expired" or data.get("reason") == "timeout" else event
+        if final_status not in {"stopped", "expired", "killed"}:
+            final_status = "stopped"
+        elapsed = runtime_seconds(current.started_at if current else inst.started_at, now)
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status=final_status,
+            actor="worker",
+            expected_statuses=("stopping", "cleanup", final_status),
+            stopped_at=now,
+            total_runtime_sec=elapsed,
+            last_heartbeat_at=now,
+            exit_code=_safe_int(data.get("exit_code")),
+            exit_reason=str(data.get("reason") or final_status)[:500],
+        )
+        if updated is None:
+            return {}, f"Cannot finalize instance in '{current.status if current else inst.status}' state."
+        _charge_completed_instance(updated)
+        repository.log_instance_event(instance_id, final_status, actor="worker", detail=detail)
+        if final_status != "stopped":
+            _mark_template_test_result(inst, "failed")
+
+    elif event == "failed":
+        elapsed = runtime_seconds(inst.started_at, now)
+        updated = repository.transition_instance_status(
+            instance_id,
+            new_status="failed",
+            actor="worker",
+            expected_statuses=("provisioning", "running", "stopping", "cleanup", "failed"),
+            stopped_at=now if inst.started_at else None,
+            total_runtime_sec=elapsed,
+            last_heartbeat_at=now,
+            exit_code=_safe_int(data.get("exit_code")),
+            exit_reason=str(data.get("reason") or data.get("error") or "runtime_failed")[:500],
+        )
+        if updated is None:
+            return {}, f"Cannot fail instance in '{inst.status}' state."
+        if inst.started_at:
+            _charge_completed_instance(updated)
+        else:
+            repository.release_instance_reservation(instance_id)
+            updated.billing_reserved_amount = Decimal("0")
+            updated.billing_status = "not_charged"
+            updated.charged_amount = Decimal("0")
+            updated.save()
+        repository.log_instance_event(instance_id, "failed", actor="worker", detail=detail)
+        _mark_template_test_result(inst, "failed")
+
+    elif event == "escape_attempt":
+        repository.log_instance_event(instance_id, "escape_attempt", actor="worker", detail=detail)
+        from .queue import enqueue_job
+        kill_job_id = str(_uuid.uuid4())
+        callback_token = make_worker_callback_token(kill_job_id, instance_id, "kill")
+        transitioned = repository.transition_instance_status(
+            instance_id,
+            new_status="stopping",
+            actor="system",
+            expected_statuses=("running", "provisioning"),
+            worker_job_id=kill_job_id,
+            exit_reason="escape_attempt",
+        )
+        if transitioned is None:
+            return {}, f"Cannot kill instance in '{inst.status}' state."
+        enqueue_job({
+            "job_id": kill_job_id,
+            "action": "kill",
+            "instance_id": instance_id,
+            "reason": "escape_attempt",
+            "callback_url": get_settings().control_plane_internal_url + "/internal/worker/callback",
+            "callback_token": callback_token,
+        })
+
+    elif event == "artifact_ready":
+        storage_key = str(data.get("storage_key") or "")
+        prefix = str(inst.artifact_prefix or "")
+        if not storage_key or not prefix or not storage_key.startswith(prefix + "/"):
+            return {}, "Artifact key is outside this instance prefix."
+        try:
+            name = safe_artifact_name(str(data.get("name") or "artifact"))
+        except ValueError as exc:
+            return {}, str(exc)
+        repository.create_or_get_artifact(
+            instance_id=instance_id,
+            name=name,
+            artifact_type=str(data.get("artifact_type") or "file")[:80],
+            storage_key=storage_key,
+            size_bytes=max(0, int(data.get("size_bytes") or 0)),
+            checksum=str(data.get("checksum") or "")[:64],
+        )
+        repository.log_instance_event(instance_id, "artifact_ready", actor="worker", detail=detail)
+
+    else:
+        return {}, f"Unknown event: {event}"
+
+    return response, None
+
+
+# ── Admin Test Run ────────────────────────────────────────────────────────────
+
+def start_test_instance(
+    template_id: str,
+    actor_user_id: str,
+) -> tuple[dict | None, str | None]:
+    """Admin: create + immediately start a single-use test instance of a template.
+
+    No-billing preview run — doesn't require a SandboxPlan to exist (see _TEST_PLAN).
+    """
+    t = repository.get_template(template_id)
+    if t is None:
+        return None, "Template not found."
+
+    inst = repository.create_instance(
+        template_id=template_id,
+        plan_id=_TEST_PLAN["id"],
+        workspace_type="test",
+        workspace_user_id=actor_user_id,
+        created_by_user_id=actor_user_id,
+        billing_entity="test",
+    )
+    return start_instance(str(inst.id), actor_user_id=actor_user_id)
+
+
+# ── Balance / Billing ─────────────────────────────────────────────────────────
+
+def _balance_dict(b) -> dict:
+    amount = Decimal(str(b.amount or "0"))
+    reserved = Decimal(str(b.reserved_amount or "0"))
+    return {
+        "entity_type": b.entity_type,
+        "entity_id": str(b.entity_id),
+        "amount": str(amount),
+        "reserved_amount": str(reserved),
+        "available_amount": str(max(Decimal("0"), amount - reserved)),
+        "updated_at": b.updated_at,
+    }
+
+
+def _transaction_dict(tx) -> dict:
+    amount = Decimal(str(tx.amount or "0"))
+    return {
+        "id": str(tx.id),
+        "type": tx.type,
+        "amount": str(amount),
+        "absolute_amount": str(abs(amount)),
+        "is_credit": amount >= 0,
+        "description": tx.description or "",
+        "instance_id": str(tx.instance_id) if tx.instance_id else None,
+        "created_at": tx.created_at,
+    }
+
+
+def get_user_billing(user_id: str) -> dict:
+    b = repository.get_or_create_balance("user", user_id)
+    txs = repository.list_transactions("user", user_id)
+    return {
+        "balance": _balance_dict(b),
+        "transactions": [_transaction_dict(t) for t in txs],
+    }
+
+
+def get_org_billing(org_id: str) -> dict:
+    b = repository.get_or_create_balance("org", org_id)
+    txs = repository.list_transactions("org", org_id)
+    return {
+        "balance": _balance_dict(b),
+        "transactions": [_transaction_dict(t) for t in txs],
+    }

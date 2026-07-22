@@ -33,7 +33,8 @@ def get_current_session() -> CurrentSession | None:
     if session is None:
         return None
     user = identity_repo.find_user_by_id(session.user_id)
-    if user is None or user.deleted_at is not None:
+    if user is None or user.deleted_at is not None or user.status == "banned":
+        identity_repo.delete_session(token_hash)
         return None
     cs_session = CurrentSession(user=user, token_hash=token_hash)
     g._cs_session = cs_session  # type: ignore[attr-defined]
@@ -61,7 +62,19 @@ def require_platform_role(
     return session, None
 
 
-def build_nav(current_path: str, user: User) -> dict[str, Any]:
+def require_sandbox_user(
+    next_path: str | None = None,
+) -> tuple[CurrentSession | None, RedirectResult | None]:
+    session, redirect = require_session(next_path)
+    if redirect:
+        return None, redirect
+    assert session is not None
+    if session.user.platform_role != "user":
+        return None, RedirectResult(url="/dashboard")
+    return session, None
+
+
+def build_nav(current_path: str, user: User, active_workspace: dict | None = None) -> dict[str, Any]:
     role = user.platform_role
 
     def item(label: str, href: str, permission: str | None = None) -> dict:
@@ -84,14 +97,12 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
         platform_items = [
             item("Dashboard", "/dashboard"),
             item("Users", "/platform/users", "platform.users.read"),
-            item("Organizations", "/platform/organizations"),
+            item("Organizations", "/platform/organizations", "platform.organizations.read"),
             item("Application Staff", "/platform/staff", "platform.staff.read"),
             item("Staff Roles", "/platform/roles", "platform.roles.read"),
             separator(),
             item("Sandboxes", "/platform/sandboxes", "platform.sandboxes.manage"),
             item("Sandbox Plans", "/platform/sandbox-plans", "platform.sandbox_plans.manage"),
-            separator(),
-            item("Hub", "/hub"),
         ]
         if role != "system_admin":
             from codesandbox.features.platform_admin import repository as rbac_repo
@@ -107,7 +118,13 @@ def build_nav(current_path: str, user: User) -> dict[str, Any]:
 
     user_items = [
         item("Dashboard", "/dashboard"),
+        item("Hub", "/hub"),
+        item("My Instances", "/my-instances"),
     ]
+    if active_workspace:
+        # Only meaningful inside an org workspace — instances assigned to you
+        # by an org. In personal space there's nothing this page could show.
+        user_items.append(item("Private Instances", "/private_instances"))
     return {
         "sections": [{"label": "Workspace", "items": user_items}],
         "secondary": secondary_items,

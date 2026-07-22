@@ -12,6 +12,7 @@
     template_statuses=template_statuses,
     tab=tab if tab is defined else "identity",
     error=error if error is defined else none,
+    template_plan_configs=template_plan_configs if template_plan_configs is defined else none,
   ) }}
 {% else %}
   {{ tbl.templates_table(

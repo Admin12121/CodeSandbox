@@ -264,6 +264,9 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
 
 
 def invite_to_org(org_id: str, email: str, invited_by: str) -> tuple[OrganizationInvitation, str]:
+    org = repository.get_organization(org_id)
+    if org is None or org.status != "active":
+        raise ValueError("This organization is not currently accepting invitations.")
     return repository.create_invitation(
         org_id=org_id,
         email=email,
@@ -274,6 +277,8 @@ def invite_to_org(org_id: str, email: str, invited_by: str) -> tuple[Organizatio
 def get_org_invite_link_data(slug: str, user_id: str) -> dict | None:
     org = repository.get_organization_by_slug(slug)
     if org is None:
+        return None
+    if org.status != "active":
         return None
     if repository.get_member(org.id, user_id) is None:
         return None
@@ -289,6 +294,8 @@ def get_org_invite_link_data(slug: str, user_id: str) -> dict | None:
 def regenerate_org_invite_link(slug: str, user_id: str) -> dict | None:
     org = repository.get_organization_by_slug(slug)
     if org is None:
+        return None
+    if org.status != "active":
         return None
     if repository.get_member(org.id, user_id) is None:
         return None
@@ -310,6 +317,8 @@ def batch_invite_to_org(
     org = repository.get_organization_by_slug(slug)
     if org is None:
         return [{"email": e, "ok": False, "error": "org_not_found"} for e in emails]
+    if org.status != "active":
+        return [{"email": e, "ok": False, "error": "org_inactive"} for e in emails]
     settings = get_settings()
     results = []
     for email in emails[:5]:
@@ -352,6 +361,9 @@ def accept_org_invitation(token: str, user_id: str) -> tuple[bool, str]:
     invitation = repository.find_invitation_by_token(token)
     if invitation is None:
         return False, "Invitation not found."
+    org = repository.get_organization(invitation.org_id)
+    if org is None or org.status != "active":
+        return False, "This organization is not currently accepting members."
     if invitation.status != "pending":
         return False, "Invitation has already been used."
     if invitation.expires_at:
@@ -397,6 +409,8 @@ def remove_org_member(
 
     if str(target.user_id) == requesting_user_id:
         return False, "You cannot remove yourself. Use 'Leave organization' instead."
+    if not is_owner and not repository.can_actor_manage_member(org_id, requesting_user_id, target.user_id):
+        return False, "You cannot remove a member equal to or higher than your own position."
 
     repository.delete_member(member_id)
     return True, ""
@@ -564,6 +578,8 @@ def assign_role_to_org_member(
 
     if not is_owner:
         actor_pos = repository.get_member_highest_position(org.id, requesting_user_id)
+        if not repository.can_actor_manage_member(org.id, requesting_user_id, target.user_id):
+            return False, "You cannot manage a member equal to or higher than your own position."
         # Rule 1: cannot assign role >= own highest position
         if role.position >= actor_pos:
             return False, "You cannot assign a role equal to or higher than your own position."
@@ -612,6 +628,8 @@ def remove_role_from_org_member(
     # Rule 1: cannot remove a role that is >= own position (unless owner)
     if not is_owner:
         actor_pos = repository.get_member_highest_position(org.id, requesting_user_id)
+        if not repository.can_actor_manage_member(org.id, requesting_user_id, target.user_id):
+            return False, "You cannot manage a member equal to or higher than your own position."
         if role.position >= actor_pos:
             return False, "You cannot remove a role equal to or higher than your own position."
 
@@ -669,6 +687,28 @@ def toggle_org_role_permission(
 
 def get_role_members_for_org(org_id: str, role_id: str) -> list[dict]:
     return repository.get_role_members(org_id, role_id)
+
+
+def reorder_org_role_positions(slug: str, role_ids: list[str], requesting_user_id: str) -> tuple[bool, str]:
+    org = repository.get_organization_by_slug(slug)
+    if org is None:
+        return False, "Organization not found."
+    if repository.get_member(org.id, requesting_user_id) is None:
+        return False, "Not a member."
+    is_owner = repository.is_org_owner(org.id, requesting_user_id)
+    if not is_owner and "org.roles.manage" not in repository.get_member_permissions(org.id, requesting_user_id):
+        return False, "You don't have permission to reorder roles."
+
+    roles = {str(r.id): r for r in repository.list_org_roles(org.id) if r.name != "owner"}
+    ordered_ids = [str(rid) for rid in role_ids if str(rid) in roles]
+    if set(ordered_ids) != set(roles):
+        return False, "Role order must include every role."
+    if not is_owner:
+        for role_id in ordered_ids:
+            if not repository.can_actor_manage_role(org.id, requesting_user_id, role_id):
+                return False, "You cannot reorder a role equal to or higher than your own position."
+    repository.reorder_org_roles(org.id, ordered_ids)
+    return True, ""
 
 
 def leave_org(org_id: str, user_id: str) -> tuple[bool, str]:

@@ -1,0 +1,48 @@
+{% import "components/ui/frame.html" as frame %}
+
+<div class="flex h-[calc(100vh-4.85rem)] flex-col gap-4 p-6 overflow-y-auto">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-semibold">My Instances</h1>
+      <p class="text-sm text-muted-foreground mt-0.5">Sandbox instances running under your account</p>
+    </div>
+    <a href="/hub"
+       class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+      <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      New Sandbox
+    </a>
+  </div>
+
+  {% if instances %}
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {% for inst in instances %}
+        <div class="flex items-center gap-3 rounded-lg border bg-card p-3 text-sm hover:bg-accent/30 transition-colors cursor-pointer"
+             onclick="window.location.href='{{ '/hub/' ~ inst.template_slug ~ '/' ~ inst.plan_id if inst.status in ('provisioning','running','stopping','cleanup') else '/instances/' ~ inst.id }}'">
+          <div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+            {% if inst.template_icon %}
+              <img src="{{ inst.template_icon }}" alt="" class="size-full rounded-md object-cover">
+            {% else %}
+              <svg viewBox="0 0 256 256" class="size-5"><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,120,47.65,76,128,32l80.35,44Zm8,99.64V133.83l80-43.78v85.76Z" fill="currentColor"></path></svg>
+            {% endif %}
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate font-medium">{{ inst.template_name }}</p>
+            <p class="text-xs text-muted-foreground capitalize">{{ inst.plan_id }}</p>
+          </div>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium
+            {{ 'bg-green-500/15 text-green-600 dark:text-green-400' if inst.status == 'running' else
+               'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400' if inst.status in ('provisioning','stopping') else
+               'bg-muted text-muted-foreground' }}">
+            {{ inst.status }}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="flex flex-1 flex-col items-center justify-center text-muted-foreground">
+      <svg class="size-12 mb-3 opacity-20" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><circle cx="12" cy="10" r="3"/></svg>
+      <p class="text-sm">No instances yet.</p>
+      <p class="text-xs mt-1 opacity-60">Start a sandbox from the <a href="/hub" class="underline underline-offset-2">Hub</a>.</p>
+    </div>
+  {% endif %}
+</div>

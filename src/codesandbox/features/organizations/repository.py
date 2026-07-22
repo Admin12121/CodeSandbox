@@ -164,7 +164,8 @@ def create_invitation(
 
 
 def list_org_roles(org_id: str) -> list[OrganizationRole]:
-    return OrganizationRole.objects.filter(org_id=org_id).order_by("position").all()
+    roles = OrganizationRole.objects.filter(org_id=org_id).all()
+    return sorted(roles, key=lambda r: int(r.position or 0), reverse=True)
 
 
 def seed_org_roles(org_id: str) -> None:
@@ -484,6 +485,27 @@ def can_actor_manage_role(org_id: str, actor_id: str, role_id: str) -> bool:
     except Exception:
         return False
     return get_member_highest_position(org_id, actor_id) > role.position
+
+
+def can_actor_manage_member(org_id: str, actor_id: str, target_user_id: str) -> bool:
+    """True if actor's highest position is strictly greater than target member's."""
+    if is_org_owner(org_id, actor_id):
+        return True
+    if str(actor_id) == str(target_user_id):
+        return False
+    if is_org_owner(org_id, target_user_id):
+        return False
+    return get_member_highest_position(org_id, actor_id) > get_member_highest_position(org_id, target_user_id)
+
+
+def reorder_org_roles(org_id: str, role_ids: list[str]) -> None:
+    total = len(role_ids)
+    for index, role_id in enumerate(role_ids):
+        role = OrganizationRole.objects.get(id=role_id)
+        if str(role.org_id) != str(org_id):
+            continue
+        role.position = (total - index) * 10
+        role.save()
 
 
 def transfer_ownership(org_id: str, current_owner_id: str, new_owner_id: str) -> tuple[bool, str]:

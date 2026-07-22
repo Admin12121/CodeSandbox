@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import secrets
 import urllib.parse
@@ -17,6 +18,9 @@ from codesandbox.config import get_settings
 from . import repository
 
 
+_BLOCKED_USER_STATUSES = {"banned"}
+
+
 @dataclass(frozen=True)
 class AuthResult:
     ok: bool
@@ -28,6 +32,27 @@ class AuthResult:
 
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _user_is_blocked(user) -> bool:
+    return user.deleted_at is not None or user.status in _BLOCKED_USER_STATUSES
+
+
+def _verified_google_email(profile: dict) -> str | None:
+    email = str(profile.get("email") or "").strip().lower()
+    verified = profile.get("email_verified") is True or str(profile.get("email_verified")).lower() == "true"
+    return email if email and verified else None
+
+
+def totp_qr_data_uri(uri: str) -> str | None:
+    try:
+        import qrcode
+        img = qrcode.make(uri)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return None
 
 
 def sign_up(
@@ -85,14 +110,14 @@ def sign_in(
         )
         return AuthResult(False, "Invalid email or password.")
 
-    if user.status == "banned":
+    if user.status in _BLOCKED_USER_STATUSES:
         repository.record_login_attempt(
             email=email,
             ip_address=ip_address,
             succeeded=False,
-            failure_reason="banned",
+            failure_reason=user.status,
         )
-        return AuthResult(False, "This account has been suspended.")
+        return AuthResult(False, "This account cannot sign in.")
 
     if not check_password_hash(user.password_hash, password):
         repository.record_login_attempt(
@@ -121,7 +146,7 @@ def create_session_for_user(
     user_agent: str | None,
 ) -> str | None:
     user = repository.find_user_by_id(user_id)
-    if not user or user.deleted_at is not None or user.status == "banned":
+    if not user or _user_is_blocked(user):
         return None
 
     settings = get_settings()
@@ -223,6 +248,8 @@ def reset_password(token: str, new_password: str) -> AuthResult:
     repository.consume_verification_token(vt)
     pw_hash = generate_password_hash(new_password)
     repository.update_user(vt.user_id, password_hash=pw_hash)
+    if vt.user_id:
+        repository.delete_user_sessions(vt.user_id)
     return AuthResult(True, "Password reset successfully.")
 
 
@@ -435,6 +462,11 @@ def get_user_passkeys(user_id: str) -> list[dict]:
 # ── Social account linking ─────────────────────────────────────────────────────
 
 def link_google_account(user_id: str, code: str, redirect_uri: str) -> AuthResult:
+    user = repository.find_user_by_id(user_id)
+    if not user or _user_is_blocked(user):
+        return AuthResult(False, "User not found.")
+    if not user.email_verified:
+        return AuthResult(False, "Verify your email before linking social accounts.")
     token_data = google_exchange_code(code, redirect_uri)
     if not token_data or "access_token" not in token_data:
         return AuthResult(False, "Google authentication failed.")
@@ -442,6 +474,12 @@ def link_google_account(user_id: str, code: str, redirect_uri: str) -> AuthResul
     if not g_user:
         return AuthResult(False, "Could not fetch Google profile.")
     g_id = str(g_user.get("sub", ""))
+    g_email = _verified_google_email(g_user)
+    if not g_id or not g_email:
+        return AuthResult(False, "Google account email must be verified.")
+    email_owner = repository.find_user_by_email(g_email)
+    if email_owner and str(email_owner.id) != str(user_id):
+        return AuthResult(False, "This Google email belongs to another account.")
     existing = repository.find_auth_account("google", g_id)
     if existing and str(existing.user_id) != str(user_id):
         return AuthResult(False, "This Google account is already connected to another user.")
@@ -453,13 +491,25 @@ def link_google_account(user_id: str, code: str, redirect_uri: str) -> AuthResul
 
 
 def link_github_account(user_id: str, code: str) -> AuthResult:
+    user = repository.find_user_by_id(user_id)
+    if not user or _user_is_blocked(user):
+        return AuthResult(False, "User not found.")
+    if not user.email_verified:
+        return AuthResult(False, "Verify your email before linking social accounts.")
     token_data = github_exchange_code(code)
     if not token_data or "access_token" not in token_data:
         return AuthResult(False, "GitHub authentication failed.")
-    gh_user = github_get_user(token_data["access_token"])
+    access_token = token_data["access_token"]
+    gh_user = github_get_user(access_token)
     if not gh_user:
         return AuthResult(False, "Could not fetch GitHub profile.")
     gh_id = str(gh_user.get("id", ""))
+    gh_email = github_get_primary_verified_email(access_token)
+    if not gh_id or not gh_email:
+        return AuthResult(False, "GitHub account needs a verified primary email.")
+    email_owner = repository.find_user_by_email(gh_email)
+    if email_owner and str(email_owner.id) != str(user_id):
+        return AuthResult(False, "This GitHub email belongs to another account.")
     existing = repository.find_auth_account("github", gh_id)
     if existing and str(existing.user_id) != str(user_id):
         return AuthResult(False, "This GitHub account is already connected to another user.")
@@ -520,6 +570,23 @@ def github_get_user(access_token: str) -> dict | None:
         return None
 
 
+def github_get_primary_verified_email(access_token: str) -> str | None:
+    req = urllib.request.Request(
+        "https://api.github.com/user/emails",
+        headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            emails = json.loads(resp.read())
+    except Exception:
+        return None
+    for item in emails:
+        email = str(item.get("email") or "").strip().lower()
+        if email and item.get("primary") is True and item.get("verified") is True:
+            return email
+    return None
+
+
 def google_exchange_code(code: str, redirect_uri: str) -> dict | None:
     """Exchange Google OAuth code for access token."""
     settings = get_settings()
@@ -571,7 +638,9 @@ def sign_in_with_google(
         return AuthResult(False, "Could not fetch Google profile.")
 
     g_id = str(g_user.get("sub", ""))
-    g_email = g_user.get("email") or f"g_{g_id}@google.local"
+    g_email = _verified_google_email(g_user)
+    if not g_id or not g_email:
+        return AuthResult(False, "Google account email must be verified.")
     g_name = g_user.get("name") or g_user.get("given_name") or "Google User"
 
     account = repository.find_auth_account("google", g_id)
@@ -579,31 +648,34 @@ def sign_in_with_google(
         user = repository.find_user_by_id(account.user_id)
         if not user:
             return AuthResult(False, "Account not found.")
+        if _user_is_blocked(user):
+            return AuthResult(False, "This account cannot sign in.")
+        email_owner = repository.find_user_by_email(g_email)
+        if email_owner and str(email_owner.id) != str(user.id):
+            return AuthResult(False, "This Google email belongs to another account.")
         repository.upsert_auth_account(
             user_id=user.id, provider="google",
             provider_account_id=g_id, access_token=access_token,
         )
     else:
         user = repository.find_user_by_email(g_email)
+        if user and _user_is_blocked(user):
+            return AuthResult(False, "This account cannot sign in.")
         if not user:
             user = repository.create_user(email=g_email, name=g_name, password_hash=None)
-            repository.update_user(user.id, email_verified=True)
+        repository.update_user(user.id, email_verified=True)
         repository.upsert_auth_account(
             user_id=user.id, provider="google",
             provider_account_id=g_id, access_token=access_token,
         )
 
-    settings = get_settings()
-    raw_token = secrets.token_urlsafe(48)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
-    repository.create_session(
-        user_id=user.id,
-        token_hash=hash_token(raw_token),
-        expires_at=expires_at,
+    raw_token = create_session_for_user(
+        user.id,
         ip_address=ip_address,
         user_agent=user_agent,
     )
-    repository.update_user(user.id, last_login_at=datetime.now(timezone.utc))
+    if not raw_token:
+        return AuthResult(False, "This account cannot sign in.")
     return AuthResult(True, "Signed in with Google.", token=raw_token)
 
 
@@ -622,7 +694,9 @@ def sign_in_with_github(
         return AuthResult(False, "Could not fetch GitHub profile.")
 
     gh_id = str(gh_user.get("id", ""))
-    gh_email = gh_user.get("email") or f"gh_{gh_id}@github.local"
+    gh_email = github_get_primary_verified_email(access_token)
+    if not gh_id or not gh_email:
+        return AuthResult(False, "GitHub account needs a verified primary email.")
     gh_name = gh_user.get("name") or gh_user.get("login") or "GitHub User"
 
     account = repository.find_auth_account("github", gh_id)
@@ -630,31 +704,34 @@ def sign_in_with_github(
         user = repository.find_user_by_id(account.user_id)
         if not user:
             return AuthResult(False, "Account not found.")
+        if _user_is_blocked(user):
+            return AuthResult(False, "This account cannot sign in.")
+        email_owner = repository.find_user_by_email(gh_email)
+        if email_owner and str(email_owner.id) != str(user.id):
+            return AuthResult(False, "This GitHub email belongs to another account.")
         repository.upsert_auth_account(
             user_id=user.id, provider="github",
             provider_account_id=gh_id, access_token=access_token,
         )
     else:
         user = repository.find_user_by_email(gh_email)
+        if user and _user_is_blocked(user):
+            return AuthResult(False, "This account cannot sign in.")
         if not user:
             user = repository.create_user(
                 email=gh_email, name=gh_name, password_hash=None
             )
-            repository.update_user(user.id, email_verified=True)
+        repository.update_user(user.id, email_verified=True)
         repository.upsert_auth_account(
             user_id=user.id, provider="github",
             provider_account_id=gh_id, access_token=access_token,
         )
 
-    settings = get_settings()
-    raw_token = secrets.token_urlsafe(48)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
-    repository.create_session(
-        user_id=user.id,
-        token_hash=hash_token(raw_token),
-        expires_at=expires_at,
+    raw_token = create_session_for_user(
+        user.id,
         ip_address=ip_address,
         user_agent=user_agent,
     )
-    repository.update_user(user.id, last_login_at=datetime.now(timezone.utc))
+    if not raw_token:
+        return AuthResult(False, "This account cannot sign in.")
     return AuthResult(True, "Signed in with GitHub.", token=raw_token)

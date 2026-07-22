@@ -3,6 +3,7 @@
 {% import "components/ui/button.html" as button %}
 {% import "components/ui/badge.html" as badge %}
 {% import "components/ui/table.html" as table %}
+{% import "components/ui/table-pagination.html" as tp %}
 {% import "components/media/upload.html" as media_upload %}
 {% import "components/ui/dialog.html" as dlg_ui %}
 {% import "components/media/qr-code.html" as media_qr %}
@@ -49,7 +50,7 @@
     {% call tabs_ui.tabs_list(class="w-full justify-start overflow-x-auto") %}
       {{ tabs_ui.tabs_tab("Profile", value="profile", active=(active_tab == "profile")) }}
       {{ tabs_ui.tabs_tab("Security", value="security", active=(active_tab == "security")) }}
-      {{ tabs_ui.tabs_tab("Sessions (" ~ (sessions | length) ~ ")", value="sessions", active=(active_tab == "sessions")) }}
+      {{ tabs_ui.tabs_tab("Sessions (" ~ sessions_total ~ ")", value="sessions", active=(active_tab == "sessions")) }}
     {% endcall %}
 
     {# ── Profile tab ── #}
@@ -255,9 +256,7 @@
                 {% call table.table_cell(class="text-right") %}
                   <div class="flex justify-end gap-2">
                     {% if totp_enabled %}
-                      <form method="post" action="/settings/2fa/disable" class="inline">{{ csrf_input() }}
-                        {% call button.button(type="submit", size="sm", variant="outline") %}Disable{% endcall %}
-                      </form>
+                      {% call button.button(type="button", size="sm", variant="outline", attrs={"data-dialog-trigger": "", "data-target": "#dlg-2fa-disable"}) %}Disable{% endcall %}
                     {% else %}
                       {% call button.button(type="button", size="sm", variant="outline", attrs={"data-open-dialog": "dlg-2fa-setup"}) %}Set up 2FA{% endcall %}
                     {% endif %}
@@ -356,7 +355,7 @@
     {% endcall %}
 
     {# ── Sessions tab ── #}
-    {% call tabs_ui.tabs_panel(value="sessions", active=(active_tab == "sessions")) %}
+    {% call tabs_ui.tabs_panel(value="sessions", active=(active_tab == "sessions"), class="grid gap-4") %}
       {% call frame.frame() %}
         {% call table.table(variant="card") %}
           {% call table.table_header() %}
@@ -417,21 +416,17 @@
             {% endif %}
           {% endcall %}
         {% endcall %}
-        {# Pagination #}
-        {% if sessions_total_pages > 1 %}
-          <div class="flex items-center justify-between border-t px-4 py-3 text-sm text-muted-foreground">
-            <span>{{ sessions_total }} session{{ "s" if sessions_total != 1 else "" }} · page {{ sessions_page }} of {{ sessions_total_pages }}</span>
-            <div class="flex gap-2">
-              {% if sessions_page > 1 %}
-                <a href="?tab=sessions&spage={{ sessions_page - 1 }}" class="inline-flex h-7 items-center rounded-md border px-2.5 text-xs hover:bg-accent transition-colors">Previous</a>
-              {% endif %}
-              {% if sessions_page < sessions_total_pages %}
-                <a href="?tab=sessions&spage={{ sessions_page + 1 }}" class="inline-flex h-7 items-center rounded-md border px-2.5 text-xs hover:bg-accent transition-colors">Next</a>
-              {% endif %}
-            </div>
-          </div>
-        {% endif %}
       {% endcall %}
+
+      {# Pagination #}
+      {{ tp.table_pagination(
+        current_page=sessions_page,
+        total_pages=sessions_total_pages,
+        total_items=sessions_total,
+        page_size=sessions_page_size,
+        base_url="/settings?tab=sessions",
+        page_param="spage"
+      ) }}
     {% endcall %}
 
   {% endcall %}
@@ -607,6 +602,45 @@
       {% endcall %}
     </div>
   </div>
+{% endcall %}
+
+{# ── Disable 2FA Dialog ── #}
+{% call dlg_ui.dialog(attrs={"id": "dlg-2fa-disable"}) %}
+  {% call dlg_ui.dialog_close() %}
+    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  {% endcall %}
+  <div class="border-b px-6 py-4">
+    {% call dlg_ui.dialog_header() %}
+      {{ dlg_ui.dialog_title("Disable two-factor authentication") }}
+      {{ dlg_ui.dialog_description("Confirm with your password or a current 2FA code before removing this protection.") }}
+    {% endcall %}
+  </div>
+  <form method="post" action="/settings/2fa/disable">
+    {{ csrf_input() }}
+    {% call dlg_ui.dialog_panel(class="px-6 py-5") %}
+      <div class="grid gap-4">
+        {% if has_password %}
+          <div class="grid gap-1.5">
+            <label for="disable-2fa-password" class="text-sm font-medium">Current password</label>
+            <input id="disable-2fa-password" name="current_password" type="password" autocomplete="current-password"
+              class="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40">
+          </div>
+        {% endif %}
+        <div class="grid gap-1.5">
+          <label for="disable-2fa-code" class="text-sm font-medium">Authenticator or backup code</label>
+          <input id="disable-2fa-code" name="code" inputmode="numeric" autocomplete="one-time-code"
+            class="h-9 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring/40">
+          <p class="text-xs text-muted-foreground">Either field is enough. Backup codes can be used once.</p>
+        </div>
+      </div>
+    {% endcall %}
+    <div class="border-t px-6 py-4">
+      {% call dlg_ui.dialog_footer() %}
+        {{ dlg_ui.dialog_cancel("Cancel") }}
+        {% call button.button(type="submit", variant="destructive") %}Disable 2FA{% endcall %}
+      {% endcall %}
+    </div>
+  </form>
 {% endcall %}
 
 {# ── Add Passkey Dialog ── #}
