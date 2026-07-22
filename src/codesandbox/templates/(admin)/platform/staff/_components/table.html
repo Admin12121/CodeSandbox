@@ -5,6 +5,7 @@
 {% import "components/ui/input-group.html" as ig %}
 {% import "components/ui/field.html" as field %}
 {% import "components/ui/input.html" as input %}
+{% import "components/ui/table-pagination.html" as tp %}
 
 {% macro status_dot(status) -%}
 <span class="size-2 shrink-0 rounded-full {{ 'bg-emerald-500' if status == 'active' else 'bg-muted-foreground' }}"></span>
@@ -20,7 +21,7 @@
 {%- endmacro %}
 
 {# ═══ LIST VIEW ═══ #}
-{% macro staff_list(visible_staff, staff, search, error) %}
+{% macro staff_list(visible_staff, staff, search, error, page=1, page_size=20, total=none, total_pages=1) %}
 <div class="grid gap-4 p-2">
   <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
     <form method="get" action="/platform/staff">
@@ -39,11 +40,12 @@
     {% endcall %}
   </div>
   {{ error_alert(error) }}
+  {% set _total = total if total is not none else staff|length %}
   {% call frame.frame() %}
     {% call table.table(variant="card") %}
       {% call table.table_header() %}
         {% call table.table_row() %}
-          {{ table.table_head("Application Staff — " ~ staff|length) }}
+          {{ table.table_head("Application Staff — " ~ _total) }}
           {{ table.table_head("Email") }}
           {{ table.table_head("Roles") }}
           {{ table.table_head("Status", class="w-28") }}
@@ -87,6 +89,14 @@
       {% endcall %}
     {% endcall %}
   {% endcall %}
+
+  {{ tp.table_pagination(
+    current_page=page,
+    total_pages=total_pages,
+    total_items=_total,
+    page_size=page_size,
+    base_url="/platform/staff?search=" ~ search
+  ) }}
 </div>
 {% endmacro %}
 
@@ -94,7 +104,7 @@
 {% macro staff_editor(selected_member, staff, roles, error) %}
 {% set is_create = selected_member.id is none %}
 {% set mid = selected_member.id %}
-<div class="flex min-h-[calc(100dvh-var(--header-height)-3rem)] overflow-hidden rounded-xl border bg-background">
+<div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
   {# Left mini-sidebar #}
   <div class="flex w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
     <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
@@ -142,6 +152,7 @@
     {% if error %}<div class="border-b p-3">{{ error_alert(error) }}</div>{% endif %}
     <div class="min-h-0 flex-1 overflow-y-auto">
       <form id="staff-form" method="post" action="/platform/staff/save" class="grid gap-6 p-4">
+  {{ csrf_input() }}
         {% if mid %}<input type="hidden" name="member_id" value="{{ mid }}">{% endif %}
         <div class="grid gap-4 md:grid-cols-2">
           {% call field.field() %}

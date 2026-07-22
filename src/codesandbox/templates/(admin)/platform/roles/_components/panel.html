@@ -8,7 +8,9 @@
 {% import "components/ui/textarea.html" as textarea %}
 {% import "components/ui/switch.html" as sw %}
 {% import "components/ui/alert.html" as alert %}
-{% import "components/ui/select-native.html" as sn %}
+{% import "components/ui/combobox.html" as cb %}
+{% import "components/ui/table-pagination.html" as tp %}
+{% import "components/ui/delete-dialog.html" as del_dlg %}
 
 {% macro role_dot(color) -%}
 <span aria-hidden="true" class="size-3 shrink-0 rounded-full" style="background:{{ color }}"></span>
@@ -29,7 +31,8 @@
 
 
 {# ════════════════════════════ LIST VIEW ════════════════════════════ #}
-{% macro roles_list(visible_roles, roles, search, error) %}
+{% macro roles_list(visible_roles, roles, search, error, page=1, page_size=20, total=none, total_pages=1) %}
+  {% set _total = total if total is not none else roles|length %}
   <div class="grid gap-4 p-3">
 
     <div class="grid gap-3 lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] md:items-center">
@@ -43,7 +46,7 @@
       </form>
 
       <div aria-hidden className="hidden lg:block"></div>
-      
+
       {% call button.button(attrs={"data-cs-href": "/platform/roles?role=new"}, class="cursor-pointer", size="icon") %}
         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
       {% endcall %}
@@ -56,7 +59,7 @@
         {% call table.table_header() %}
           {% call table.table_row() %}
             {{ table.table_head("", class="w-9") }}
-            {{ table.table_head("Staff Roles — " ~ roles|length) }}
+            {{ table.table_head("Staff Roles — " ~ _total) }}
             {{ table.table_head("Members", class="w-32") }}
             {{ table.table_head("Position", class="w-28 text-right") }}
             {{ table.table_head("Actions", class="w-36 text-right") }}
@@ -92,13 +95,14 @@
                     {% call button.button(variant="ghost", size="icon-xs", class="shrink-0 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": "rm-" ~ role.id, "aria-label": "More actions for " ~ role.display_name}) %}
                       <svg class="pointer-events-none size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
                     {% endcall %}
-                    <div id="rm-{{ role.id }}" class="hidden fixed z-[100] w-56 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
+                    <div id="rm-{{ role.id }}" class="hidden fixed z-100 w-56 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
                       <div class="px-2 py-1 text-xs font-semibold text-muted-foreground">Role actions</div>
                       <a href="/platform/roles?role={{ role.id }}" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 hover:bg-accent hover:text-accent-foreground">
                         <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                         Edit role
                       </a>
                       <form method="post" action="/platform/roles/{{ role.id }}/duplicate">
+  {{ csrf_input() }}
                         <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
                           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                           Duplicate role
@@ -106,12 +110,12 @@
                       </form>
                       <div class="my-1 h-px bg-border"></div>
                       {% if role.is_mutable %}
-                        <form method="post" action="/platform/roles/{{ role.id }}/delete">
-                          <button type="submit" class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
-                            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                            Delete role
-                          </button>
-                        </form>
+                        <button type="button"
+                          data-slot="dialog-trigger" data-target="del-role-{{ role.id }}"
+                          class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10">
+                          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                          Delete role
+                        </button>
                       {% else %}
                         <div class="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-muted-foreground opacity-50">
                           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
@@ -128,7 +132,27 @@
       {% endcall %}
     {% endcall %}
 
+    {{ tp.table_pagination(
+      current_page=page,
+      total_pages=total_pages,
+      total_items=_total,
+      page_size=page_size,
+      base_url="/platform/roles?search=" ~ search
+    ) }}
+
   </div>
+
+  {# Delete dialogs — rendered outside the table to avoid invalid HTML nesting #}
+  {% for role in visible_roles %}
+    {% if role.is_mutable %}
+      {{ del_dlg.delete_dialog(
+        id="del-role-" ~ role.id,
+        name=role.display_name,
+        description='Deleting "' ~ role.display_name ~ '" will remove it from all members who currently have this role. This cannot be reversed.',
+        action="/platform/roles/" ~ role.id ~ "/delete"
+      ) }}
+    {% endif %}
+  {% endfor %}
 {% endmacro %}
 
 
@@ -136,7 +160,7 @@
 {% macro role_editor(selected_role, roles, permission_groups, nav_matrix, editor_tab, available_members, error) %}
   {% set is_create = selected_role.id is none %}
   {% set rid = selected_role.id %}
-  <div class="flex min-h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
+  <div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
 
     {# Left mini-sidebar: role list #}
     <div class="flex w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
@@ -222,6 +246,7 @@
           <form id="role-display-form" method="post"
                 action="{{ '/platform/roles/create' if is_create else '/platform/roles/' ~ rid ~ '/update' }}"
                 class="grid gap-5 p-4">
+  {{ csrf_input() }}
             {% if not selected_role.is_mutable %}
               <div class="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
                 {{ lock_icon() }} This system role is read-only.
@@ -278,6 +303,7 @@
                           </div>
                           {% if selected_role.is_mutable %}
                             <form method="post" action="/platform/roles/{{ rid }}/permission" data-cs-autosubmit>
+  {{ csrf_input() }}
                               <input type="hidden" name="key" value="{{ perm.key }}">
                               <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
                               <input type="hidden" name="tab" value="permissions">
@@ -313,6 +339,7 @@
                       </div>
                       {% if pkey and selected_role.is_mutable and not is_create %}
                         <form method="post" action="/platform/roles/{{ rid }}/permission" data-cs-autosubmit>
+  {{ csrf_input() }}
                           <input type="hidden" name="key" value="{{ pkey }}">
                           <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
                           <input type="hidden" name="tab" value="sidebar">
@@ -337,19 +364,30 @@
                 Save the role first, then add members.
               </div>
             {% else %}
-              {% if available_members %}
-                <form method="post" action="/platform/roles/{{ rid }}/members/add" class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                  {% call field.field() %}
-                    {{ field.field_label("Add staff member", for_id="add-member") }}
-                    {% call sn.select_native(name="user_id", attrs={"id": "add-member", "aria-label": "Select staff member"}) %}
-                      {% for m in available_members %}
-                        <option value="{{ m.id }}">{{ m.name }} — {{ m.email }}</option>
-                      {% endfor %}
+              <form method="post" action="/platform/roles/{{ rid }}/members/add" class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+  {{ csrf_input() }}
+                {% call field.field() %}
+                  {{ field.field_label("Add staff member", for_id="add-member") }}
+                  {% call cb.combobox(attrs={"data-platform-role-member-combobox": "", "data-search-url": "/platform/roles/" ~ rid ~ "/members/search"}) %}
+                    <input type="hidden" name="user_id" data-platform-role-member-value>
+                    {{ cb.combobox_input(
+                        placeholder="Search platform staff by name or email…",
+                        attrs={
+                          "id": "add-member",
+                          "type": "search",
+                          "autocomplete": "off",
+                          "spellcheck": "false",
+                          "data-platform-role-member-input": ""
+                        }
+                    ) }}
+                    {% call cb.combobox_popup(class="absolute left-0 right-0 top-full mt-1", attrs={"id": "add-staff-member-popup", "data-platform-role-member-results": ""}) %}
+                      {{ cb.combobox_empty("Type to search platform staff.", attrs={"data-platform-role-member-empty": ""}) }}
                     {% endcall %}
+                    {{ cb.combobox_status(attrs={"data-platform-role-member-status": ""}) }}
                   {% endcall %}
-                  {% call button.button(type="submit") %}Add member{% endcall %}
-                </form>
-              {% endif %}
+                {% endcall %}
+                {% call button.button(type="submit", attrs={"disabled": "", "data-platform-role-member-submit": ""}) %}Add member{% endcall %}
+              </form>
               <div class="divide-y rounded-lg border">
                 {% if not selected_role.members %}
                   <div class="px-4 py-8 text-center text-sm text-muted-foreground">No members assigned to this role.</div>
@@ -363,6 +401,7 @@
                       </div>
                       {{ badge.badge(member.status.title(), variant="outline") }}
                       <form method="post" action="/platform/roles/{{ rid }}/members/{{ member.id }}/remove">
+  {{ csrf_input() }}
                         {% call button.button(type="submit", variant="ghost", size="icon-xs", class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive", attrs={"aria-label": "Remove " ~ member.name}) %}
                           <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                         {% endcall %}
@@ -378,4 +417,120 @@
       </div>
     </div>
   </div>
+
+  {% app_script "platform-role-member-combobox" %}
+  (function () {
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, function (ch) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+      });
+    }
+
+    function initCombobox(root) {
+      if (root._platformRoleMemberCombobox) return;
+      root._platformRoleMemberCombobox = true;
+
+      var input = root.querySelector('[data-platform-role-member-input]');
+      var hidden = root.querySelector('[data-platform-role-member-value]');
+      var results = root.querySelector('[data-platform-role-member-results]');
+      var status = root.querySelector('[data-platform-role-member-status]');
+      var submit = root.closest('form') && root.closest('form').querySelector('[data-platform-role-member-submit]');
+      var searchUrl = root.dataset.searchUrl;
+      var timer = null;
+      var controller = null;
+
+      if (!input || !hidden || !results || !searchUrl) return;
+
+      function setSubmitEnabled(enabled) {
+        if (submit) submit.disabled = !enabled;
+      }
+
+      function showMessage(message) {
+        results.innerHTML = '<div class="py-6 text-center text-sm text-muted-foreground" data-slot="combobox-empty" data-platform-role-member-empty>' + escapeHtml(message) + '</div>';
+        results.hidden = false;
+        results.classList.remove('hidden');
+        if (status) status.textContent = message;
+      }
+
+      function closeResults() {
+        results.hidden = true;
+        results.classList.add('hidden');
+      }
+
+      function render(items) {
+        if (!items.length) {
+          showMessage('No platform staff found.');
+          return;
+        }
+
+        results.innerHTML = items.map(function (item) {
+          var label = (item.name || 'Unnamed') + ' — ' + item.email;
+          return '<div class="relative flex cursor-pointer select-none flex-col rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground" data-slot="combobox-item" data-value="' + escapeHtml(item.id) + '" data-label="' + escapeHtml(label) + '">' +
+            '<span class="font-medium">' + escapeHtml(item.name || 'Unnamed') + '</span>' +
+            '<span class="text-xs text-muted-foreground">' + escapeHtml(item.email) + '</span>' +
+          '</div>';
+        }).join('');
+        results.hidden = false;
+        results.classList.remove('hidden');
+        if (status) status.textContent = items.length + ' result' + (items.length === 1 ? '' : 's');
+      }
+
+      function search() {
+        var query = input.value.trim();
+        hidden.value = '';
+        setSubmitEnabled(false);
+
+        if (query.length < 2) {
+          showMessage('Type at least 2 characters to search platform staff.');
+          return;
+        }
+
+        if (controller) controller.abort();
+        controller = new AbortController();
+        showMessage('Searching…');
+
+        fetch(searchUrl + '?q=' + encodeURIComponent(query), {
+          credentials: 'same-origin',
+          signal: controller.signal
+        })
+          .then(function (response) { return response.ok ? response.json() : Promise.reject(); })
+          .then(function (body) { render(body.items || []); })
+          .catch(function (error) {
+            if (error && error.name === 'AbortError') return;
+            showMessage('Could not search platform staff.');
+          });
+      }
+
+      input.addEventListener('input', function () {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(search, 250);
+      });
+
+      input.addEventListener('focus', function () {
+        if (input.value.trim().length >= 2) search();
+      });
+
+      results.addEventListener('click', function (event) {
+        var item = event.target.closest('[data-slot="combobox-item"]');
+        if (!item) return;
+        hidden.value = item.dataset.value || '';
+        input.value = item.dataset.label || item.textContent.trim();
+        setSubmitEnabled(Boolean(hidden.value));
+        closeResults();
+      });
+
+      document.addEventListener('click', function (event) {
+        if (!root.contains(event.target)) closeResults();
+      });
+    }
+
+    function scan() {
+      document.querySelectorAll('[data-platform-role-member-combobox]').forEach(initCombobox);
+    }
+
+    scan();
+    window.addEventListener('app-router:patch', scan);
+  })();
+  {% end_app_script %}
+
 {% endmacro %}

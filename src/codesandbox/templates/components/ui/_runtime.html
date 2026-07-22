@@ -185,10 +185,10 @@ function initToast(toast) {
 document.addEventListener("click", (event) => {
   const target = event.target;
 
-  const modalTrigger = target.closest(`${slot("dialog-trigger")}, ${slot("alert-dialog-trigger")}, ${slot("sheet-trigger")}, ${slot("drawer-trigger")}, ${slot("command-dialog-trigger")}`);
+  const modalTrigger = target.closest(`[data-dialog-trigger], ${slot("dialog-trigger")}, ${slot("alert-dialog-trigger")}, ${slot("sheet-trigger")}, ${slot("drawer-trigger")}, ${slot("command-dialog-trigger")}`);
   if (modalTrigger) {
     const triggerSlot = modalTrigger.dataset.slot;
-    const targetSlot = triggerSlot.replace("-trigger", "");
+    const targetSlot = modalTrigger.hasAttribute("data-dialog-trigger") ? "dialog" : triggerSlot.replace("-trigger", "");
     openDialog(controlledBy(modalTrigger, targetSlot));
     return;
   }

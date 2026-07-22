@@ -19,12 +19,18 @@ services:
       dockerfile: Dockerfile.dev
       network: host
     container_name: codesandbox-app
+    command:
+      - /bin/sh
+      - -c
+      - |
+        uv run nexorm makemigrations
+        uv run nexorm migrate
+        uv run python seed.py
+        exec uv run flask run --host 0.0.0.0 --port 5000 --debug
     volumes:
-      # Bind-mount the entire project for live reload
       - .:/app
-      # Named volume keeps the container's .venv intact even when . is mounted
-      - venv:/app/.venv
     environment:
+      UV_PROJECT_ENVIRONMENT: /opt/codesandbox/.venv
       DATABASE_URL: mysql://codesandbox:codesandbox@mysql:3306/codesandbox
       REDIS_URL: redis://redis:6379/0
       S3_ENDPOINT: http://minio:9000
@@ -38,6 +44,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     restart: unless-stopped
 
@@ -97,7 +105,6 @@ services:
     restart: unless-stopped
 
 volumes:
-  venv:
   mysql_data:
   redis_data:
   minio_data:

@@ -683,6 +683,305 @@
       "model": "LoginAttempt",
       "name": "login_attempts"
     },
+    "organization_databases": {
+      "columns": {
+        "created_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "created_at",
+          "nullable": false,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "db_host": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "127.0.0.1",
+          "field": {
+            "auto_increment": false,
+            "default": "127.0.0.1",
+            "index": false,
+            "max_length": 255,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 255,
+          "name": "db_host",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "db_name": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 160,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 160,
+          "name": "db_name",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "db_port": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": 3306,
+          "field": {
+            "auto_increment": false,
+            "default": 3306,
+            "index": false,
+            "max_length": null,
+            "nullable": false,
+            "primary_key": false,
+            "type": "IntegerField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "db_port",
+          "nullable": false,
+          "primary_key": false,
+          "type": "IntegerField",
+          "unique": false
+        },
+        "db_user": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "",
+          "field": {
+            "auto_increment": false,
+            "default": "",
+            "index": false,
+            "max_length": 160,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 160,
+          "name": "db_user",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 36,
+            "nullable": false,
+            "primary_key": true,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 36,
+          "name": "id",
+          "nullable": false,
+          "primary_key": true,
+          "type": "StringField",
+          "unique": false
+        },
+        "org_id": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "foreign_key": {
+            "auto_increment": false,
+            "default": null,
+            "index": true,
+            "max_length": null,
+            "nullable": false,
+            "on_delete": "CASCADE",
+            "primary_key": false,
+            "related_name": null,
+            "target_field": {
+              "auto_increment": false,
+              "default": null,
+              "index": false,
+              "max_length": 36,
+              "nullable": false,
+              "primary_key": true,
+              "type": "StringField",
+              "unique": false
+            },
+            "to": "Organization",
+            "type": "ForeignKey",
+            "unique": false
+          },
+          "index": true,
+          "max_digits": null,
+          "max_length": null,
+          "name": "org_id",
+          "nullable": false,
+          "primary_key": false,
+          "type": "ForeignKey",
+          "unique": false
+        },
+        "provisioned_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "provisioned_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        },
+        "status": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": "provisioning",
+          "field": {
+            "auto_increment": false,
+            "default": "provisioning",
+            "index": false,
+            "max_length": 30,
+            "nullable": false,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 30,
+          "name": "status",
+          "nullable": false,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "updated_at": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": null,
+            "nullable": true,
+            "primary_key": false,
+            "type": "DateTimeField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": null,
+          "name": "updated_at",
+          "nullable": true,
+          "primary_key": false,
+          "type": "DateTimeField",
+          "unique": false
+        }
+      },
+      "foreign_keys": [
+        {
+          "column": "org_id",
+          "name": "fk_organization_databases_org_id",
+          "on_delete": "CASCADE",
+          "to_column": "id",
+          "to_table": "organizations"
+        }
+      ],
+      "indexes": [
+        {
+          "columns": [
+            "org_id"
+          ],
+          "name": "idx_organization_databases_org_id",
+          "unique": false
+        }
+      ],
+      "model": "OrganizationDatabase",
+      "name": "organization_databases"
+    },
     "organization_invitations": {
       "columns": {
         "created_at": {
@@ -791,7 +1090,7 @@
             "index": true,
             "max_length": null,
             "nullable": true,
-            "on_delete": "CASCADE",
+            "on_delete": "SET NULL",
             "primary_key": false,
             "related_name": null,
             "target_field": {
@@ -814,7 +1113,7 @@
             "index": true,
             "max_length": null,
             "nullable": true,
-            "on_delete": "CASCADE",
+            "on_delete": "SET NULL",
             "primary_key": false,
             "related_name": null,
             "target_field": {
@@ -959,7 +1258,7 @@
         {
           "column": "invited_by",
           "name": "fk_organization_invitations_invited_by",
-          "on_delete": "CASCADE",
+          "on_delete": "SET NULL",
           "to_column": "id",
           "to_table": "users"
         }
@@ -1874,25 +2173,25 @@
         "position": {
           "auto_increment": false,
           "decimal_places": null,
-          "default": "0",
+          "default": 0,
           "field": {
             "auto_increment": false,
-            "default": "0",
+            "default": 0,
             "index": false,
-            "max_length": 10,
+            "max_length": null,
             "nullable": false,
             "primary_key": false,
-            "type": "StringField",
+            "type": "IntegerField",
             "unique": false
           },
           "foreign_key": null,
           "index": false,
           "max_digits": null,
-          "max_length": 10,
+          "max_length": null,
           "name": "position",
           "nullable": false,
           "primary_key": false,
-          "type": "StringField",
+          "type": "IntegerField",
           "unique": false
         }
       },
@@ -2093,6 +2392,30 @@
           "max_digits": null,
           "max_length": 80,
           "name": "industry",
+          "nullable": true,
+          "primary_key": false,
+          "type": "StringField",
+          "unique": false
+        },
+        "invite_code": {
+          "auto_increment": false,
+          "decimal_places": null,
+          "default": null,
+          "field": {
+            "auto_increment": false,
+            "default": null,
+            "index": false,
+            "max_length": 20,
+            "nullable": true,
+            "primary_key": false,
+            "type": "StringField",
+            "unique": false
+          },
+          "foreign_key": null,
+          "index": false,
+          "max_digits": null,
+          "max_length": 20,
+          "name": "invite_code",
           "nullable": true,
           "primary_key": false,
           "type": "StringField",

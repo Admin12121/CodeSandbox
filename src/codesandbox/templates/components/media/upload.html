@@ -1,0 +1,63 @@
+{% import "components/media/avatar.html" as media_avatar %}
+
+{% macro image_upload(
+  id,
+  name="logo",
+  entity_name="",
+  preview_url="",
+  upload_url="",
+  label="Image",
+  description="PNG, JPG, WebP under 2 MB",
+  editable=true,
+  size="xl",
+  class="",
+  input_attrs={},
+  bind_key=""
+) -%}
+{% set input_id = id ~ "-input" %}
+{% set preview_id = id ~ "-preview" %}
+{% set fallback_id = id ~ "-fallback" %}
+{% set sizes = {
+  "md": "size-8 rounded-lg text-xs",
+  "lg": "size-12 rounded-xl text-base",
+  "xl": "size-16 rounded-xl text-xl",
+} %}
+{% set size_class = sizes.get(size, size) %}
+<div class="{{ cn('flex items-center gap-5', class) }}" data-media-upload {% if bind_key %}data-media-bind="{{ bind_key }}" data-media-name="{{ entity_name }}"{% endif %} {% if upload_url %}data-upload-url="{{ upload_url }}"{% endif %}>
+  <div class="relative shrink-0">
+    {% if preview_url %}
+    <img id="{{ preview_id }}" data-media-preview src="{{ preview_url }}" alt="{{ entity_name }}"
+      class="{{ cn(size_class, 'border object-cover') }}">
+    <span id="{{ fallback_id }}" data-media-fallback
+      class="{{ cn('hidden items-center justify-center border bg-gradient-to-br from-primary/20 to-primary/5 font-bold text-primary select-none', size_class) }}">
+      {{ media_avatar.initials(entity_name) }}
+    </span>
+    {% else %}
+    <span id="{{ fallback_id }}" data-media-fallback
+      class="{{ cn('flex items-center justify-center border bg-gradient-to-br from-primary/20 to-primary/5 font-bold text-primary select-none', size_class) }}">
+      {{ media_avatar.initials(entity_name) }}
+    </span>
+    <img id="{{ preview_id }}" data-media-preview src="" alt=""
+      class="{{ cn('hidden absolute inset-0 border object-cover', size_class) }}">
+    {% endif %}
+  </div>
+  <div class="grid gap-1.5">
+    <p class="text-sm font-medium">{{ label }}</p>
+    <p class="text-xs text-muted-foreground">{{ description }}</p>
+    {% if editable %}
+    <div class="flex items-center gap-2 mt-0.5">
+      <label for="{{ input_id }}"
+        class="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium hover:bg-accent transition-colors">
+        <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload
+      </label>
+      <input data-media-upload-input type="file" id="{{ input_id }}" name="{{ name }}"
+        accept="image/png,image/jpeg,image/webp"
+        class="sr-only" {% if upload_url %}data-upload-url="{{ upload_url }}"{% endif %}
+        {{ html_attrs(**input_attrs) }}>
+      <span data-media-status class="hidden text-xs text-muted-foreground"></span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}

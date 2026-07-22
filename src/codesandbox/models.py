@@ -1,6 +1,7 @@
 from codesandbox.features.identity.models import ApiKey, LoginAttempt, Session, User
 from codesandbox.features.organizations.models import (
     Organization,
+    OrganizationDatabase,
     OrganizationInvitation,
     OrganizationMember,
     OrganizationMemberRole,
@@ -31,6 +32,7 @@ __all__ = [
     "OrganizationPermission",
     "OrganizationRolePermission",
     "OrganizationMemberRole",
+    "OrganizationDatabase",
 ]
 
 # Auth extensions — imported here so NexORM registers them for migrations

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from nexorm.fields import BooleanField, DateTimeField, ForeignKey, StringField, TextField
+from nexorm.fields import BooleanField, DateTimeField, ForeignKey, IntegerField, StringField, TextField
 from nexorm.model import Model
 
 from codesandbox.features.identity.models import User
@@ -24,6 +24,7 @@ class Organization(Model):
     location = StringField(max_length=120, nullable=True)
     contact_email = StringField(max_length=255, nullable=True)
     status = StringField(max_length=20, default="active")
+    invite_code = StringField(max_length=20, nullable=True)
     created_by = ForeignKey(to=User, on_delete="SET NULL", nullable=True)
     created_at = DateTimeField(default=_now)
     updated_at = DateTimeField(nullable=True)
@@ -48,7 +49,7 @@ class OrganizationInvitation(Model):
     email = StringField(max_length=255)
     token = StringField(max_length=64, unique=True)
     status = StringField(max_length=20, default="pending")
-    invited_by = ForeignKey(to=User, on_delete="CASCADE", nullable=True)
+    invited_by = ForeignKey(to=User, on_delete="SET NULL", nullable=True)
     created_at = DateTimeField(default=_now)
     expires_at = DateTimeField(nullable=True)
 
@@ -63,7 +64,7 @@ class OrganizationRole(Model):
     color = StringField(max_length=20, default="#6366f1")
     description = TextField(nullable=True)
     is_system = BooleanField(default=False)
-    position = StringField(max_length=10, default="0")
+    position = IntegerField(default=0)
     created_at = DateTimeField(default=_now)
 
     class Meta:
@@ -96,3 +97,19 @@ class OrganizationMemberRole(Model):
 
     class Meta:
         table_name = "organization_member_roles"
+
+
+class OrganizationDatabase(Model):
+    id = StringField(primary_key=True, max_length=36)
+    org_id = ForeignKey(to=Organization, on_delete="CASCADE")
+    db_name = StringField(max_length=160)
+    db_host = StringField(max_length=255, default="127.0.0.1")
+    db_port = IntegerField(default=3306)
+    db_user = StringField(max_length=160, default="")
+    status = StringField(max_length=30, default="provisioning")
+    provisioned_at = DateTimeField(nullable=True)
+    created_at = DateTimeField(default=_now)
+    updated_at = DateTimeField(nullable=True)
+
+    class Meta:
+        table_name = "organization_databases"

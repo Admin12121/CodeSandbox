@@ -1,0 +1,38 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/button.html" as button %}
+
+{% macro join_form() %}
+<div class="flex min-h-[70vh] items-center justify-center p-6">
+  {% call frame.frame(class="w-full max-w-md p-6") %}
+    <div class="mx-auto max-w-md grid gap-5">
+      <div class="flex size-12 items-center justify-center rounded-2xl border bg-muted">
+        <svg class="size-6 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+      </div>
+
+      <div id="join-form-wrap" class="grid gap-4">
+        {% call field.field() %}
+          {{ field.field_label("Invite link or code", for_id="join-input") }}
+          {{ input.input(
+            name="token",
+            placeholder="https://… or paste token directly",
+            attrs={"id": "join-input", "autocomplete": "off", "autocorrect": "off", "spellcheck": "false"}
+          ) }}
+          {% call field.field_description() %}An invite link looks like: <code class="font-mono text-xs">/my/organizations/join/&lt;token&gt;</code>{% endcall %}
+        {% endcall %}
+        {% call button.button(type="button", attrs={"id": "join-btn"}) %}
+          Join organization
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        {% endcall %}
+      </div>
+
+      <p class="text-center text-xs text-muted-foreground">
+        Don't have an invite?
+        <a href="/my/organizations?mode=create" class="text-primary hover:underline">Create your own organization</a>
+        instead.
+      </p>
+    </div>
+  {% endcall %}
+</div>
+{% endmacro %}

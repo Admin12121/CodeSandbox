@@ -14,6 +14,9 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "pyotp>=2.10.0",
     "requests>=2.34.2",
+    "boto3>=1.34",
+    "cryptography>=42.0",
+    "qrcode>=7.4",
 ]
 
 [tool.uv.workspace]
@@ -25,3 +28,7 @@ members = [
 [tool.uv.sources]
 app-router = { workspace = true, editable = true }
 nexorm = { workspace = true, editable = true }
+
+[tool.nexorm]
+models = "codesandbox.models"
+database_url_env = "DATABASE_URL"

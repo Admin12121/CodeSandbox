@@ -46,7 +46,7 @@
         </div>
         <p class="text-xs text-muted-foreground">Your account is protected with two-factor authentication.</p>
         {% call form.form(action="/settings/2fa/disable", method="post") %}
-          {% call button.button(type="submit", variant="destructive-outline", size="sm") %}
+          {% call button.button(type="submit", variant="destructive-outline") %}
             Disable two-factor auth
           {% endcall %}
         {% endcall %}
@@ -114,7 +114,7 @@
           {{ badge.badge("Not configured", variant="secondary") }}
         </div>
         {% call form.form(action="/settings/2fa/setup", method="post") %}
-          {% call button.button(type="submit", size="sm") %}Set up authenticator{% endcall %}
+          {% call button.button(type="submit") %}Set up authenticator{% endcall %}
         {% endcall %}
       </div>
     {% endcall %}

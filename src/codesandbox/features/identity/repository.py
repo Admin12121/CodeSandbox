@@ -182,11 +182,14 @@ def upsert_totp_method(
     user_id: str,
     secret_encrypted: str,
     is_enabled: bool = False,
+    backup_codes_encrypted: str | None = None,
 ) -> TwoFactorMethod:
     existing = get_totp_method(user_id)
     if existing:
         existing.secret_encrypted = secret_encrypted
         existing.is_enabled = is_enabled
+        if backup_codes_encrypted is not None:
+            existing.backup_codes_encrypted = backup_codes_encrypted
         existing.updated_at = datetime.now(timezone.utc)
         existing.save()
         return existing
@@ -195,6 +198,7 @@ def upsert_totp_method(
         method_type="totp",
         secret_encrypted=secret_encrypted,
         is_enabled=is_enabled,
+        backup_codes_encrypted=backup_codes_encrypted,
     )
     method.save()
     return method
@@ -217,6 +221,15 @@ def disable_totp(user_id: str) -> None:
         method.is_enabled = False
         method.updated_at = datetime.now(timezone.utc)
         method.save()
+
+
+def get_user_auth_accounts(user_id: str) -> list[AuthAccount]:
+    return AuthAccount.objects.filter(user_id=user_id).all()
+
+
+def delete_auth_account_by_provider(user_id: str, provider: str) -> None:
+    for acc in AuthAccount.objects.filter(user_id=user_id, provider=provider).all():
+        acc.delete()
 
 
 def list_users(

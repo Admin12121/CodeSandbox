@@ -4,11 +4,13 @@
 {% import "components/ui/frame.html" as frame %}
 {% import "components/ui/input-group.html" as ig %}
 {% import "components/ui/select.html" as sel %}
-{% import "components/ui/field.html" as field %}
 {% import "components/ui/input.html" as input %}
+{% import "components/ui/table-pagination.html" as tp %}
+{% import "components/media/avatar.html" as media_avatar %}
+{% import "components/media/upload.html" as media_upload %}
 
 {# ═══ LIST VIEW ═══ #}
-{% macro organizations_table(organizations, total, page, total_pages, search, status_filter) %}
+{% macro organizations_table(organizations, total, page, total_pages, search, status_filter, page_size=25) %}
   {% set status_options = [
     {"value": "all", "label": "All status"},
     {"value": "active", "label": "Active"},
@@ -63,7 +65,7 @@
             {{ table.table_head("Status", class="w-28") }}
             {{ table.table_head("Members", class="w-28 text-right") }}
             {{ table.table_head("Created", class="w-36") }}
-            {{ table.table_head("", class="w-12") }}
+            {{ table.table_head("Actions", class="w-12") }}
           {% endcall %}
         {% endcall %}
         {% call table.table_body() %}
@@ -75,9 +77,12 @@
             {% for org in organizations %}
               {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/platform/organizations?org=" ~ org.id}) %}
                 {% call table.table_cell() %}
-                  <div class="min-w-0">
-                    <div class="truncate font-medium">{{ org.name }}</div>
-                    <div class="truncate text-xs text-muted-foreground">{{ org.slug }}</div>
+                  <div class="flex min-w-0 items-center gap-3">
+                    {{ media_avatar.image_avatar(org.name, org.logo_url, size="md", bind_key="org:" ~ org.id) }}
+                    <div class="min-w-0">
+                      <div class="truncate font-medium">{{ org.name }}</div>
+                      <div class="truncate text-xs text-muted-foreground">{{ org.slug }}</div>
+                    </div>
                   </div>
                 {% endcall %}
                 {% call table.table_cell() %}
@@ -94,10 +99,12 @@
                   {% if org.created_at %}{{ org.created_at.strftime("%b %d, %Y") }}{% endif %}
                 {% endcall %}
                 {% call table.table_cell() %}
-                  <a href="/platform/organizations?org={{ org.id }}" aria-label="Edit {{ org.name }}"
-                     class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent hover:text-accent-foreground transition-all sm:size-6">
-                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
-                  </a>
+                  <div class="flex justify-end">
+                    <a href="/platform/organizations?org={{ org.id }}" aria-label="Edit {{ org.name }}"
+                        class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all sm:size-6">
+                        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    </a>
+                  </div>
                 {% endcall %}
               {% endcall %}
             {% endfor %}
@@ -107,22 +114,13 @@
     {% endcall %}
 
     {# Pagination #}
-    {% if total_pages > 1 %}
-      <div class="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{{ total }} organizations total</span>
-        <div class="flex items-center gap-1">
-          {% if page > 1 %}
-            <a href="?page={{ page - 1 }}&search={{ search }}&status={{ status_filter }}"
-               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">← Prev</a>
-          {% endif %}
-          <span class="px-2">{{ page }} / {{ total_pages }}</span>
-          {% if page < total_pages %}
-            <a href="?page={{ page + 1 }}&search={{ search }}&status={{ status_filter }}"
-               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">Next →</a>
-          {% endif %}
-        </div>
-      </div>
-    {% endif %}
+    {{ tp.table_pagination(
+      current_page=page,
+      total_pages=total_pages,
+      total_items=total,
+      page_size=page_size,
+      base_url="/platform/organizations?search=" ~ search ~ "&status=" ~ status_filter
+    ) }}
 
   </div>
 {% endmacro %}
@@ -131,7 +129,7 @@
 {% macro org_editor(selected_org, organizations, error) %}
 {% set is_create = selected_org.id is none %}
 {% set oid = selected_org.id %}
-<div class="flex min-h-[calc(100dvh-var(--header-height)-3rem)] overflow-hidden rounded-xl border bg-background">
+<div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden bg-background">
 
   {# Left sidebar: org list #}
   <div class="flex w-64 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
@@ -158,7 +156,7 @@
           <li>
             <a href="/platform/organizations?org={{ org.id }}"
                class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors {{ 'bg-sidebar-accent font-medium text-sidebar-accent-foreground' if oid == org.id else 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground' }}">
-              <span class="size-2 shrink-0 rounded-full {{ 'bg-emerald-500' if org.status == 'active' else ('bg-destructive' if org.status == 'suspended' else 'bg-muted-foreground') }}"></span>
+              {{ media_avatar.image_avatar(org.name, org.logo_url, size="xs", class="font-semibold", bind_key="org:" ~ org.id) }}
               <span class="truncate">{{ org.name }}</span>
             </a>
           </li>
@@ -172,14 +170,18 @@
     {# Header #}
     <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
       <div class="min-w-0">
-        <div class="truncate text-sm font-semibold">{{ "New Organization" if is_create else selected_org.name }}</div>
-        {% if not is_create %}
-          <div class="truncate text-xs text-muted-foreground">{{ selected_org.member_count }} member{{ "" if selected_org.member_count == 1 else "s" }}</div>
-        {% endif %}
+        <div class="flex min-w-0 items-center gap-2">
+          {% if not is_create %}
+            {{ media_avatar.image_avatar(selected_org.name, selected_org.logo_url, size="sm", class="font-semibold", bind_key="org:" ~ selected_org.id) }}
+          {% endif %}
+          <div class="truncate text-sm font-semibold">{{ "New Organization" if is_create else selected_org.name }}</div>
+        </div>
       </div>
-      {% call button.button(type="submit", size="icon-xs", attrs={"form": "org-form", "aria-label": "Save"}) %}
-        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
-      {% endcall %}
+      {% if is_create %}
+        {% call button.button(type="submit", size="icon-xs", attrs={"form": "org-form", "aria-label": "Save"}) %}
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
+        {% endcall %}
+      {% endif %}
     </div>
 
     {% if error %}
@@ -192,148 +194,369 @@
     {% endif %}
 
     <div class="min-h-0 flex-1 overflow-y-auto">
-      <form id="org-form" method="post"
-            action="{{ '/platform/organizations/create' if is_create else '/platform/organizations/' ~ oid ~ '/update' }}"
-            class="grid gap-6 p-4">
-        {% if oid %}<input type="hidden" name="org_id" value="{{ oid }}">{% endif %}
+      <div class="grid gap-4 p-4">
 
-        {# Identity #}
         {% set industry_opts = ["Technology","Software & SaaS","Finance & Banking","Healthcare","Education","Retail & E-commerce","Media & Entertainment","Manufacturing","Consulting & Services","Nonprofit","Government","Other"] %}
         {% set size_opts = [
-          {"value": "1-10", "label": "1–10 employees"},
-          {"value": "11-50", "label": "11–50 employees"},
-          {"value": "51-200", "label": "51–200 employees"},
+          {"value": "1-10",    "label": "1–10 employees"},
+          {"value": "11-50",   "label": "11–50 employees"},
+          {"value": "51-200",  "label": "51–200 employees"},
           {"value": "201-500", "label": "201–500 employees"},
-          {"value": "501-1000", "label": "501–1,000 employees"},
-          {"value": "1000+", "label": "1,000+ employees"},
+          {"value": "501-1000","label": "501–1,000 employees"},
+          {"value": "1000+",   "label": "1,000+ employees"},
         ] %}
-        <div class="grid gap-4 md:grid-cols-2">
-          {% call field.field(class="md:col-span-2") %}
-            {{ field.field_label("Name", for_id="org-name") }}
-            {{ input.input(name="name", value=selected_org.name, placeholder="Acme Corp", required=true, attrs={"id": "org-name", "autocomplete": "off"}) }}
-          {% endcall %}
-          {% call field.field(class="md:col-span-2") %}
-            {{ field.field_label("Description", for_id="org-desc") }}
-            {{ input.input(name="description", value=selected_org.description, placeholder="What does this org do?", attrs={"id": "org-desc"}) }}
-          {% endcall %}
-          {% call field.field() %}
-            {{ field.field_label("Website", for_id="org-website") }}
-            {{ input.input(type="url", name="website", value=selected_org.website if selected_org.website is defined else "", placeholder="https://acme.com", attrs={"id": "org-website"}) }}
-          {% endcall %}
-          {% call field.field() %}
-            {{ field.field_label("Contact email", for_id="org-cemail") }}
-            {{ input.input(type="email", name="contact_email", value=selected_org.contact_email if selected_org.contact_email is defined else "", placeholder="hello@acme.com", attrs={"id": "org-cemail"}) }}
-          {% endcall %}
-          {% call field.field() %}
-            {{ field.field_label("Industry", for_id="org-industry") }}
-            {% set org_industry = selected_org.industry if selected_org.industry is defined else "" %}
-            {% call sel.select(name="industry", value=org_industry) %}
-              {% call sel.select_trigger(target="org-industry-popup") %}
-                {{ sel.select_value(org_industry if org_industry else "Select industry") }}
-                <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-              {% endcall %}
-              {% call sel.select_popup(attrs={"id": "org-industry-popup"}) %}
-                {% for ind in industry_opts %}
-                  {% call sel.select_item(value=ind, selected=(ind == org_industry)) %}{{ ind }}{% endcall %}
-                {% endfor %}
-              {% endcall %}
-            {% endcall %}
-          {% endcall %}
-          {% call field.field() %}
-            {{ field.field_label("Organization size", for_id="org-size") }}
-            {% set org_size = selected_org.size if selected_org.size is defined else "" %}
-            {% set sz_match = size_opts | selectattr('value', 'equalto', org_size) | list %}
-            {% call sel.select(name="size", value=org_size) %}
-              {% call sel.select_trigger(target="org-size-popup") %}
-                {{ sel.select_value(sz_match[0].label if sz_match else "Select size") }}
-                <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-              {% endcall %}
-              {% call sel.select_popup(attrs={"id": "org-size-popup"}) %}
-                {% for opt in size_opts %}
-                  {% call sel.select_item(value=opt.value, selected=(opt.value == org_size)) %}{{ opt.label }}{% endcall %}
-                {% endfor %}
-              {% endcall %}
-            {% endcall %}
-          {% endcall %}
-          {% call field.field() %}
-            {{ field.field_label("Location", for_id="org-location") }}
-            {{ input.input(name="location", value=selected_org.location if selected_org.location is defined else "", placeholder="San Francisco, CA", attrs={"id": "org-location"}) }}
-          {% endcall %}
-          {% if not is_create %}
-            {% call field.field() %}
-              {{ field.field_label("Slug") }}
-              {{ input.input(value=selected_org.slug, attrs={"readonly": "readonly", "tabindex": "-1"}) }}
-              {% call field.field_description() %}Slug is set from the name and cannot be changed.{% endcall %}
-            {% endcall %}
-          {% endif %}
-        </div>
+        {% set org_industry = selected_org.industry if selected_org.industry is defined else "" %}
+        {% set org_size     = selected_org.size     if selected_org.size     is defined else "" %}
 
         {% if is_create %}
-          <div>
-            {% call button.button(type="submit", class="w-full sm:w-auto") %}Create organization{% endcall %}
-          </div>
-        {% else %}
-          {# Pending approval banner — shown prominently when status is pending #}
-          {% if selected_org.status == "pending" %}
-            <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-yellow-500/30 bg-yellow-500/8 px-3 py-3">
-              <div class="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-400">
-                <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                This organization is awaiting approval.
-              </div>
-              <div class="flex gap-2">
-                <form method="post" action="/platform/organizations/{{ oid }}/update-status">
-                  <input type="hidden" name="status" value="active">
-                  {% call button.button(type="submit", size="sm") %}
-                    <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                    Approve
+          {# ── Create: direct form inputs ── #}
+          <form id="org-form" method="post" action="/platform/organizations/create" enctype="multipart/form-data">
+  {{ csrf_input() }}
+            {% call frame.frame() %}
+              {% call table.table(variant="card") %}
+                {% call table.table_header() %}
+                  {% call table.table_row() %}
+                    {{ table.table_head("Organization details", class="w-40") }}
+                    {{ table.table_head("") }}
                   {% endcall %}
-                </form>
-                <form method="post" action="/platform/organizations/{{ oid }}/update-status">
-                  <input type="hidden" name="status" value="rejected">
-                  {% call button.button(type="submit", variant="destructive-outline", size="sm") %}
-                    Reject
+                {% endcall %}
+                {% call table.table_body() %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Logo{% endcall %}
+                    {% call table.table_cell() %}
+                      {{ media_upload.image_upload(
+                        id="platform-org-logo-create",
+                        name="logo",
+                        entity_name="New organization",
+                        label="Organization logo",
+                        description="PNG, JPG, WebP under 2 MB",
+                        size="lg"
+                      ) }}
+                    {% endcall %}
                   {% endcall %}
-                </form>
-              </div>
-            </div>
-          {% endif %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Name{% endcall %}
+                    {% call table.table_cell() %}{{ input.input(name="name", value="", placeholder="Acme Corp", required=true, attrs={"autocomplete": "off"}) }}{% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Description{% endcall %}
+                    {% call table.table_cell() %}{{ input.input(name="description", value="", placeholder="What does this org do?") }}{% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Website{% endcall %}
+                    {% call table.table_cell() %}{{ input.input(type="url", name="website", value="", placeholder="https://acme.com") }}{% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Contact email{% endcall %}
+                    {% call table.table_cell() %}{{ input.input(type="email", name="contact_email", value="", placeholder="hello@acme.com") }}{% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Industry{% endcall %}
+                    {% call table.table_cell() %}
+                      <select name="industry" class="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                        <option value="">Select industry</option>
+                        {% for ind in industry_opts %}<option value="{{ ind }}">{{ ind }}</option>{% endfor %}
+                      </select>
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Company size{% endcall %}
+                    {% call table.table_cell() %}
+                      <select name="size" class="flex h-9 w-full rounded-lg border border-input bg-background px-3 py-1 text-sm text-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                        <option value="">Select size</option>
+                        {% for opt in size_opts %}<option value="{{ opt.value }}">{{ opt.label }}</option>{% endfor %}
+                      </select>
+                    {% endcall %}
+                  {% endcall %}
+                  {% call table.table_row() %}
+                    {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Location{% endcall %}
+                    {% call table.table_cell() %}{{ input.input(name="location", value="", placeholder="San Francisco, CA") }}{% endcall %}
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+            <div>{% call button.button(type="submit", class="w-full sm:w-auto") %}Create organization{% endcall %}</div>
+          </form>
 
-          {# Status management #}
-          <div class="grid gap-3">
-            <div class="text-sm font-semibold">Status</div>
-            <div class="grid divide-y rounded-xl border">
-              {% for st_val, st_label, st_desc, st_variant in [
-                ("active", "Active", "Organization is operational and members can access it.", "outline"),
-                ("inactive", "Inactive", "Organization is hidden but data is preserved.", "secondary"),
-                ("pending", "Pending", "Awaiting admin approval before going active.", "warning"),
-                ("rejected", "Rejected", "Organization request was denied.", "error"),
-                ("suspended", "Suspended", "Access is blocked. Use for policy violations.", "destructive"),
-              ] %}
-                <div class="flex items-center justify-between gap-4 p-3">
-                  <div class="min-w-0">
-                    <div class="flex items-center gap-2 text-sm font-medium">
-                      {{ st_label }}
-                      {% if selected_org.status == st_val %}{{ badge.badge("Current", variant="outline") }}{% endif %}
-                    </div>
-                    <div class="text-xs text-muted-foreground">{{ st_desc }}</div>
-                  </div>
-                  {% if selected_org.status != st_val %}
-                    <form method="post" action="/platform/organizations/{{ oid }}/update-status">
-                      <input type="hidden" name="status" value="{{ st_val }}">
-                      {% call button.button(type="submit", variant="destructive-outline" if st_val in ("suspended", "rejected") else "outline", size="sm") %}
-                        Set {{ st_label | lower }}
-                      {% endcall %}
-                    </form>
-                  {% endif %}
-                </div>
-              {% endfor %}
+        {% else %}
+          {# ── Edit: inline per-field editing ── #}
+          {% call frame.frame() %}
+            <div class="p-4">
+              {{ media_upload.image_upload(
+                id="platform-org-logo",
+                entity_name=selected_org.name,
+                preview_url=selected_org.logo_url,
+                upload_url="/platform/organizations/" ~ oid ~ "/upload-logo",
+                label=selected_org.name,
+                description="PNG, JPG, WebP under 2 MB",
+                bind_key="org:" ~ selected_org.id
+              ) }}
             </div>
+          {% endcall %}
+
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Organization details", class="w-40") }}
+                  {{ table.table_head("") }}
+                  {{ table.table_head("", class="w-24") }}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+
+                {% call table.table_row(attrs={"data-editable-row": "name"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Name{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view>{{ selected_org.name or "—" }}</span>
+                    <input data-edit hidden data-edit-input type="text" value="{{ selected_org.name or '' }}"
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _org_edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {% call table.table_row(attrs={"data-editable-row": "description"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-top pt-3 whitespace-nowrap") %}Description{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view class="whitespace-pre-wrap">{{ selected_org.description or "—" }}</span>
+                    <textarea data-edit hidden data-edit-input rows="3" placeholder="What does your organization do?"
+                      class="w-full min-h-16 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y">{{ selected_org.description or '' }}</textarea>
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right align-top pt-2") %}{{ _org_edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {% call table.table_row(attrs={"data-editable-row": "website"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Website{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view>
+                      {% if selected_org.website %}<a href="{{ selected_org.website }}" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">{{ selected_org.website | replace("https://","") | replace("http://","") | truncate(50, true, "") }}</a>
+                      {% else %}—{% endif %}
+                    </span>
+                    <input data-edit hidden data-edit-input type="url" value="{{ selected_org.website or '' }}"
+                      placeholder="https://example.com"
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _org_edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {% call table.table_row(attrs={"data-editable-row": "contact_email"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Contact email{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view>{{ selected_org.contact_email or "—" }}</span>
+                    <input data-edit hidden data-edit-input type="email" value="{{ selected_org.contact_email or '' }}"
+                      placeholder="hello@acme.com"
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _org_edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {% call table.table_row(attrs={"data-editable-row": "industry"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Industry{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view>{{ org_industry or "—" }}</span>
+                    <select data-edit hidden data-edit-input
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <option value="">Select industry</option>
+                      {% for ind in industry_opts %}
+                        <option value="{{ ind }}" {% if ind == org_industry %}selected{% endif %}>{{ ind }}</option>
+                      {% endfor %}
+                    </select>
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _org_edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {% call table.table_row(attrs={"data-editable-row": "size"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Company size{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    {% set sz_match = size_opts | selectattr('value', 'equalto', org_size) | list %}
+                    <span data-view>{{ sz_match[0].label if sz_match else (org_size or "—") }}</span>
+                    <select data-edit hidden data-edit-input
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <option value="">Select size</option>
+                      {% for opt in size_opts %}
+                        <option value="{{ opt.value }}" {% if opt.value == org_size %}selected{% endif %}>{{ opt.label }}</option>
+                      {% endfor %}
+                    </select>
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _org_edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {% call table.table_row(attrs={"data-editable-row": "location"}) %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Location{% endcall %}
+                  {% call table.table_cell(class="text-sm text-muted-foreground") %}
+                    <span data-view>{{ selected_org.location or "—" }}</span>
+                    <input data-edit hidden data-edit-input type="text" value="{{ selected_org.location or '' }}"
+                      placeholder="San Francisco, CA"
+                      class="h-8 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {% endcall %}
+                  {% call table.table_cell(class="text-right") %}{{ _org_edit_actions() }}{% endcall %}
+                {% endcall %}
+
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="font-medium text-sm align-middle whitespace-nowrap") %}Slug{% endcall %}
+                  {% call table.table_cell(class="font-mono text-xs text-muted-foreground") %}{{ selected_org.slug }}{% endcall %}
+                  {% call table.table_cell() %}{% endcall %}
+                {% endcall %}
+
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+
+          {# ── Status ── #}
+          {% set org_status_options = [
+            {"value": "active", "label": "Active", "description": "Operational — members can access the workspace."},
+            {"value": "inactive", "label": "Inactive", "description": "Hidden from members, data preserved."},
+            {"value": "pending", "label": "Pending", "description": "Awaiting admin approval before going active."},
+            {"value": "rejected", "label": "Rejected", "description": "Request was denied."},
+            {"value": "suspended", "label": "Suspended", "description": "Access blocked. Use for policy violations."},
+          ] %}
+          {% set org_status_match = org_status_options | selectattr('value', 'equalto', selected_org.status) | list %}
+          {% call frame.frame() %}
+            {% call table.table(variant="card") %}
+              {% call table.table_header() %}
+                {% call table.table_row() %}
+                  {{ table.table_head("Status", class="w-36") }}
+                  {{ table.table_head("Current state") }}
+                  {{ table.table_head("Change status", class="w-56 text-right") }}
+                {% endcall %}
+              {% endcall %}
+              {% call table.table_body() %}
+                {% call table.table_row() %}
+                  {% call table.table_cell(class="align-middle") %}
+                    {% if selected_org.status == "active" %}
+                      {{ badge.badge("Active", variant="outline") }}
+                    {% elif selected_org.status in ("suspended", "rejected") %}
+                      {{ badge.badge(org_status_match[0].label if org_status_match else selected_org.status|capitalize, variant="destructive") }}
+                    {% else %}
+                      {{ badge.badge(org_status_match[0].label if org_status_match else selected_org.status|capitalize, variant="secondary") }}
+                    {% endif %}
+                  {% endcall %}
+                  {% call table.table_cell(class="text-xs text-muted-foreground align-middle whitespace-normal") %}
+                    {{ org_status_match[0].description if org_status_match else "Choose a status for this organization." }}
+                  {% endcall %}
+                  {% call table.table_cell(class="align-middle text-right") %}
+                    <form method="post" action="/platform/organizations/{{ oid }}/update-status" data-cs-autosubmit>
+  {{ csrf_input() }}
+                      <select name="status" class="h-8 w-48 rounded-lg border border-input bg-background px-2.5 py-1 text-sm text-foreground shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        {% for opt in org_status_options %}
+                          <option value="{{ opt.value }}" {% if opt.value == selected_org.status %}selected{% endif %}>{{ opt.label }}</option>
+                        {% endfor %}
+                      </select>
+                    </form>
+                  {% endcall %}
+                {% endcall %}
+              {% endcall %}
+            {% endcall %}
+          {% endcall %}
+
+          {# Error toast #}
+          <div id="platform-org-field-error" hidden
+            class="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive shadow-lg">
+            <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="platform-org-field-error-msg"></span>
           </div>
+
+          {% app_script "platform-org-editor" %}
+          (function(){
+            var OID='{{ oid }}';
+            var editingRow=null;
+            var SIZE_MAP={'1-10':'1–10 employees','11-50':'11–50 employees','51-200':'51–200 employees','201-500':'201–500 employees','501-1000':'501–1,000 employees','1000+':'1,000+ employees'};
+
+            document.addEventListener('click',function(e){
+              var s=e.target.closest('[data-start-edit]');if(s){enterEdit(s.closest('[data-editable-row]'));return;}
+              var sv=e.target.closest('[data-save-edit]');if(sv){saveEdit(sv.closest('[data-editable-row]'));return;}
+              var c=e.target.closest('[data-cancel-edit]');if(c){exitEdit(c.closest('[data-editable-row]'));return;}
+            });
+            document.addEventListener('keydown',function(e){
+              if(!editingRow)return;
+              if(e.key==='Escape'){e.preventDefault();exitEdit(editingRow);return;}
+              var inp=editingRow.querySelector('[data-edit-input]');
+              if(e.key==='Enter'&&inp&&inp.tagName!=='TEXTAREA'){e.preventDefault();saveEdit(editingRow);}
+            });
+
+            function enterEdit(row){
+              if(editingRow&&editingRow!==row)exitEdit(editingRow);
+              editingRow=row;
+              row.querySelectorAll('[data-view]').forEach(function(el){el.hidden=true;});
+              row.querySelectorAll('[data-edit]').forEach(function(el){el.hidden=false;});
+              var inp=row.querySelector('[data-edit-input]');if(inp){inp.focus();if(inp.select)inp.select();}
+              setAllPencilsDisabled(true,row);
+            }
+            function exitEdit(row){
+              row.querySelectorAll('[data-view]').forEach(function(el){el.hidden=false;});
+              row.querySelectorAll('[data-edit]').forEach(function(el){el.hidden=true;});
+              editingRow=null;setAllPencilsDisabled(false,null);
+            }
+            function setAllPencilsDisabled(disabled,exceptRow){
+              document.querySelectorAll('[data-start-edit]').forEach(function(btn){
+                if(btn.closest('[data-editable-row]')!==exceptRow)btn.disabled=disabled;
+              });
+            }
+            function getViewLabel(field,value){
+              if(field==='size')return SIZE_MAP[value]||value||'—';
+              return value||'—';
+            }
+            function saveEdit(row){
+              var field=row.getAttribute('data-editable-row');
+              var inp=row.querySelector('[data-edit-input]');
+              var value=inp?inp.value.trim():'';
+              var saveBtn=row.querySelector('[data-save-edit]');
+              if(saveBtn)saveBtn.disabled=true;
+              fetch('/platform/organizations/'+OID+'/update-field',{
+                method:'POST',credentials:'same-origin',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({field:field,value:value})
+              })
+              .then(function(r){return r.json();})
+              .then(function(body){
+                if(!body.ok)throw new Error(body.error||'Update failed.');
+                var viewEl=row.querySelector('[data-view]');
+                if(viewEl){
+                  if(field==='website'&&value){
+                    viewEl.innerHTML='<a href="'+esc(value)+'" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">'+esc(value.replace(/^https?:\/\//,'').substring(0,50))+'</a>';
+                  }else{
+                    viewEl.textContent=getViewLabel(field,value)||'—';
+                  }
+                }
+                exitEdit(row);
+              })
+              .catch(function(err){showError(err.message);if(saveBtn)saveBtn.disabled=false;});
+            }
+            function showError(msg){
+              var t=document.getElementById('platform-org-field-error');
+              var m=document.getElementById('platform-org-field-error-msg');
+              if(!t)return;m.textContent=msg;t.hidden=false;
+              setTimeout(function(){t.hidden=true;},4000);
+            }
+            function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+          })();
+          {% end_app_script %}
         {% endif %}
 
-      </form>
+      </div>
     </div>
   </div>
 
+</div>
+{% endmacro %}
+
+{% macro _org_edit_actions() %}
+<div class="flex justify-end gap-1">
+  <div data-view>
+    {% call button.button(type="button", variant="ghost", size="icon-xs",
+      attrs={"data-start-edit": "", "aria-label": "Edit"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>
+    {% endcall %}
+  </div>
+  <div data-edit hidden class="flex gap-1">
+    {% call button.button(type="button", variant="ghost", size="icon-xs",
+      attrs={"data-save-edit": "", "aria-label": "Save"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+    {% endcall %}
+    {% call button.button(type="button", variant="ghost", size="icon-xs",
+      attrs={"data-cancel-edit": "", "aria-label": "Cancel"}) %}
+      <svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    {% endcall %}
+  </div>
 </div>
 {% endmacro %}

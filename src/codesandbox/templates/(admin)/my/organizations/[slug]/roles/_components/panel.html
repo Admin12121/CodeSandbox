@@ -1,0 +1,384 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/input-group.html" as ig %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/textarea.html" as textarea %}
+{% import "components/ui/switch.html" as sw %}
+{% import "components/ui/select.html" as sel %}
+{% import "components/ui/delete-dialog.html" as del_dlg %}
+
+{% macro role_dot(color) -%}
+<span aria-hidden="true" class="size-3 shrink-0 rounded-full" style="background:{{ color }};"></span>
+{%- endmacro %}
+
+
+{# ══════════════════════════════════════════════════════════
+   LIST VIEW
+   ══════════════════════════════════════════════════════════ #}
+{% macro roles_list(org, is_owner) %}
+{% set slug = org.slug %}
+{% set visible_roles = org.roles | rejectattr("name", "equalto", "owner") | list %}
+
+<div class="grid gap-4 p-3 pt-4">
+
+  <div class="grid lg:grid-cols-[minmax(18rem,26rem)_minmax(1rem,1fr)_auto] gap-3">
+    <form method="get" action="/my/organizations/{{ slug }}/roles">
+      {% call ig.input_group() %}
+        {{ ig.input_group_input(name="search", placeholder="Search roles…", attrs={"type": "search", "aria-label": "Search roles"}) }}
+        {% call ig.input_group_addon() %}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        {% endcall %}
+      {% endcall %}
+    </form>
+    <div class="hidden lg:block"></div>
+    {% if is_owner %}
+      {% call button.button(attrs={"data-cs-href": "/my/organizations/" ~ slug ~ "/roles?role=new"}, type="button", size="icon") %}
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+      {% endcall %}
+    {% endif %}
+  </div>
+
+  {% call frame.frame() %}
+    {% call table.table(variant="card") %}
+      {% call table.table_header() %}
+        {% call table.table_row() %}
+          {{ table.table_head("Role — " ~ visible_roles | length) }}
+          {{ table.table_head("Members", class="w-32") }}
+          {% if is_owner %}{{ table.table_head("Actions", class="w-10") }}{% endif %}
+        {% endcall %}
+      {% endcall %}
+      {% call table.table_body() %}
+        {% if not visible_roles %}
+          {% call table.table_row() %}
+            {% call table.table_cell(class="h-24 text-center text-muted-foreground", attrs={"colspan": "3"}) %}
+              No roles found.
+            {% endcall %}
+          {% endcall %}
+        {% else %}
+          {% for role in visible_roles %}
+            {% call table.table_row(class="cursor-pointer", attrs={"data-cs-href": "/my/organizations/" ~ slug ~ "/roles?role=" ~ role.id}) %}
+              {% call table.table_cell() %}
+                <div class="flex min-w-0 items-center gap-3">
+                  {{ role_dot(role.color) }}
+                  <span class="truncate font-medium">{{ role.name | capitalize }}</span>
+                </div>
+              {% endcall %}
+              {% call table.table_cell() %}
+                <div class="flex items-center gap-2">
+                  <span class="tabular-nums">{{ role.member_count }}</span>
+                  <svg class="size-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
+                </div>
+              {% endcall %}
+              {% if is_owner %}
+                {% call table.table_cell() %}
+                  <div class="flex justify-end">
+                    {% call del_dlg.delete_dialog_trigger("del-org-role-" ~ role.id) %}
+                      {% call button.button(type="button", variant="ghost", size="icon-xs",
+                        class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+                        attrs={
+                          "aria-label": "Delete " ~ role.name,
+                          "data-dialog-trigger": "",
+                          "data-target": "#del-org-role-" ~ role.id,
+                          "aria-controls": "del-org-role-" ~ role.id,
+                          "aria-expanded": "false"
+                        }) %}
+                        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      {% endcall %}
+                    {% endcall %}
+                  </div>
+                {% endcall %}
+              {% endif %}
+            {% endcall %}
+          {% endfor %}
+        {% endif %}
+      {% endcall %}
+    {% endcall %}
+  {% endcall %}
+
+  {% if is_owner %}
+    {% for role in visible_roles %}
+      {{ del_dlg.delete_dialog(
+        id="del-org-role-" ~ role.id,
+        name=role.name,
+        description='Deleting "' ~ role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
+        action="/my/organizations/" ~ slug ~ "/roles/" ~ role.id ~ "/delete",
+        submit_label="Delete role"
+      ) }}
+    {% endfor %}
+  {% endif %}
+
+</div>
+{% endmacro %}
+
+
+{# ══════════════════════════════════════════════════════════
+   EDITOR VIEW
+   ══════════════════════════════════════════════════════════ #}
+{% macro roles_editor(org, selected_role, is_create, role_id, editor_tab, org_permissions, role_members, available_members, is_owner, error=none) %}
+{% set slug = org.slug %}
+
+<div class="flex h-[calc(100dvh-var(--header-height))] overflow-hidden border bg-background">
+
+  {# Left mini-sidebar: role list (owner excluded) #}
+  <div class="flex w-72 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-md:hidden">
+    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+      <a href="/my/organizations/{{ slug }}/roles" aria-label="Back to roles"
+         class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+        <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </a>
+      {% if is_owner %}
+        <a href="/my/organizations/{{ slug }}/roles?role=new" aria-label="Create role"
+           class="inline-flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        </a>
+      {% endif %}
+    </div>
+    <div class="min-h-0 flex-1 overflow-y-auto p-2">
+      <p class="px-2 py-1 text-xs font-medium text-muted-foreground select-none">Roles</p>
+      <ul class="m-0 flex flex-col gap-0.5 p-0 list-none">
+        {% if is_create %}
+          <li>
+            <span class="flex w-full items-center gap-3 rounded-lg bg-sidebar-accent px-2 py-1.5 text-sm font-medium text-sidebar-accent-foreground">
+              {{ role_dot(selected_role.color) }}
+              <span class="truncate">New role</span>
+            </span>
+          </li>
+        {% endif %}
+        {% for role in org.roles %}
+          {% if role.name != "owner" %}
+            <li>
+              <a href="/my/organizations/{{ slug }}/roles?role={{ role.id }}"
+                 class="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors
+                   {% if role_id == role.id | string %}bg-sidebar-accent font-medium text-sidebar-accent-foreground
+                   {% else %}hover:bg-sidebar-accent hover:text-sidebar-accent-foreground{% endif %}">
+                {{ role_dot(role.color) }}
+                <span class="truncate">{{ role.name | capitalize }}</span>
+              </a>
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  {# Right: editor #}
+  <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+
+    <div class="flex h-12 shrink-0 items-center justify-between border-b p-3">
+      <div class="flex min-w-0 items-center gap-2">
+        <a href="/my/organizations/{{ slug }}/roles"
+           class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors md:hidden"
+           aria-label="Back to roles">
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        </a>
+        <div class="truncate text-sm font-semibold">
+          {% if is_create %}Create role{% else %}{{ selected_role.name | capitalize }}{% endif %}
+        </div>
+      </div>
+      {% if is_owner %}
+        {% call button.button(type="submit", size="icon-xs", attrs={"form": "role-display-form", "aria-label": "Save role"}) %}
+          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
+        {% endcall %}
+      {% endif %}
+    </div>
+
+    {% if error %}
+      <div class="border-b p-3">
+        <div class="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {{ error }}
+        </div>
+      </div>
+    {% endif %}
+
+    {# Tab bar #}
+    {% set tab_base = "/my/organizations/" ~ slug ~ "/roles?role=" ~ (role_id if role_id else "new") ~ "&tab=" %}
+    <div class="p-2">
+      <div class="relative z-0 flex w-full items-center justify-center gap-x-0.5 rounded-lg bg-muted p-0.5 text-muted-foreground/72">
+        {% for t, lbl in [
+          ("display", "Display"),
+          ("permissions", "Permissions"),
+          ("members", "Members (" ~ (role_members | length) ~ ")")
+        ] %}
+          <a href="{{ tab_base }}{{ t }}"
+             class="relative flex h-9 shrink-0 grow items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 text-sm font-medium transition-colors sm:h-8
+               {% if editor_tab == t %}bg-background text-foreground shadow-sm dark:bg-input{% else %}hover:text-foreground{% endif %}">
+            {{ lbl }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="min-h-0 flex-1 overflow-y-auto">
+
+      {# ── Display tab ── #}
+      {% if editor_tab == "display" %}
+        <form id="role-display-form" method="post"
+              action="{{ '/my/organizations/' ~ slug ~ '/roles/create' if is_create else '/my/organizations/' ~ slug ~ '/roles/' ~ role_id ~ '/update' }}"
+              class="grid gap-5 p-4">
+  {{ csrf_input() }}
+          <div class="grid gap-4">
+            <div class="grid gap-2 sm:grid-cols-2 sm:gap-4">
+              {% call field.field() %}
+                {{ field.field_label("Role name", for_id="role-name") }}
+                {{ input.input(name="name", value=(selected_role.name if not is_create else ""),
+                  placeholder="e.g. Moderator", required=true,
+                  attrs={"id": "role-name"} if is_owner else {"id": "role-name", "disabled": true}) }}
+              {% endcall %}
+              {% call field.field() %}
+                {{ field.field_label("Color", for_id="role-color") }}
+                <div class="flex items-center gap-2">
+                  <input type="color" name="color" id="role-color" value="{{ selected_role.color }}"
+                    {% if not is_owner %}disabled{% endif %}
+                    class="h-8.5 w-16 cursor-pointer rounded-lg border border-input bg-background p-1 sm:h-7.5">
+                  <span class="text-sm text-muted-foreground tabular-nums">{{ selected_role.color }}</span>
+                </div>
+              {% endcall %}
+            </div>
+            {% call field.field() %}
+              {{ field.field_label("Description", for_id="role-desc") }}
+              {{ textarea.textarea(name="description", value=selected_role.description,
+                placeholder="What can members with this role do?",
+                attrs={"id": "role-desc"} if is_owner else {"id": "role-desc", "disabled": true}) }}
+            {% endcall %}
+          </div>
+          {% if is_owner %}
+            <div class="flex items-center gap-3">
+              {% call button.button(type="submit") %}{{ "Create role" if is_create else "Save changes" }}{% endcall %}
+              {% if not is_create %}
+                {% call del_dlg.delete_dialog_trigger("del-org-role-editor-" ~ role_id) %}
+                  {% call button.button(type="button", variant="destructive-ghost", attrs={
+                    "data-dialog-trigger": "",
+                    "data-target": "#del-org-role-editor-" ~ role_id,
+                    "aria-controls": "del-org-role-editor-" ~ role_id,
+                    "aria-expanded": "false"
+                  }) %}Delete role{% endcall %}
+                {% endcall %}
+              {% endif %}
+            </div>
+          {% endif %}
+        </form>
+      {% endif %}
+
+      {# ── Permissions tab ── #}
+      {% if editor_tab == "permissions" %}
+        <div class="grid gap-4 p-4">
+          {% if is_create %}
+            <div class="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Save the role first, then assign permissions.
+            </div>
+          {% elif not org_permissions %}
+            <div class="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              No permissions have been registered for organizations yet.
+            </div>
+          {% else %}
+            <div class="grid gap-5">
+              {% for group_name, perms in org_permissions | groupby("group") %}
+                <section class="grid gap-2">
+                  <h3 class="text-base font-semibold">{{ group_name }}</h3>
+                  <div class="divide-y border-b">
+                    {% for perm in perms %}
+                      {% set checked = perm.key in selected_role.permission_keys %}
+                      <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-4">
+                        <div class="min-w-0">
+                          <div class="truncate text-sm font-semibold">{{ perm.label }}</div>
+                          <p class="mt-1 text-sm text-muted-foreground"><code class="text-xs">{{ perm.key }}</code></p>
+                        </div>
+                        {% if is_owner %}
+                          <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/permission" data-cs-autosubmit>
+  {{ csrf_input() }}
+                            <input type="hidden" name="key" value="{{ perm.key }}">
+                            <input type="hidden" name="enabled" value="{{ '0' if checked else '1' }}">
+                            {{ sw.switch(checked=checked, attrs={"aria-label": "Toggle " ~ perm.label}) }}
+                          </form>
+                        {% else %}
+                          {{ sw.switch(checked=checked, disabled=true, attrs={"aria-label": perm.label}) }}
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                </section>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# ── Members tab ── #}
+      {% if editor_tab == "members" %}
+        <div class="grid gap-4 p-4">
+          {% if is_create %}
+            <div class="rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+              Save the role first, then add members.
+            </div>
+          {% else %}
+            {% if is_owner and available_members %}
+              <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/add"
+                    class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+  {{ csrf_input() }}
+                {% call field.field() %}
+                  {{ field.field_label("Add member to role") }}
+                  {% call sel.select(name="member_id", value="") %}
+                    {% call sel.select_trigger(target="add-org-member-popup") %}
+                      {{ sel.select_value("Select member…") }}
+                      <svg class="size-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    {% endcall %}
+                    {% call sel.select_popup(attrs={"id": "add-org-member-popup"}) %}
+                      {% for m in available_members %}
+                        {% call sel.select_item(value=m.id|string) %}{{ m.name }} — {{ m.email }}{% endcall %}
+                      {% endfor %}
+                    {% endcall %}
+                  {% endcall %}
+                {% endcall %}
+                {% call button.button(type="submit") %}Add to role{% endcall %}
+              </form>
+            {% endif %}
+            <div class="divide-y rounded-lg border">
+              {% if not role_members %}
+                <div class="px-4 py-8 text-center text-sm text-muted-foreground">No members assigned to this role yet.</div>
+              {% else %}
+                {% for member in role_members %}
+                  <div class="flex items-center gap-3 px-3 py-2.5">
+                    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground text-xs font-semibold uppercase select-none">{{ (member.name or "?")[:2] }}</span>
+                    <div class="min-w-0 flex-1">
+                      <div class="truncate text-sm font-medium">{{ member.name }}</div>
+                      <div class="truncate text-xs text-muted-foreground">{{ member.email }}</div>
+                    </div>
+                    {% if member.joined_at %}
+                      <span class="text-xs text-muted-foreground shrink-0">{{ member.joined_at.strftime("%b %d, %Y") if member.joined_at else "" }}</span>
+                    {% endif %}
+                    {% if is_owner %}
+                      <form method="post" action="/my/organizations/{{ slug }}/roles/{{ role_id }}/members/{{ member.id }}/remove">
+  {{ csrf_input() }}
+                        {% call button.button(type="submit", variant="ghost", size="icon-xs",
+                          class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+                          attrs={"aria-label": "Remove " ~ member.name}) %}
+                          <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        {% endcall %}
+                      </form>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+{% if is_owner and not is_create %}
+  {{ del_dlg.delete_dialog(
+    id="del-org-role-editor-" ~ role_id,
+    name=selected_role.name,
+    description='Deleting "' ~ selected_role.name ~ '" will remove it from members assigned to this role. This cannot be undone.',
+    action="/my/organizations/" ~ slug ~ "/roles/" ~ role_id ~ "/delete",
+    submit_label="Delete role"
+  ) }}
+{% endif %}
+{% endmacro %}

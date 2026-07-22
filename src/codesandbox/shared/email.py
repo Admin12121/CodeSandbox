@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import html as _html
 import json
 import urllib.request
 
 from codesandbox.config import get_settings
+
+
+def _esc(value: str) -> str:
+    """HTML-escape user-controlled values before embedding in email bodies."""
+    return _html.escape(str(value))
 
 
 def _send(*, to: str, subject: str, html: str) -> bool:
@@ -119,21 +125,23 @@ def send_org_invitation(
     invite_url: str,
     invited_by_name: str,
 ) -> bool:
+    safe_by = _esc(invited_by_name)
+    safe_org = _esc(org_name)
     content = f"""
       <h1 style="margin:0 0 8px;font-size:22px;font-weight:600;color:#18181b">You've been invited</h1>
       <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#71717a">
-        <strong>{invited_by_name}</strong> has invited you to join the organization
-        <strong>{org_name}</strong> on CodeSandbox.<br>
+        <strong>{safe_by}</strong> has invited you to join the organization
+        <strong>{safe_org}</strong> on CodeSandbox.<br>
         Click the button below to accept the invitation. This link expires in <strong>7 days</strong>.
       </p>
       <p style="margin:0 0 28px">{_btn(invite_url, 'Accept invitation')}</p>
       <p style="margin:0;font-size:13px;color:#a1a1aa">
         Or copy and paste this URL into your browser:<br>
-        <a href="{invite_url}" style="color:#3b82f6;word-break:break-all">{invite_url}</a>
+        <a href="{invite_url}" style="color:#3b82f6;word-break:break-all">{_esc(invite_url)}</a>
       </p>
     """
     return _send(
         to=to,
-        subject=f"You've been invited to {org_name} on CodeSandbox",
+        subject=f"You've been invited to {safe_org} on CodeSandbox",
         html=_BASE.format(content=content),
     )

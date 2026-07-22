@@ -1,0 +1,109 @@
+{% import "components/ui/dialog.html" as dlg %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/input.html" as inp %}
+{% import "components/ui/label.html" as lbl %}
+{% include "components/ui/_runtime.html" %}
+
+{#
+  delete_dialog(id, name, description, action, confirm_text=None, method="post", extra_inputs={}, submit_label="Delete")
+
+  id            — unique string; must match the trigger's data-target
+  name          — display name of what's being deleted (shown as label + highlighted in description)
+  description   — warning sentence shown above the confirm instruction
+  action        — form action URL
+  confirm_text  — text user must type  (defaults to `name`)
+  method        — form method  (default "post")
+  extra_inputs  — dict of extra hidden inputs  {name: value}
+  submit_label  — submit button label  (default "Delete")
+#}
+{% macro delete_dialog(id, name, description, action, confirm_text=None, method="post", extra_inputs={}, submit_label="Delete") %}
+  {% set _confirm = confirm_text if confirm_text else name %}
+  {% set _input_id = id ~ "-confirm-input" %}
+
+  {% call dlg.dialog(attrs={"id": id, "data-confirm-value": _confirm}) %}
+    <div class="flex flex-col gap-6 p-6">
+
+      {# Centered icon + header #}
+      <div class="flex flex-col items-center gap-2">
+        <div aria-hidden="true" class="flex size-9 shrink-0 items-center justify-center rounded-full border border-border">
+          <svg class="opacity-80" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>
+          </svg>
+        </div>
+        {% call dlg.dialog_header() %}
+          {% call dlg.dialog_title(class="sm:text-center") %}Final confirmation{% endcall %}
+          {% call dlg.dialog_description(class="sm:text-center") %}{{ _confirm }}
+            {{ description }} To confirm, please enter the name <span class="font-medium text-foreground">{{ _confirm }}</span>.
+          {% endcall %}
+        {% endcall %}
+      </div>
+
+      {# Form #}
+      <form method="{{ method }}" action="{{ action }}" class="space-y-5">
+        {{ csrf_input() }}
+        {% for k, v in extra_inputs.items() %}
+          <input type="hidden" name="{{ k }}" value="{{ v }}">
+        {% endfor %}
+
+        <div class="grid gap-2">
+          {{ lbl.label(text=name, for_id=_input_id) }}
+          {{ inp.input(
+              type="text",
+              placeholder="Type " ~ _confirm ~ " to confirm",
+              attrs={
+                "id": _input_id,
+                "autocomplete": "off",
+                "spellcheck": "false",
+                "data-delete-confirm-input": True
+              }
+          ) }}
+        </div>
+
+        {% call dlg.dialog_footer() %}
+          {{ dlg.dialog_cancel(class="flex-1 lg:h-10") }}
+          {% call button.button(type="submit", variant="destructive", class="flex-1 lg:h-10", attrs={"data-delete-submit": "", "disabled": ""}) %}
+            {{ submit_label }}
+          {% endcall %}
+        {% endcall %}
+      </form>
+
+    </div>
+  {% endcall %}
+
+  {% app_script "codesandbox.ui.delete-dialog" %}
+  (function () {
+    function initDeleteDialog(dialog) {
+      if (dialog._deleteInit) return;
+      dialog._deleteInit = true;
+      var confirmValue = dialog.dataset.confirmValue || '';
+      var input = dialog.querySelector('[data-delete-confirm-input]');
+      var submit = dialog.querySelector('[data-delete-submit]');
+      if (!input || !submit) return;
+
+      function check() {
+        submit.disabled = input.value !== confirmValue;
+      }
+      input.addEventListener('input', check);
+
+      new MutationObserver(function () {
+        if (dialog.dataset.state === 'open') {
+          input.value = '';
+          submit.disabled = true;
+          setTimeout(function () { input.focus(); }, 50);
+        }
+      }).observe(dialog, { attributes: true, attributeFilter: ['data-state'] });
+    }
+
+    function scan() {
+      document.querySelectorAll('dialog[data-confirm-value]').forEach(initDeleteDialog);
+    }
+    scan();
+    window.addEventListener('app-router:patch', scan);
+  })();
+  {% end_app_script %}
+{% endmacro %}
+
+
+{% macro delete_dialog_trigger(target_id) %}
+  {% if caller is defined %}{{ caller() }}{% endif %}
+{% endmacro %}

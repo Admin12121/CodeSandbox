@@ -1,0 +1,220 @@
+{% import "components/ui/frame.html" as frame %}
+{% import "components/ui/field.html" as field %}
+{% import "components/ui/input.html" as input %}
+{% import "components/ui/button.html" as button %}
+
+{% macro slideshow() %}
+<div class="relative w-full overflow-hidden rounded-lg" id="org-slideshow" style="height:100%">
+  {% for src in ["/post.jpg", "/post-1.jpg", "/post-2.jpg", "/post-3.jpg"] %}
+  <div class="absolute inset-0" data-slide="{{ loop.index0 }}">
+    <img src="{{ src }}" alt="" class="h-full w-full object-cover" draggable="false" />
+  </div>
+  {% endfor %}
+  {# canvas injected by JS #}
+</div>
+{% endmacro %}
+
+{% macro create_wizard() %}
+{% set industry_options = [
+  {"value": "Technology",    "label": "Technology"},
+  {"value": "Software",      "label": "Software & SaaS"},
+  {"value": "Cybersecurity", "label": "Cybersecurity"},
+  {"value": "Finance",       "label": "Finance & Banking"},
+  {"value": "Healthcare",    "label": "Healthcare"},
+  {"value": "Education",     "label": "Education"},
+  {"value": "Retail",        "label": "Retail & E-commerce"},
+  {"value": "Media",         "label": "Media & Entertainment"},
+  {"value": "Manufacturing", "label": "Manufacturing"},
+  {"value": "Consulting",    "label": "Consulting & Services"},
+  {"value": "Nonprofit",     "label": "Nonprofit"},
+  {"value": "Government",    "label": "Government"},
+  {"value": "Other",         "label": "Other"},
+] %}
+{% set size_options = [
+  {"value": "1-10",    "label": "1-10 employees"},
+  {"value": "11-50",   "label": "11-50 employees"},
+  {"value": "51-200",  "label": "51-200 employees"},
+  {"value": "201-500", "label": "201-500 employees"},
+  {"value": "501-1000","label": "501-1,000 employees"},
+  {"value": "1000+",   "label": "1,000+ employees"},
+] %}
+{% call frame.frame(class="w-full") %}
+  <div class="overflow-x-auto border-b px-5 py-4">
+    <ol id="wizard-stepper" class="flex min-w-max items-center">
+      {% for s in [
+        {"n": 1, "label": "Identity"},
+        {"n": 2, "label": "Profile"},
+        {"n": 3, "label": "Review"},
+      ] %}
+        <li class="flex items-center" data-step-li="{{ s.n }}">
+          <div class="flex items-center gap-2.5 whitespace-nowrap text-sm font-medium
+            {{ 'text-foreground' if loop.first else 'text-muted-foreground' }}"
+            data-step-item="{{ s.n }}">
+            <span class="flex size-7 items-center justify-center rounded-lg text-xs font-semibold text-white shadow-xs
+              {{ 'bg-primary' if loop.first else 'bg-muted-foreground/35' }}"
+              data-step-dot="{{ s.n }}">
+              {{ s.n }}
+            </span>
+            <span>{{ s.label }}</span>
+          </div>
+          {% if not loop.last %}
+            <span class="mx-3 h-px w-12 shrink-0 bg-border" data-step-line="{{ s.n }}"></span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </div>
+
+  <form id="org-wizard-form" method="post" action="/my/organizations/create" enctype="multipart/form-data" novalidate>
+  {{ csrf_input() }}
+
+    {# Step 1: Identity #}
+    <div data-wizard-panel="1" class="grid gap-6 p-5">
+      <div class="grid gap-1">
+        <h3 class="text-sm font-semibold">Organization identity</h3>
+        <p class="text-sm text-muted-foreground">Start with the basics — your organization's name and public presence.</p>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        {# Logo upload #}
+        {% call field.field(class="sm:col-span-2") %}
+          {{ field.field_label("Logo") }}
+          <div class="flex items-center gap-4">
+            <label for="w-logo"
+              class="group relative flex size-16 shrink-0 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-input bg-muted transition-colors hover:border-primary/60 hover:bg-primary/5 overflow-hidden">
+              <img id="w-logo-preview" src="" alt="" class="hidden absolute inset-0 h-full w-full object-cover" />
+              <svg id="w-logo-icon" class="size-5 text-muted-foreground group-hover:text-primary transition-colors" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            </label>
+            <div>
+              <p class="text-xs font-medium text-foreground">Organization logo</p>
+              <p class="text-xs text-muted-foreground mt-0.5">PNG, JPG, WebP · max 2 MB</p>
+              <button type="button" id="w-logo-clear" class="hidden mt-1 text-xs text-destructive hover:underline">Remove</button>
+            </div>
+            <input type="file" id="w-logo" name="logo" accept="image/png,image/jpeg,image/webp" class="sr-only" />
+          </div>
+        {% endcall %}
+
+        {% call field.field() %}
+          {{ field.field_label("Organization name *", for_id="w-name") }}
+          {{ input.input(name="name", placeholder="Acme Security Corp", required=true, attrs={"id": "w-name", "autocomplete": "organization", "data-wizard-required": "1"}) }}
+          <p id="w-name-err" class="hidden text-xs text-destructive mt-1">Name is required.</p>
+        {% endcall %}
+        {% call field.field() %}
+          {{ field.field_label("Official website", for_id="w-website") }}
+          {{ input.input(type="url", name="website", placeholder="https://acme.com", attrs={"id": "w-website"}) }}
+        {% endcall %}
+        {% call field.field(class="sm:col-span-2") %}
+          {{ field.field_label("Description", for_id="w-desc") }}
+          <span class="relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow has-focus-visible:border-ring has-focus-visible:ring-[3px] sm:text-sm dark:bg-input/32">
+            <textarea id="w-desc" name="description" placeholder="What does your organization do? Mission, tools, scope…" rows="3"
+              class="w-full min-w-0 rounded-[inherit] bg-transparent outline-none placeholder:text-muted-foreground/72 px-3 py-2 resize-none"></textarea>
+          </span>
+        {% endcall %}
+      </div>
+    </div>
+
+    {# Step 2: Profile #}
+    <div data-wizard-panel="2" class="hidden grid gap-6 p-5">
+      <div class="grid gap-1">
+        <h3 class="text-sm font-semibold">Organization profile</h3>
+        <p class="text-sm text-muted-foreground">Help others understand your organization's scale and focus area.</p>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-3">
+        {% call field.field() %}
+          {{ field.field_label("Industry", for_id="w-industry") }}
+          <select name="industry" id="w-industry"
+            class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-shadow focus:border-ring focus:ring-2 focus:ring-ring/20 cursor-pointer">
+            <option value="">Select industry</option>
+            {% for opt in industry_options %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        {% endcall %}
+        {% call field.field() %}
+          {{ field.field_label("Organization size", for_id="w-size") }}
+          <select name="size" id="w-size"
+            class="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-shadow focus:border-ring focus:ring-2 focus:ring-ring/20 cursor-pointer">
+            <option value="">Select size</option>
+            {% for opt in size_options %}
+              <option value="{{ opt.value }}">{{ opt.label }}</option>
+            {% endfor %}
+          </select>
+        {% endcall %}
+        {% call field.field() %}
+          {{ field.field_label("Location", for_id="w-location") }}
+          {{ input.input(name="location", placeholder="San Francisco, CA", attrs={"id": "w-location"}) }}
+        {% endcall %}
+        {% call field.field(class="sm:col-span-2") %}
+          {{ field.field_label("Contact email", for_id="w-email") }}
+          {{ input.input(type="email", name="contact_email", placeholder="security@acme.com", attrs={"id": "w-email"}) }}
+        {% endcall %}
+      </div>
+    </div>
+
+    {# Step 3: Review #}
+    <div data-wizard-panel="3" class="hidden grid gap-5 p-5">
+      <div class="grid gap-1">
+        <h3 class="text-sm font-semibold">Review & submit</h3>
+        <p class="text-sm text-muted-foreground">Confirm your details before submitting for admin approval.</p>
+      </div>
+
+      <div class="rounded-xl border bg-muted/30 p-5">
+        <div class="flex items-start gap-4">
+          <span id="rv-avatar" class="relative flex size-12 shrink-0 items-center justify-center rounded-xl border bg-gradient-to-br from-primary/20 to-primary/5 text-lg font-bold text-primary select-none overflow-hidden">
+            <img id="rv-avatar-img" class="hidden absolute inset-0 h-full w-full object-cover" alt="" />
+            <span id="rv-avatar-text">--</span>
+          </span>
+          <div class="min-w-0 flex-1">
+            <p id="rv-name" class="font-semibold text-foreground">—</p>
+            <p id="rv-desc" class="mt-0.5 text-sm text-muted-foreground">—</p>
+            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span id="rv-industry" class="hidden flex items-center gap-1">
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/></svg>
+                <span id="rv-industry-val"></span>
+              </span>
+              <span id="rv-size" class="hidden flex items-center gap-1">
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                <span id="rv-size-val"></span> employees
+              </span>
+              <span id="rv-location" class="hidden flex items-center gap-1">
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                <span id="rv-location-val"></span>
+              </span>
+              <span id="rv-website" class="hidden flex items-center gap-1">
+                <svg class="size-3" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                <span id="rv-website-val"></span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-2.5 rounded-lg border border-yellow-500/30 bg-yellow-500/8 px-4 py-3 text-sm text-yellow-700 dark:text-yellow-400">
+        <svg class="mt-0.5 size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div>
+          <p class="font-medium">Pending admin review</p>
+          <p class="mt-0.5 text-xs opacity-80">Your organization will be reviewed before it becomes active. You will be notified once it's approved or rejected.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between border-t px-5 py-4">
+      <span></span>
+      <div class="flex items-center gap-2">
+        <div id="wizard-back-wrap" class="hidden">
+          {% call button.button(type="button", variant="outline", attrs={"id": "wizard-back"}) %}
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+            Back
+          {% endcall %}
+        </div>
+        {% call button.button(type="button", attrs={"id": "wizard-next"}) %}
+          Continue
+        {% endcall %}
+        {% call button.button(type="submit", attrs={"id": "wizard-submit", "style": "display:none"}) %}
+          Submit
+        {% endcall %}
+      </div>
+    </div>
+
+  </form>
+{% endcall %}
+{% endmacro %}

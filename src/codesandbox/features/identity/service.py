@@ -23,6 +23,7 @@ class AuthResult:
     message: str
     token: str | None = None
     requires_2fa: bool = False
+    user_id: str | None = None
 
 
 def hash_token(token: str) -> str:
@@ -102,25 +103,44 @@ def sign_in(
         )
         return AuthResult(False, "Invalid email or password.")
 
+    if user.two_factor_enabled:
+        return AuthResult(True, "2FA required.", requires_2fa=True, user_id=user.id)
+
+    token = create_session_for_user(
+        user.id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    return AuthResult(True, "Signed in.", token=token)
+
+
+def create_session_for_user(
+    user_id: str,
+    *,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> str | None:
+    user = repository.find_user_by_id(user_id)
+    if not user or user.deleted_at is not None or user.status == "banned":
+        return None
+
     settings = get_settings()
-    token = secrets.token_urlsafe(48)
+    raw_token = secrets.token_urlsafe(48)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.session_ttl_hours)
     repository.create_session(
         user_id=user.id,
-        token_hash=hash_token(token),
+        token_hash=hash_token(raw_token),
         expires_at=expires_at,
         ip_address=ip_address,
         user_agent=user_agent,
     )
     repository.update_user(user.id, last_login_at=datetime.now(timezone.utc))
     repository.record_login_attempt(
-        email=email,
+        email=user.email,
         ip_address=ip_address,
         succeeded=True,
     )
-    if user.two_factor_enabled:
-        return AuthResult(True, "2FA required.", token=token, requires_2fa=True)
-    return AuthResult(True, "Signed in.", token=token)
+    return raw_token
 
 
 def sign_out(token: str) -> None:
@@ -208,19 +228,21 @@ def reset_password(token: str, new_password: str) -> AuthResult:
 
 # ── TOTP / 2FA ────────────────────────────────────────────────────────────────
 
+def _fernet() -> "Fernet":
+    from cryptography.fernet import Fernet
+    import hashlib, base64
+    # Derive a 32-byte Fernet key from SECRET_KEY via SHA-256
+    raw = hashlib.sha256(get_settings().secret_key.encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(raw))
+
+
 def _encrypt_secret(secret: str) -> str:
-    """Trivial XOR encoding (replace with real encryption in production)."""
-    key = get_settings().secret_key.encode()
-    data = secret.encode()
-    xor = bytes(data[i] ^ key[i % len(key)] for i in range(len(data)))
-    return base64.b64encode(xor).decode()
+    """AES-128 (Fernet) encryption of TOTP secret / backup codes."""
+    return _fernet().encrypt(secret.encode()).decode()
 
 
 def _decrypt_secret(enc: str) -> str:
-    key = get_settings().secret_key.encode()
-    data = base64.b64decode(enc)
-    xor = bytes(data[i] ^ key[i % len(key)] for i in range(len(data)))
-    return xor.decode()
+    return _fernet().decrypt(enc.encode()).decode()
 
 
 def generate_totp_setup(user_id: str, email: str) -> dict:
@@ -273,9 +295,8 @@ def verify_totp(user_id: str, code: str) -> bool:
                     user_id=user_id,
                     secret_encrypted=method.secret_encrypted,
                     is_enabled=True,
+                    backup_codes_encrypted=_encrypt_secret(json.dumps(codes)),
                 )
-                method.backup_codes_encrypted = _encrypt_secret(json.dumps(codes))
-                method.save()
                 return True
         except Exception:
             pass
@@ -285,6 +306,56 @@ def verify_totp(user_id: str, code: str) -> bool:
 def disable_2fa(user_id: str) -> None:
     repository.disable_totp(user_id)
     repository.update_user(user_id, two_factor_enabled=False)
+
+
+# ── Social account linking ─────────────────────────────────────────────────────
+
+def link_google_account(user_id: str, code: str, redirect_uri: str) -> AuthResult:
+    token_data = google_exchange_code(code, redirect_uri)
+    if not token_data or "access_token" not in token_data:
+        return AuthResult(False, "Google authentication failed.")
+    g_user = google_get_user(token_data["access_token"])
+    if not g_user:
+        return AuthResult(False, "Could not fetch Google profile.")
+    g_id = str(g_user.get("sub", ""))
+    existing = repository.find_auth_account("google", g_id)
+    if existing and str(existing.user_id) != str(user_id):
+        return AuthResult(False, "This Google account is already connected to another user.")
+    repository.upsert_auth_account(
+        user_id=user_id, provider="google",
+        provider_account_id=g_id, access_token=token_data["access_token"],
+    )
+    return AuthResult(True, "Google account connected.")
+
+
+def link_github_account(user_id: str, code: str) -> AuthResult:
+    token_data = github_exchange_code(code)
+    if not token_data or "access_token" not in token_data:
+        return AuthResult(False, "GitHub authentication failed.")
+    gh_user = github_get_user(token_data["access_token"])
+    if not gh_user:
+        return AuthResult(False, "Could not fetch GitHub profile.")
+    gh_id = str(gh_user.get("id", ""))
+    existing = repository.find_auth_account("github", gh_id)
+    if existing and str(existing.user_id) != str(user_id):
+        return AuthResult(False, "This GitHub account is already connected to another user.")
+    repository.upsert_auth_account(
+        user_id=user_id, provider="github",
+        provider_account_id=gh_id, access_token=token_data["access_token"],
+    )
+    return AuthResult(True, "GitHub account connected.")
+
+
+def unlink_account(user_id: str, provider: str) -> tuple[bool, str]:
+    user = repository.find_user_by_id(user_id)
+    if not user:
+        return False, "User not found."
+    accounts = repository.get_user_auth_accounts(user_id)
+    other_providers = [a for a in accounts if a.provider != provider]
+    if not other_providers and not user.password_hash:
+        return False, "Cannot disconnect your only sign-in method. Add a password first."
+    repository.delete_auth_account_by_provider(user_id, provider)
+    return True, ""
 
 
 # ── GitHub OAuth ──────────────────────────────────────────────────────────────

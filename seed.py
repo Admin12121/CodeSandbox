@@ -37,8 +37,8 @@ def seed():
     seed_default_roles()
     print("  done")
 
-    admin_email = "admin@codesandbox.local"
-    admin_password = "changeme123"
+    admin_email = "admin@codesandbox.dev"
+    admin_password = "admin@12"
 
     user = find_user_by_email(admin_email)
     if user:

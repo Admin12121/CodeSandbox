@@ -80,7 +80,7 @@ def reset_password_page():
 @router.page("/two-factor")
 def two_factor():
     from flask import session as flask_session
-    if not flask_session.get("_2fa_pending_token"):
+    if not flask_session.get("_2fa_pending_user_id"):
         return {"_redirect": "/login"}
     return {
         "_meta": {"title": "Two-Factor Auth — CodeSandbox"},
@@ -179,6 +179,7 @@ def platform_users():
         "users": users_data,
         "total": total,
         "page": page,
+        "page_size": page_size,
         "total_pages": total_pages,
         "search": search,
         "role_filter": role,
@@ -213,7 +214,7 @@ def platform_organizations():
     org_param = request.args.get("org") or None
     selected_org = None
     if org_param == "new":
-        selected_org = {"id": None, "name": "", "slug": "", "description": "", "website": "", "industry": "", "size": "", "location": "", "contact_email": "", "status": "active", "member_count": 0}
+        selected_org = {"id": None, "name": "", "slug": "", "description": "", "logo_url": "", "website": "", "industry": "", "size": "", "location": "", "contact_email": "", "status": "active", "member_count": 0}
     elif org_param:
         from codesandbox.features.organizations.repository import get_organization, get_member_count
         _org = get_organization(org_param)
@@ -223,6 +224,7 @@ def platform_organizations():
                 "name": _org.name,
                 "slug": _org.slug,
                 "description": _org.description or "",
+                "logo_url": _org.logo_url or "",
                 "website": _org.website or "",
                 "industry": _org.industry or "",
                 "size": _org.size or "",
@@ -242,6 +244,7 @@ def platform_organizations():
         "organizations": orgs,
         "total": total,
         "page": page,
+        "page_size": page_size,
         "total_pages": total_pages,
         "search": search,
         "status_filter": status,
@@ -265,6 +268,8 @@ def platform_staff():
 
     member_param = request.args.get("member") or None
     search = request.args.get("search", "").strip()
+    page = max(1, int(request.args.get("page", "1") or "1"))
+    page_size = 20
     selected_member = None
     if member_param == "new":
         selected_member = {
@@ -276,13 +281,18 @@ def platform_staff():
 
     if search:
         q = search.lower()
-        visible_staff = [
+        filtered_staff = [
             m for m in staff
             if q in m["name"].lower() or q in m["email"].lower()
             or any(q in r["name"].lower() for r in m["roles"])
         ]
     else:
-        visible_staff = staff
+        filtered_staff = staff
+
+    total_staff = len(filtered_staff)
+    total_pages_staff = max(1, math.ceil(total_staff / page_size))
+    page = min(page, total_pages_staff)
+    visible_staff = filtered_staff[(page - 1) * page_size : page * page_size]
 
     return {
         "_meta": {"title": "Application Staff — CodeSandbox"},
@@ -296,6 +306,10 @@ def platform_staff():
         "roles": rbac["roles"],
         "selected_member": selected_member,
         "search": search,
+        "page": page,
+        "page_size": page_size,
+        "total": total_staff,
+        "total_pages": total_pages_staff,
         "error": request.args.get("error"),
     }
 
@@ -318,6 +332,8 @@ def platform_roles():
     if tab not in ("display", "permissions", "sidebar", "members"):
         tab = "display"
     search = request.args.get("search", "").strip()
+    page = max(1, int(request.args.get("page", "1") or "1"))
+    page_size = 20
 
     selected_role = None
     if role_param == "new":
@@ -332,12 +348,17 @@ def platform_roles():
 
     if search:
         q = search.lower()
-        visible_roles = [
+        filtered_roles = [
             r for r in rbac["roles"]
             if q in r["display_name"].lower() or q in r["description"].lower()
         ]
     else:
-        visible_roles = rbac["roles"]
+        filtered_roles = rbac["roles"]
+
+    total_roles = len(filtered_roles)
+    total_pages_roles = max(1, math.ceil(total_roles / page_size))
+    page = min(page, total_pages_roles)
+    visible_roles = filtered_roles[(page - 1) * page_size : page * page_size]
 
     member_ids = {m["id"] for m in (selected_role["members"] if selected_role else [])}
     available_members = [m for m in staff if m["id"] not in member_ids]
@@ -356,6 +377,10 @@ def platform_roles():
         "selected_role": selected_role,
         "editor_tab": tab,
         "search": search,
+        "page": page,
+        "page_size": page_size,
+        "total": total_roles,
+        "total_pages": total_pages_roles,
         "available_members": available_members,
         "error": request.args.get("error"),
     }
@@ -371,8 +396,10 @@ def settings():
         return redirect
     user = session.user
     nav = build_nav("/settings", user)
-    from codesandbox.features.identity.repository import get_totp_method
+    from codesandbox.features.identity.repository import get_totp_method, get_user_auth_accounts
     totp = get_totp_method(user.id)
+    accounts = get_user_auth_accounts(user.id)
+    connected_providers = {a.provider for a in accounts}
     return {
         "_meta": {"title": "Settings — CodeSandbox"},
         "user": _user_ctx(user),
@@ -380,7 +407,10 @@ def settings():
         "page_title": "Account Settings",
         "page_description": "Manage your account and security",
         "info": request.args.get("info"),
+        "error": request.args.get("error"),
         "totp_enabled": totp.is_enabled if totp else False,
+        "connected_providers": connected_providers,
+        "has_password": bool(user.password_hash),
         **_workspaces_ctx(user),
     }
 
@@ -421,7 +451,7 @@ def my_organizations():
 
     from codesandbox.features.organizations.service import get_user_org_list
     organizations = get_user_org_list(user.id)
-    has_pending = any(o["status"] == "pending" for o in organizations)
+    user_owns_org = any(o.get("created_by") == user.id for o in organizations)
 
     return {
         "_meta": {"title": "My Organizations — CodeSandbox"},
@@ -430,35 +460,39 @@ def my_organizations():
         "page_title": "My Organizations",
         "page_description": "Organizations you belong to",
         "organizations": organizations,
-        "has_pending": has_pending,
+        "user_owns_org": user_owns_org,
         "info": request.args.get("info"),
         "error": request.args.get("error"),
         **_workspaces_ctx(user),
     }
 
 
+def _set_active_workspace(org: dict) -> None:
+    from flask import session as flask_session
+    flask_session["active_workspace_slug"] = org["slug"]
+
+
+def _load_org_or_redirect(slug: str, user_id: str):
+    from codesandbox.features.organizations.service import get_org_for_user
+    return get_org_for_user(slug, user_id)
+
+
 @router.page("/my/organizations/<slug>")
 def my_organization_detail(slug: str):
-    session, redirect = require_session()
-    if redirect:
-        return redirect
+    session, redir = require_session()
+    if redir:
+        return redir
+    # Redirect old tab= links to sub-pages
+    tab = request.args.get("tab")
+    if tab in ("members", "roles", "settings"):
+        return {"_redirect": f"/my/organizations/{slug}/{tab}"}
+
     user = session.user
     nav = build_nav("/my/organizations", user)
-
-    from codesandbox.features.organizations.service import get_org_for_user
-    org = get_org_for_user(slug, user.id)
+    org = _load_org_or_redirect(slug, user.id)
     if org is None:
         return {"_redirect": "/my/organizations"}
-
-    tab = request.args.get("tab", "members")
-    if tab not in ("members", "settings"):
-        tab = "members"
-
-    invite_link_raw = request.args.get("invite_link")
-    invite_link = None
-    if invite_link_raw:
-        import urllib.parse
-        invite_link = urllib.parse.unquote(invite_link_raw)
+    _set_active_workspace(org)
 
     return {
         "_meta": {"title": f"{org['name']} — CodeSandbox"},
@@ -466,8 +500,150 @@ def my_organization_detail(slug: str):
         "nav": nav,
         "page_title": org["name"],
         "org": org,
-        "active_tab": tab,
+        "info": request.args.get("info"),
+        "error": request.args.get("error"),
+        **_workspaces_ctx(user, active_workspace=org),
+    }
+
+
+@router.page("/my/organizations/<slug>/members")
+def my_organization_members(slug: str):
+    session, redir = require_session()
+    if redir:
+        return redir
+    user = session.user
+    nav = build_nav("/my/organizations", user)
+    org = _load_org_or_redirect(slug, user.id)
+    if org is None:
+        return {"_redirect": "/my/organizations"}
+    _set_active_workspace(org)
+
+    search = request.args.get("search", "").strip()
+    role_filter = request.args.get("role", "all")
+    page = max(1, int(request.args.get("page", "1") or "1"))
+    page_size = 20
+
+    all_members = list(org["members"])
+    if search:
+        q = search.lower()
+        all_members = [m for m in all_members if q in m["name"].lower() or q in m["email"].lower()]
+    if role_filter and role_filter != "all":
+        all_members = [m for m in all_members if role_filter in m["roles"]]
+
+    total = len(all_members)
+    total_pages = max(1, math.ceil(total / page_size))
+    page = min(page, total_pages)
+    members = all_members[(page - 1) * page_size : page * page_size]
+
+    import urllib.parse as _up
+    invite_link_raw = request.args.get("invite_link")
+    invite_link = _up.unquote(invite_link_raw) if invite_link_raw else None
+
+    return {
+        "_meta": {"title": f"Members — {org['name']}"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": org["name"],
+        "org": org,
+        "members": members,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "search": search,
+        "role_filter": role_filter,
         "invite_link": invite_link,
+        "info": request.args.get("info"),
+        "error": request.args.get("error"),
+        **_workspaces_ctx(user, active_workspace=org),
+    }
+
+
+@router.page("/my/organizations/<slug>/roles")
+def my_organization_roles(slug: str):
+    session, redir = require_session()
+    if redir:
+        return redir
+    user = session.user
+    nav = build_nav("/my/organizations", user)
+    org = _load_org_or_redirect(slug, user.id)
+    if org is None:
+        return {"_redirect": "/my/organizations"}
+    _set_active_workspace(org)
+
+    from codesandbox.features.organizations.repository import (
+        ensure_org_permissions_seeded,
+        get_all_org_permissions,
+    )
+    ensure_org_permissions_seeded()
+    all_perms = get_all_org_permissions()
+    org_permissions = [
+        {"id": p.id, "key": p.key, "label": p.label, "group": p.group}
+        for p in all_perms
+    ]
+
+    role_id = request.args.get("role")
+    editor_tab = request.args.get("tab", "display")
+    if editor_tab not in ("display", "permissions", "members"):
+        editor_tab = "display"
+
+    selected_role = None
+    is_create = False
+    role_members: list = []
+    available_members: list = []
+
+    if role_id == "new":
+        is_create = True
+        selected_role = {
+            "id": None, "name": "", "color": "#6366f1",
+            "description": "", "is_system": False,
+            "member_count": 0, "permission_keys": [],
+        }
+    elif role_id:
+        selected_role = next((r for r in org["roles"] if r["id"] == role_id), None)
+        if selected_role:
+            from codesandbox.features.organizations.service import get_role_members_for_org
+            role_members = get_role_members_for_org(org["id"], role_id)
+            in_role_ids = {m["id"] for m in role_members}
+            available_members = [m for m in org["members"] if m["id"] not in in_role_ids]
+
+    return {
+        "_meta": {"title": f"Roles — {org['name']}"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": org["name"],
+        "org": org,
+        "selected_role": selected_role,
+        "is_create": is_create,
+        "role_id": role_id,
+        "editor_tab": editor_tab,
+        "org_permissions": org_permissions,
+        "role_members": role_members,
+        "available_members": available_members,
+        "info": request.args.get("info"),
+        "error": request.args.get("error"),
+        **_workspaces_ctx(user, active_workspace=org),
+    }
+
+
+@router.page("/my/organizations/<slug>/settings")
+def my_organization_settings(slug: str):
+    session, redir = require_session()
+    if redir:
+        return redir
+    user = session.user
+    nav = build_nav("/my/organizations", user)
+    org = _load_org_or_redirect(slug, user.id)
+    if org is None:
+        return {"_redirect": "/my/organizations"}
+    _set_active_workspace(org)
+
+    return {
+        "_meta": {"title": f"Settings — {org['name']}"},
+        "user": _user_ctx(user),
+        "nav": nav,
+        "page_title": org["name"],
+        "org": org,
         "info": request.args.get("info"),
         "error": request.args.get("error"),
         **_workspaces_ctx(user, active_workspace=org),
@@ -491,12 +667,46 @@ def _user_ctx(user) -> dict:
 def _workspaces_ctx(user, active_workspace=None) -> dict:
     """Workspace switcher context. Returns None values for admin/staff users."""
     if user.platform_role in ("system_admin", "system_staff"):
-        return {"workspace_list": None, "active_workspace": None}
-    from flask import g
+        return {
+            "workspace_list": None,
+            "active_workspace": None,
+            "_layout_state": {
+                "role": user.platform_role,
+                "active_workspace": None,
+                "workspaces": [],
+            },
+        }
+    from flask import g, session as flask_session
     if not hasattr(g, "_workspace_list"):
         from codesandbox.features.organizations.service import get_user_org_list
         g._workspace_list = get_user_org_list(user.id)
+    workspace_list = g._workspace_list
+    if active_workspace is None:
+        persisted_slug = flask_session.get("active_workspace_slug")
+        if persisted_slug:
+            active_workspace = next(
+                (w for w in workspace_list if w["slug"] == persisted_slug), None
+            )
     return {
-        "workspace_list": g._workspace_list,
+        "workspace_list": workspace_list,
         "active_workspace": active_workspace,
+        "_layout_state": {
+            "role": user.platform_role,
+            "active_workspace": _workspace_state_item(active_workspace),
+            "workspaces": [_workspace_state_item(workspace) for workspace in workspace_list],
+        },
+    }
+
+
+def _workspace_state_item(workspace) -> dict | None:
+    if not workspace:
+        return None
+    return {
+        "id": workspace.get("id"),
+        "slug": workspace.get("slug"),
+        "name": workspace.get("name"),
+        "logo_url": workspace.get("logo_url") or "",
+        "status": workspace.get("status"),
+        "member_count": workspace.get("member_count"),
+        "is_owner": bool(workspace.get("is_owner")),
     }

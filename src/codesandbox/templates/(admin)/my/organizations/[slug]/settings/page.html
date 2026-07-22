@@ -1,0 +1,7 @@
+{% import "(admin)/my/organizations/[slug]/_components/header.html" as org_ui %}
+{% import "(admin)/my/organizations/[slug]/settings/_components/panel.html" as settings_ui %}
+
+<div class="grid gap-0">
+  {{ org_ui.org_header(org, show_profile=false, info=info, error=error) }}
+  {{ settings_ui.settings_panel(org=org, is_owner=org.is_owner) }}
+</div>

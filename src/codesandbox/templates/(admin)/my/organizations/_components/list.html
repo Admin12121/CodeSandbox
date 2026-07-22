@@ -1,0 +1,116 @@
+{% import "components/ui/badge.html" as badge %}
+{% import "components/ui/button.html" as button %}
+{% import "components/ui/table.html" as table %}
+{% import "components/ui/frame.html" as frame %}
+{% import "components/media/avatar.html" as media_avatar %}
+
+{% macro org_list(organizations, user_owns_org) %}
+<div class="flex flex-col gap-4 p-4 md:p-6">
+  {% if not organizations %}
+    <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-muted-foreground">You don't belong to any organization yet.</p>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% if not user_owns_org %}
+      <a href="/my/organizations?mode=create" class="group block">
+        {% call frame.frame(class="h-full cursor-pointer p-6 transition-colors hover:border-primary/50 hover:bg-muted/40") %}
+          <div class="flex items-start gap-4">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-muted group-hover:border-primary/30 group-hover:bg-primary/5 transition-colors">
+              <svg class="size-5 text-muted-foreground group-hover:text-primary transition-colors" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+            </div>
+            <div>
+              <p class="font-semibold text-sm">Create an organization</p>
+              <p class="mt-1 text-sm text-muted-foreground">Set up a new team or company workspace. Requires admin approval.</p>
+            </div>
+          </div>
+        {% endcall %}
+      </a>
+      {% endif %}
+      <a href="/my/organizations?mode=join" class="group block">
+        {% call frame.frame(class="h-full cursor-pointer p-6 transition-colors hover:border-primary/50 hover:bg-muted/40") %}
+          <div class="flex items-start gap-4">
+            <div class="flex size-10 shrink-0 items-center justify-center rounded-xl border bg-muted group-hover:border-primary/30 group-hover:bg-primary/5 transition-colors">
+              <svg class="size-5 text-muted-foreground group-hover:text-primary transition-colors" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </div>
+            <div>
+              <p class="font-semibold text-sm">Join with invite link</p>
+              <p class="mt-1 text-sm text-muted-foreground">Have an invite link from an organization owner? Paste it to join.</p>
+            </div>
+          </div>
+        {% endcall %}
+      </a>
+    </div>
+  {% else %}
+    <div class="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-muted-foreground">Organizations you belong to.</p>
+      <div class="flex items-center gap-2">
+        <a href="/my/organizations?mode=join">
+          {% call button.button(type="button", variant="outline", size="lg") %}
+            Join
+          {% endcall %}
+        </a>
+        {% if not user_owns_org %}
+        <a href="/my/organizations?mode=create">
+          {% call button.button(type="button", size="icon") %}
+            <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+          {% endcall %}
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    {% call frame.frame() %}
+      {% call table.table(variant="card") %}
+        {% call table.table_header() %}
+          {% call table.table_row() %}
+            {{ table.table_head("Organization") }}
+            {{ table.table_head("Industry", class="w-36 max-sm:hidden") }}
+            {{ table.table_head("Status", class="w-28") }}
+            {{ table.table_head("Members", class="w-24 text-right") }}
+            {{ table.table_head("", class="w-10") }}
+          {% endcall %}
+        {% endcall %}
+        {% call table.table_body() %}
+          {% for org in organizations %}
+            {% call table.table_row(class="group cursor-pointer", attrs={"data-cs-href": "/my/organizations/" ~ org.slug}) %}
+              {% call table.table_cell() %}
+                <div class="flex items-center gap-3">
+                  {{ media_avatar.image_avatar(org.name, org.logo_url, size="md", bind_key="org:" ~ org.id) }}
+                  <div class="min-w-0">
+                    <div class="truncate font-medium">{{ org.name }}</div>
+                    <div class="truncate text-xs text-muted-foreground">
+                      {{ org.location if org.location else org.slug }}
+                    </div>
+                  </div>
+                </div>
+              {% endcall %}
+              {% call table.table_cell(class="max-sm:hidden") %}
+                <span class="text-sm text-muted-foreground">{{ org.industry or "—" }}</span>
+              {% endcall %}
+              {% call table.table_cell() %}
+                {% if org.status == "active" %}
+                  {{ badge.badge("Active", variant="outline") }}
+                {% elif org.status == "pending" %}
+                  {{ badge.badge("Pending", variant="warning") }}
+                {% elif org.status == "rejected" %}
+                  {{ badge.badge("Rejected", variant="destructive") }}
+                {% elif org.status == "suspended" %}
+                  {{ badge.badge("Suspended", variant="destructive") }}
+                {% else %}
+                  {{ badge.badge("Inactive", variant="secondary") }}
+                {% endif %}
+              {% endcall %}
+              {{ table.table_cell(org.member_count|string, class="text-right text-sm tabular-nums text-muted-foreground") }}
+              {% call table.table_cell() %}
+                <span class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity sm:size-6">
+                  <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </span>
+              {% endcall %}
+            {% endcall %}
+          {% endfor %}
+        {% endcall %}
+      {% endcall %}
+    {% endcall %}
+  {% endif %}
+</div>
+{% endmacro %}

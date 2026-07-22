@@ -1,0 +1,22 @@
+{% import "(admin)/my/organizations/[slug]/_components/header.html" as org_ui %}
+{% import "(admin)/my/organizations/[slug]/roles/_components/panel.html" as roles_ui %}
+
+{% if selected_role %}
+  {{ roles_ui.roles_editor(
+    org=org,
+    selected_role=selected_role,
+    is_create=is_create,
+    role_id=role_id,
+    editor_tab=editor_tab,
+    org_permissions=org_permissions,
+    role_members=role_members,
+    available_members=available_members,
+    is_owner=org.is_owner,
+    error=error
+  ) }}
+{% else %}
+  <div class="grid gap-0">
+    {{ org_ui.org_header(org, show_profile=false, info=info, error=error) }}
+    {{ roles_ui.roles_list(org=org, is_owner=org.is_owner) }}
+  </div>
+{% endif %}

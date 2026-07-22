@@ -4,8 +4,10 @@
 {% import "components/ui/frame.html" as frame %}
 {% import "components/ui/input-group.html" as ig %}
 {% import "components/ui/select.html" as sel %}
+{% import "components/ui/table-pagination.html" as tp %}
+{% import "components/ui/delete-dialog.html" as del_dlg %}
 
-{% macro users_table(users, total, page, total_pages, search, role_filter, status_filter) %}
+{% macro users_table(users, total, page, total_pages, search, role_filter, status_filter, page_size=25) %}
   {% set role_options = [
     {"value": "all", "label": "All roles"},
     {"value": "user", "label": "User"},
@@ -120,25 +122,29 @@
                     {% call button.button(variant="ghost", size="icon-xs", class="shrink-0 text-muted-foreground hover:text-accent-foreground", attrs={"data-cs-menu": "um-" ~ u.id, "aria-label": "User actions"}) %}
                       <svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
                     {% endcall %}
-                    <div id="um-{{ u.id }}" class="hidden fixed z-[100] w-52 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
-                      <div class="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Role</div>
-                      {% for role_val, role_lbl in [("user", "User"), ("system_staff", "App Staff"), ("system_admin", "System Admin")] %}
-                        <form method="post" action="/platform/users/{{ u.id }}/update">
-                          <input type="hidden" name="platform_role" value="{{ role_val }}">
-                          <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground {{ 'font-medium' if u.platform_role == role_val else '' }}">
-                            {{ role_lbl }}{% if u.platform_role == role_val %}<svg class="ml-auto size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>{% endif %}
-                          </button>
-                        </form>
-                      {% endfor %}
-                      <div class="my-1 h-px bg-border"></div>
+                    <div id="um-{{ u.id }}" class="hidden fixed z-100 w-52 rounded-lg border bg-popover p-1 shadow-lg text-sm text-popover-foreground">
                       <div class="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</div>
                       {% for st_val, st_lbl in [("active", "Activate"), ("inactive", "Deactivate"), ("banned", "Ban")] %}
-                        <form method="post" action="/platform/users/{{ u.id }}/update">
-                          <input type="hidden" name="status" value="{{ st_val }}">
-                          <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground {{ 'text-destructive' if st_val == 'banned' else '' }} {{ 'font-medium' if u.status == st_val else '' }}">
-                            {{ st_lbl }}{% if u.status == st_val %}<svg class="ml-auto size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>{% endif %}
-                          </button>
-                        </form>
+                        {% if st_val == "banned" %}
+                          {% call del_dlg.delete_dialog_trigger("ban-user-" ~ u.id) %}
+                            <button type="button"
+                              data-dialog-trigger
+                              data-target="#ban-user-{{ u.id }}"
+                              aria-controls="ban-user-{{ u.id }}"
+                              aria-expanded="false"
+                              class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-destructive hover:bg-destructive/10 {{ 'font-medium' if u.status == st_val else '' }}">
+                              {{ st_lbl }}{% if u.status == st_val %}<svg class="ml-auto size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>{% endif %}
+                            </button>
+                          {% endcall %}
+                        {% else %}
+                          <form method="post" action="/platform/users/{{ u.id }}/update">
+  {{ csrf_input() }}
+                            <input type="hidden" name="status" value="{{ st_val }}">
+                            <button type="submit" class="flex w-full items-center rounded-md px-2.5 py-1.5 text-left hover:bg-accent hover:text-accent-foreground {{ 'font-medium' if u.status == st_val else '' }}">
+                              {{ st_lbl }}{% if u.status == st_val %}<svg class="ml-auto size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>{% endif %}
+                            </button>
+                          </form>
+                        {% endif %}
                       {% endfor %}
                     </div>
                   </div>
@@ -150,23 +156,27 @@
       {% endcall %}
     {% endcall %}
 
+    {# Ban dialogs — rendered outside the table/menu to avoid invalid HTML nesting #}
+    {% for u in users %}
+      {{ del_dlg.delete_dialog(
+        id="ban-user-" ~ u.id,
+        name=u.email,
+        description='Banning "' ~ u.email ~ '" will prevent this user from accessing the platform until they are reactivated.',
+        action="/platform/users/" ~ u.id ~ "/update",
+        confirm_text=u.email,
+        extra_inputs={"status": "banned"},
+        submit_label="Ban user"
+      ) }}
+    {% endfor %}
+
     {# Pagination #}
-    {% if total_pages > 1 %}
-      <div class="flex items-center justify-between text-sm text-muted-foreground">
-        <span>{{ total }} users total</span>
-        <div class="flex items-center gap-1">
-          {% if page > 1 %}
-            <a href="?page={{ page - 1 }}&search={{ search }}&role={{ role_filter }}&status={{ status_filter }}"
-               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">← Prev</a>
-          {% endif %}
-          <span class="px-2">{{ page }} / {{ total_pages }}</span>
-          {% if page < total_pages %}
-            <a href="?page={{ page + 1 }}&search={{ search }}&role={{ role_filter }}&status={{ status_filter }}"
-               class="rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground">Next →</a>
-          {% endif %}
-        </div>
-      </div>
-    {% endif %}
+    {{ tp.table_pagination(
+      current_page=page,
+      total_pages=total_pages,
+      total_items=total,
+      page_size=page_size,
+      base_url="/platform/users?search=" ~ search ~ "&role=" ~ role_filter ~ "&status=" ~ status_filter
+    ) }}
 
   </div>
 {% endmacro %}

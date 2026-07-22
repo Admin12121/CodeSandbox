@@ -1,0 +1,19 @@
+{% import "(admin)/my/organizations/[slug]/_components/header.html" as org_ui %}
+{% import "(admin)/my/organizations/[slug]/members/_components/table.html" as members_ui %}
+
+<div class="grid gap-0">
+  {{ org_ui.org_header(org, show_profile=false, info=info, error=error) }}
+  {{ members_ui.members_table(
+    org=org,
+    members=members,
+    total=total,
+    page=page,
+    page_size=page_size,
+    total_pages=total_pages,
+    search=search,
+    role_filter=role_filter,
+    is_owner=is_owner,
+    user=user,
+    invite_link=invite_link
+  ) }}
+</div>
