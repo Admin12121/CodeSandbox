@@ -147,6 +147,7 @@ def get_user_org_list(user_id: str) -> list[dict]:
         member_count = repository.get_member_count(org.id)
         is_owner = repository.is_org_owner(org.id, user_id)
         member_permissions = [] if is_owner else repository.get_member_permissions(org.id, user_id)
+        org_active = org.status == "active"
         result.append({
             "id": org.id,
             "name": org.name,
@@ -163,9 +164,9 @@ def get_user_org_list(user_id: str) -> list[dict]:
             "created_at": org.created_at,
             "created_by": org.created_by,
             "is_owner": is_owner,
-            "can_invite": is_owner or "org.members.invite" in member_permissions,
+            "can_invite": org_active and (is_owner or "org.members.invite" in member_permissions),
             "can_edit_settings": is_owner or "org.settings.edit" in member_permissions,
-            "can_manage_members": is_owner or "org.members.remove" in member_permissions,
+            "can_manage_members": org_active and (is_owner or "org.members.remove" in member_permissions),
         })
     return result
 
@@ -218,6 +219,7 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
     members = repository.get_members_with_info(org.id)
     is_owner = repository.is_org_owner(org.id, user_id)
     member_permissions = [] if is_owner else repository.get_member_permissions(org.id, user_id)
+    org_active = org.status == "active"
 
     roles = repository.list_org_roles(org.id)
     roles_list = []
@@ -258,11 +260,11 @@ def get_org_for_user(slug: str, user_id: str) -> dict | None:
         "roles": roles_list,
         "member_permissions": member_permissions,
         "actor_highest_position": actor_highest_position,
-        "can_invite": is_owner or "org.members.invite" in member_permissions,
+        "can_invite": org_active and (is_owner or "org.members.invite" in member_permissions),
         "can_edit_settings": is_owner or "org.settings.edit" in member_permissions,
-        "can_manage_members": is_owner or "org.members.remove" in member_permissions,
-        "can_manage_roles": is_owner or "org.roles.manage" in member_permissions,
-        "can_assign_roles": is_owner or "org.roles.assign" in member_permissions,
+        "can_manage_members": org_active and (is_owner or "org.members.remove" in member_permissions),
+        "can_manage_roles": org_active and (is_owner or "org.roles.manage" in member_permissions),
+        "can_assign_roles": org_active and (is_owner or "org.roles.assign" in member_permissions),
     }
 
 

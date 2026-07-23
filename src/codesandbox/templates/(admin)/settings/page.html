@@ -1139,82 +1139,34 @@
     if(el){ el.textContent = msg; el.hidden = false; }
   }
 
-	  function loadQrScript(src, globalName, callback){
-	    if(window[globalName]){
-	      callback();
-	      return;
-	    }
-	    var existing = document.querySelector('script[src="' + src + '"]');
-	    if(existing){
-	      var done = false;
-	      var finish = function(){
-	        if(done) return;
-	        done = true;
-	        callback();
-	      };
-	      existing.addEventListener('load', finish, {once:true});
-	      existing.addEventListener('error', finish, {once:true});
-	      setTimeout(finish, 80);
-	      return;
-	    }
-	    var script = document.createElement('script');
-	    script.src = src;
-	    script.addEventListener('load', callback, {once:true});
-	    script.addEventListener('error', callback, {once:true});
-	    document.head.appendChild(script);
-	  }
-
 	  function render2faQR(uri, fallbackUrl, retried){
 	    var canvas = document.getElementById('dlg-2fa-qr-canvas');
 	    if(!canvas) return;
 	    canvas.innerHTML = '';
-	    if(uri && window.QRCodeStyling){
-	      try{
-	        var qr = new window.QRCodeStyling({
-	          width:200,
-	          height:200,
-	          type:'svg',
-	          data:uri,
-	          image:'/logo.webp',
-	          margin:6,
-	          qrOptions:{errorCorrectionLevel:'H'},
-	          imageOptions:{hideBackgroundDots:true,imageSize:0.16,margin:4,crossOrigin:'anonymous'},
-	          dotsOptions:{color:'#111827',type:'rounded'},
-	          backgroundOptions:{color:'#ffffff',round:0.08},
-	          cornersSquareOptions:{type:'extra-rounded',color:'#111827'},
-	          cornersDotOptions:{type:'dot',color:'#111827'}
-	        });
-	        qr.append(canvas);
-	        return;
-	      }catch(e){}
-	    }
-	    if(uri && !retried){
-	      loadQrScript('/qr-code-styling.js', 'QRCodeStyling', function(){
-	        render2faQR(uri, fallbackUrl, true);
+	    if(window.CodeSandboxQR){
+	      window.CodeSandboxQR.render(canvas, uri, {
+	        type:'svg',
+	        foreground:'#111827',
+	        background:'#ffffff',
+	        backgroundRound:0.08,
+	        image:'/logo.webp',
+	        imageSize:0.16,
+	        imageMargin:4,
+	        margin:6,
+	        fallbackUrl:fallbackUrl
 	      });
 	      return;
 	    }
-	    if(uri && window.QRCode){
-	      try{ new window.QRCode(canvas,{text:uri,width:200,height:200,colorDark:'#111827',colorLight:'#ffffff',correctLevel:window.QRCode.CorrectLevel.H}); return; }catch(e){}
-	    }
-	    if(uri && !window.QRCode){
-	      loadQrScript('/qrcode.min.js', 'QRCode', function(){
-	        if(window.QRCode){
-	          render2faQR(uri, fallbackUrl, true);
-	        }
-	      });
-	      return;
-	    }
-	    if(fallbackUrl){
-	      var img = document.createElement('img');
-	      img.src = fallbackUrl;
-	      img.alt = 'QR code';
-	      img.style.cssText = 'width:200px;height:200px;border-radius:12px';
-	      canvas.appendChild(img);
-	      return;
-	    }
-    canvas.textContent = 'QR unavailable';
-  }
+      if(fallbackUrl){
+        var img = document.createElement('img');
+        img.src = fallbackUrl;
+        img.alt = 'QR code';
+        img.style.cssText = 'width:200px;height:200px;border-radius:12px';
+        canvas.appendChild(img);
+        return;
+      }
+      canvas.textContent = 'QR unavailable';
+	  }
 
   // Fetch setup data when the 2FA dialog trigger is clicked
   var tfa2Trigger = document.querySelector('[data-open-dialog="dlg-2fa-setup"]');

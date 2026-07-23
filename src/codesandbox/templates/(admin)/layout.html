@@ -1002,9 +1002,9 @@
 {% app_script "layout-invite-members-dialog" %}
 (function(){
   'use strict';
-  var _slug='{{ _ws["slug"] | e }}';
-  var _logoUrl='{{ (_ws.get("logo_url") or "") | e }}';
-  var _mediaKey='org:{{ _ws["id"] | e }}';
+  var _slug={{ _ws["slug"] | tojson }};
+  var _logoUrl={{ (_ws.get("logo_url") or "") | tojson }};
+  var _mediaKey={{ ("org:" ~ _ws["id"]) | tojson }};
   var modal=document.getElementById('layout-invite-modal');
   var openBtn=document.getElementById('layout-invite-btn');
   var closeBtn=document.getElementById('layout-invite-close');
@@ -1023,62 +1023,25 @@
   var INPUT_CLS='flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring';
   var RM_SVG='<svg class="size-3.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 
-  /* ── render QR using qr-code-styling (Vercel-style) ─────────────────── */
   function renderQR(url){
     if(!qrCanvas||!url)return;
     var dark=document.documentElement.classList.contains('dark');
     var fg=dark?'#fafafa':'#18181b';
     var bg=dark?'#09090b':'#ffffff';
-    qrCanvas.innerHTML='';
-
-    function renderFallback(){
-      qrCanvas.innerHTML='';
-      if(typeof QRCode==='undefined'){
-        qrCanvas.textContent='QR unavailable';
-        qrCanvas.classList.add('text-xs','text-muted-foreground');
-        return;
-      }
-      try{
-        new QRCode(qrCanvas,{
-          text:url,
-          width:200,
-          height:200,
-          colorDark:fg,
-          colorLight:bg,
-          correctLevel:QRCode.CorrectLevel.H
-        });
-      }catch(e){
-        qrCanvas.textContent='QR unavailable';
-        qrCanvas.classList.add('text-xs','text-muted-foreground');
-      }
-    }
-
-    if(typeof QRCodeStyling==='undefined'){
-      renderFallback();
+    var centerImg=(_logoUrl||'').trim();
+    if(window.CodeSandboxQR){
+      window.CodeSandboxQR.render(qrCanvas,url,{
+        type:'canvas',
+        foreground:fg,
+        background:bg,
+        image:centerImg,
+        imageSize:0.32,
+        imageMargin:5
+      });
       return;
     }
-
-    var centerImg=(_logoUrl||'').trim();
-    try{
-      var options={
-        width:200,height:200,
-        type:'canvas',
-        data:url,
-        qrOptions:{errorCorrectionLevel:'H'},
-        dotsOptions:{color:fg,type:'rounded'},
-        backgroundOptions:{color:bg},
-        cornersSquareOptions:{type:'extra-rounded',color:fg},
-        cornersDotOptions:{color:fg},
-      };
-      if(centerImg){
-        options.image=centerImg;
-        options.imageOptions={crossOrigin:'anonymous',margin:5,imageSize:0.32,hideBackgroundDots:true};
-      }
-      var qr=new QRCodeStyling(options);
-      qr.append(qrCanvas);
-    }catch(e){
-      renderFallback();
-    }
+    qrCanvas.textContent='QR unavailable';
+    qrCanvas.classList.add('text-xs','text-muted-foreground');
   }
 
   /* ── state helpers ───────────────────────────────────────────────────── */
@@ -1104,10 +1067,32 @@
   }
 
   function loadInviteLink(){
-    fetch('/my/organizations/'+_slug+'/invite-link-data',{credentials:'same-origin'})
-      .then(function(r){return r.json();})
-      .then(function(d){if(d.ok)setInviteUrl(d.url);})
-      .catch(function(){});
+    if(linkInput){
+      linkInput.value='';
+      linkInput.placeholder='Loading invite link...';
+    }
+    if(qrCanvas)qrCanvas.innerHTML='';
+    fetch('/my/organizations/'+encodeURIComponent(_slug)+'/invite-link-data',{
+      credentials:'same-origin',
+	      headers:{'Accept':'application/json','X-Requested-With':'fetch'}
+    })
+      .then(function(r){
+        return r.json().catch(function(){return {ok:false,error:'Invite link response was not JSON.'};})
+          .then(function(d){d._status=r.status;return d;});
+      })
+      .then(function(d){
+        if(d.ok&&d.url){
+          if(linkInput)linkInput.placeholder='';
+          setInviteUrl(d.url);
+          return;
+        }
+        if(linkInput)linkInput.placeholder='Invite link unavailable';
+        setStatus(d.error||'Unable to load invite link. Refresh and try again.','var(--destructive)');
+      })
+      .catch(function(){
+        if(linkInput)linkInput.placeholder='Invite link unavailable';
+        setStatus('Unable to load invite link. Check your connection and try again.','var(--destructive)');
+      });
   }
 
   document.addEventListener('codesandbox:media-uploaded',function(e){
@@ -1196,9 +1181,9 @@
     if(!emails.length){setStatus('Enter at least one email address.','var(--destructive)');return;}
     sendBtn.disabled=true;
     setStatus('Sending…','');
-    fetch('/my/organizations/'+_slug+'/invite-batch',{
+    fetch('/my/organizations/'+encodeURIComponent(_slug)+'/invite-batch',{
       method:'POST',credentials:'same-origin',
-      headers:{'Content-Type':'application/json'},
+	      headers:{'Content-Type':'application/json','Accept':'application/json','X-Requested-With':'fetch'},
       body:JSON.stringify({emails:emails}),
     })
     .then(function(r){return r.json();})
@@ -1234,13 +1219,14 @@
     if(regenBtn.disabled)return;
     regenBtn.disabled=true;
     regenBtn.textContent='Resetting…';
-    fetch('/my/organizations/'+_slug+'/invite-link/regenerate',{method:'POST',credentials:'same-origin'})
-      .then(function(r){return r.json();})
+	    fetch('/my/organizations/'+encodeURIComponent(_slug)+'/invite-link/regenerate',{method:'POST',credentials:'same-origin',headers:{'Accept':'application/json','X-Requested-With':'fetch'}})
+      .then(function(r){return r.json().catch(function(){return {ok:false,error:'Invite link response was not JSON.'};});})
       .then(function(d){
         regenBtn.disabled=false;regenBtn.textContent='Reset link';
-        if(d.ok)setInviteUrl(d.url);
+        if(d.ok&&d.url)setInviteUrl(d.url);
+        else setStatus(d.error||'Unable to reset invite link.','var(--destructive)');
       })
-      .catch(function(){regenBtn.disabled=false;regenBtn.textContent='Reset link';});
+      .catch(function(){regenBtn.disabled=false;regenBtn.textContent='Reset link';setStatus('Unable to reset invite link. Check your connection and try again.','var(--destructive)');});
   });
 })();
 {% end_app_script %}

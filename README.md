@@ -20,6 +20,8 @@ CodeSandbox is a self-hosted platform for disposable, isolated browser workspace
 
 Each workspace runs on a separate worker, streams to the browser, and is billed only for actual runtime. The platform supports individual users, organization workspaces, and platform administrators who manage users, plans, templates, workers, finance, and security policy.
 
+Project demo video: https://www.youtube.com/watch?v=4KHG3YNbxho
+
 ## Core Features
 
 - Disposable browser workspaces for Linux terminals, file-backed IDE sessions, desktop GUI sessions, security labs, reverse-engineering workflows, and long-running jobs.

@@ -79,10 +79,6 @@ services:
       - "127.0.0.1:${HTTP_PORT:?Set HTTP_PORT in .env}:80"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    network_mode: bridge
-    links:
-      - app:app
-      - minio:minio
     depends_on:
       app:
         condition: service_healthy
@@ -144,12 +140,6 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
-    network_mode: bridge
-    links:
-      - mysql:mysql
-      - redis:redis
-      - minio:minio
-      - nats:nats
     depends_on:
       mysql:
         condition: service_healthy
@@ -197,12 +187,6 @@ services:
 
         exec "$$@"
     environment: *app-environment
-    network_mode: bridge
-    links:
-      - mysql:mysql
-      - redis:redis
-      - minio:minio
-      - nats:nats
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -250,9 +234,6 @@ services:
     environment:
       <<: *python-runtime-env
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
-    network_mode: bridge
-    links:
-      - mysql:mysql
     depends_on:
       mysql:
         condition: service_healthy
@@ -276,12 +257,6 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?Set SEED_ADMIN_EMAIL in .env}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in .env}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:?Set SEED_ADMIN_NAME in .env}
-    network_mode: bridge
-    links:
-      - mysql:mysql
-      - redis:redis
-      - minio:minio
-      - nats:nats
     depends_on:
       mysql:
         condition: service_healthy
@@ -318,11 +293,6 @@ services:
       SANDBOX_CLEANUP_STALE_SECONDS: ${SANDBOX_CLEANUP_STALE_SECONDS:?Set SANDBOX_CLEANUP_STALE_SECONDS in .env}
       SANDBOX_RECONCILE_INTERVAL_SECONDS: ${SANDBOX_RECONCILE_INTERVAL_SECONDS:?Set SANDBOX_RECONCILE_INTERVAL_SECONDS in .env}
       WORKER_OFFLINE_TIMEOUT_SECONDS: ${WORKER_OFFLINE_TIMEOUT_SECONDS:?Set WORKER_OFFLINE_TIMEOUT_SECONDS in .env}
-    network_mode: bridge
-    links:
-      - mysql:mysql
-      - redis:redis
-      - app:app
     depends_on:
       mysql:
         condition: service_healthy
@@ -363,7 +333,6 @@ services:
       - docker_engine_data:/var/lib/docker
       - docker_engine_certs:/certs
       - docker_engine_client_certs:/certs/client
-    network_mode: bridge
     healthcheck:
       test:
         - CMD-SHELL
@@ -434,13 +403,6 @@ services:
       DOCKER_CERT_PATH: /certs/client
     volumes:
       - docker_engine_client_certs:/certs/client:ro
-    network_mode: bridge
-    links:
-      - redis:redis
-      - nats:nats
-      - minio:minio
-      - app:app
-      - docker-engine:docker-engine
     depends_on:
       docker-engine:
         condition: service_healthy
@@ -488,7 +450,6 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
     volumes:
       - mysql_data:/var/lib/mysql
-    network_mode: bridge
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -515,7 +476,6 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     volumes:
       - redis_data:/data
-    network_mode: bridge
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -546,7 +506,6 @@ services:
     volumes:
       - ./docker/nats/nats-server.conf:/etc/nats/nats-server.conf:ro
       - nats_data:/data
-    network_mode: bridge
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -570,7 +529,6 @@ services:
       MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL:?Set MINIO_BROWSER_REDIRECT_URL in .env}
     volumes:
       - ${MINIO_DATA_DIR:?Set MINIO_DATA_DIR in .env}:/data
-    network_mode: bridge
     security_opt:
       - no-new-privileges:true
     healthcheck:

@@ -5,6 +5,150 @@
 {%- endmacro %}
 
 {% macro qr_assets() -%}
-<script src="/qrcode.min.js"></script>
-<script src="/qr-code-styling.js"></script>
+<script src="/qrcode.min.js" data-codesandbox-qr-static></script>
+<script src="/qr-code-styling.js" data-codesandbox-qr-static></script>
+{% app_script "codesandbox.media.qr" %}
+(function(){
+  "use strict";
+  if(window.CodeSandboxQR && window.CodeSandboxQR.render) return;
+
+  var loads = window.__codesandboxQrLoads || (window.__codesandboxQrLoads = {});
+
+  function sameScript(src, expected){
+    try { return new URL(src, window.location.href).href === new URL(expected, window.location.href).href; }
+    catch(_) { return src === expected; }
+  }
+
+  function loadGlobal(src, globalName){
+    if(window[globalName]) return Promise.resolve(true);
+    if(loads[src]) return loads[src];
+    loads[src] = new Promise(function(resolve){
+      var settled = false;
+      function done(ok){
+        if(settled) return;
+        settled = true;
+        resolve(!!ok && !!window[globalName]);
+      }
+      function inject(){
+        if(window[globalName]) { done(true); return; }
+        var script = document.createElement("script");
+        script.src = src;
+        script.async = false;
+        script.dataset.codesandboxQrExecutable = "true";
+        script.addEventListener("load", function(){ done(true); }, {once:true});
+        script.addEventListener("error", function(){ done(false); }, {once:true});
+        document.head.appendChild(script);
+      }
+
+      var executable = Array.prototype.slice.call(document.scripts).find(function(script){
+        return sameScript(script.src || "", src) && script.dataset.codesandboxQrExecutable === "true";
+      });
+      if(executable){
+        executable.addEventListener("load", function(){ done(true); }, {once:true});
+        executable.addEventListener("error", function(){ done(false); }, {once:true});
+        setTimeout(function(){
+          if(window[globalName]) done(true);
+          else inject();
+        }, 80);
+        return;
+      }
+      inject();
+    }).then(function(ok){
+      if(!ok) delete loads[src];
+      return ok;
+    });
+    return loads[src];
+  }
+
+  function fallbackImage(container, url){
+    if(!url) return false;
+    var img = document.createElement("img");
+    img.src = url;
+    img.alt = "QR code";
+    img.width = 200;
+    img.height = 200;
+    img.style.cssText = "width:200px;height:200px;border-radius:12px";
+    container.appendChild(img);
+    return true;
+  }
+
+  function renderBasic(container, value, options){
+    if(!value || !window.QRCode) return false;
+    try {
+      new window.QRCode(container, {
+        text: value,
+        width: options.width || 200,
+        height: options.height || 200,
+        colorDark: options.foreground || "#111827",
+        colorLight: options.background || "#ffffff",
+        correctLevel: window.QRCode.CorrectLevel.H
+      });
+      return true;
+    } catch(_) {
+      return false;
+    }
+  }
+
+  function renderStyled(container, value, options){
+    if(!value || !window.QRCodeStyling) return false;
+    try {
+      var cfg = {
+        width: options.width || 200,
+        height: options.height || 200,
+        type: options.type || "svg",
+        data: value,
+        margin: options.margin == null ? 0 : options.margin,
+        qrOptions: {errorCorrectionLevel: "H"},
+        dotsOptions: {color: options.foreground || "#111827", type: "rounded"},
+        backgroundOptions: {color: options.background || "#ffffff", round: options.backgroundRound || 0},
+        cornersSquareOptions: {type: "extra-rounded", color: options.foreground || "#111827"},
+        cornersDotOptions: {type: options.cornerDotType || "dot", color: options.foreground || "#111827"}
+      };
+      if(options.image){
+        cfg.image = options.image;
+        cfg.imageOptions = {
+          hideBackgroundDots: true,
+          imageSize: options.imageSize == null ? 0.24 : options.imageSize,
+          margin: options.imageMargin == null ? 4 : options.imageMargin,
+          crossOrigin: "anonymous"
+        };
+      }
+      new window.QRCodeStyling(cfg).append(container);
+      return true;
+    } catch(_) {
+      return false;
+    }
+  }
+
+  function unavailable(container){
+    container.textContent = "QR unavailable";
+    container.classList.add("text-xs", "text-muted-foreground");
+  }
+
+  window.CodeSandboxQR = {
+    render: function(container, value, options){
+      options = options || {};
+      if(!container) return Promise.resolve(false);
+      container.innerHTML = "";
+      container.classList.remove("text-xs", "text-muted-foreground");
+
+      return loadGlobal("/qr-code-styling.js", "QRCodeStyling")
+        .then(function(){
+          if(renderStyled(container, value, options)) return true;
+          return loadGlobal("/qrcode.min.js", "QRCode").then(function(){
+            if(renderBasic(container, value, options)) return true;
+            if(fallbackImage(container, options.fallbackUrl)) return true;
+            unavailable(container);
+            return false;
+          });
+        })
+        .catch(function(){
+          if(fallbackImage(container, options.fallbackUrl)) return true;
+          unavailable(container);
+          return false;
+        });
+    }
+  };
+})();
+{% end_app_script %}
 {%- endmacro %}
